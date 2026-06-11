@@ -17,7 +17,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -27,22 +27,20 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg5_pass_sym: Symbol = sg5_pass_sym
-data sg5_fail_sym: Symbol = sg5_fail_sym
-
 fn sg5_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg5_pass_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg5_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn sg5_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg5_fail_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg5_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn sg5_claim_input(ok: Bool) -> Node {

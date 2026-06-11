@@ -22,39 +22,31 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
   lens_structural_resolution_actual
 }
 import v4.std.collection { Map }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.dependency {
   BindsTo,
-  DependencyView,
-  dependency_binds_to_edge
+  DependencyView
 }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates, Witness }
-
-data sr_lookup_use_symbol: Symbol = sr_lookup_use_symbol
-data sr_lookup_decl_symbol: Symbol = sr_lookup_decl_symbol
-data sr_lookup_type_symbol: Symbol = sr_lookup_type_symbol
-data sr_lookup_algebra_symbol: Symbol = sr_lookup_algebra_symbol
-data sr_lookup_descent_symbol: Symbol = sr_lookup_descent_symbol
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 
 fn sr_lookup_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
-data sr_lookup_use: Node = sr_lookup_claim_atom(s: sr_lookup_use_symbol)
+data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 
 data sr_lookup_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_lookup_use }
-  ]
+    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data sr_lookup_dependency: DependencyView = DependencyView {
@@ -66,12 +58,11 @@ data sr_lookup_dependency: DependencyView = DependencyView {
 
 fn sr_lookup_resolved_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: sr_lookup_type_symbol,
-    algebra_symbol: sr_lookup_algebra_symbol,
-    descent_symbol: sr_lookup_descent_symbol,
+    type_symbol: ^sr_lookup_type_symbol,
+    algebra_symbol: ^sr_lookup_algebra_symbol,
+    descent_symbol: ^sr_lookup_descent_symbol,
   )
 }
-
 
 fn sr_lookup_usage_site_witness() -> Witness<InferredFacts> {
   Violates {

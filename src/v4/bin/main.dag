@@ -4,7 +4,7 @@
 
 module v4.bin.main
 
-import v4.std.node { Node, TypeNode, Conj, Disj }
+import v4.std.node { Node, TypeNode, Conj, Disj, SyntheticOccurrence }
 
 
 data main_rs_trampoline_authority: String = "include!(\"v4_main_generated.rs\");"
@@ -12,11 +12,13 @@ data main_rs_trampoline_authority: String = "include!(\"v4_main_generated.rs\");
 
 data stub_stage1_emitted_rust_digest_placeholder: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_stage2_emitted_rust_digest_placeholder: Node = Node {
   kind: TypeNode { connective: Disj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }

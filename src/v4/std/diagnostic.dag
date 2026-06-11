@@ -62,6 +62,7 @@ fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
 fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
+
 fn port_locus(port: Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }
 }
@@ -71,7 +72,16 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
-fn eq(a: Extent, b: Extent) -> Bool {
+// Named `extent_eq` (not bare `eq`) to follow the codebase's type-prefixed equality
+// convention (locus_eq, node_eq, fact_eq, ...). A bare `eq` module item shadows the
+// universal higher-order `eq:` comparison-function parameter (zip_eq/is_prefix_of/...) —
+// the bootstrap interpreter resolves a call name to a module item BEFORE an env-bound
+// lambda (v2_interpreter.rs eval_call: "module item wins over env-bound Value::Fn"), so a
+// bare `eq` global silently captures every `eq(x, y)` invocation inside those combinators
+// and crashes on non-Extent arguments. [Recurring class: multi-authority name resolution /
+// higher-order-param shadowing — the authority fix (env-bound fn wins, or a dup-name gate)
+// is tracked separately; this rename removes the one squatting name.]
+fn extent_eq(a: Extent, b: Extent) -> Bool {
   match a {
     WholeFile => match b {
       WholeFile => true
@@ -86,7 +96,7 @@ fn eq(a: Extent, b: Extent) -> Bool {
 fn locus_eq(a: Locus, b: Locus) -> Bool {
   match a {
     Textual { file: fa, extent: ea } => match b {
-      Textual { file: fb, extent: eb } => (fa == fb) && eq(a: ea, b: eb)
+      Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
       NodeLocus { anchor: _ } => false
       PortLocus { anchor: _ } => false
     }

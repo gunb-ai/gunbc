@@ -11,10 +11,60 @@
 module v4.compiler.parse
 
 
-import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v4.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Locus,
+  NonEmptyDiagnostics,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_accepted,
+  port_locus,
+  rejected_with_pending
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  MintedOccurrence,
+  Named,
+  Node,
+  NodeOccurrenceId,
+  OccurrenceId,
+  Symbol,
+  TypeNode,
+  node_occurrence_minted,
+  node_synthetic,
+  node_with_occurrence_id,
+  SyntheticOccurrence,
+  well_formed
+}
+import v4.std.occurrence_id {
+  OccurrenceIdAllocator,
+  alloc_occurrence_id,
+  occurrence_id_allocator_advance_to,
+  occurrence_id_allocator_initial
+}
+import v4.std.provenance {
+  DerivedBy,
+  SpanIndex,
+  origin_event_from_source,
+  span_index_empty,
+  span_index_merge,
+  span_index_record
+}
+import v4.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
@@ -22,6 +72,7 @@ import v4.std.grammar {
   Choice,
   ParseGrammar,
   GrammarExpr,
+  GrammarExprFold,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
@@ -32,33 +83,49 @@ import v4.std.grammar {
   Terminal,
   ValidatedGrammarRoot,
   VoidGrammar,
+  fold_grammar_expr,
   grammar_empty_node,
   grammar_named_edge,
-  grammar_sequence_left_node_projection,
-  grammar_sequence_right_node_projection,
   grammar_to_node
 }
 
 
+// PROV A-pivot wave-2: per-compile occurrence mint + off-tree SpanIndex; global coherence via
+// parse_prov_merge across memoized parse-table cells and threaded table build.
+type ParseProvenanceState {
+  alloc: OccurrenceIdAllocator
+  index: SpanIndex
+}
+
+type ParseArtifact {
+  tree: ParseTree
+  span_index: SpanIndex
+}
+
+type ParseMintSourceResult {
+  id: OccurrenceId
+  prov: ParseProvenanceState
+}
+
+type ParseStampResult {
+  node: Node
+  prov: ParseProvenanceState
+}
+
 // 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
-  = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic> }
+  = ParseExprAccepted {
+      remaining: List<Token>,
+      captured: Node,
+      diagnostics: List<Diagnostic>,
+      prov: ParseProvenanceState
+    }
   | ParseExprRejected { diagnostics: List<Diagnostic> }
 
 type ParseSyncState {
   found_sync: Bool
   result: List<Token>
 }
-
-// 🟡 coproduct dissolution — feature: GrammarRoot duplicate-name scan accumulator — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived membership fold over production names eliminates the hand-written accumulator; invalid-state-representable Bool flag dissolved into coproduct branches.
-type GrammarDupCheckResult
-  = GrammarDupCheckUnique { seen: Set<Symbol> }
-  | GrammarDupCheckDuplicate
-
-// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
-type TokenPeek
-  = TokenPeekAbsent
-  | TokenPeekFirst { value: Token }
 
 // Accumulator for the fold-list based Repeat implementation in parse_expr.
 // fold_list over the token stream bounds iterations to length(tokens);
@@ -68,7 +135,21 @@ type ParseRepeatAcc {
   acc_nodes: List<Node>
   acc_diags: List<Diagnostic>
   done: Bool
+  prov: ParseProvenanceState
 }
+
+// Product accumulator for expr_direct_left_corner_list: corners plus nullable flag
+// threaded through fold_grammar_expr so Sequence can gate right corners on left nullability.
+type GrammarExprCornerFold {
+  corners: List<Symbol>
+  nullable: Bool
+}
+
+// 🟢 coproduct dissolved — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
+// ParseExprWalk (1:1 GrammarExpr mirror) deleted; parse_expr_run_walk deleted. parse_expr now
+// uses fold_grammar_expr<fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult>: each
+// algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
+// correct token threading; Nonterminal delegates to parse_nonterminal_from_table (leaf).
 
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
@@ -102,6 +183,8 @@ data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonte
 data parse_grammar_duplicate_production: Symbol = parse_grammar_duplicate_production
 
 data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
+
+data parse_stage_producer: Symbol = ^parse_stage_producer
 
 
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
@@ -158,35 +241,24 @@ fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-fn grammar_lookup_production_step(
-  acc: Witness<GrammarProduction>,
-  production: GrammarProduction,
-  name: Symbol
-) -> Witness<GrammarProduction> {
-  match acc {
-    Holds { value: _ } => acc
-    Violates { diagnostic: _ } =>
-      if production.name == name {
-        Holds { value: production }
-      } else {
-        acc
+// 🟢 substrate catamorphism consumer — feature: GrammarRoot production lookup — bind
+// node://adhoc-a896516d-3f7 — name match expressed as v4.std.algebra.filter + the
+// v4.std.collection.list_at_optional head projection; the hand-written first-match Witness
+// fold (grammar_lookup_production_step) dissolved. First match == unique match because
+// grammar_has_duplicate_productions rejects duplicate names before parse.
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
+  match list_at_optional(
+    xs: filter(xs: root.productions, predicate: fn(p) { p.name == name }),
+    index: 0
+  ) {
+    Present { value: production } => Holds { value: production }
+    Absent =>
+      Violates {
+        diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
+          at: port_locus(port: parse_stage_locus_port)
+        )
       }
   }
-}
-
-
-fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
-  fold_list(
-    xs: root.productions,
-    empty: Violates {
-      diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
-        at: port_locus(port: parse_stage_locus_port)
-      )
-    },
-    cons: fn(acc, production) {
-      grammar_lookup_production_step(acc: acc, production: production, name: name)
-    }
-  )
 }
 
 
@@ -241,13 +313,161 @@ fn token_position_indices(tokens: List<Token>) -> List<Int> {
   }
 }
 
-fn parse_wrap_production_captured(production: GrammarProduction, captured: Node) -> Node {
-  Node {
+fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnostic> {
+  list_append(left: [ned.head], right: ned.tail)
+}
+
+fn parse_prov_initial() -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: occurrence_id_allocator_initial(),
+    index: span_index_empty()
+  }
+}
+
+fn parse_prov_merge(
+  base: ParseProvenanceState,
+  incoming: ParseProvenanceState
+) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: occurrence_id_allocator_advance_to(
+      alloc: base.alloc,
+      min_next: incoming.alloc.next_id
+    ),
+    index: span_index_merge(base: base.index, incoming: incoming.index)
+  }
+}
+
+fn parse_mint_from_source(
+  prov: ParseProvenanceState,
+  file: Symbol,
+  start: Int,
+  end: Int
+) -> ParseMintSourceResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let locus = Textual {
+    file: file,
+    extent: ByteRange { start: start, end: end }
+  }
+  let event = origin_event_from_source(locus: locus)
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseMintSourceResult {
+    id: minted.id,
+    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+  }
+}
+
+fn parse_minted_id_from_node(n: Node) -> List<OccurrenceId> {
+  match n.occurrence_id {
+    MintedOccurrence { id: id } => Cons { head: id, tail: Empty }
+    SyntheticOccurrence => Empty
+  }
+}
+
+fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
+  fold_list(
+    xs: nodes,
+    empty: Empty,
+    cons: fn(acc, n) {
+      list_append(left: acc, right: parse_minted_id_from_node(n: n))
+    }
+  )
+}
+
+fn parse_stamp_atom_terminal(tok: Token, prov: ParseProvenanceState) -> ParseStampResult {
+  let minted = parse_mint_from_source(
+    prov: prov,
+    file: tok.file,
+    start: tok.start,
+    end: tok.end
+  )
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Atom { identity: tok.class } },
+      children: [],
+      occurrence_id: node_occurrence_minted(id: minted.id)
+    ),
+    prov: minted.prov
+  }
+}
+
+fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceId) -> Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [
-      grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-      grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-    ]
+    children: fold_list(
+      xs: acc_nodes,
+      empty: Empty,
+      cons: fn(acc, n) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: Named { name: ^grammar_repeat_element_node_projection },
+            target: n
+          }
+        )
+      }
+    ),
+    occurrence_id: occurrence_id
+  )
+}
+
+fn parse_stamp_derived_conj(
+  cap1: Node,
+  cap2: Node,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: [cap1, cap2])
+  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Conj },
+      children: [
+        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+        grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
+      ],
+      occurrence_id: node_occurrence_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+  }
+}
+
+fn parse_stamp_derived_repeat(
+  acc_nodes: List<Node>,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: acc_nodes)
+  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: parse_repeat_captured_node(
+      acc_nodes: acc_nodes,
+      occurrence_id: node_occurrence_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+  }
+}
+
+fn parse_wrap_production_captured(
+  production: GrammarProduction,
+  captured: Node,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: [captured])
+  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Conj },
+      children: [
+        grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+        grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+      ],
+      occurrence_id: node_occurrence_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
 }
 
@@ -256,7 +476,8 @@ fn parse_nonterminal_from_table(
   all_tokens: List<Token>,
   tokens: List<Token>,
   root: GrammarRoot,
-  prod_name: Symbol
+  prod_name: Symbol,
+  prov: ParseProvenanceState
 ) -> ParseExprResult {
   match grammar_lookup_production(root: root, name: prod_name) {
     Violates { diagnostic: d } =>
@@ -271,11 +492,18 @@ fn parse_nonterminal_from_table(
           match inner {
             ParseExprRejected { diagnostics: diags } =>
               ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+              let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
+              let stamped = parse_wrap_production_captured(
+                production: production,
+                captured: captured,
+                prov: merged_prov
+              )
               ParseExprAccepted {
                 remaining: remaining,
-                captured: parse_wrap_production_captured(production: production, captured: captured),
-                diagnostics: diags
+                captured: stamped.node,
+                diagnostics: diags,
+                prov: stamped.prov
               }
           }
         Violates { diagnostic: d } =>
@@ -295,23 +523,25 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
+// bind node://adhoc-b696538c-710 — first consumer of v4.std.grammar.fold_grammar_expr: the
+// nullable query is now expressed as a GrammarExprFold algebra over Bool rather than a hand-written
+// per-variant recursion. The structural recursion lives once in fold_grammar_expr; this function
+// supplies only the per-variant combine.
 // expr_is_nullable_given_set: true iff expr can match empty input given a pre-computed nullable set.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
 // Nonterminal arms consult nullable_set rather than following production references.
 fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: name } => nullable_set.member(name)
-    Sequence { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) &&
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Choice { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) ||
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Optional { element: _ } => true
-    Repeat { element: _ } => true
-  }
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(name) { nullable_set.member(name) },
+      sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
+      choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
+      optional: fn(_) { true },
+      repeat: fn(_) { true }
+    }
+  )
 }
 
 
@@ -350,35 +580,81 @@ fn grammar_empty_corner_list() -> List<Symbol> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
-// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
-// Sequence: when left is nullable, both left and right contribute left corners.
-// Note: Sequence arm uses list_append with the nullable-conditional inside right: to avoid
-// a top-level if/else type-unification failure in the v2 bootstrap compiler.
-fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  match expr {
-    Terminal { token_class: _ } => Empty
-    Nonterminal { production: name } => Cons { head: name, tail: Empty }
-    Sequence { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
-          expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-        } else {
-          grammar_empty_corner_list()
-        }
-      )
-    Choice { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-      )
-    Optional { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
-    Repeat { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
+fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: Empty, nullable: false }
+}
+
+
+fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+  GrammarExprCornerFold {
+    corners: Cons { head: name, tail: Empty },
+    nullable: nullable_set.member(name)
   }
+}
+
+
+fn expr_corner_fold_sequence(
+  left_fold: GrammarExprCornerFold,
+  right_fold: GrammarExprCornerFold
+) -> GrammarExprCornerFold {
+  // left_fold.nullable is fold_grammar_expr applied with the Bool nullable algebra over the
+  // left subtree — equivalent to expr_is_nullable_given_set(expr: left, nullable_set).
+  GrammarExprCornerFold {
+    corners: list_append(
+      left: left_fold.corners,
+      right: if left_fold.nullable {
+        right_fold.corners
+      } else {
+        grammar_empty_corner_list()
+      }
+    ),
+    nullable: left_fold.nullable && right_fold.nullable
+  }
+}
+
+
+fn expr_corner_fold_choice(
+  left_fold: GrammarExprCornerFold,
+  right_fold: GrammarExprCornerFold
+) -> GrammarExprCornerFold {
+  GrammarExprCornerFold {
+    corners: list_append(left: left_fold.corners, right: right_fold.corners),
+    nullable: left_fold.nullable || right_fold.nullable
+  }
+}
+
+
+fn expr_corner_fold_optional(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
+}
+
+
+fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
+}
+
+
+fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class) { expr_corner_fold_terminal(token_class) },
+      nonterminal: fn(name) { expr_corner_fold_nonterminal(name: name, nullable_set: nullable_set) },
+      sequence: expr_corner_fold_sequence,
+      choice: expr_corner_fold_choice,
+      optional: expr_corner_fold_optional,
+      repeat: expr_corner_fold_repeat
+    }
+  )
+}
+
+
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr left-corner query substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer with GrammarExprCornerFold product
+// threading nullable alongside corners so Sequence combine matches expr_is_nullable_given_set.
+// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
+fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
+  expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
 
@@ -420,97 +696,71 @@ fn compute_left_corner_closure(
 }
 
 
-fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: GrammarRoot, nullable_set: Set<Symbol>) -> Bool {
-  acc ||
-  contains(
-    xs: compute_left_corner_closure(
-      start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
-      nullable_set: nullable_set,
-      root: root
-    ),
-    item: p.name,
-    eq: fn(a, b) { a == b }
-  )
-}
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
+// Per-production or-fold rides v4.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   let nullable_set = compute_nullable_set(root: root)
-  fold_list(
+  any(
     xs: root.productions,
-    empty: false,
-    cons: fn(acc, p) { grammar_has_left_recursion_step(acc: acc, p: p, root: root, nullable_set: nullable_set) }
+    predicate: fn(p) {
+      contains(
+        xs: compute_left_corner_closure(
+          start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
+          nullable_set: nullable_set,
+          root: root
+        ),
+        item: p.name,
+        eq: fn(a, b) { a == b }
+      )
+    }
   )
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr production-reference closure query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-nonterminal query morphism over GrammarExpr coproduct; forbidden: duplicating reference-closure logic outside this function.
-// Structural recursion on GrammarExpr (finite tree) — does NOT follow nonterminal
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr production-reference closure query substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer over Bool; does NOT follow nonterminal
 // references into their productions, so it always terminates without a visited set.
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: p } =>
-      match grammar_lookup_production(root: root, name: p) {
-        Violates { diagnostic: _ } => true
-        Holds { value: _ } => false
-      }
-    Sequence { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Choice { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Optional { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-    Repeat { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-  }
-}
-
-
-fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root: GrammarRoot) -> Bool {
-  acc || expr_has_undefined_nonterminal(expr: p.expression, root: root)
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(p) {
+        match grammar_lookup_production(root: root, name: p) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+      },
+      sequence: fn(left_undef, right_undef) { left_undef || right_undef },
+      choice: fn(left_undef, right_undef) { left_undef || right_undef },
+      optional: fn(element_undef) { element_undef },
+      repeat: fn(element_undef) { element_undef }
+    }
+  )
 }
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
+// Per-production or-fold rides v4.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => true
     Holds { value: _ } =>
-      fold_list(
+      any(
         xs: root.productions,
-        empty: false,
-        cons: fn(acc, p) { grammar_has_undefined_nonterminals_step(acc: acc, p: p, root: root) }
+        predicate: fn(p) { expr_has_undefined_nonterminal(expr: p.expression, root: root) }
       )
   }
 }
 
 
-fn grammar_dup_check_step(acc: GrammarDupCheckResult, p: GrammarProduction) -> GrammarDupCheckResult {
-  match acc {
-    GrammarDupCheckDuplicate => GrammarDupCheckDuplicate
-    GrammarDupCheckUnique { seen: seen } =>
-      if seen.member(p.name) {
-        GrammarDupCheckDuplicate
-      } else {
-        GrammarDupCheckUnique { seen: set_symbol_insert(s: seen, item: p.name) }
-      }
-  }
-}
-
-
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived duplicate-name scan morphism over GrammarRoot productions; forbidden: duplicating duplicate-check logic outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarRoot duplicate-name scan — bind
+// node://adhoc-a896516d-3f7 — scan expressed as v4.std.algebra.unique over production names;
+// the hand-written GrammarDupCheckResult accumulator coproduct dissolved (Level-1d).
 fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
-  match fold_list(
-    xs: root.productions,
-    empty: GrammarDupCheckUnique { seen: Set { member: fn(_) { false } } },
-    cons: fn(acc, p) { grammar_dup_check_step(acc: acc, p: p) }
-  ) {
-    GrammarDupCheckDuplicate => true
-    GrammarDupCheckUnique { seen: _ } => false
+  match unique(xs: root.productions, eq: fn(a, b) { a.name == b.name }) {
+    true => false
+    false => true
   }
 }
 
@@ -563,26 +813,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
 
 // --- Parse walk helpers ---
 
-fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: fold_list(
-      xs: acc_nodes,
-      empty: Empty,
-      cons: fn(acc, n) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge {
-            label: Named { name: grammar_repeat_element_node_projection },
-            target: n
-          }
-        )
-      }
-    )
-  }
-}
-
-
 // Skip tokens until a sync token is found (inclusive — returns stream starting at sync token).
 fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) -> ParseSyncState {
   match acc.found_sync {
@@ -605,152 +835,198 @@ fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyn
 }
 
 
-fn parse_token_first(tokens: List<Token>) -> TokenPeek {
-  fold_list_right(xs: tokens, empty: TokenPeekAbsent, snoc: fn(_acc, tok) { TokenPeekFirst { value: tok } })
+// 🟢 substrate head projection — the TokenPeek per-use carrier dissolved onto the
+// v4.std.collection.list_at_optional Optional<T> head projection (Level-1d); this wrapper
+// only pins T = Token for the bootstrap compiler's monomorphic field-access inference.
+fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
+  list_at_optional(xs: tokens, index: 0)
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
-// parse_expr: recursive-descent parse walk.
-// Nonterminal arm: O(1) ParseTable lookup (built by build_parse_table) — no measure: Nat.
-// Left-recursive grammars are rejected by grammar_has_left_recursion before parse runs.
+
+
+// ParseThunk: single-field carrier for a deferred parse combinator. R in fold_grammar_expr<ParseThunk>.
+// Field-dispatch (thunk.apply(...)) lets the v4 lens analysis track the callable through the typed
+// 'apply' field rather than bare function-valued variable syntax (which the lens does not track).
+// One field, not 6 variants — not a GrammarExpr mirror; Class-B preserved.
+type ParseThunk {
+  apply: fn(List<Token>, List<Token>, GrammarRoot, ParseTable, ParseProvenanceState) -> ParseExprResult
+}
+
+
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr parse interpreter —
+// bind node://adhoc-2145db6b-69a — full dissolution: one fold_grammar_expr<ParseThunk> call
+// where ParseThunk = { apply: fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult }.
+// fold_grammar_expr reduces children to ParseThunk (deferred combinators) before passing them to
+// each handler — no parsing runs during construction; only top thunk fires via .apply at the end.
+// Nonterminal arm: O(1) ParseTable lookup via parse_nonterminal_from_table (table-boundary leaf).
+// Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
-  table: ParseTable
+  table: ParseTable,
+  prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match expr {
-    Terminal { token_class: class } =>
-      match parse_token_first(tokens: tokens) {
-        TokenPeekAbsent => ParseExprRejected { diagnostics: [] }
-        TokenPeekFirst { value: tok } =>
-          match tok.class == class {
-            true =>
-              match list_tail(xs: tokens) {
-                TailFound { tail: remaining } =>
-                  // 🟡 gated T-8: terminal node carries tok.class only — tok.lexeme, tok.file, tok.start, tok.end
-                  // are staged for T-8 source-text anchoring. The node substrate has no String/Nat literal-value
-                  // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
-                  // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
-                  ParseExprAccepted {
-                    remaining: remaining,
-                    captured: Node {
-                      kind: TypeNode { connective: Atom { identity: tok.class } },
-                      children: []
-                    },
-                    diagnostics: []
-                  }
-                TailAbsent => ParseExprRejected { diagnostics: [] }
-              }
-            false => ParseExprRejected { diagnostics: [] }
-          }
-      }
-    Nonterminal { production: prod_name } =>
-      parse_nonterminal_from_table(
-        table: table,
-        all_tokens: all_tokens,
-        tokens: tokens,
-        root: root,
-        prod_name: prod_name
-      )
-    Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprRejected { diagnostics: diags } =>
-          ParseExprRejected { diagnostics: diags }
-        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, tokens: rest1, all_tokens: all_tokens, root: root, table: table) {
-            ParseExprRejected { diagnostics: diags2 } =>
-              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
-            ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
-              ParseExprAccepted {
-                remaining: rest2,
-                captured: Node {
-                  kind: TypeNode { connective: Conj },
-                  children: [
-                    grammar_named_edge(name: grammar_sequence_left_node_projection, target: cap1),
-                    grammar_named_edge(name: grammar_sequence_right_node_projection, target: cap2)
-                  ]
-                },
-                diagnostics: list_append(left: diags1, right: diags2)
-              }
-          }
-      }
-    Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
-        ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table)
-      }
-    Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
-        ParseExprRejected { diagnostics: _ } =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: grammar_empty_node(),
-            diagnostics: []
-          }
-      }
-    Repeat { element: element } =>
-      // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
-      // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
-      let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
-      let result = fold_list(
-        xs: tokens,
-        empty: init,
-        cons: fn(acc, _) {
-          match acc.done {
-            true => acc
-            false =>
-              match parse_expr(expr: element, tokens: acc.remaining, all_tokens: all_tokens, root: root, table: table) {
-                ParseExprRejected { diagnostics: _ } =>
-                  ParseRepeatAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true
-                  }
-                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-                  match length(xs: rest) != length(xs: acc.remaining) {
-                    true =>
-                      ParseRepeatAcc {
-                        remaining: rest,
-                        acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                        acc_diags: list_append(left: acc.acc_diags, right: diags),
-                        done: false
+  let thunk = fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class) {
+        ParseThunk { apply: fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
+          match parse_token_first(tokens: tok_in) {
+            Absent => ParseExprRejected { diagnostics: [] }
+            Present { value: tok } =>
+              match tok.class == token_class {
+                true =>
+                  match list_tail(xs: tok_in) {
+                    TailFound { tail: remaining } =>
+                      let stamped = parse_stamp_atom_terminal(tok: tok, prov: prov_in)
+                      ParseExprAccepted {
+                        remaining: remaining,
+                        captured: stamped.node,
+                        diagnostics: [],
+                        prov: stamped.prov
                       }
-                    false =>
+                    TailAbsent => ParseExprRejected { diagnostics: [] }
+                  }
+                false => ParseExprRejected { diagnostics: [] }
+              }
+          } } }
+      },
+      nonterminal: fn(prod_name) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          parse_nonterminal_from_table(
+            table: table_in,
+            all_tokens: all_toks,
+            tokens: tok_in,
+            root: root_in,
+            prod_name: prod_name,
+            prov: prov_in
+          )
+        } }
+      },
+      sequence: fn(left_thunk, right_thunk) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags }
+            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
+              match right_thunk.apply(rest1, all_toks, root_in, table_in, prov1) {
+                ParseExprRejected { diagnostics: diags2 } =>
+                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
+                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
+                  let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
+                  ParseExprAccepted {
+                    remaining: rest2,
+                    captured: stamped.node,
+                    diagnostics: list_append(left: diags1, right: diags2),
+                    prov: stamped.prov
+                  }
+              }
+          }
+        } }
+      },
+      choice: fn(left_thunk, right_thunk) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
+            ParseExprRejected { diagnostics: _ } =>
+              right_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in)
+          }
+        } }
+      },
+      optional: fn(element_thunk) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match element_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
+            ParseExprRejected { diagnostics: _ } =>
+              ParseExprAccepted {
+                remaining: tok_in,
+                captured: grammar_empty_node(),
+                diagnostics: [],
+                prov: prov_in
+              }
+          }
+        } }
+      },
+      repeat: fn(element_thunk) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          let init = ParseRepeatAcc {
+            remaining: tok_in,
+            acc_nodes: [],
+            acc_diags: [],
+            done: false,
+            prov: prov_in
+          }
+          let result = fold_list(
+            xs: tok_in,
+            empty: init,
+            cons: fn(acc, _) {
+              match acc.done {
+                true => acc
+                false =>
+                  match element_thunk.apply(acc.remaining, all_toks, root_in, table_in, acc.prov) {
+                    ParseExprRejected { diagnostics: _ } =>
                       ParseRepeatAcc {
                         remaining: acc.remaining,
                         acc_nodes: acc.acc_nodes,
                         acc_diags: acc.acc_diags,
-                        done: true
+                        done: true,
+                        prov: acc.prov
+                      }
+                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+                      match length(xs: rest) != length(xs: acc.remaining) {
+                        true =>
+                          ParseRepeatAcc {
+                            remaining: rest,
+                            acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                            acc_diags: list_append(left: acc.acc_diags, right: diags),
+                            done: false,
+                            prov: prov1
+                          }
+                        false =>
+                          ParseRepeatAcc {
+                            remaining: acc.remaining,
+                            acc_nodes: acc.acc_nodes,
+                            acc_diags: acc.acc_diags,
+                            done: true,
+                            prov: acc.prov
+                          }
                       }
                   }
               }
+            }
+          )
+          let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
+          ParseExprAccepted {
+            remaining: result.remaining,
+            captured: stamped.node,
+            diagnostics: result.acc_diags,
+            prov: stamped.prov
           }
-        }
-      )
-      ParseExprAccepted {
-        remaining: result.remaining,
-        captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes),
-        diagnostics: result.acc_diags
+        } }
       }
-  }
+    }
+  )
+  thunk.apply(tokens, all_tokens, root, table, prov)
 }
 
 
+type ParseTableBuildAcc {
+  table: ParseTable
+  prov: ParseProvenanceState
+}
+
 fn parse_table_fill_production_step(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   production: GrammarProduction,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   let key = ParsePositionKey { position: position, production: production.name }
   let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
   let result = parse_expr(
@@ -758,25 +1034,33 @@ fn parse_table_fill_production_step(
     tokens: suffix,
     all_tokens: all_tokens,
     root: root,
-    table: table
+    table: acc.table,
+    prov: acc.prov
   )
-  parse_table_insert(table: table, key: key, value: result)
+  let next_prov = match result {
+    ParseExprAccepted { prov: p, diagnostics: _, remaining: _, captured: _ } => p
+    ParseExprRejected { diagnostics: _ } => acc.prov
+  }
+  ParseTableBuildAcc {
+    table: parse_table_insert(table: acc.table, key: key, value: result),
+    prov: next_prov
+  }
 }
 
 
 // One pass: update every production entry at a fixed position.
 fn parse_table_fill_position_pass(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   fold_list(
     xs: root.productions,
-    empty: table,
-    cons: fn(acc, prod) {
+    empty: acc,
+    cons: fn(acc2, prod) {
       parse_table_fill_production_step(
-        table: acc,
+        acc: acc2,
         production: prod,
         position: position,
         all_tokens: all_tokens,
@@ -789,17 +1073,17 @@ fn parse_table_fill_position_pass(
 
 // |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
 fn parse_table_fill_position(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   fold_list(
     xs: root.productions,
-    empty: table,
-    cons: fn(acc, _) {
+    empty: acc,
+    cons: fn(acc2, _) {
       parse_table_fill_position_pass(
-        table: acc,
+        acc: acc2,
         position: position,
         all_tokens: all_tokens,
         root: root
@@ -816,13 +1100,16 @@ fn parse_table_empty() -> ParseTable {
 
 // Outer fold over positions high→low; inner fold over productions × passes at each position.
 // Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
-fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
+fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTableBuildAcc {
   fold_list_right(
     xs: token_position_indices(tokens: all_tokens),
-    empty: parse_table_empty(),
+    empty: ParseTableBuildAcc {
+      table: parse_table_empty(),
+      prov: parse_prov_initial()
+    },
     snoc: fn(acc, position) {
       parse_table_fill_position(
-        table: acc,
+        acc: acc,
         position: position,
         all_tokens: all_tokens,
         root: root
@@ -832,20 +1119,30 @@ fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
 }
 
 
-fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, production_name: Symbol) -> Outcome<ParseTree> {
+fn parse_production(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseArtifact> {
   let root = validated.root
   let at = port_locus(port: parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
-      let table = build_parse_table(all_tokens: tokens, root: root)
+      let built = build_parse_table(all_tokens: tokens, root: root)
       let key = ParsePositionKey { position: 0, production: production_name }
-      match parse_table_lookup(table: table, key: key) {
+      match parse_table_lookup(table: built.table, key: key) {
         Holds { value: inner } =>
           match inner {
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
               if is_empty(xs: remaining) {
+                let merged_prov = parse_prov_merge(base: built.prov, incoming: inner_prov)
+                let stamped = parse_wrap_production_captured(
+                  production: production,
+                  captured: captured,
+                  prov: merged_prov
+                )
                 Accepted {
-                  value: parse_wrap_production_captured(production: production, captured: captured),
+                  value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
                   diagnostics: parse_diags_to_diagnostics(diags: diags)
                 }
               } else {
@@ -868,7 +1165,26 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
 }
 
 
-fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
+// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_production.
+fn parse_production_tree(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseTree> {
+  match parse_production(
+    tokens: tokens,
+    validated: validated,
+    production_name: production_name
+  ) {
+    Accepted { value: artifact, diagnostics: d } =>
+      Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+
+fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
@@ -876,7 +1192,10 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
     match grammar {
       VoidGrammar =>
         if ntok == 0 {
-          Accepted { value: grammar_node, diagnostics: None }
+          Accepted {
+            value: ParseArtifact { tree: grammar_node, span_index: span_index_empty() },
+            diagnostics: None
+          }
         } else {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
@@ -889,5 +1208,16 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
+  }
+}
+
+
+// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_module.
+fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
+  match parse_module(tokens: tokens, grammar: grammar) {
+    Accepted { value: artifact, diagnostics: d } =>
+      Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
 }

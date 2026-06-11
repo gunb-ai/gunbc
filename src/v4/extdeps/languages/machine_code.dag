@@ -28,15 +28,15 @@ import v4.std.model_core {
   ModelCore,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -335,78 +335,52 @@ type MachineIntegerPrimitiveFacts {
   overflow_release: MachineIntegerOverflowBehavior
   std_projection: Symbol
 }
-
-data mc_surface_spelling_int8: Symbol = mc_surface_spelling_int8
-data mc_surface_spelling_uint8: Symbol = mc_surface_spelling_uint8
-data mc_surface_spelling_int32: Symbol = mc_surface_spelling_int32
-data mc_surface_spelling_uint32: Symbol = mc_surface_spelling_uint32
-data mc_surface_spelling_int64: Symbol = mc_surface_spelling_int64
-data mc_surface_spelling_uint64: Symbol = mc_surface_spelling_uint64
-data mc_std_projection_int8: Symbol = mc_std_projection_int8
-data mc_std_projection_uint8: Symbol = mc_std_projection_uint8
-data mc_std_projection_int32: Symbol = mc_std_projection_int32
-data mc_std_projection_uint32: Symbol = mc_std_projection_uint32
-data mc_std_projection_int64: Symbol = mc_std_projection_int64
-data mc_std_projection_uint64: Symbol = mc_std_projection_uint64
-data mc_tag_signed: Symbol = mc_tag_signed
-data mc_tag_unsigned: Symbol = mc_tag_unsigned
-data mc_tag_bits8: Symbol = mc_tag_bits8
-data mc_tag_bits16: Symbol = mc_tag_bits16
-data mc_tag_bits32: Symbol = mc_tag_bits32
-data mc_tag_bits64: Symbol = mc_tag_bits64
-data mc_tag_bits128: Symbol = mc_tag_bits128
-data mc_tag_wrap_modulo: Symbol = mc_tag_wrap_modulo
-data mc_tag_trap_on_overflow: Symbol = mc_tag_trap_on_overflow
-data mc_tag_undefined_by_isa: Symbol = mc_tag_undefined_by_isa
-data mc_repr_twos_complement: Symbol = mc_repr_twos_complement
-data mc_facts_field_std_projection: Symbol = mc_facts_field_std_projection
-
 data mc_facts_int8: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_int8,
+  surface_spelling: ^mc_surface_spelling_int8,
   kind: Signed,
   width: Bits8,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_int8,
+  std_projection: ^mc_std_projection_int8,
 }
 
 data mc_facts_uint8: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_uint8,
+  surface_spelling: ^mc_surface_spelling_uint8,
   kind: Unsigned,
   width: Bits8,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_uint8,
+  std_projection: ^mc_std_projection_uint8,
 }
 
 data mc_facts_int32: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_int32,
+  surface_spelling: ^mc_surface_spelling_int32,
   kind: Signed,
   width: Bits32,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_int32,
+  std_projection: ^mc_std_projection_int32,
 }
 
 data mc_facts_uint32: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_uint32,
+  surface_spelling: ^mc_surface_spelling_uint32,
   kind: Unsigned,
   width: Bits32,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_uint32,
+  std_projection: ^mc_std_projection_uint32,
 }
 
 data mc_facts_int64: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_int64,
+  surface_spelling: ^mc_surface_spelling_int64,
   kind: Signed,
   width: Bits64,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_int64,
+  std_projection: ^mc_std_projection_int64,
 }
 
 data mc_facts_uint64: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
-  surface_spelling: mc_surface_spelling_uint64,
+  surface_spelling: ^mc_surface_spelling_uint64,
   kind: Unsigned,
   width: Bits64,
   overflow_release: WrapModuloWidth,
-  std_projection: mc_std_projection_uint64,
+  std_projection: ^mc_std_projection_uint64,
 }
 
 data mc_integer_facts_catalog: List<MachineIntegerPrimitiveFacts> = [
@@ -421,32 +395,33 @@ data mc_integer_facts_catalog: List<MachineIntegerPrimitiveFacts> = [
 fn mc_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn mc_int_kind_node(kind: MachineIntKind) -> Node {
   match kind {
-    Signed => mc_inhabitant_atom(id: mc_tag_signed)
-    Unsigned => mc_inhabitant_atom(id: mc_tag_unsigned)
+    Signed => mc_inhabitant_atom(id: ^mc_tag_signed)
+    Unsigned => mc_inhabitant_atom(id: ^mc_tag_unsigned)
   }
 }
 
 fn mc_int_width_node(width: MachineIntWidth) -> Node {
   match width {
-    Bits8 => mc_inhabitant_atom(id: mc_tag_bits8)
-    Bits16 => mc_inhabitant_atom(id: mc_tag_bits16)
-    Bits32 => mc_inhabitant_atom(id: mc_tag_bits32)
-    Bits64 => mc_inhabitant_atom(id: mc_tag_bits64)
-    Bits128 => mc_inhabitant_atom(id: mc_tag_bits128)
+    Bits8 => mc_inhabitant_atom(id: ^mc_tag_bits8)
+    Bits16 => mc_inhabitant_atom(id: ^mc_tag_bits16)
+    Bits32 => mc_inhabitant_atom(id: ^mc_tag_bits32)
+    Bits64 => mc_inhabitant_atom(id: ^mc_tag_bits64)
+    Bits128 => mc_inhabitant_atom(id: ^mc_tag_bits128)
   }
 }
 
 fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> Node {
   match overflow {
-    WrapModuloWidth => mc_inhabitant_atom(id: mc_tag_wrap_modulo)
-    TrapOnOverflow => mc_inhabitant_atom(id: mc_tag_trap_on_overflow)
-    UndefinedByIsa => mc_inhabitant_atom(id: mc_tag_undefined_by_isa)
+    WrapModuloWidth => mc_inhabitant_atom(id: ^mc_tag_wrap_modulo)
+    TrapOnOverflow => mc_inhabitant_atom(id: ^mc_tag_trap_on_overflow)
+    UndefinedByIsa => mc_inhabitant_atom(id: ^mc_tag_undefined_by_isa)
   }
 }
 
@@ -455,48 +430,48 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: primitive_fact_axis_surface_spelling },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: mc_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_signedness },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
         target: mc_int_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_width },
+        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: mc_int_width_node(width: facts.width)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_overflow_disposition },
+        label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
         target: mc_overflow_node(overflow: facts.overflow_release)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_encoding },
-        target: mc_inhabitant_atom(id: mc_repr_twos_complement)
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: mc_inhabitant_atom(id: ^mc_repr_twos_complement)
       },
       Edge {
-        label: Named { name: mc_facts_field_std_projection },
+        label: Named { name: ^mc_facts_field_std_projection },
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: mc_int_width_node(width: facts.width) }
-        primitive_fact_axis_signedness =>
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: mc_int_kind_node(kind: facts.kind) }
-        primitive_fact_axis_encoding =>
-          Holds { value: mc_inhabitant_atom(id: mc_repr_twos_complement) }
-        primitive_fact_axis_overflow_disposition =>
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -534,21 +509,6 @@ fn machine_code_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
-
-
-data machine_code_token_x86_64_nop: Symbol = machine_code_token_x86_64_nop
-data machine_code_production_x86_64_nop: Symbol = machine_code_production_x86_64_nop
-data machine_code_surface_x86_64_nop_instruction: Symbol = machine_code_surface_x86_64_nop_instruction
-
-data machine_code_token_aarch64_nop: Symbol = machine_code_token_aarch64_nop
-data machine_code_production_aarch64_nop: Symbol = machine_code_production_aarch64_nop
-data machine_code_surface_aarch64_nop_instruction: Symbol = machine_code_surface_aarch64_nop_instruction
-
-data machine_code_token_riscv64_nop: Symbol = machine_code_token_riscv64_nop
-data machine_code_production_riscv64_nop: Symbol = machine_code_production_riscv64_nop
-data machine_code_surface_riscv64_nop_instruction: Symbol = machine_code_surface_riscv64_nop_instruction
-
-
 fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
@@ -600,15 +560,15 @@ fn machine_code_wave1_formal_production(production_name: Symbol, token_class: Sy
 
 
 fn machine_code_x86_64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: machine_code_token_x86_64_nop, spelling: "nop")
+  machine_code_wave1_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
 }
 
 
 fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
-    production_name: machine_code_production_x86_64_nop,
-    token_class: machine_code_token_x86_64_nop,
-    emitted_identity: machine_code_surface_x86_64_nop_instruction
+    production_name: ^machine_code_production_x86_64_nop,
+    token_class: ^machine_code_token_x86_64_nop,
+    emitted_identity: ^machine_code_surface_x86_64_nop_instruction
   )
 }
 
@@ -627,25 +587,25 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_wave1_formal_production(
-        production_name: machine_code_production_x86_64_nop,
-        token_class: machine_code_token_x86_64_nop
+        production_name: ^machine_code_production_x86_64_nop,
+        token_class: ^machine_code_token_x86_64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
+      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_x86_64_nop_instruction)
     }
   }
 }
 
 
 fn machine_code_aarch64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: machine_code_token_aarch64_nop, spelling: "nop")
+  machine_code_wave1_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
 }
 
 
 fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
-    production_name: machine_code_production_aarch64_nop,
-    token_class: machine_code_token_aarch64_nop,
-    emitted_identity: machine_code_surface_aarch64_nop_instruction
+    production_name: ^machine_code_production_aarch64_nop,
+    token_class: ^machine_code_token_aarch64_nop,
+    emitted_identity: ^machine_code_surface_aarch64_nop_instruction
   )
 }
 
@@ -664,25 +624,25 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_wave1_formal_production(
-        production_name: machine_code_production_aarch64_nop,
-        token_class: machine_code_token_aarch64_nop
+        production_name: ^machine_code_production_aarch64_nop,
+        token_class: ^machine_code_token_aarch64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
+      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_aarch64_nop_instruction)
     }
   }
 }
 
 
 fn machine_code_riscv64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: machine_code_token_riscv64_nop, spelling: "nop")
+  machine_code_wave1_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
 }
 
 
 fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
-    production_name: machine_code_production_riscv64_nop,
-    token_class: machine_code_token_riscv64_nop,
-    emitted_identity: machine_code_surface_riscv64_nop_instruction
+    production_name: ^machine_code_production_riscv64_nop,
+    token_class: ^machine_code_token_riscv64_nop,
+    emitted_identity: ^machine_code_surface_riscv64_nop_instruction
   )
 }
 
@@ -701,10 +661,10 @@ fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_wave1_formal_production(
-        production_name: machine_code_production_riscv64_nop,
-        token_class: machine_code_token_riscv64_nop
+        production_name: ^machine_code_production_riscv64_nop,
+        token_class: ^machine_code_token_riscv64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
+      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_riscv64_nop_instruction)
     }
   }
 }

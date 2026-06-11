@@ -15,7 +15,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -30,21 +31,24 @@ import v4.std.witness { Holds }
 
 data nested_product_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_product_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_product_body }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_product_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_product_inner }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn nested_product_claim_holds() -> Bool {
@@ -64,8 +68,9 @@ fn nested_product_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

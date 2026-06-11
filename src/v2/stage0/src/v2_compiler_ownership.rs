@@ -5,6 +5,8 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
@@ -16,8 +18,10 @@ pub use crate::v2_std_core::{
     arg_value, arm_body, authored_name_at, expr_call_func_at, expr_method_name_at,
     expr_var_name_at, field_access_base, field_access_field_at, foreach_body, foreach_collection,
     if_condition, if_else_branch, if_then_branch, lambda_body, lambda_param_names_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, Cardinality,
-    ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+};
+pub use crate::v2_std_core::{
+    Cardinality, ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -25,7 +29,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum EdgeKind {
     Consumed,

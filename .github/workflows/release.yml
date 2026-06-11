@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
       - name: Setup Rust
@@ -92,7 +92,7 @@ jobs:
             *) strip "dist/${{ matrix.artifact_basename }}" ;;
           esac
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_basename }}
           path: dist/${{ matrix.artifact_basename }}
@@ -105,11 +105,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -120,7 +120,7 @@ jobs:
           cp install.sh dist/install.sh
           # Flat basename only — GH Release assets are a flat namespace; install.sh
           # downloads release-target-triples.sh from releases/download/{tag}/.
-          cp scripts/release-target-triples.sh dist/release-target-triples.sh
+          cp install/release-target-triples.sh dist/release-target-triples.sh
           chmod +x dist/install.sh dist/release-target-triples.sh
           ls -la dist
       - name: Create GitHub Release

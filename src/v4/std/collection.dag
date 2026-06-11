@@ -12,7 +12,15 @@ module v4.std.collection
 
 
 import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
-import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 // 🟢 coproduct dissolution — M6-Optional-generic.
@@ -32,12 +40,10 @@ fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Op
     Absent => right
   }
 }
-data optional_absent_unwrap: Symbol = optional_absent_unwrap
-data optional_present_witness_port: Symbol = optional_present_witness_port
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: optional_absent_unwrap,
-    at: port_locus(port: optional_present_witness_port),
+    reason: ^optional_absent_unwrap,
+    at: port_locus(port: ^optional_present_witness_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -48,8 +54,18 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
     Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
   }
 }
+// 🟡 bootstrap-limitation interim — feature:B-LIST-FREEMONOID-1 — owner:substrate dissolutions
+// (ctrl#1476 B1) — bind v2_interpreter `expect_list`/`free_monoid_to_vec` chokepoint —
+// dissolve-on-arrival: unified runtime representation so list ops need no per-site bridge;
+// forbidden: direct `Value::List` consumption bypassing `expect_list` / `free_monoid_to_vec`.
+// known asymmetry (B1 interim): `Value::Str` list operands stay atomic; Cons/Empty string
+// encodings still flatten via the chokepoint until representation unifies.
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
+// 🟡 bootstrap-limitation interim — feature:B-MAP-LOOKUP-OPTION-C-1 — Map=PartialFunction lookup alias honored
+// per-operation via v2 `raw_map_lookup` dual-dispatch chokepoint (ctrl#1476 B6 Option-C); dissolve-on-arrival:
+// unified runtime representation so lookup ops need no per-site bridge; forbidden: direct
+// `Value::Map` key-probe bypassing `raw_map_lookup`.
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
@@ -62,12 +78,10 @@ type IndexedLookup<T> {
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
-data map_key_absent: Symbol = map_key_absent
-data map_lookup_port: Symbol = map_lookup_port
 fn map_absent_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: map_key_absent,
-    at: port_locus(port: map_lookup_port),
+    reason: ^map_key_absent,
+    at: port_locus(port: ^map_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -86,6 +100,22 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
         false => m.lookup(candidate)
       }
     }
+  }
+}
+
+
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+// dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
+// ad hoc map_get outside v4.std.collection.
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
+  match m.lookup(key) {
+    Holds { value: v } => outcome_accepted(value: Present { value: v })
+    Violates { diagnostic: d } =>
+      if d.reason == ^map_key_absent {
+        outcome_accepted(value: Absent)
+      } else {
+        outcome_rejected(d: d)
+      }
   }
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {

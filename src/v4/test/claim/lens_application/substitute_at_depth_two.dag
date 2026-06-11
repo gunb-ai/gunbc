@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.substitute_at_depth_two
 import v4.lens.application { substitute_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -17,64 +17,64 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data substitute_step_a: Symbol = substitute_step_a
-data substitute_step_b: Symbol = substitute_step_b
-data substitute_original_leaf_symbol: Symbol = substitute_original_leaf_symbol
-data substitute_replacement_leaf_symbol: Symbol = substitute_replacement_leaf_symbol
-
 data substitute_original_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: substitute_original_leaf_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_replacement_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: substitute_replacement_leaf_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^substitute_replacement_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_middle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: substitute_step_b },
+      label: Named { name: ^substitute_step_b },
       target: substitute_original_leaf
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: substitute_step_a },
+      label: Named { name: ^substitute_step_a },
       target: substitute_middle
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_expected_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: substitute_step_a },
+      label: Named { name: ^substitute_step_a },
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: substitute_step_b },
+            label: Named { name: ^substitute_step_b },
             target: substitute_replacement_leaf
           }
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn substitute_at_depth_two_claim_holds() -> Bool {
   match substitute_at(
     root: substitute_root,
-    path: Path { steps: [substitute_step_a, substitute_step_b] },
+    path: Path { steps: [^substitute_step_a, ^substitute_step_b] },
     replacement: substitute_replacement_leaf
   ) {
     Accepted { value: n, diagnostics: _ } => n == substitute_expected_root
@@ -88,8 +88,9 @@ fn substitute_at_depth_two_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

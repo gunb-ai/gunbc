@@ -19,27 +19,21 @@ import v4.std.dependency {
   ResourceDependsOn
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data ownership_root_symbol: Symbol = ownership_root_symbol
-data ownership_child_symbol: Symbol = ownership_child_symbol
-data ownership_edge_symbol: Symbol = ownership_edge_symbol
-data ownership_type_symbol: Symbol = ownership_type_symbol
-data ownership_algebra_symbol: Symbol = ownership_algebra_symbol
-data ownership_descent_symbol: Symbol = ownership_descent_symbol
-data ownership_child: Node = claim_atom_node(s: ownership_child_symbol)
+data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 
 data ownership_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ownership_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
-    Edge { label: Named { name: ownership_edge_symbol }, target: ownership_child }
-  ]
+    Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data ownership_dependency: DependencyView = DependencyView {
@@ -51,9 +45,9 @@ data ownership_dependency: DependencyView = DependencyView {
 
 fn ownership_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: ownership_type_symbol,
-    algebra_symbol: ownership_algebra_symbol,
-    descent_symbol: ownership_descent_symbol,
+    type_symbol: ^ownership_type_symbol,
+    algebra_symbol: ^ownership_algebra_symbol,
+    descent_symbol: ^ownership_descent_symbol,
   )
 }
 

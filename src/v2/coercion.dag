@@ -70,24 +70,24 @@ fn target_optional_template(target: RenderTarget) -> String {
 
 fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
   match target {
-    Rust => Some { value: rust_cast_syntax }
-    Python => Some { value: python_cast_syntax }
-    Go => Some { value: go_cast_syntax }
+    Rust => Present { value: rust_cast_syntax }
+    Python => Present { value: python_cast_syntax }
+    Go => Present { value: go_cast_syntax }
     Dag => none
   }
 }
 
 fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
   match target_cast_syntax(target: target) {
-    Some { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
-    None => false
+    Present { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+    Absent => false
   }
 }
 
 fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
   let syntax = match target_cast_syntax(target: target) {
-    Some { value: s } => s
-    None => CastSyntax { template: "\{expr\}", cast_rules: [] }
+    Present { value: s } => s
+    Absent => CastSyntax { template: "\{expr\}", cast_rules: [] }
   }
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
@@ -104,25 +104,25 @@ fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? 
 // fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
-    Some { value: cp } => cp.target_type
-    None => dag_name
+    Present { value: cp } => cp.target_type
+    Absent => dag_name
   }
 }
 
 fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
-    Some { value: cp } => cp.is_copy
-    None => none
+    Present { value: cp } => cp.is_copy
+    Absent => none
   }
 }
 
 fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
-    Some { value: cp } => match cp.literal_suffix {
-      Some { value: s } => Some { value: s }
-      None => Some { value: "" }
+    Present { value: cp } => match cp.literal_suffix {
+      Present { value: s } => Present { value: s }
+      Absent => Present { value: "" }
     }
-    None => none
+    Absent => none
   }
 }
 
@@ -136,11 +136,11 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
 
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
   match container_template_algebra(name: container_name) {
-    Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
-      Some { value: inh } => Some { value: inh.template }
-      None => none
+    Present { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
+      Present { value: inh } => Present { value: inh.template }
+      Absent => none
     }
-    None => none
+    Absent => none
   }
 }
 
@@ -203,8 +203,8 @@ fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let assertions = inhabitant_test_names() |> flat_map(name =>
     match coerce_container_template(target: target, container_name: name) {
-      Some { value: tmpl } => [ContainerAssertion { target: target, container_name: name, expected_template: tmpl }]
-      None => []
+      Present { value: tmpl } => [ContainerAssertion { target: target, container_name: name, expected_template: tmpl }]
+      Absent => []
     })
   if assertions |> count == 0 { [] }
   else {
@@ -219,8 +219,8 @@ fn copy_tests() -> List<CoercionTestEntry> {
   let cps = target_checkpoints(target: Rust)
   let copy_assertions = cps |> flat_map(cp =>
     match cp.is_copy {
-      Some { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
-      None => []
+      Present { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
+      Absent => []
     })
   if copy_assertions |> count == 0 { [] }
   else {

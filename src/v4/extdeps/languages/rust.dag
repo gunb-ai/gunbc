@@ -27,7 +27,8 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -48,7 +49,16 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert, optional_absent }
+import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
+import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v4.std.grounding {
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry,
+  primitive_fact_bundle_for_subject
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -56,22 +66,23 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisRange,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_range,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  PrimitiveOperationRef
 }
 import v4.std.witness { Holds, Violates }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -89,11 +100,6 @@ import v4.std.target_model {
   ValueSymbolToOwnedString,
   char_kernel_type_atom,
   char_kernel_type_node,
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -113,9 +119,11 @@ import v4.std.target_model {
   target_model_edge_translation_rules,
   target_model_edge_serialize_source,
   target_model_edge_type_expression_projection,
+  type_expr_projection_step_algebra,
   target_model_edge_collection_realization,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
+  target_model_edge_value_semantics_carriers,
   TargetUseSiteOwnershipRealization,
   TargetUseSiteOwnershipSourceProjection,
   TargetOwnershipUseSite,
@@ -147,6 +155,7 @@ import v4.std.target_model {
   target_carrier_algebra_inhabitance_decl_node,
   target_carrier_probe_heap_node,
   target_use_site_ownership_catalog_node,
+  target_value_semantics_carriers_node,
   target_reference_layer_tokens_node,
   TargetCollectionRealization,
   TargetCollectionReprKind,
@@ -159,6 +168,7 @@ import v4.std.target_model {
   target_collection_set_carrier,
   target_collection_set_carrier_node,
   target_collection_set_no_representation_diagnostic,
+  target_collection_free_monoid_no_representation,
   target_collection_trait_ord,
   target_collection_trait_hash,
   target_collection_trait_eq,
@@ -173,10 +183,10 @@ import v4.std.target_model {
   target_collection_row_field_primary,
   target_collection_row_field_alternatives,
   target_collection_row_field_fallback,
-  target_collection_repr_kind_atom,
   target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
+  TargetCollectionReprVec,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
   target_type_expr_field_atom,
@@ -185,9 +195,13 @@ import v4.std.target_model {
   target_type_expr_field_close,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
+  target_type_expr_field_param_ident_token,
+  target_type_expr_field_param_list_separator,
+  target_type_expr_field_param_type_separator,
   target_type_expr_field_separator,
   target_type_expr_field_variant_separator,
   target_type_expr_field_surface,
@@ -213,7 +227,8 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Instantiation
+  Instantiation,
+  SyntheticOccurrence
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
@@ -368,265 +383,13 @@ type RustLanguageModel {
 
 // T-11 rust-first grammar relation row: fixed terminals and bound terminals share
 // the Rust grammar production instead of an operator string template.
-type RustConcreteSyntaxToken
-  = RustFixedToken { token_class: Symbol }
-  | RustBoundToken { token_class: Symbol, binding: Symbol }
 
 type RustGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<RustConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
-
-data rust_language_model_surface_id: Symbol = rust_language_model_surface_id
-
-data rust_std_projection_int8: Symbol = rust_std_projection_int8
-data rust_std_projection_int16: Symbol = rust_std_projection_int16
-data rust_std_projection_int32: Symbol = rust_std_projection_int32
-data rust_std_projection_int64: Symbol = rust_std_projection_int64
-data rust_std_projection_int128: Symbol = rust_std_projection_int128
-data rust_std_projection_uint8: Symbol = rust_std_projection_uint8
-data rust_std_projection_uint16: Symbol = rust_std_projection_uint16
-data rust_std_projection_uint32: Symbol = rust_std_projection_uint32
-data rust_std_projection_uint64: Symbol = rust_std_projection_uint64
-data rust_std_projection_uint128: Symbol = rust_std_projection_uint128
-data rust_std_projection_int_platform: Symbol = rust_std_projection_int_platform
-data rust_std_projection_uint_platform: Symbol = rust_std_projection_uint_platform
-data rust_std_projection_float32: Symbol = rust_std_projection_float32
-data rust_std_projection_float64: Symbol = rust_std_projection_float64
-data rust_std_projection_bool: Symbol = rust_std_projection_bool
-data rust_std_projection_char: Symbol = rust_std_projection_char
-data rust_std_projection_str: Symbol = rust_std_projection_str
-data rust_std_projection_unit: Symbol = rust_std_projection_unit
-data rust_std_projection_never: Symbol = rust_std_projection_never
-
-data rust_surface_spelling_i8: Symbol = rust_surface_spelling_i8
-data rust_surface_spelling_i16: Symbol = rust_surface_spelling_i16
-data rust_surface_spelling_i32: Symbol = rust_surface_spelling_i32
-data rust_surface_spelling_i64: Symbol = rust_surface_spelling_i64
-data rust_surface_spelling_i128: Symbol = rust_surface_spelling_i128
-data rust_surface_spelling_u8: Symbol = rust_surface_spelling_u8
-data rust_surface_spelling_u16: Symbol = rust_surface_spelling_u16
-data rust_surface_spelling_u32: Symbol = rust_surface_spelling_u32
-data rust_surface_spelling_u64: Symbol = rust_surface_spelling_u64
-data rust_surface_spelling_u128: Symbol = rust_surface_spelling_u128
-data rust_surface_spelling_isize: Symbol = rust_surface_spelling_isize
-data rust_surface_spelling_usize: Symbol = rust_surface_spelling_usize
-data rust_surface_spelling_f32: Symbol = rust_surface_spelling_f32
-data rust_surface_spelling_f64: Symbol = rust_surface_spelling_f64
-data rust_surface_spelling_bool: Symbol = rust_surface_spelling_bool
-data rust_surface_spelling_char: Symbol = rust_surface_spelling_char
-data rust_surface_spelling_str: Symbol = rust_surface_spelling_str
-data rust_surface_spelling_unit: Symbol = rust_surface_spelling_unit
-data rust_surface_spelling_never: Symbol = rust_surface_spelling_never
-
-data rust_ieee754_binary32: Symbol = rust_ieee754_binary32
-data rust_ieee754_binary64: Symbol = rust_ieee754_binary64
-data rust_str_unsized: Symbol = rust_str_unsized
-data rust_char_unicode_scalar: Symbol = rust_char_unicode_scalar
-data rust_repr_bool: Symbol = rust_repr_bool
-data rust_repr_unit: Symbol = rust_repr_unit
-data rust_repr_never: Symbol = rust_repr_never
-data rust_repr_integer_twos_complement: Symbol = rust_repr_integer_twos_complement
-
-data rust_inhabitant_i8: Symbol = rust_inhabitant_i8
-data rust_inhabitant_i16: Symbol = rust_inhabitant_i16
-data rust_inhabitant_i32: Symbol = rust_inhabitant_i32
-data rust_inhabitant_i64: Symbol = rust_inhabitant_i64
-data rust_inhabitant_i128: Symbol = rust_inhabitant_i128
-data rust_inhabitant_u8: Symbol = rust_inhabitant_u8
-data rust_inhabitant_u16: Symbol = rust_inhabitant_u16
-data rust_inhabitant_u32: Symbol = rust_inhabitant_u32
-data rust_inhabitant_u64: Symbol = rust_inhabitant_u64
-data rust_inhabitant_u128: Symbol = rust_inhabitant_u128
-data rust_inhabitant_isize: Symbol = rust_inhabitant_isize
-data rust_inhabitant_usize: Symbol = rust_inhabitant_usize
-data rust_inhabitant_f32: Symbol = rust_inhabitant_f32
-data rust_inhabitant_f64: Symbol = rust_inhabitant_f64
-data rust_inhabitant_bool: Symbol = rust_inhabitant_bool
-data rust_inhabitant_char: Symbol = rust_inhabitant_char
-data rust_inhabitant_str: Symbol = rust_inhabitant_str
-data rust_inhabitant_unit: Symbol = rust_inhabitant_unit
-data rust_inhabitant_never: Symbol = rust_inhabitant_never
-
-data rust_inhabitant_field_i8: Symbol = rust_inhabitant_field_i8
-data rust_inhabitant_field_i16: Symbol = rust_inhabitant_field_i16
-data rust_inhabitant_field_i32: Symbol = rust_inhabitant_field_i32
-data rust_inhabitant_field_i64: Symbol = rust_inhabitant_field_i64
-data rust_inhabitant_field_i128: Symbol = rust_inhabitant_field_i128
-data rust_inhabitant_field_u8: Symbol = rust_inhabitant_field_u8
-data rust_inhabitant_field_u16: Symbol = rust_inhabitant_field_u16
-data rust_inhabitant_field_u32: Symbol = rust_inhabitant_field_u32
-data rust_inhabitant_field_u64: Symbol = rust_inhabitant_field_u64
-data rust_inhabitant_field_u128: Symbol = rust_inhabitant_field_u128
-data rust_inhabitant_field_isize: Symbol = rust_inhabitant_field_isize
-data rust_inhabitant_field_usize: Symbol = rust_inhabitant_field_usize
-data rust_inhabitant_field_f32: Symbol = rust_inhabitant_field_f32
-data rust_inhabitant_field_f64: Symbol = rust_inhabitant_field_f64
-data rust_inhabitant_field_bool: Symbol = rust_inhabitant_field_bool
-data rust_inhabitant_field_char: Symbol = rust_inhabitant_field_char
-data rust_inhabitant_field_str: Symbol = rust_inhabitant_field_str
-data rust_inhabitant_field_unit: Symbol = rust_inhabitant_field_unit
-data rust_inhabitant_field_never: Symbol = rust_inhabitant_field_never
-data rust_inhabitant_field_mvp1_add_fn: Symbol = rust_inhabitant_field_mvp1_add_fn
-data rust_coercion_field_i32_inhabitant_atom: Symbol = rust_coercion_field_i32_inhabitant_atom
-data rust_coercion_field_i32_facts: Symbol = rust_coercion_field_i32_facts
-data rust_coercion_field_i32_spelling: Symbol = rust_coercion_field_i32_spelling
-data rust_coercion_field_i32_std_projection: Symbol = rust_coercion_field_i32_std_projection
-data rust_coercion_field_i32_signed: Symbol = rust_coercion_field_i32_signed
-data rust_coercion_field_i32_width: Symbol = rust_coercion_field_i32_width
-data rust_coercion_field_i32_overflow: Symbol = rust_coercion_field_i32_overflow
-data rust_coercion_field_i32_scalar: Symbol = rust_coercion_field_i32_scalar
-data rust_coercion_field_i32_scalar_int: Symbol = rust_coercion_field_i32_scalar_int
-data rust_coercion_field_i32_panic_overflow: Symbol = rust_coercion_field_i32_panic_overflow
-data rust_coercion_field_i32_wrap_overflow: Symbol = rust_coercion_field_i32_wrap_overflow
-
-data rust_token_kw_fn: Symbol = rust_token_kw_fn
-data rust_token_ident: Symbol = rust_token_ident
-data rust_token_ty_i32: Symbol = rust_token_ty_i32
-data rust_token_plus: Symbol = rust_token_plus
-data rust_token_arrow: Symbol = rust_token_arrow
-data rust_token_lbrace: Symbol = rust_token_lbrace
-data rust_token_rbrace: Symbol = rust_token_rbrace
-data rust_token_lparen: Symbol = rust_token_lparen
-data rust_token_rparen: Symbol = rust_token_rparen
-data rust_token_comma: Symbol = rust_token_comma
-data rust_token_pipe: Symbol = rust_token_pipe
-data rust_token_colon: Symbol = rust_token_colon
-data rust_token_kw_let: Symbol = rust_token_kw_let
-data rust_token_kw_if: Symbol = rust_token_kw_if
-data rust_token_kw_else: Symbol = rust_token_kw_else
-data rust_token_kw_return: Symbol = rust_token_kw_return
-data rust_token_equal: Symbol = rust_token_equal
-data rust_token_gt: Symbol = rust_token_gt
-data rust_token_lt: Symbol = rust_token_lt
-data rust_token_semicolon: Symbol = rust_token_semicolon
-data rust_token_int_literal: Symbol = rust_token_int_literal
-
-data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
-data rust_production_fn_item: Symbol = rust_production_fn_item
-data rust_production_typed_param: Symbol = rust_production_typed_param
-data rust_production_param_list: Symbol = rust_production_param_list
-data rust_production_param_list_suffix: Symbol = rust_production_param_list_suffix
-data rust_production_type: Symbol = rust_production_type
-data rust_production_block: Symbol = rust_production_block
-data rust_production_stmts: Symbol = rust_production_stmts
-data rust_production_stmt: Symbol = rust_production_stmt
-data rust_production_expr_stmt: Symbol = rust_production_expr_stmt
-data rust_production_let_stmt: Symbol = rust_production_let_stmt
-data rust_production_if_expr: Symbol = rust_production_if_expr
-data rust_production_return_expr: Symbol = rust_production_return_expr
-data rust_production_expr_without_block: Symbol = rust_production_expr_without_block
-data rust_production_expr_with_block: Symbol = rust_production_expr_with_block
-data rust_production_expr: Symbol = rust_production_expr
-data rust_production_comparison_expr: Symbol = rust_production_comparison_expr
-data rust_production_additive_expr: Symbol = rust_production_additive_expr
-data rust_production_primary_expr: Symbol = rust_production_primary_expr
-
-data rust_surface_fn_item: Symbol = rust_surface_fn_item
-data rust_surface_typed_param: Symbol = rust_surface_typed_param
-data rust_surface_param_list: Symbol = rust_surface_param_list
-data rust_surface_type: Symbol = rust_surface_type
-data rust_surface_block: Symbol = rust_surface_block
-data rust_surface_stmt: Symbol = rust_surface_stmt
-data rust_surface_expr_stmt: Symbol = rust_surface_expr_stmt
-data rust_surface_let_stmt: Symbol = rust_surface_let_stmt
-data rust_surface_if_expr: Symbol = rust_surface_if_expr
-data rust_surface_return_expr: Symbol = rust_surface_return_expr
-data rust_surface_expr_without_block: Symbol = rust_surface_expr_without_block
-data rust_surface_expr_with_block: Symbol = rust_surface_expr_with_block
-data rust_surface_expr: Symbol = rust_surface_expr
-data rust_surface_comparison_expr: Symbol = rust_surface_comparison_expr
-data rust_surface_additive_expr: Symbol = rust_surface_additive_expr
-data rust_surface_primary_expr: Symbol = rust_surface_primary_expr
-data rust_surface_type_i32: Symbol = rust_surface_type_i32
-data rust_surface_type_atom: Symbol = rust_surface_type_atom
-data rust_surface_type_generic_apply: Symbol = rust_surface_type_generic_apply
-data rust_surface_type_cardinality: Symbol = rust_surface_type_cardinality
-data rust_surface_type_record: Symbol = rust_surface_type_record
-data rust_surface_type_sum: Symbol = rust_surface_type_sum
-data rust_surface_type_arrow: Symbol = rust_surface_type_arrow
-data rust_surface_bin_add: Symbol = rust_surface_bin_add
-data rust_binding_fn_add: Symbol = rust_binding_fn_add
-data rust_binding_param_x: Symbol = rust_binding_param_x
-data rust_binding_param_y: Symbol = rust_binding_param_y
-
 // SG-2 falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
-data rust_binding_sg2_foobar: Symbol = rust_binding_sg2_foobar
-data rust_binding_sg2_x: Symbol = rust_binding_sg2_x
-data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
-data rust_binding_sg2_rc: Symbol = rust_binding_sg2_rc
-data rust_binding_sg2_bogus_meta: Symbol = rust_binding_sg2_bogus_meta
-data rust_binding_sg2_bogus_named: Symbol = rust_binding_sg2_bogus_named
-data rust_binding_sg_rc_box: Symbol = rust_binding_sg_rc_box
-data rust_sg_rc_ctor_rc_new: Symbol = rust_sg_rc_ctor_rc_new
-data rust_sg_rc_ctor_box_new: Symbol = rust_sg_rc_ctor_box_new
-
-data rust_sg_rc_diagnostics_return: Symbol = rust_sg_rc_diagnostics_return
-data rust_sg_rc_diagnostics_param: Symbol = rust_sg_rc_diagnostics_param
-data rust_sg_rc_node_return: Symbol = rust_sg_rc_node_return
-data rust_sg_rc_node_param: Symbol = rust_sg_rc_node_param
-data rust_sg_rc_node_return_box: Symbol = rust_sg_rc_node_return_box
-data rust_sg_rc_test_claim_return: Symbol = rust_sg_rc_test_claim_return
-data rust_sg_rc_free_monoid_return: Symbol = rust_sg_rc_free_monoid_return
-data rust_sg_rc_outcome_return: Symbol = rust_sg_rc_outcome_return
-data rust_sg_rc_model_core_return: Symbol = rust_sg_rc_model_core_return
-data rust_sg_rc_algebra_inhabitance_return: Symbol = rust_sg_rc_algebra_inhabitance_return
-data rust_sg_rc_probe_heap_return: Symbol = rust_sg_rc_probe_heap_return
-data rust_sg_rc_diagnostics_binding: Symbol = rust_sg_rc_diagnostics_binding
-data rust_sg_rc_node_binding: Symbol = rust_sg_rc_node_binding
-data rust_sg_rc_test_claim_binding: Symbol = rust_sg_rc_test_claim_binding
-data rust_sg_rc_free_monoid_binding: Symbol = rust_sg_rc_free_monoid_binding
-data rust_sg_rc_outcome_binding: Symbol = rust_sg_rc_outcome_binding
-data rust_sg_rc_model_core_binding: Symbol = rust_sg_rc_model_core_binding
-data rust_sg_rc_algebra_inhabitance_binding: Symbol = rust_sg_rc_algebra_inhabitance_binding
-data rust_sg_rc_probe_heap_binding: Symbol = rust_sg_rc_probe_heap_binding
-
-data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
-
-data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
-data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
-
-data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
-data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
-data rust_facts_field_width: Symbol = rust_facts_field_width
-data rust_facts_field_range: Symbol = rust_facts_field_range
-data rust_facts_field_overflow_disposition: Symbol = rust_facts_field_overflow_disposition
-data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
-data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
-data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
-data rust_facts_field_representation: Symbol = rust_facts_field_representation
-data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
-data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
-data rust_scalar_field_width: Symbol = rust_scalar_field_width
-data rust_overflow_field_ir_carrier: Symbol = rust_overflow_field_ir_carrier
-data rust_overflow_field_checked_arithmetic_debug_default: Symbol = rust_overflow_field_checked_arithmetic_debug_default
-data rust_overflow_field_checked_arithmetic_release_default: Symbol = rust_overflow_field_checked_arithmetic_release_default
-data rust_overflow_field_checked_arithmetic_checks_enabled: Symbol = rust_overflow_field_checked_arithmetic_checks_enabled
-data rust_overflow_field_checked_arithmetic_checks_disabled: Symbol = rust_overflow_field_checked_arithmetic_checks_disabled
-
-data rust_tag_signed: Symbol = rust_tag_signed
-data rust_tag_unsigned: Symbol = rust_tag_unsigned
-data rust_tag_bits8: Symbol = rust_tag_bits8
-data rust_tag_bits16: Symbol = rust_tag_bits16
-data rust_tag_bits32: Symbol = rust_tag_bits32
-data rust_tag_bits64: Symbol = rust_tag_bits64
-data rust_tag_bits128: Symbol = rust_tag_bits128
-data rust_tag_pointer: Symbol = rust_tag_pointer
-data rust_tag_panic_on_overflow: Symbol = rust_tag_panic_on_overflow
-data rust_tag_two_complement_wrap: Symbol = rust_tag_two_complement_wrap
-data rust_tag_scalar_int: Symbol = rust_tag_scalar_int
-data rust_tag_scalar_float: Symbol = rust_tag_scalar_float
-data rust_tag_scalar_bool: Symbol = rust_tag_scalar_bool
-data rust_tag_scalar_char: Symbol = rust_tag_scalar_char
-data rust_tag_scalar_str: Symbol = rust_tag_scalar_str
-data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
-data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
-
-data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
-data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
-data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
-
 // Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
 // 🟡 needs-more-work — feature:rust-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for rust_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type RustModelCoreLawKey
@@ -640,47 +403,6 @@ type RustModelCoreLawKey
   | RustLawFloatNanInfCarriedByIeee754
   | RustLawBoolBoundedLattice
   | RustLawBoolComplement
-
-data rust_law_kind_integer_add_associative_when_representable: Symbol = rust_law_kind_integer_add_associative_when_representable
-data rust_law_kind_integer_add_commutative_when_representable: Symbol = rust_law_kind_integer_add_commutative_when_representable
-data rust_law_kind_integer_mul_associative_when_representable: Symbol = rust_law_kind_integer_mul_associative_when_representable
-data rust_law_kind_integer_mul_commutative_when_representable: Symbol = rust_law_kind_integer_mul_commutative_when_representable
-data rust_law_kind_integer_distributive_when_representable: Symbol = rust_law_kind_integer_distributive_when_representable
-data rust_law_kind_integer_total_order_over_representable_values: Symbol = rust_law_kind_integer_total_order_over_representable_values
-data rust_law_kind_float_ieee754_rounding: Symbol = rust_law_kind_float_ieee754_rounding
-data rust_law_kind_float_nan_inf_carried_by_ieee754: Symbol = rust_law_kind_float_nan_inf_carried_by_ieee754
-data rust_law_kind_bool_bounded_lattice: Symbol = rust_law_kind_bool_bounded_lattice
-data rust_law_kind_bool_complement: Symbol = rust_law_kind_bool_complement
-
-data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
-data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
-data rust_witness_bool_boolean_algebra: Symbol = rust_witness_bool_boolean_algebra
-
-data rust_effect_signature_pure_value: Symbol = rust_effect_signature_pure_value
-data rust_op_integer_add: Symbol = rust_op_integer_add
-data rust_op_integer_sub: Symbol = rust_op_integer_sub
-data rust_op_integer_mul: Symbol = rust_op_integer_mul
-data rust_op_integer_neg: Symbol = rust_op_integer_neg
-data rust_op_integer_div: Symbol = rust_op_integer_div
-data rust_op_integer_rem: Symbol = rust_op_integer_rem
-data rust_op_integer_compare: Symbol = rust_op_integer_compare
-data rust_op_float_add: Symbol = rust_op_float_add
-data rust_op_float_sub: Symbol = rust_op_float_sub
-data rust_op_float_mul: Symbol = rust_op_float_mul
-data rust_op_float_div: Symbol = rust_op_float_div
-data rust_op_float_compare: Symbol = rust_op_float_compare
-data rust_op_bool_and: Symbol = rust_op_bool_and
-data rust_op_bool_or: Symbol = rust_op_bool_or
-data rust_op_bool_not: Symbol = rust_op_bool_not
-
-data rust_partial_checked_integer_overflow: Symbol = rust_partial_checked_integer_overflow
-data rust_partial_integer_divide_by_zero: Symbol = rust_partial_integer_divide_by_zero
-data rust_partial_integer_remainder_by_zero: Symbol = rust_partial_integer_remainder_by_zero
-data rust_partial_signed_min_divide_by_negative_one: Symbol = rust_partial_signed_min_divide_by_negative_one
-data rust_precondition_integer_result_representable: Symbol = rust_precondition_integer_result_representable
-data rust_precondition_integer_divisor_nonzero: Symbol = rust_precondition_integer_divisor_nonzero
-data rust_precondition_signed_division_not_min_over_negative_one: Symbol = rust_precondition_signed_division_not_min_over_negative_one
-
 fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
   OverflowDisposition {
     ir_carrier: RustIntegerCarrier { kind: kind, width: width },
@@ -692,149 +414,149 @@ fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> 
 }
 
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
-fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
+fn rust_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    RustFixedToken { token_class: rust_token_kw_fn },
-    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },
-    RustFixedToken { token_class: rust_token_lparen },
-    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
-    RustFixedToken { token_class: rust_token_colon },
-    RustFixedToken { token_class: rust_token_ty_i32 },
-    RustFixedToken { token_class: rust_token_comma },
-    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
-    RustFixedToken { token_class: rust_token_colon },
-    RustFixedToken { token_class: rust_token_ty_i32 },
-    RustFixedToken { token_class: rust_token_rparen },
-    RustFixedToken { token_class: rust_token_arrow },
-    RustFixedToken { token_class: rust_token_ty_i32 },
-    RustFixedToken { token_class: rust_token_lbrace },
-    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
-    RustFixedToken { token_class: rust_token_plus },
-    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
-    RustFixedToken { token_class: rust_token_rbrace }
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_add },
+    FixedToken { token_class: ^rust_token_lparen },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_x },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_comma },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_y },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_lbrace },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_x },
+    FixedToken { token_class: ^rust_token_plus },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_y },
+    FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_i8,
+  surface_spelling: ^rust_surface_spelling_i8,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
-  std_projection: rust_std_projection_int8,
+  std_projection: ^rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_i16,
+  surface_spelling: ^rust_surface_spelling_i16,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
-  std_projection: rust_std_projection_int16,
+  std_projection: ^rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_i32,
+  surface_spelling: ^rust_surface_spelling_i32,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
-  std_projection: rust_std_projection_int32,
+  std_projection: ^rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_i64,
+  surface_spelling: ^rust_surface_spelling_i64,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
-  std_projection: rust_std_projection_int64,
+  std_projection: ^rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_i128,
+  surface_spelling: ^rust_surface_spelling_i128,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
-  std_projection: rust_std_projection_int128,
+  std_projection: ^rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_u8,
+  surface_spelling: ^rust_surface_spelling_u8,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
-  std_projection: rust_std_projection_uint8,
+  std_projection: ^rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_u16,
+  surface_spelling: ^rust_surface_spelling_u16,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
-  std_projection: rust_std_projection_uint16,
+  std_projection: ^rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_u32,
+  surface_spelling: ^rust_surface_spelling_u32,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
-  std_projection: rust_std_projection_uint32,
+  std_projection: ^rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_u64,
+  surface_spelling: ^rust_surface_spelling_u64,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
-  std_projection: rust_std_projection_uint64,
+  std_projection: ^rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_u128,
+  surface_spelling: ^rust_surface_spelling_u128,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
-  std_projection: rust_std_projection_uint128,
+  std_projection: ^rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_isize,
+  surface_spelling: ^rust_surface_spelling_isize,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
-  std_projection: rust_std_projection_int_platform,
+  std_projection: ^rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_usize,
+  surface_spelling: ^rust_surface_spelling_usize,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
-  std_projection: rust_std_projection_uint_platform,
+  std_projection: ^rust_std_projection_uint_platform,
 }
 
 data rust_facts_f32: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_f32,
+  surface_spelling: ^rust_surface_spelling_f32,
   width: Bits32,
-  ieee754_binary: rust_ieee754_binary32,
-  std_projection: rust_std_projection_float32,
+  ieee754_binary: ^rust_ieee754_binary32,
+  std_projection: ^rust_std_projection_float32,
 }
 
 data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_f64,
+  surface_spelling: ^rust_surface_spelling_f64,
   width: Bits64,
-  ieee754_binary: rust_ieee754_binary64,
-  std_projection: rust_std_projection_float64,
+  ieee754_binary: ^rust_ieee754_binary64,
+  std_projection: ^rust_std_projection_float64,
 }
 
 data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_bool,
+  surface_spelling: ^rust_surface_spelling_bool,
   scalar: BoolScalar,
-  std_projection: rust_std_projection_bool,
-  representation: rust_repr_bool
+  std_projection: ^rust_std_projection_bool,
+  representation: ^rust_repr_bool
 }
 
 data rust_facts_char: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_char,
+  surface_spelling: ^rust_surface_spelling_char,
   scalar: CharScalar,
-  std_projection: rust_std_projection_char,
-  representation: rust_char_unicode_scalar
+  std_projection: ^rust_std_projection_char,
+  representation: ^rust_char_unicode_scalar
 }
 
 data rust_facts_str: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_str,
+  surface_spelling: ^rust_surface_spelling_str,
   scalar: StrScalar,
-  std_projection: rust_std_projection_str,
-  representation: rust_str_unsized
+  std_projection: ^rust_std_projection_str,
+  representation: ^rust_str_unsized
 }
 
 data rust_facts_unit: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_unit,
+  surface_spelling: ^rust_surface_spelling_unit,
   scalar: UnitScalar,
-  std_projection: rust_std_projection_unit,
-  representation: rust_repr_unit
+  std_projection: ^rust_std_projection_unit,
+  representation: ^rust_repr_unit
 }
 
 data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_never,
+  surface_spelling: ^rust_surface_spelling_never,
   scalar: NeverScalar,
-  std_projection: rust_std_projection_never,
-  representation: rust_repr_never
+  std_projection: ^rust_std_projection_never,
+  representation: ^rust_repr_never
 }
 
 // Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
@@ -871,8 +593,7 @@ data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
 data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_i32)
 // 🟡 gated — feature:sg-1-target-atom-realization — bind PR #3938 §10.1 / design-target-realization-canonical-home.md —
 // dissolve-on: TargetAtomRealization row for Symbol lands; fact_id names that row.
-data rust_atom_realization_symbol: Symbol = rust_atom_realization_symbol
-data rust_atom_realization_symbol_node: Node = rust_inhabitant_atom(id: rust_atom_realization_symbol)
+data rust_atom_realization_symbol_node: Node = rust_inhabitant_atom(id: ^rust_atom_realization_symbol)
 
 // Structural fact_id projections for C(rust.dag) — Node cites declared bindings, not sibling Symbol handles.
 fn rust_leaf_model_fact_id_node_rust_facts_i32() -> Node {
@@ -896,39 +617,40 @@ type RustNever = Never
 fn rust_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_int_kind_node(kind: RustIntKind) -> Node {
   match kind {
-    Signed => rust_inhabitant_atom(id: rust_tag_signed)
-    Unsigned => rust_inhabitant_atom(id: rust_tag_unsigned)
+    Signed => rust_inhabitant_atom(id: ^rust_tag_signed)
+    Unsigned => rust_inhabitant_atom(id: ^rust_tag_unsigned)
   }
 }
 
 fn rust_int_width_node(width: RustIntWidth) -> Node {
   match width {
-    Bits8 => rust_inhabitant_atom(id: rust_tag_bits8)
-    Bits16 => rust_inhabitant_atom(id: rust_tag_bits16)
-    Bits32 => rust_inhabitant_atom(id: rust_tag_bits32)
-    Bits64 => rust_inhabitant_atom(id: rust_tag_bits64)
-    Bits128 => rust_inhabitant_atom(id: rust_tag_bits128)
-    Pointer => rust_inhabitant_atom(id: rust_tag_pointer)
+    Bits8 => rust_inhabitant_atom(id: ^rust_tag_bits8)
+    Bits16 => rust_inhabitant_atom(id: ^rust_tag_bits16)
+    Bits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
+    Bits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
+    Bits128 => rust_inhabitant_atom(id: ^rust_tag_bits128)
+    Pointer => rust_inhabitant_atom(id: ^rust_tag_pointer)
   }
 }
 
 fn rust_float_width_node(width: RustFloatWidth) -> Node {
   match width {
-    Bits32 => rust_inhabitant_atom(id: rust_tag_bits32)
-    Bits64 => rust_inhabitant_atom(id: rust_tag_bits64)
+    Bits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
+    Bits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
   }
 }
 
 fn rust_overflow_node(overflow: OverflowAction) -> Node {
   match overflow {
-    PanicOnOverflow => rust_inhabitant_atom(id: rust_tag_panic_on_overflow)
-    TwoComplementWrap => rust_inhabitant_atom(id: rust_tag_two_complement_wrap)
+    PanicOnOverflow => rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow)
+    TwoComplementWrap => rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap)
   }
 }
 
@@ -962,29 +684,30 @@ fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCa
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_overflow_field_ir_carrier,
+        name: ^rust_overflow_field_ir_carrier,
         target: rust_scalar_node(
           scalar: rust_integer_carrier_as_scalar(carrier: disposition.ir_carrier)
         )
       ),
       rust_named_edge(
-        name: rust_overflow_field_checked_arithmetic_debug_default,
+        name: ^rust_overflow_field_checked_arithmetic_debug_default,
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_debug_default)
       ),
       rust_named_edge(
-        name: rust_overflow_field_checked_arithmetic_release_default,
+        name: ^rust_overflow_field_checked_arithmetic_release_default,
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_release_default)
       ),
       rust_named_edge(
-        name: rust_overflow_field_checked_arithmetic_checks_enabled,
+        name: ^rust_overflow_field_checked_arithmetic_checks_enabled,
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_enabled)
       ),
       rust_named_edge(
-        name: rust_overflow_field_checked_arithmetic_checks_disabled,
+        name: ^rust_overflow_field_checked_arithmetic_checks_disabled,
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_scalar_node(scalar: RustScalar) -> Node {
@@ -993,28 +716,30 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         rust_named_edge(
-          name: rust_scalar_field_classifier,
-          target: rust_inhabitant_atom(id: rust_tag_scalar_int)
+          name: ^rust_scalar_field_classifier,
+          target: rust_inhabitant_atom(id: ^rust_tag_scalar_int)
         ),
-        rust_named_edge(name: rust_scalar_field_kind, target: rust_int_kind_node(kind: kind)),
-        rust_named_edge(name: rust_scalar_field_width, target: rust_int_width_node(width: width))
-      ]
-    }
+        rust_named_edge(name: ^rust_scalar_field_kind, target: rust_int_kind_node(kind: kind)),
+        rust_named_edge(name: ^rust_scalar_field_width, target: rust_int_width_node(width: width))
+      ],
+      occurrence_id: SyntheticOccurrence
+}
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         rust_named_edge(
-          name: rust_scalar_field_classifier,
-          target: rust_inhabitant_atom(id: rust_tag_scalar_float)
+          name: ^rust_scalar_field_classifier,
+          target: rust_inhabitant_atom(id: ^rust_tag_scalar_float)
         ),
-        rust_named_edge(name: rust_scalar_field_width, target: rust_float_width_node(width: width))
-      ]
-    }
-    BoolScalar => rust_inhabitant_atom(id: rust_tag_scalar_bool)
-    CharScalar => rust_inhabitant_atom(id: rust_tag_scalar_char)
-    StrScalar => rust_inhabitant_atom(id: rust_tag_scalar_str)
-    UnitScalar => rust_inhabitant_atom(id: rust_tag_scalar_unit)
-    NeverScalar => rust_inhabitant_atom(id: rust_tag_scalar_never)
+        rust_named_edge(name: ^rust_scalar_field_width, target: rust_float_width_node(width: width))
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    BoolScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_bool)
+    CharScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_char)
+    StrScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_str)
+    UnitScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_unit)
+    NeverScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_never)
   }
 }
 
@@ -1037,37 +762,38 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_facts_field_surface_spelling,
+        name: ^rust_facts_field_surface_spelling,
         target: rust_inhabitant_atom(id: facts.surface_spelling)
       ),
       rust_named_edge(
-        name: rust_facts_field_signedness,
+        name: ^rust_facts_field_signedness,
         target: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
       ),
       rust_named_edge(
-        name: rust_facts_field_width,
+        name: ^rust_facts_field_width,
         target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
       ),
       rust_named_edge(
-        name: rust_facts_field_range,
+        name: ^rust_facts_field_range,
         target: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
       ),
       rust_named_edge(
-        name: rust_facts_field_overflow_disposition,
+        name: ^rust_facts_field_overflow_disposition,
         target: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
       ),
       rust_named_edge(
-        name: rust_facts_field_std_projection,
+        name: ^rust_facts_field_std_projection,
         target: rust_inhabitant_atom(id: facts.std_projection)
       ),
       rust_named_edge(
-        name: rust_facts_field_scalar_classifier,
+        name: ^rust_facts_field_scalar_classifier,
         target: rust_scalar_node(
           scalar: rust_integer_carrier_as_scalar(carrier: facts.overflow_disposition.ir_carrier)
         )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
@@ -1075,24 +801,25 @@ fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_facts_field_surface_spelling,
+        name: ^rust_facts_field_surface_spelling,
         target: rust_inhabitant_atom(id: facts.surface_spelling)
       ),
-      rust_named_edge(name: rust_facts_field_width, target: rust_float_width_node(width: facts.width)),
+      rust_named_edge(name: ^rust_facts_field_width, target: rust_float_width_node(width: facts.width)),
       rust_named_edge(
-        name: rust_facts_field_ieee754_binary,
+        name: ^rust_facts_field_ieee754_binary,
         target: rust_inhabitant_atom(id: facts.ieee754_binary)
       ),
       rust_named_edge(
-        name: rust_facts_field_std_projection,
+        name: ^rust_facts_field_std_projection,
         target: rust_inhabitant_atom(id: facts.std_projection)
       ),
       rust_named_edge(
-        name: rust_facts_field_scalar_classifier,
+        name: ^rust_facts_field_scalar_classifier,
         target: rust_scalar_node(scalar: FloatScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
@@ -1100,140 +827,144 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_facts_field_surface_spelling,
+        name: ^rust_facts_field_surface_spelling,
         target: rust_inhabitant_atom(id: facts.surface_spelling)
       ),
       rust_named_edge(
-        name: rust_facts_field_scalar_classifier,
+        name: ^rust_facts_field_scalar_classifier,
         target: rust_scalar_node(
           scalar: rust_noninteger_scalar_as_rust_scalar(scalar: facts.scalar)
         )
       ),
       rust_named_edge(
-        name: rust_facts_field_std_projection,
+        name: ^rust_facts_field_std_projection,
         target: rust_inhabitant_atom(id: facts.std_projection)
       ),
       rust_named_edge(
-        name: rust_facts_field_representation,
+        name: ^rust_facts_field_representation,
         target: rust_inhabitant_atom(id: facts.representation)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
-        name: rust_inhabitant_field_facts,
+        name: ^rust_inhabitant_field_facts,
         target: rust_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
-        name: rust_inhabitant_field_facts,
+        name: ^rust_inhabitant_field_facts,
         target: rust_float_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
-        name: rust_inhabitant_field_facts,
+        name: ^rust_inhabitant_field_facts,
         target: rust_noninteger_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_inhabitant_i8_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i8, facts: rust_facts_i8)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_i8, facts: rust_facts_i8)
 }
 
 fn rust_inhabitant_i16_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i16, facts: rust_facts_i16)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_i16, facts: rust_facts_i16)
 }
 
 fn rust_inhabitant_i32_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i32, facts: rust_facts_i32)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_i32, facts: rust_facts_i32)
 }
 
 fn rust_inhabitant_i64_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i64, facts: rust_facts_i64)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_i64, facts: rust_facts_i64)
 }
 
 fn rust_inhabitant_i128_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i128, facts: rust_facts_i128)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_i128, facts: rust_facts_i128)
 }
 
 fn rust_inhabitant_u8_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_u8, facts: rust_facts_u8)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_u8, facts: rust_facts_u8)
 }
 
 fn rust_inhabitant_u16_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_u16, facts: rust_facts_u16)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_u16, facts: rust_facts_u16)
 }
 
 fn rust_inhabitant_u32_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_u32, facts: rust_facts_u32)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_u32, facts: rust_facts_u32)
 }
 
 fn rust_inhabitant_u64_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_u64, facts: rust_facts_u64)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_u64, facts: rust_facts_u64)
 }
 
 fn rust_inhabitant_u128_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_u128, facts: rust_facts_u128)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_u128, facts: rust_facts_u128)
 }
 
 fn rust_inhabitant_isize_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_isize, facts: rust_facts_isize)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_isize, facts: rust_facts_isize)
 }
 
 fn rust_inhabitant_usize_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_usize, facts: rust_facts_usize)
+  rust_integer_inhabitant_node(id: ^rust_inhabitant_usize, facts: rust_facts_usize)
 }
 
 fn rust_inhabitant_f32_node() -> Node {
-  rust_float_inhabitant_node(id: rust_inhabitant_f32, facts: rust_facts_f32)
+  rust_float_inhabitant_node(id: ^rust_inhabitant_f32, facts: rust_facts_f32)
 }
 
 fn rust_inhabitant_f64_node() -> Node {
-  rust_float_inhabitant_node(id: rust_inhabitant_f64, facts: rust_facts_f64)
+  rust_float_inhabitant_node(id: ^rust_inhabitant_f64, facts: rust_facts_f64)
 }
 
 fn rust_inhabitant_bool_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_bool, facts: rust_facts_bool)
+  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_bool, facts: rust_facts_bool)
 }
 
 fn rust_inhabitant_char_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_char, facts: rust_facts_char)
+  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_char, facts: rust_facts_char)
 }
 
 fn rust_inhabitant_str_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_str, facts: rust_facts_str)
+  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_str, facts: rust_facts_str)
 }
 
 fn rust_inhabitant_unit_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_unit, facts: rust_facts_unit)
+  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_unit, facts: rust_facts_unit)
 }
 
 fn rust_inhabitant_never_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_never, facts: rust_facts_never)
+  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_never, facts: rust_facts_never)
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
@@ -1249,27 +980,62 @@ fn rust_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_inhabitant_field_i8, target: rust_inhabitant_i8_node()),
-      rust_named_edge(name: rust_inhabitant_field_i16, target: rust_inhabitant_i16_node()),
-      rust_named_edge(name: rust_inhabitant_field_i32, target: rust_inhabitant_i32_node()),
-      rust_named_edge(name: rust_inhabitant_field_i64, target: rust_inhabitant_i64_node()),
-      rust_named_edge(name: rust_inhabitant_field_i128, target: rust_inhabitant_i128_node()),
-      rust_named_edge(name: rust_inhabitant_field_u8, target: rust_inhabitant_u8_node()),
-      rust_named_edge(name: rust_inhabitant_field_u16, target: rust_inhabitant_u16_node()),
-      rust_named_edge(name: rust_inhabitant_field_u32, target: rust_inhabitant_u32_node()),
-      rust_named_edge(name: rust_inhabitant_field_u64, target: rust_inhabitant_u64_node()),
-      rust_named_edge(name: rust_inhabitant_field_u128, target: rust_inhabitant_u128_node()),
-      rust_named_edge(name: rust_inhabitant_field_isize, target: rust_inhabitant_isize_node()),
-      rust_named_edge(name: rust_inhabitant_field_usize, target: rust_inhabitant_usize_node()),
-      rust_named_edge(name: rust_inhabitant_field_f32, target: rust_inhabitant_f32_node()),
-      rust_named_edge(name: rust_inhabitant_field_f64, target: rust_inhabitant_f64_node()),
-      rust_named_edge(name: rust_inhabitant_field_bool, target: rust_inhabitant_bool_node()),
-      rust_named_edge(name: rust_inhabitant_field_char, target: rust_inhabitant_char_node()),
-      rust_named_edge(name: rust_inhabitant_field_str, target: rust_inhabitant_str_node()),
-      rust_named_edge(name: rust_inhabitant_field_unit, target: rust_inhabitant_unit_node()),
-      rust_named_edge(name: rust_inhabitant_field_never, target: rust_inhabitant_never_node())
-    ]
-  }
+      rust_named_edge(name: ^rust_inhabitant_field_i8, target: rust_inhabitant_i8_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_i16, target: rust_inhabitant_i16_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_i32, target: rust_inhabitant_i32_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_i64, target: rust_inhabitant_i64_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_i128, target: rust_inhabitant_i128_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_u8, target: rust_inhabitant_u8_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_u16, target: rust_inhabitant_u16_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_u32, target: rust_inhabitant_u32_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_u64, target: rust_inhabitant_u64_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_u128, target: rust_inhabitant_u128_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_isize, target: rust_inhabitant_isize_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_usize, target: rust_inhabitant_usize_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_f32, target: rust_inhabitant_f32_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_f64, target: rust_inhabitant_f64_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_bool, target: rust_inhabitant_bool_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_char, target: rust_inhabitant_char_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_str, target: rust_inhabitant_str_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_unit, target: rust_inhabitant_unit_node()),
+      rust_named_edge(name: ^rust_inhabitant_field_never, target: rust_inhabitant_never_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Value-semantics (Copy) carrier atom identities — the SINGLE, hand-maintained
+// authority for which Rust carriers own by value. Every Rust scalar is Copy EXCEPT
+// str (heap-backed, move-only): integers/floats/bool/char/unit/never are Copy. Each
+// Copy scalar can present at the ownership lookup as either of two carrier-identity
+// forms, so BOTH are listed: the surface spelling (type-shell path, e.g.
+// ^rust_surface_spelling_i32) and the inhabitant identity (value-expr path, e.g.
+// ^rust_inhabitant_i32). str is excluded from both.
+//
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
+// — feature: value-semantics-carrier-derivation — dissolve-on: a co-indexed
+// (RustScalar → surface_spelling, inhabitant) table exists so this set is DERIVED by
+// walking the scalars filtered by a single Copy predicate (str-exclusion then flows
+// from one source). Until then this list is NOT mechanically derived and MUST be kept
+// in sync with the Rust scalar set by hand. (A `rust_scalar_is_copy` classifier was
+// removed here: with no co-indexed scalar↔atom table it had no live caller, so it was
+// a second, drift-prone authority for Copy-ness rather than the single source.)
+fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
+  // Both carrier-identity forms a Copy scalar can present as at the lookup: the
+  // surface spelling (type-shell path) and the inhabitant identity (value-expr
+  // path). str (non-Copy) is excluded from both.
+  [
+    ^rust_surface_spelling_i8, ^rust_surface_spelling_i16, ^rust_surface_spelling_i32, ^rust_surface_spelling_i64, ^rust_surface_spelling_i128,
+    ^rust_surface_spelling_u8, ^rust_surface_spelling_u16, ^rust_surface_spelling_u32, ^rust_surface_spelling_u64, ^rust_surface_spelling_u128,
+    ^rust_surface_spelling_isize, ^rust_surface_spelling_usize,
+    ^rust_surface_spelling_f32, ^rust_surface_spelling_f64,
+    ^rust_surface_spelling_bool, ^rust_surface_spelling_char, ^rust_surface_spelling_unit, ^rust_surface_spelling_never,
+    ^rust_inhabitant_i8, ^rust_inhabitant_i16, ^rust_inhabitant_i32, ^rust_inhabitant_i64, ^rust_inhabitant_i128,
+    ^rust_inhabitant_u8, ^rust_inhabitant_u16, ^rust_inhabitant_u32, ^rust_inhabitant_u64, ^rust_inhabitant_u128,
+    ^rust_inhabitant_isize, ^rust_inhabitant_usize,
+    ^rust_inhabitant_f32, ^rust_inhabitant_f64,
+    ^rust_inhabitant_bool, ^rust_inhabitant_char, ^rust_inhabitant_unit, ^rust_inhabitant_never
+  ]
 }
 
 fn rust_mvp1_selection_policy_node() -> Node {
@@ -1285,7 +1051,8 @@ data rust_mvp1_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn rust_mvp1_i32_overflow_disposition_node() -> Node {
@@ -1303,51 +1070,51 @@ fn rust_mvp1_i32_scalar_node() -> Node {
 fn rust_mvp1_i32_zip_fold_closure_edges() -> List<Edge> {
   [
     rust_named_edge(
-      name: rust_inhabitant_field_mvp1_add_fn,
+      name: ^rust_inhabitant_field_mvp1_add_fn,
       target: rust_mvp1_fixture_emitted_add_fn
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_inhabitant_atom,
-      target: rust_inhabitant_atom(id: rust_inhabitant_i32)
+      name: ^rust_coercion_field_i32_inhabitant_atom,
+      target: rust_inhabitant_atom(id: ^rust_inhabitant_i32)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_facts,
+      name: ^rust_coercion_field_i32_facts,
       target: rust_integer_facts_node(facts: rust_facts_i32)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_spelling,
-      target: rust_inhabitant_atom(id: rust_surface_spelling_i32)
+      name: ^rust_coercion_field_i32_spelling,
+      target: rust_inhabitant_atom(id: ^rust_surface_spelling_i32)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_std_projection,
-      target: rust_inhabitant_atom(id: rust_std_projection_int32)
+      name: ^rust_coercion_field_i32_std_projection,
+      target: rust_inhabitant_atom(id: ^rust_std_projection_int32)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_signed,
+      name: ^rust_coercion_field_i32_signed,
       target: rust_int_kind_node(kind: Signed)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_width,
+      name: ^rust_coercion_field_i32_width,
       target: rust_int_width_node(width: Bits32)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_overflow,
+      name: ^rust_coercion_field_i32_overflow,
       target: rust_mvp1_i32_overflow_disposition_node()
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_scalar,
+      name: ^rust_coercion_field_i32_scalar,
       target: rust_mvp1_i32_scalar_node()
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_scalar_int,
-      target: rust_inhabitant_atom(id: rust_tag_scalar_int)
+      name: ^rust_coercion_field_i32_scalar_int,
+      target: rust_inhabitant_atom(id: ^rust_tag_scalar_int)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_panic_overflow,
+      name: ^rust_coercion_field_i32_panic_overflow,
       target: rust_overflow_node(overflow: PanicOnOverflow)
     ),
     rust_named_edge(
-      name: rust_coercion_field_i32_wrap_overflow,
+      name: ^rust_coercion_field_i32_wrap_overflow,
       target: rust_overflow_node(overflow: TwoComplementWrap)
     )
   ]
@@ -1363,8 +1130,9 @@ fn rust_mvp1_coercion_candidate_edges() -> List<Edge> {
 fn rust_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: rust_mvp1_coercion_candidate_edges()
-  }
+    children: rust_mvp1_coercion_candidate_edges(),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_emitted_add_fn_node() -> Node {
@@ -1375,99 +1143,54 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
-// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
-// dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn rust_concrete_token_class(token: RustConcreteSyntaxToken) -> Symbol {
-  match token {
-    RustFixedToken { token_class: c } => c
-    RustBoundToken { token_class: c, binding: _ } => c
-  }
+fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
-  match token {
-    RustFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: rust_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          rust_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: rust_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    RustBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: rust_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          rust_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: rust_inhabitant_atom(id: c)
-          ),
-          rust_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: rust_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
-}
 
-fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
-  Edge {
-    label: Positional,
-    target: rust_concrete_token_node(token: token)
-  }
-}
-
-fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: rust_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   [
     rust_named_edge(
-      name: rust_mvp1_source_text_field,
-      target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
+      name: ^serialize_source_field_source_text,
+      target: rust_inhabitant_atom(id: ^rust_mvp1_source_literal)
     ),
     rust_named_edge(
-      name: rust_mvp1_source_grammar_field,
-      target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
+      name: ^serialize_source_field_source_grammar,
+      target: rust_inhabitant_atom(id: ^rust_production_mvp1_fn_add)
     )
   ]
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
+  // R2 / round-8 positional-Conj fix: the token sequence is lowered to the canonical
+  // fold_list_node named-cons encoding (Named head/tail cells) under a single named
+  // `tokens` edge, so serialize_source is an all-NAMED Conj and well_formed passes
+  // (Conj-requires-named stays strict). [Per-site patch of the positional-Conj class —
+  // tokens_root + the builders are tracked for the post-R2 authority dissolution.]
   list_append(
     left: rust_mvp1_serialize_source_prefix_edges(),
-    right: rust_mvp1_positional_edges_from_token_classes()
+    right: [
+      rust_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: rust_mvp1_concrete_tokens(),
+          token_to_node: rust_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
 fn rust_mvp1_serialize_source_node() -> Node {
-  // liveness anchor — `rust_mvp1_source_literal` pairs with `rust_mvp1_source_text` until literal Node lands
+  // liveness anchor — `^rust_mvp1_source_literal` pairs with `rust_mvp1_source_text` until literal Node lands
   let _authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: rust_mvp1_serialize_source_children()
-  }
+    children: rust_mvp1_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1486,20 +1209,20 @@ fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           RustGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: rust_token_kw_fn)
+      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -1512,18 +1235,6 @@ fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
   }
 }
 
-fn rust_relation_token_edges(tokens: List<RustConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
   Node {
@@ -1536,13 +1247,14 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
       rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: rust_relation_token_edges(tokens: row.tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: rust_concrete_token_node
+        )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_translation_rules_node() -> Node {
@@ -1550,31 +1262,39 @@ fn rust_mvp1_translation_rules_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_relation_rule_mvp1_fn_add,
+        name: ^rust_relation_rule_mvp1_fn_add,
         target: rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
 }
-
-data rust_collection_surface_btree_set: Symbol = rust_collection_surface_btree_set
-data rust_collection_surface_hash_set: Symbol = rust_collection_surface_hash_set
-
+}
 fn rust_set_collection_apply_btree() -> TargetGenericApply {
   TargetGenericApply {
-    surface: rust_collection_surface_btree_set,
-    open: rust_token_lt,
-    separator: rust_token_comma,
-    close: rust_token_gt
+    surface: ^rust_collection_surface_btree_set,
+    open: ^rust_token_lt,
+    separator: ^rust_token_comma,
+    field_label_separator: optional_absent(),
+    close: ^rust_token_gt
   }
 }
 
 fn rust_set_collection_apply_hash() -> TargetGenericApply {
   TargetGenericApply {
-    surface: rust_collection_surface_hash_set,
-    open: rust_token_lt,
-    separator: rust_token_comma,
-    close: rust_token_gt
+    surface: ^rust_collection_surface_hash_set,
+    open: ^rust_token_lt,
+    separator: ^rust_token_comma,
+    field_label_separator: optional_absent(),
+    close: ^rust_token_gt
+  }
+}
+
+fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: ^rust_collection_surface_vec,
+    open: ^rust_token_lt,
+    separator: ^rust_token_comma,
+    close: ^rust_token_gt
   }
 }
 
@@ -1610,13 +1330,27 @@ fn rust_set_collection_alternative_choices() -> List<TargetRepresentationChoice>
   }
 }
 
+fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprVec,
+      apply: rust_free_monoid_collection_apply_vec()
+    },
+    constraints: []
+  }
+}
+
+fn rust_free_monoid_collection_alternative_choices() -> List<TargetRepresentationChoice> {
+  Empty
+}
+
 fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: target_collection_repr_field_kind,
-        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+        target: rust_inhabitant_atom(id: discriminant(v: form.kind))
       ),
       rust_named_edge(
         name: target_collection_repr_field_apply,
@@ -1639,11 +1373,13 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
               name: target_type_expr_field_close,
               target: rust_inhabitant_atom(id: form.apply.close)
             )
-          ]
-        }
+          ],
+          occurrence_id: SyntheticOccurrence
+}
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
@@ -1660,8 +1396,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     TargetCollectionWitnessHash { type_param: type_param } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -1674,8 +1411,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     TargetCollectionWitnessEq { type_param: type_param } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -1688,8 +1426,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
   }
 }
 
@@ -1708,8 +1447,9 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
           item_node: rust_collection_witness_bundle_node
         )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_set_collection_realization_bundle_node() -> Node {
@@ -1735,60 +1475,118 @@ fn rust_set_collection_realization_bundle_node() -> Node {
         name: target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: target_collection_set_no_representation)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_free_monoid_collection_realization_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_row_field_source_carrier,
+        target: target_carrier_free_monoid_node()
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_primary,
+        target: rust_collection_choice_bundle_node(choice: rust_free_monoid_collection_primary_choice())
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_alternatives,
+        target: fold_list_node(
+          xs: rust_free_monoid_collection_alternative_choices(),
+          item_node: rust_collection_choice_bundle_node
+        )
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_collection_realization_catalog_node() -> Node {
+  fold_list_node(
+    xs: Cons {
+      head: rust_set_collection_realization_bundle_node(),
+      tail: Cons { head: rust_free_monoid_collection_realization_bundle_node(), tail: Empty }
+    },
+    item_node: fn(row) { row }
+  )
+}
+
+// Single source of truth for the non-host-only edges shared by the bundle core and the live
+// model node. The decoder (target_model_bundle_core_keep_edge, std/target_model.dag:775) defines
+// the live model = these core edges PLUS host-only realization-catalog edges
+// {atom_realizations, signature_realizations}, and bundle_core = the core alone. Both
+// rust_mvp1_target_model_bundle_core and rust_mvp1_target_model_node derive from this list, so
+// neither can drift from the other (the bug round 9 fixed by hand). A future
+// signature_realizations catalog edge is host-only and belongs in the model node's append below,
+// NOT here.
+fn rust_mvp1_target_model_core_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: target_model_edge_selection_policy,
+      target: rust_mvp1_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: target_model_edge_declared_inhabitants,
+      target: rust_mvp1_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: target_model_edge_translation_rules,
+      target: rust_mvp1_translation_rules_node()
+    ),
+    rust_named_edge(
+      name: target_model_edge_serialize_source,
+      target: rust_mvp1_serialize_source_node()
+    ),
+    rust_named_edge(
+      name: target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    ),
+    rust_named_edge(
+      name: target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    ),
+    rust_named_edge(
+      name: target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    )
+  ]
 }
 
 fn rust_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: target_model_edge_selection_policy,
-        target: rust_mvp1_selection_policy_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_declared_inhabitants,
-        target: rust_mvp1_declared_inhabitants_root()
-      ),
-      rust_named_edge(
-        name: target_model_edge_translation_rules,
-        target: rust_mvp1_translation_rules_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_serialize_source,
-        target: rust_mvp1_serialize_source_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      )
-    ]
-  }
+    children: rust_mvp1_target_model_core_edges(),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(empty_map(), rust_binding_fn_add, "add"),
-            rust_binding_param_x,
-            "x"
-          ),
-          rust_binding_param_y,
-          "y"
-        ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
-      ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
-    ),
-    target_collection_set_carrier,
-    "Set"
-  )
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
+  let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
+  map_insert(m5, target_collection_set_carrier, "Set")
 }
 
 fn rust_mvp1_target_model_staging() -> TargetModel {
@@ -1799,9 +1597,6 @@ fn rust_mvp1_target_model_staging() -> TargetModel {
     authority_source_text: rust_mvp1_source_text_authority()
   }
 }
-
-data rust_target_atom_type_spelling_string: Symbol = rust_target_atom_type_spelling_string
-
 fn rust_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
   target_atom_alias_type_expression(
     spelling: spelling,
@@ -1816,7 +1611,7 @@ fn rust_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
 data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
   target_model: rust_mvp1_target_model_staging(),
-  type_form: rust_target_atom_type_form(spelling: rust_target_atom_type_spelling_string),
+  type_form: rust_target_atom_type_form(spelling: ^rust_target_atom_type_spelling_string),
   value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
   constructor_form: optional_absent(),
   display_name: symbol_kernel_type_atom
@@ -1825,7 +1620,7 @@ data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomReal
 data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
   source_carrier: bool_node(),
   target_model: rust_mvp1_target_model_staging(),
-  type_form: rust_target_atom_type_form(spelling: rust_surface_spelling_bool),
+  type_form: rust_target_atom_type_form(spelling: ^rust_surface_spelling_bool),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
   display_name: bool_node_symbol
@@ -1834,7 +1629,7 @@ data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealiz
 data rust_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
   source_carrier: char_kernel_type_node(),
   target_model: rust_mvp1_target_model_staging(),
-  type_form: rust_target_atom_type_form(spelling: rust_surface_spelling_char),
+  type_form: rust_target_atom_type_form(spelling: ^rust_surface_spelling_char),
   value_form: target_value_template_for_kind(kind: ValueCharUnicodeScalar),
   constructor_form: optional_absent(),
   display_name: char_kernel_type_atom
@@ -1873,48 +1668,24 @@ data rust_target_function_signature_realization_catalog: List<TargetFunctionSign
 ]
 
 fn rust_mvp1_target_model_node() -> Node {
+  // Live model = the shared core edges PLUS the host-only atom-realization catalog edge. The
+  // decoder strips {atom_realizations, signature_realizations} back to the core, so this stays
+  // structurally equal to rust_mvp1_target_model_bundle_core() under that decode. No cycle:
+  // the appended edge's host_bundle references bundle_core (= core edges), not this node.
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: target_model_edge_selection_policy,
-        target: rust_mvp1_selection_policy_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_declared_inhabitants,
-        target: rust_mvp1_declared_inhabitants_root()
-      ),
-      rust_named_edge(
-        name: target_model_edge_translation_rules,
-        target: rust_mvp1_translation_rules_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_serialize_source,
-        target: rust_mvp1_serialize_source_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      ),
-      rust_named_edge(
+    children: list_snoc_item(
+      xs: rust_mvp1_target_model_core_edges(),
+      item: rust_named_edge(
         name: target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
           rows: rust_target_atom_realization_catalog,
           host_bundle: rust_mvp1_target_model_bundle_core()
         )
-      ),
-      rust_named_edge(
-        name: target_model_edge_reference_layer_tokens,
-        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
-      ),
-      rust_named_edge(
-        name: target_model_edge_use_site_ownership_realizations,
-        target: target_use_site_ownership_catalog_node(
-          rows: rust_sg_rc_use_site_ownership_catalog()
-        )
       )
-    ]
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_target_model() -> TargetModel {
@@ -1942,29 +1713,31 @@ fn rust_ident_lex_pattern() -> LexPattern {
 
 fn rust_ident_lex_rule() -> LexRule {
   TokenRule {
-    token_class: rust_token_ident,
+    token_class: ^rust_token_ident,
     pattern: rust_ident_lex_pattern()
   }
 }
 
 // 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// most LiteralPattern.text below (e.g. "fn " not "fn"); `rust_token_plus` is layout-free
-// (`"+"`) so additive expressions tokenize with trivia. Dissolves when T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
+// every LiteralPattern.text below (e.g. "fn " not "fn", " + " not "+") as the interim
+// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
+// spaces the reference (`rust_mvp1_source_text`) requires. Dissolves when T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally
+// (at which point these texts drop their baked spaces).
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
+      rust_lex_rule(token_class: ^rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
-      rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
-      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
-      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
-      rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: rust_token_colon, text: ": ")
+      rust_lex_rule(token_class: ^rust_token_ty_i32, text: "i32"),
+      rust_lex_rule(token_class: ^rust_token_plus, text: " + "),
+      rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+      rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
+      rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
+      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: ^rust_token_colon, text: ": ")
     ]
   }
 }
@@ -1979,14 +1752,14 @@ fn rust_grammar_atom(id: Symbol) -> Node {
 
 
 
-fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn rust_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: rust_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
@@ -1994,7 +1767,7 @@ fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<Fo
 
 fn rust_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: rust_production_mvp1_fn_add,
+    lhs: ^rust_production_mvp1_fn_add,
     rhs: rust_formal_rhs_from_tokens(tokens: rust_mvp1_concrete_tokens())
   )
 }
@@ -2005,15 +1778,15 @@ fn rust_wave1_formal_productions() -> List<FormalProduction> {
 
 fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: rust_production_mvp1_fn_add,
+    name: ^rust_production_mvp1_fn_add,
     expression: rust_grammar_sequence_from_token_classes(),
-    emitted: rust_grammar_atom(id: rust_surface_fn_item)
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_wave1_grammar_root() -> GrammarRoot {
   let start = rust_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: rust_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  GrammarRoot { start: ^rust_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
 fn rust_wave1_grammar() -> ParseGrammar {
@@ -2081,17 +1854,17 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == rust_token_kw_fn ||
-    sym == rust_token_ident ||
-    sym == rust_token_ty_i32 ||
-    sym == rust_token_plus ||
-    sym == rust_token_arrow ||
-    sym == rust_token_lbrace ||
-    sym == rust_token_rbrace ||
-    sym == rust_token_lparen ||
-    sym == rust_token_rparen ||
-    sym == rust_token_comma ||
-    sym == rust_token_colon
+  sym == ^rust_token_kw_fn ||
+    sym == ^rust_token_ident ||
+    sym == ^rust_token_ty_i32 ||
+    sym == ^rust_token_plus ||
+    sym == ^rust_token_arrow ||
+    sym == ^rust_token_lbrace ||
+    sym == ^rust_token_rbrace ||
+    sym == ^rust_token_lparen ||
+    sym == ^rust_token_rparen ||
+    sym == ^rust_token_comma ||
+    sym == ^rust_token_colon
 }
 
 // Single symbol authority: fact-catalog surface spellings + wave-1 lex/grammar/MVP symbols.
@@ -2100,134 +1873,11 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
         rust_wave1_lex_token_symbol(sym: sym) ||
-        sym == rust_surface_fn_item ||
-        sym == rust_production_mvp1_fn_add ||
-        sym == rust_mvp1_source_literal
+        sym == ^rust_surface_fn_item ||
+        sym == ^rust_production_mvp1_fn_add ||
+        sym == ^rust_mvp1_source_literal
     }
   }
-}
-
-fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
-        primitive_fact_axis_signedness =>
-          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
-        primitive_fact_axis_range =>
-          Holds { value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier) }
-        primitive_fact_axis_overflow_disposition =>
-          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_float_width_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.representation) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: rust_integer_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: rust_float_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_noninteger_facts(
-  facts: RustNonIntegerPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: rust_noninteger_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_float_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_noninteger_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_noninteger_facts(facts: facts)
-      )
-    }
-  )
 }
 
 fn rust_symbol_node(id: Symbol) -> Node {
@@ -2238,32 +1888,35 @@ fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: rust_witness_checked_integer_arithmetic)),
-      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
-      rust_named_edge(name: rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
-    ]
-  }
+      rust_named_edge(name: ^rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: ^rust_witness_checked_integer_arithmetic)),
+      rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
+      rust_named_edge(name: ^rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_witness_float_approximate_field, target: rust_symbol_node(id: rust_witness_float_approximate_field)),
-      rust_named_edge(name: rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
-      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
-    ]
-  }
+      rust_named_edge(name: ^rust_witness_float_approximate_field, target: rust_symbol_node(id: ^rust_witness_float_approximate_field)),
+      rust_named_edge(name: ^rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
+      rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_bool_algebra_witness_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: rust_witness_bool_boolean_algebra)),
-      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
-    ]
-  }
+      rust_named_edge(name: ^rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: ^rust_witness_bool_boolean_algebra)),
+      rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -2329,27 +1982,6 @@ fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn rust_law_kind_symbol(key: RustModelCoreLawKey) -> Symbol {
-  match key {
-    RustLawIntegerAddAssociativeWhenRepresentable =>
-      rust_law_kind_integer_add_associative_when_representable
-    RustLawIntegerAddCommutativeWhenRepresentable =>
-      rust_law_kind_integer_add_commutative_when_representable
-    RustLawIntegerMulAssociativeWhenRepresentable =>
-      rust_law_kind_integer_mul_associative_when_representable
-    RustLawIntegerMulCommutativeWhenRepresentable =>
-      rust_law_kind_integer_mul_commutative_when_representable
-    RustLawIntegerDistributiveWhenRepresentable =>
-      rust_law_kind_integer_distributive_when_representable
-    RustLawIntegerTotalOrderOverRepresentableValues =>
-      rust_law_kind_integer_total_order_over_representable_values
-    RustLawFloatIeee754Rounding => rust_law_kind_float_ieee754_rounding
-    RustLawFloatNanInfCarriedByIeee754 => rust_law_kind_float_nan_inf_carried_by_ieee754
-    RustLawBoolBoundedLattice => rust_law_kind_bool_bounded_lattice
-    RustLawBoolComplement => rust_law_kind_bool_complement
-  }
-}
-
 fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2358,10 +1990,11 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
       rust_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       rust_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: rust_inhabitant_atom(id: rust_law_kind_symbol(key: key))
+        target: rust_inhabitant_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
@@ -2509,7 +2142,7 @@ fn rust_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   PrimitiveOperationRef {
     operation: rust_symbol_node(id: operation),
     effect_signature: EffectSignature {
-      signature: rust_symbol_node(id: rust_effect_signature_pure_value)
+      signature: rust_symbol_node(id: ^rust_effect_signature_pure_value)
     }
   }
 }
@@ -2517,21 +2150,21 @@ fn rust_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
 fn rust_effect_semantics_wave2() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
-      rust_pure_operation(operation: rust_op_integer_add),
-      rust_pure_operation(operation: rust_op_integer_sub),
-      rust_pure_operation(operation: rust_op_integer_mul),
-      rust_pure_operation(operation: rust_op_integer_neg),
-      rust_pure_operation(operation: rust_op_integer_div),
-      rust_pure_operation(operation: rust_op_integer_rem),
-      rust_pure_operation(operation: rust_op_integer_compare),
-      rust_pure_operation(operation: rust_op_float_add),
-      rust_pure_operation(operation: rust_op_float_sub),
-      rust_pure_operation(operation: rust_op_float_mul),
-      rust_pure_operation(operation: rust_op_float_div),
-      rust_pure_operation(operation: rust_op_float_compare),
-      rust_pure_operation(operation: rust_op_bool_and),
-      rust_pure_operation(operation: rust_op_bool_or),
-      rust_pure_operation(operation: rust_op_bool_not)
+      rust_pure_operation(operation: ^rust_op_integer_add),
+      rust_pure_operation(operation: ^rust_op_integer_sub),
+      rust_pure_operation(operation: ^rust_op_integer_mul),
+      rust_pure_operation(operation: ^rust_op_integer_neg),
+      rust_pure_operation(operation: ^rust_op_integer_div),
+      rust_pure_operation(operation: ^rust_op_integer_rem),
+      rust_pure_operation(operation: ^rust_op_integer_compare),
+      rust_pure_operation(operation: ^rust_op_float_add),
+      rust_pure_operation(operation: ^rust_op_float_sub),
+      rust_pure_operation(operation: ^rust_op_float_mul),
+      rust_pure_operation(operation: ^rust_op_float_div),
+      rust_pure_operation(operation: ^rust_op_float_compare),
+      rust_pure_operation(operation: ^rust_op_bool_and),
+      rust_pure_operation(operation: ^rust_op_bool_or),
+      rust_pure_operation(operation: ^rust_op_bool_not)
     ]
   }
 }
@@ -2552,76 +2185,364 @@ fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_add,
-        precondition: rust_precondition_integer_result_representable,
-        reason: rust_partial_checked_integer_overflow
+        operation: ^rust_op_integer_add,
+        precondition: ^rust_precondition_integer_result_representable,
+        reason: ^rust_partial_checked_integer_overflow
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_sub,
-        precondition: rust_precondition_integer_result_representable,
-        reason: rust_partial_checked_integer_overflow
+        operation: ^rust_op_integer_sub,
+        precondition: ^rust_precondition_integer_result_representable,
+        reason: ^rust_partial_checked_integer_overflow
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_mul,
-        precondition: rust_precondition_integer_result_representable,
-        reason: rust_partial_checked_integer_overflow
+        operation: ^rust_op_integer_mul,
+        precondition: ^rust_precondition_integer_result_representable,
+        reason: ^rust_partial_checked_integer_overflow
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_neg,
-        precondition: rust_precondition_integer_result_representable,
-        reason: rust_partial_checked_integer_overflow
+        operation: ^rust_op_integer_neg,
+        precondition: ^rust_precondition_integer_result_representable,
+        reason: ^rust_partial_checked_integer_overflow
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_div,
-        precondition: rust_precondition_integer_divisor_nonzero,
-        reason: rust_partial_integer_divide_by_zero
+        operation: ^rust_op_integer_div,
+        precondition: ^rust_precondition_integer_divisor_nonzero,
+        reason: ^rust_partial_integer_divide_by_zero
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_rem,
-        precondition: rust_precondition_integer_divisor_nonzero,
-        reason: rust_partial_integer_remainder_by_zero
+        operation: ^rust_op_integer_rem,
+        precondition: ^rust_precondition_integer_divisor_nonzero,
+        reason: ^rust_partial_integer_remainder_by_zero
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_div,
-        precondition: rust_precondition_signed_division_not_min_over_negative_one,
-        reason: rust_partial_signed_min_divide_by_negative_one
+        operation: ^rust_op_integer_div,
+        precondition: ^rust_precondition_signed_division_not_min_over_negative_one,
+        reason: ^rust_partial_signed_min_divide_by_negative_one
       ),
       rust_fail_closed_partial_operation(
-        operation: rust_op_integer_rem,
-        precondition: rust_precondition_signed_division_not_min_over_negative_one,
-        reason: rust_partial_signed_min_divide_by_negative_one
+        operation: ^rust_op_integer_rem,
+        precondition: ^rust_precondition_signed_division_not_min_over_negative_one,
+        reason: ^rust_partial_signed_min_divide_by_negative_one
       )
     ]
   }
 }
 
-fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  list_append(
-    left: list_append(
-      left: rust_primitive_bundles_from_integer_catalog(),
-      right: rust_primitive_bundles_from_float_catalog()
-    ),
-    right: rust_primitive_bundles_from_noninteger_catalog()
-  )
-}
+// --- G.1.1: Rust per-language fact bundle registry (subject_carrier x target x fact_axis) ---
+// Keyed by the closed G.0 ModelCorePrimitiveFactAxis coproduct (no parallel Symbol taxonomy).
+// Construction is fail-closed: duplicate subject x target x axis rows reject the whole registry,
+// and the ModelCore.primitives projection re-derives PrimitiveFactBundles via the G.0
+// `primitive_fact_bundle_for_subject` lookup, propagating any ungrounded-subject rejection.
 
-fn rust_model_core_wave1() -> ModelCore {
-  ModelCore {
-    primitives: rust_wave1_primitive_fact_bundles(),
-    inhabitance: rust_model_core_inhabitance_decls(),
-    laws: rust_model_core_law_obligations(),
-    effects: rust_effect_semantics_wave2(),
-    partiality: rust_partiality_semantics_wave2()
+fn rust_per_language_fact_bundle_key(
+  subject_carrier: Node,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject_carrier,
+    target: rust_mvp1_target_model(),
+    fact_axis: fact_axis
   }
 }
 
-fn rust_language_model_wave1() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave1_lex(),
-    grammar: rust_wave1_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_per_language_fact_bundle_entry(
+  subject_carrier: Node,
+  fact_axis: ModelCorePrimitiveFactAxis,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: rust_per_language_fact_bundle_key(
+      subject_carrier: subject_carrier,
+      fact_axis: fact_axis
+    ),
+    fact_value: fact_value
+  }
+}
+
+fn rust_integer_per_language_fact_bundle_entries(
+  facts: RustIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_integer_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisWidth {},
+      fact_value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSignedness {},
+      fact_value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: ^rust_repr_integer_twos_complement)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisRange {},
+      fact_value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisOverflowDisposition {},
+      fact_value: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
+    )
+  ]
+}
+
+fn rust_float_per_language_fact_bundle_entries(
+  facts: RustFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_float_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisWidth {},
+      fact_value: rust_float_width_node(width: facts.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn rust_noninteger_per_language_fact_bundle_entries(
+  facts: RustNonIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_noninteger_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: facts.representation)
+    )
+  ]
+}
+
+fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_noninteger_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: rust_per_language_fact_bundle_entries_from_integer_catalog(),
+      right: rust_per_language_fact_bundle_entries_from_float_catalog()
+    ),
+    right: rust_per_language_fact_bundle_entries_from_noninteger_catalog()
+  )
+}
+
+fn rust_insert_per_language_fact_bundle_entry_outcome(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match acc {
+    Accepted { value: registry, diagnostics: _ } =>
+      insert_per_language_fact_bundle_entry(
+        registry: registry,
+        key: entry.key,
+        fact_value: entry.fact_value
+      )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: rust_per_language_fact_bundle_entries(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: fn(acc, entry) {
+      rust_insert_per_language_fact_bundle_entry_outcome(acc: acc, entry: entry)
+    }
+  )
+}
+
+fn rust_snoc_primitive_bundle(
+  acc: Outcome<List<PrimitiveFactBundle>>,
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node
+) -> Outcome<List<PrimitiveFactBundle>> {
+  match acc {
+    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+      registry: registry,
+      subject_carrier: subject_carrier,
+      target: rust_mvp1_target_model()
+    ) {
+      Accepted { value: bundle, diagnostics: d } =>
+        Accepted {
+          value: list_snoc_item(xs: bundles, item: bundle),
+          diagnostics: d
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_primitive_bundles_from_integer_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_integer_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_float_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_float_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_noninteger_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_noninteger_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_append_primitive_bundle_outcomes(
+  left: Outcome<List<PrimitiveFactBundle>>,
+  right: Outcome<List<PrimitiveFactBundle>>
+) -> Outcome<List<PrimitiveFactBundle>> {
+  match left {
+    Accepted { value: l, diagnostics: _ } => match right {
+      Accepted { value: r, diagnostics: d } =>
+        Accepted { value: list_append(left: l, right: r), diagnostics: d }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_wave1_primitive_fact_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  rust_append_primitive_bundle_outcomes(
+    left: rust_append_primitive_bundle_outcomes(
+      left: rust_primitive_bundles_from_integer_catalog_registry(registry: registry),
+      right: rust_primitive_bundles_from_float_catalog_registry(registry: registry)
+    ),
+    right: rust_primitive_bundles_from_noninteger_catalog_registry(registry: registry)
+  )
+}
+
+fn rust_model_core_wave1() -> Outcome<ModelCore> {
+  match rust_per_language_fact_bundle_registry() {
+    Accepted { value: registry, diagnostics: _ } =>
+      match rust_wave1_primitive_fact_bundles_from_registry(registry: registry) {
+        Accepted { value: primitives, diagnostics: d } =>
+          Accepted {
+            value: ModelCore {
+              primitives: primitives,
+              inhabitance: rust_model_core_inhabitance_decls(),
+              laws: rust_model_core_law_obligations(),
+              effects: rust_effect_semantics_wave2(),
+              partiality: rust_partiality_semantics_wave2()
+            },
+            diagnostics: d
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_language_model_wave1() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Accepted { value: core, diagnostics: d } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave1_lex(),
+          grammar: rust_wave1_grammar(),
+          language_identity: ^rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_canonical_symbols(),
+          core: core
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -2635,7 +2556,7 @@ fn rust_whitespace_trivia_rule() -> LexRule {
 
 fn rust_int_literal_lex_rule() -> LexRule {
   TokenRule {
-    token_class: rust_token_int_literal,
+    token_class: ^rust_token_int_literal,
     pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
@@ -2644,13 +2565,13 @@ fn rust_wave2_additional_lex_rules() -> List<LexRule> {
   [
     rust_whitespace_trivia_rule(),
     rust_int_literal_lex_rule(),
-    rust_lex_rule(token_class: rust_token_kw_let, text: "let"),
-    rust_lex_rule(token_class: rust_token_kw_if, text: "if"),
-    rust_lex_rule(token_class: rust_token_kw_else, text: "else"),
-    rust_lex_rule(token_class: rust_token_kw_return, text: "return"),
-    rust_lex_rule(token_class: rust_token_equal, text: "="),
-    rust_lex_rule(token_class: rust_token_gt, text: ">"),
-    rust_lex_rule(token_class: rust_token_semicolon, text: ";")
+    rust_lex_rule(token_class: ^rust_token_kw_let, text: "let"),
+    rust_lex_rule(token_class: ^rust_token_kw_if, text: "if"),
+    rust_lex_rule(token_class: ^rust_token_kw_else, text: "else"),
+    rust_lex_rule(token_class: ^rust_token_kw_return, text: "return"),
+    rust_lex_rule(token_class: ^rust_token_equal, text: "="),
+    rust_lex_rule(token_class: ^rust_token_gt, text: ">"),
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: ";")
   ]
 }
 
@@ -2670,226 +2591,226 @@ fn rust_wave2_lex() -> LexRules {
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn rust_wave2_formal_productions() -> List<FormalProduction> {
   [
-    grammar_formal_production(lhs: rust_production_type, rhs: [grammar_formal_terminal(identity: rust_token_ty_i32)]),
+    grammar_formal_production(lhs: ^rust_production_type, rhs: [grammar_formal_terminal(identity: ^rust_token_ty_i32)]),
     grammar_formal_production(
-      lhs: rust_production_typed_param,
+      lhs: ^rust_production_typed_param,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_ident),
-        grammar_formal_terminal(identity: rust_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_type)
+        grammar_formal_terminal(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_type)
       ]
     ),
-    grammar_formal_production(lhs: rust_production_param_list, rhs: []),
+    grammar_formal_production(lhs: ^rust_production_param_list, rhs: []),
     grammar_formal_production(
-      lhs: rust_production_param_list,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param)]
+      lhs: ^rust_production_param_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_typed_param)]
     ),
     grammar_formal_production(
-      lhs: rust_production_param_list,
+      lhs: ^rust_production_param_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param),
-        grammar_formal_terminal(identity: rust_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_param_list_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_typed_param),
+        grammar_formal_terminal(identity: ^rust_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_param_list_suffix)
       ]
     ),
-    grammar_formal_production(lhs: rust_production_param_list_suffix, rhs: []),
+    grammar_formal_production(lhs: ^rust_production_param_list_suffix, rhs: []),
     grammar_formal_production(
-      lhs: rust_production_param_list_suffix,
+      lhs: ^rust_production_param_list_suffix,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_fn_item,
-      rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_fn),
-        grammar_formal_terminal(identity: rust_token_ident),
-        grammar_formal_terminal(identity: rust_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_param_list),
-        grammar_formal_terminal(identity: rust_token_rparen),
-        grammar_formal_terminal(identity: rust_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_type),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_block)
-      ]
-    ),
-    grammar_formal_production(lhs: rust_production_primary_expr, rhs: [grammar_formal_terminal(identity: rust_token_ident)]),
-    grammar_formal_production(
-      lhs: rust_production_primary_expr,
-      rhs: [grammar_formal_terminal(identity: rust_token_int_literal)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: rust_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_terminal(identity: rust_token_rparen)
+        grammar_formal_terminal(identity: ^rust_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_param_list_suffix)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_additive_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_primary_expr)]
+      lhs: ^rust_production_fn_item,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_fn),
+        grammar_formal_terminal(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_param_list),
+        grammar_formal_terminal(identity: ^rust_token_rparen),
+        grammar_formal_terminal(identity: ^rust_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_type),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_block)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_production_primary_expr, rhs: [grammar_formal_terminal(identity: ^rust_token_ident)]),
+    grammar_formal_production(
+      lhs: ^rust_production_primary_expr,
+      rhs: [grammar_formal_terminal(identity: ^rust_token_int_literal)]
     ),
     grammar_formal_production(
-      lhs: rust_production_additive_expr,
+      lhs: ^rust_production_primary_expr,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr),
-        grammar_formal_terminal(identity: rust_token_plus),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_primary_expr)
+        grammar_formal_terminal(identity: ^rust_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_terminal(identity: ^rust_token_rparen)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_comparison_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr)]
+      lhs: ^rust_production_additive_expr,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_primary_expr)]
     ),
     grammar_formal_production(
-      lhs: rust_production_comparison_expr,
+      lhs: ^rust_production_additive_expr,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr),
-        grammar_formal_terminal(identity: rust_token_gt),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr)
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_additive_expr),
+        grammar_formal_terminal(identity: ^rust_token_plus),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_primary_expr)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_return_expr,
-      rhs: [grammar_formal_terminal(identity: rust_token_kw_return)]
+      lhs: ^rust_production_comparison_expr,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_additive_expr)]
     ),
     grammar_formal_production(
-      lhs: rust_production_return_expr,
+      lhs: ^rust_production_comparison_expr,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_return),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr)
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_additive_expr),
+        grammar_formal_terminal(identity: ^rust_token_gt),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_additive_expr)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr_without_block,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_return_expr)]
+      lhs: ^rust_production_return_expr,
+      rhs: [grammar_formal_terminal(identity: ^rust_token_kw_return)]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr_without_block,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_comparison_expr)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_block,
+      lhs: ^rust_production_return_expr,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_lbrace),
-        grammar_formal_terminal(identity: rust_token_rbrace)
+        grammar_formal_terminal(identity: ^rust_token_kw_return),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_block,
+      lhs: ^rust_production_expr_without_block,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_return_expr)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_expr_without_block,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_comparison_expr)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_block,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_terminal(identity: rust_token_rbrace)
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_block,
+      lhs: ^rust_production_block,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_stmts),
-        grammar_formal_terminal(identity: rust_token_rbrace)
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_block,
+      lhs: ^rust_production_block,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_stmts),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_terminal(identity: rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(lhs: rust_production_stmts, rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_stmt)]),
-    grammar_formal_production(
-      lhs: rust_production_stmts,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_stmts),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_stmt)
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_stmts),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_let_stmt,
+      lhs: ^rust_production_block,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_let),
-        grammar_formal_terminal(identity: rust_token_ident),
-        grammar_formal_terminal(identity: rust_token_equal),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_terminal(identity: rust_token_semicolon)
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_stmts),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_production_stmts, rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_stmt)]),
+    grammar_formal_production(
+      lhs: ^rust_production_stmts,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_stmts),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_stmt)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr_stmt,
+      lhs: ^rust_production_let_stmt,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr_without_block),
-        grammar_formal_terminal(identity: rust_token_semicolon)
+        grammar_formal_terminal(identity: ^rust_token_kw_let),
+        grammar_formal_terminal(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_terminal(identity: ^rust_token_semicolon)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_expr_stmt,
+      lhs: ^rust_production_expr_stmt,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block),
-        grammar_formal_terminal(identity: rust_token_semicolon)
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_without_block),
+        grammar_formal_terminal(identity: ^rust_token_semicolon)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_let_stmt)]
+      lhs: ^rust_production_expr_stmt,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_with_block)]
     ),
     grammar_formal_production(
-      lhs: rust_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_stmt)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_expr_with_block,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_if_expr)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_expr_with_block,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_block)]
-    ),
-    grammar_formal_production(
-      lhs: rust_production_if_expr,
+      lhs: ^rust_production_expr_stmt,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_block)
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_with_block),
+        grammar_formal_terminal(identity: ^rust_token_semicolon)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_if_expr,
+      lhs: ^rust_production_stmt,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_let_stmt)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_stmt,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_stmt)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_expr_with_block,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_if_expr)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_expr_with_block,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_block)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_if_expr,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_block),
-        grammar_formal_terminal(identity: rust_token_kw_else),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_block)
+        grammar_formal_terminal(identity: ^rust_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_block)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_if_expr,
+      lhs: ^rust_production_if_expr,
       rhs: [
-        grammar_formal_terminal(identity: rust_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_block),
-        grammar_formal_terminal(identity: rust_token_kw_else),
-        grammar_formal_nonterminal_occurrence(identity: rust_production_if_expr)
+        grammar_formal_terminal(identity: ^rust_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_block),
+        grammar_formal_terminal(identity: ^rust_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_block)
       ]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block)]
+      lhs: ^rust_production_if_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_block),
+        grammar_formal_terminal(identity: ^rust_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_if_expr)
+      ]
     ),
     grammar_formal_production(
-      lhs: rust_production_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_without_block)]
+      lhs: ^rust_production_expr,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_with_block)]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_expr,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^rust_production_expr_without_block)]
     ),
     rust_formal_production_mvp1_fn_add()
   ]
@@ -2939,15 +2860,15 @@ fn rust_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbo
 }
 
 fn rust_grammar_type_expr() -> GrammarExpr {
-  rust_grammar_terminal(token_class: rust_token_ty_i32)
+  rust_grammar_terminal(token_class: ^rust_token_ty_i32)
 }
 
 fn rust_grammar_typed_param_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_ident),
+    left: rust_grammar_terminal(token_class: ^rust_token_ident),
     right: rust_grammar_sequence(
-      left: rust_grammar_terminal(token_class: rust_token_colon),
-      right: rust_grammar_nonterminal(production: rust_production_type)
+      left: rust_grammar_terminal(token_class: ^rust_token_colon),
+      right: rust_grammar_nonterminal(production: ^rust_production_type)
     )
   )
 }
@@ -2955,11 +2876,11 @@ fn rust_grammar_typed_param_expr() -> GrammarExpr {
 fn rust_grammar_param_list_expr() -> GrammarExpr {
   rust_grammar_optional(
     element: rust_grammar_sequence(
-      left: rust_grammar_nonterminal(production: rust_production_typed_param),
+      left: rust_grammar_nonterminal(production: ^rust_production_typed_param),
       right: rust_grammar_repeat(
         element: rust_grammar_sequence(
-          left: rust_grammar_terminal(token_class: rust_token_comma),
-          right: rust_grammar_nonterminal(production: rust_production_typed_param)
+          left: rust_grammar_terminal(token_class: ^rust_token_comma),
+          right: rust_grammar_nonterminal(production: ^rust_production_typed_param)
         )
       )
     )
@@ -2968,14 +2889,14 @@ fn rust_grammar_param_list_expr() -> GrammarExpr {
 
 fn rust_grammar_primary_expr() -> GrammarExpr {
   rust_grammar_choice(
-    left: rust_grammar_terminal(token_class: rust_token_ident),
+    left: rust_grammar_terminal(token_class: ^rust_token_ident),
     right: rust_grammar_choice(
-      left: rust_grammar_terminal(token_class: rust_token_int_literal),
+      left: rust_grammar_terminal(token_class: ^rust_token_int_literal),
       right: rust_grammar_sequence(
-        left: rust_grammar_terminal(token_class: rust_token_lparen),
+        left: rust_grammar_terminal(token_class: ^rust_token_lparen),
         right: rust_grammar_sequence(
-          left: rust_grammar_nonterminal(production: rust_production_expr),
-          right: rust_grammar_terminal(token_class: rust_token_rparen)
+          left: rust_grammar_nonterminal(production: ^rust_production_expr),
+          right: rust_grammar_terminal(token_class: ^rust_token_rparen)
         )
       )
     )
@@ -2984,11 +2905,11 @@ fn rust_grammar_primary_expr() -> GrammarExpr {
 
 fn rust_grammar_additive_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_nonterminal(production: rust_production_primary_expr),
+    left: rust_grammar_nonterminal(production: ^rust_production_primary_expr),
     right: rust_grammar_repeat(
       element: rust_grammar_sequence(
-        left: rust_grammar_terminal(token_class: rust_token_plus),
-        right: rust_grammar_nonterminal(production: rust_production_primary_expr)
+        left: rust_grammar_terminal(token_class: ^rust_token_plus),
+        right: rust_grammar_nonterminal(production: ^rust_production_primary_expr)
       )
     )
   )
@@ -2997,11 +2918,11 @@ fn rust_grammar_additive_expr() -> GrammarExpr {
 // Rust Reference: comparison operators are non-chaining (at most one relational op).
 fn rust_grammar_comparison_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_nonterminal(production: rust_production_additive_expr),
+    left: rust_grammar_nonterminal(production: ^rust_production_additive_expr),
     right: rust_grammar_optional(
       element: rust_grammar_sequence(
-        left: rust_grammar_terminal(token_class: rust_token_gt),
-        right: rust_grammar_nonterminal(production: rust_production_additive_expr)
+        left: rust_grammar_terminal(token_class: ^rust_token_gt),
+        right: rust_grammar_nonterminal(production: ^rust_production_additive_expr)
       )
     )
   )
@@ -3010,23 +2931,23 @@ fn rust_grammar_comparison_expr() -> GrammarExpr {
 // Rust Reference §17.9.1: ExpressionWithoutBlock vs ExpressionWithBlock.
 fn rust_grammar_expr_without_block() -> GrammarExpr {
   rust_grammar_choice(
-    left: rust_grammar_nonterminal(production: rust_production_return_expr),
-    right: rust_grammar_nonterminal(production: rust_production_comparison_expr)
+    left: rust_grammar_nonterminal(production: ^rust_production_return_expr),
+    right: rust_grammar_nonterminal(production: ^rust_production_comparison_expr)
   )
 }
 
 // Rust Reference ExpressionWithBlock: if expressions and block expressions.
 fn rust_grammar_expr_with_block() -> GrammarExpr {
   rust_grammar_choice(
-    left: rust_grammar_nonterminal(production: rust_production_if_expr),
-    right: rust_grammar_nonterminal(production: rust_production_block)
+    left: rust_grammar_nonterminal(production: ^rust_production_if_expr),
+    right: rust_grammar_nonterminal(production: ^rust_production_block)
   )
 }
 
 fn rust_grammar_expr_expr() -> GrammarExpr {
   rust_grammar_choice(
-    left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
-    right: rust_grammar_nonterminal(production: rust_production_expr_without_block)
+    left: rust_grammar_nonterminal(production: ^rust_production_expr_with_block),
+    right: rust_grammar_nonterminal(production: ^rust_production_expr_without_block)
   )
 }
 
@@ -3034,13 +2955,13 @@ fn rust_grammar_expr_expr() -> GrammarExpr {
 fn rust_grammar_expr_stmt_expr() -> GrammarExpr {
   rust_grammar_choice(
     left: rust_grammar_sequence(
-      left: rust_grammar_nonterminal(production: rust_production_expr_without_block),
-      right: rust_grammar_terminal(token_class: rust_token_semicolon)
+      left: rust_grammar_nonterminal(production: ^rust_production_expr_without_block),
+      right: rust_grammar_terminal(token_class: ^rust_token_semicolon)
     ),
     right: rust_grammar_sequence(
-      left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
+      left: rust_grammar_nonterminal(production: ^rust_production_expr_with_block),
       right: rust_grammar_optional(
-        element: rust_grammar_terminal(token_class: rust_token_semicolon)
+        element: rust_grammar_terminal(token_class: ^rust_token_semicolon)
       )
     )
   )
@@ -3049,23 +2970,23 @@ fn rust_grammar_expr_stmt_expr() -> GrammarExpr {
 // Rust Reference ReturnExpression: `return` Expression?.
 fn rust_grammar_return_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_kw_return),
+    left: rust_grammar_terminal(token_class: ^rust_token_kw_return),
     right: rust_grammar_optional(
-      element: rust_grammar_nonterminal(production: rust_production_expr)
+      element: rust_grammar_nonterminal(production: ^rust_production_expr)
     )
   )
 }
 
 fn rust_grammar_let_stmt_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_kw_let),
+    left: rust_grammar_terminal(token_class: ^rust_token_kw_let),
     right: rust_grammar_sequence(
-      left: rust_grammar_terminal(token_class: rust_token_ident),
+      left: rust_grammar_terminal(token_class: ^rust_token_ident),
       right: rust_grammar_sequence(
-        left: rust_grammar_terminal(token_class: rust_token_equal),
+        left: rust_grammar_terminal(token_class: ^rust_token_equal),
         right: rust_grammar_sequence(
-          left: rust_grammar_nonterminal(production: rust_production_expr),
-          right: rust_grammar_terminal(token_class: rust_token_semicolon)
+          left: rust_grammar_nonterminal(production: ^rust_production_expr),
+          right: rust_grammar_terminal(token_class: ^rust_token_semicolon)
         )
       )
     )
@@ -3075,17 +2996,17 @@ fn rust_grammar_let_stmt_expr() -> GrammarExpr {
 // Rust Reference IfExpression: `if` Expression BlockExpression [ `else` ( BlockExpression | IfExpression ) ].
 fn rust_grammar_if_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_kw_if),
+    left: rust_grammar_terminal(token_class: ^rust_token_kw_if),
     right: rust_grammar_sequence(
-      left: rust_grammar_nonterminal(production: rust_production_expr),
+      left: rust_grammar_nonterminal(production: ^rust_production_expr),
       right: rust_grammar_sequence(
-        left: rust_grammar_nonterminal(production: rust_production_block),
+        left: rust_grammar_nonterminal(production: ^rust_production_block),
         right: rust_grammar_optional(
           element: rust_grammar_sequence(
-            left: rust_grammar_terminal(token_class: rust_token_kw_else),
+            left: rust_grammar_terminal(token_class: ^rust_token_kw_else),
             right: rust_grammar_choice(
-              left: rust_grammar_nonterminal(production: rust_production_block),
-              right: rust_grammar_nonterminal(production: rust_production_if_expr)
+              left: rust_grammar_nonterminal(production: ^rust_production_block),
+              right: rust_grammar_nonterminal(production: ^rust_production_if_expr)
             )
           )
         )
@@ -3097,19 +3018,19 @@ fn rust_grammar_if_expr() -> GrammarExpr {
 // Rust Reference §17.11: let + ExpressionStatement forms, then optional tail Expression.
 fn rust_grammar_stmt_expr() -> GrammarExpr {
   rust_grammar_choice(
-    left: rust_grammar_nonterminal(production: rust_production_let_stmt),
-    right: rust_grammar_nonterminal(production: rust_production_expr_stmt)
+    left: rust_grammar_nonterminal(production: ^rust_production_let_stmt),
+    right: rust_grammar_nonterminal(production: ^rust_production_expr_stmt)
   )
 }
 
 fn rust_grammar_block_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_lbrace),
+    left: rust_grammar_terminal(token_class: ^rust_token_lbrace),
     right: rust_grammar_sequence(
-      left: rust_grammar_repeat(element: rust_grammar_nonterminal(production: rust_production_stmt)),
+      left: rust_grammar_repeat(element: rust_grammar_nonterminal(production: ^rust_production_stmt)),
       right: rust_grammar_sequence(
-        left: rust_grammar_optional(element: rust_grammar_nonterminal(production: rust_production_expr)),
-        right: rust_grammar_terminal(token_class: rust_token_rbrace)
+        left: rust_grammar_optional(element: rust_grammar_nonterminal(production: ^rust_production_expr)),
+        right: rust_grammar_terminal(token_class: ^rust_token_rbrace)
       )
     )
   )
@@ -3117,20 +3038,20 @@ fn rust_grammar_block_expr() -> GrammarExpr {
 
 fn rust_grammar_fn_item_expr() -> GrammarExpr {
   rust_grammar_sequence(
-    left: rust_grammar_terminal(token_class: rust_token_kw_fn),
+    left: rust_grammar_terminal(token_class: ^rust_token_kw_fn),
     right: rust_grammar_sequence(
-      left: rust_grammar_terminal(token_class: rust_token_ident),
+      left: rust_grammar_terminal(token_class: ^rust_token_ident),
       right: rust_grammar_sequence(
-        left: rust_grammar_terminal(token_class: rust_token_lparen),
+        left: rust_grammar_terminal(token_class: ^rust_token_lparen),
         right: rust_grammar_sequence(
-          left: rust_grammar_nonterminal(production: rust_production_param_list),
+          left: rust_grammar_nonterminal(production: ^rust_production_param_list),
           right: rust_grammar_sequence(
-            left: rust_grammar_terminal(token_class: rust_token_rparen),
+            left: rust_grammar_terminal(token_class: ^rust_token_rparen),
             right: rust_grammar_sequence(
-              left: rust_grammar_terminal(token_class: rust_token_arrow),
+              left: rust_grammar_terminal(token_class: ^rust_token_arrow),
               right: rust_grammar_sequence(
-                left: rust_grammar_nonterminal(production: rust_production_type),
-                right: rust_grammar_nonterminal(production: rust_production_block)
+                left: rust_grammar_nonterminal(production: ^rust_production_type),
+                right: rust_grammar_nonterminal(production: ^rust_production_block)
               )
             )
           )
@@ -3142,88 +3063,88 @@ fn rust_grammar_fn_item_expr() -> GrammarExpr {
 
 fn rust_wave2_grammar_root() -> GrammarRoot {
   let fn_item = rust_grammar_production(
-    name: rust_production_fn_item,
+    name: ^rust_production_fn_item,
     expression: rust_grammar_fn_item_expr(),
-    emitted: rust_surface_fn_item
+    emitted: ^rust_surface_fn_item
   )
   let typed_param = rust_grammar_production(
-    name: rust_production_typed_param,
+    name: ^rust_production_typed_param,
     expression: rust_grammar_typed_param_expr(),
-    emitted: rust_surface_typed_param
+    emitted: ^rust_surface_typed_param
   )
   let param_list = rust_grammar_production(
-    name: rust_production_param_list,
+    name: ^rust_production_param_list,
     expression: rust_grammar_param_list_expr(),
-    emitted: rust_surface_param_list
+    emitted: ^rust_surface_param_list
   )
   let type_prod = rust_grammar_production(
-    name: rust_production_type,
+    name: ^rust_production_type,
     expression: rust_grammar_type_expr(),
-    emitted: rust_surface_type
+    emitted: ^rust_surface_type
   )
   let block = rust_grammar_production(
-    name: rust_production_block,
+    name: ^rust_production_block,
     expression: rust_grammar_block_expr(),
-    emitted: rust_surface_block
+    emitted: ^rust_surface_block
   )
   let stmt = rust_grammar_production(
-    name: rust_production_stmt,
+    name: ^rust_production_stmt,
     expression: rust_grammar_stmt_expr(),
-    emitted: rust_surface_stmt
+    emitted: ^rust_surface_stmt
   )
   let expr_stmt = rust_grammar_production(
-    name: rust_production_expr_stmt,
+    name: ^rust_production_expr_stmt,
     expression: rust_grammar_expr_stmt_expr(),
-    emitted: rust_surface_expr_stmt
+    emitted: ^rust_surface_expr_stmt
   )
   let let_stmt = rust_grammar_production(
-    name: rust_production_let_stmt,
+    name: ^rust_production_let_stmt,
     expression: rust_grammar_let_stmt_expr(),
-    emitted: rust_surface_let_stmt
+    emitted: ^rust_surface_let_stmt
   )
   let if_expr = rust_grammar_production(
-    name: rust_production_if_expr,
+    name: ^rust_production_if_expr,
     expression: rust_grammar_if_expr(),
-    emitted: rust_surface_if_expr
+    emitted: ^rust_surface_if_expr
   )
   let return_expr = rust_grammar_production(
-    name: rust_production_return_expr,
+    name: ^rust_production_return_expr,
     expression: rust_grammar_return_expr(),
-    emitted: rust_surface_return_expr
+    emitted: ^rust_surface_return_expr
   )
   let expr_without_block = rust_grammar_production(
-    name: rust_production_expr_without_block,
+    name: ^rust_production_expr_without_block,
     expression: rust_grammar_expr_without_block(),
-    emitted: rust_surface_expr_without_block
+    emitted: ^rust_surface_expr_without_block
   )
   let expr_with_block = rust_grammar_production(
-    name: rust_production_expr_with_block,
+    name: ^rust_production_expr_with_block,
     expression: rust_grammar_expr_with_block(),
-    emitted: rust_surface_expr_with_block
+    emitted: ^rust_surface_expr_with_block
   )
   let expr = rust_grammar_production(
-    name: rust_production_expr,
+    name: ^rust_production_expr,
     expression: rust_grammar_expr_expr(),
-    emitted: rust_surface_expr
+    emitted: ^rust_surface_expr
   )
   let comparison_expr = rust_grammar_production(
-    name: rust_production_comparison_expr,
+    name: ^rust_production_comparison_expr,
     expression: rust_grammar_comparison_expr(),
-    emitted: rust_surface_comparison_expr
+    emitted: ^rust_surface_comparison_expr
   )
   let additive_expr = rust_grammar_production(
-    name: rust_production_additive_expr,
+    name: ^rust_production_additive_expr,
     expression: rust_grammar_additive_expr(),
-    emitted: rust_surface_additive_expr
+    emitted: ^rust_surface_additive_expr
   )
   let primary_expr = rust_grammar_production(
-    name: rust_production_primary_expr,
+    name: ^rust_production_primary_expr,
     expression: rust_grammar_primary_expr(),
-    emitted: rust_surface_primary_expr
+    emitted: ^rust_surface_primary_expr
   )
   let mvp1_fn_add = rust_grammar_production_mvp1_fn_add()
   GrammarRoot {
-    start: rust_production_fn_item,
+    start: ^rust_production_fn_item,
     productions: [
       fn_item,
       typed_param,
@@ -3257,70 +3178,83 @@ fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
       rust_catalog_surface_symbol(sym: sym) ||
         lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: sym) ||
         grammar_carries_symbol(grammar: rust_wave2_grammar(), sym: sym) ||
-        sym == rust_surface_fn_item ||
-        sym == rust_production_mvp1_fn_add ||
-        sym == rust_mvp1_source_literal
+        sym == ^rust_surface_fn_item ||
+        sym == ^rust_production_mvp1_fn_add ||
+        sym == ^rust_mvp1_source_literal
     }
   }
 }
 
-fn rust_language_model_wave2() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave2_lex(),
-    grammar: rust_wave2_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_wave2_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_language_model_wave2() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Accepted { value: core, diagnostics: d } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave2_lex(),
+          grammar: rust_wave2_grammar(),
+          language_identity: ^rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_wave2_canonical_symbols(),
+          core: core
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
 // SG-2 — Rust TargetTypeExpressionProjection row (per-connective; uniform carrier for all targets).
+// arrow_form param spelling tokens staged on carrier for labeled-wire serialize/decode; source projection
+// stays positional until target-arrow-domain-param-list-carrier (🟡 gate — parallel typescript.dag row).
 fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
-      surface: rust_surface_type_atom,
-      ident_token: rust_token_ident
+      surface: ^rust_surface_type_atom,
+      ident_token: ^rust_token_ident
     },
     conj_form: TargetGenericApply {
-      surface: rust_surface_type_record,
-      open: rust_token_lbrace,
-      separator: rust_token_comma,
-      close: rust_token_rbrace
+      surface: ^rust_surface_type_record,
+      open: ^rust_token_lbrace,
+      separator: ^rust_token_comma,
+      field_label_separator: optional_present(value: ^rust_token_colon),
+      close: ^rust_token_rbrace
     },
     disj_form: TargetSumTypeShape {
-      surface: rust_surface_type_sum,
-      variant_separator: rust_token_pipe
+      surface: ^rust_surface_type_sum,
+      variant_separator: ^rust_token_pipe
     },
     arrow_form: TargetFunctionTypeShape {
-      surface: rust_surface_type_arrow,
-      open: rust_token_lparen,
-      close: rust_token_rparen,
-      arrow: rust_token_arrow
+      surface: ^rust_surface_type_arrow,
+      open: ^rust_token_lparen,
+      close: ^rust_token_rparen,
+      arrow: ^rust_token_arrow,
+      param_ident_token: ^rust_token_ident,
+      param_type_separator: ^rust_token_colon,
+      param_list_separator: ^rust_token_comma
     },
     cardinality_form: TargetGenericApply {
-      surface: rust_surface_type_cardinality,
-      open: rust_token_lt,
-      separator: rust_token_comma,
-      close: rust_token_gt
+      surface: ^rust_surface_type_cardinality,
+      open: ^rust_token_lt,
+      separator: ^rust_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^rust_token_gt
     },
     instantiation_form: TargetGenericApply {
-      surface: rust_surface_type_generic_apply,
-      open: rust_token_lt,
-      separator: rust_token_comma,
-      close: rust_token_gt
+      surface: ^rust_surface_type_generic_apply,
+      open: ^rust_token_lt,
+      separator: ^rust_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^rust_token_gt
     }
   }
 }
-
-data rust_sg2_type_alias_literal: Symbol = rust_sg2_type_alias_literal
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
 
 fn rust_reference_layer_tokens() -> TargetReferenceLayerTokens {
   TargetReferenceLayerTokens {
-    rc_type_head: rust_binding_sg2_rc,
-    box_type_head: rust_binding_sg_rc_box,
-    rc_new_ctor: rust_sg_rc_ctor_rc_new,
-    box_new_ctor: rust_sg_rc_ctor_box_new
+    rc_type_head: ^rust_binding_sg2_rc,
+    box_type_head: ^rust_binding_sg_rc_box,
+    rc_new_ctor: ^rust_sg_rc_ctor_rc_new,
+    box_new_ctor: ^rust_sg_rc_ctor_box_new
   }
 }
 
@@ -3331,229 +3265,177 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealiza
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_diagnostics_return
+      display_name: ^rust_sg_rc_diagnostics_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_diagnostics_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionParameter,
       reference_layer: ReferenceLayerOwned,
-      display_name: rust_sg_rc_diagnostics_param
+      display_name: ^rust_sg_rc_diagnostics_param
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_node_return
+      display_name: ^rust_sg_rc_node_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionParameter,
       reference_layer: ReferenceLayerOwned,
-      display_name: rust_sg_rc_node_param
+      display_name: ^rust_sg_rc_node_param
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtStructField,
       reference_layer: ReferenceLayerBox,
-      display_name: rust_sg_rc_node_return_box
+      display_name: ^rust_sg_rc_node_return_box
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
       source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_test_claim_return
+      display_name: ^rust_sg_rc_test_claim_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_free_monoid_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_free_monoid_return
+      display_name: ^rust_sg_rc_free_monoid_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_outcome_node(),
       source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_outcome_return
+      display_name: ^rust_sg_rc_outcome_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_model_core_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_model_core_return
+      display_name: ^rust_sg_rc_model_core_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_algebra_inhabitance_decl_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_algebra_inhabitance_return
+      display_name: ^rust_sg_rc_algebra_inhabitance_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_probe_heap_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_probe_heap_return
+      display_name: ^rust_sg_rc_probe_heap_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_diagnostics_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_diagnostics_binding
+      display_name: ^rust_sg_rc_diagnostics_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_node_binding
+      display_name: ^rust_sg_rc_node_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
       source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_test_claim_binding
+      display_name: ^rust_sg_rc_test_claim_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_free_monoid_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_free_monoid_binding
+      display_name: ^rust_sg_rc_free_monoid_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_outcome_node(),
       source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_outcome_binding
+      display_name: ^rust_sg_rc_outcome_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_model_core_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_model_core_binding
+      display_name: ^rust_sg_rc_model_core_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_algebra_inhabitance_decl_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_algebra_inhabitance_binding
+      display_name: ^rust_sg_rc_algebra_inhabitance_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_probe_heap_node(),
       source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
-      display_name: rust_sg_rc_probe_heap_binding
+      display_name: ^rust_sg_rc_probe_heap_binding
     }
   ]
 }
 
 fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
-  // rust_target_atom_type_spelling_string is the target-side spelling token for the Rust String
+  // ^rust_target_atom_type_spelling_string is the target-side spelling token for the Rust String
   // type (peer of "bool"/"char"), NOT a Symbol→String name-keyed coercion. The SG-1b signature
   // realization row remains the sole authority deciding that a kernel-Symbol boundary projects to
   // String; this entry only spells the resolved target type once it has been chosen.
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(
-                        map_insert(
-                          map_insert(
-                            map_insert(
-                              map_insert(
-                                map_insert(
-                                  map_insert(
-                                    map_insert(
-                                      map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-                                      rust_binding_sg2_x,
-                                      "X"
-                                    ),
-                                    rust_binding_sg2_y,
-                                    "Y"
-                                  ),
-                                  rust_binding_sg2_rc,
-                                  "Rc"
-                                ),
-                                rust_binding_sg_rc_box,
-                                "Box"
-                              ),
-                              target_carrier_diagnostics,
-                              "Diagnostics"
-                            ),
-                            target_carrier_node,
-                            "Node"
-                          ),
-                          target_carrier_test_claim,
-                          "TestClaim"
-                        ),
-                        target_carrier_free_monoid,
-                        "FreeMonoid"
-                      ),
-                      target_carrier_outcome,
-                      "Outcome"
-                    ),
-                    target_carrier_model_core,
-                    "ModelCore"
-                  ),
-                  target_carrier_algebra_inhabitance_decl,
-                  "AlgebraInhabitanceDecl"
-                ),
-                target_carrier_probe_heap,
-                "ProbeHeap"
-              ),
-              rust_collection_surface_btree_set,
-              "std::collections::BTreeSet"
-            ),
-            rust_collection_surface_hash_set,
-            "std::collections::HashSet"
-          ),
-          target_collection_set_carrier,
-          "Set"
-        ),
-        rust_target_atom_type_spelling_string,
-        "String"
-      ),
-      rust_sg_rc_ctor_rc_new,
-      "Rc::new"
-    ),
-    rust_sg_rc_ctor_box_new,
-    "Box::new"
-  )
+  let m0 = map_insert(empty_map(), ^rust_binding_sg2_foobar, "FooBar")
+  let m1 = map_insert(m0, ^rust_binding_sg2_x, "X")
+  let m2 = map_insert(m1, ^rust_binding_sg2_y, "Y")
+  let m3 = map_insert(m2, ^rust_binding_sg2_rc, "Rc")
+  let m4 = map_insert(m3, ^rust_binding_sg_rc_box, "Box")
+  let m5 = map_insert(m4, target_carrier_diagnostics, "Diagnostics")
+  let m6 = map_insert(m5, target_carrier_node, "Node")
+  let m7 = map_insert(m6, target_carrier_test_claim, "TestClaim")
+  let m8 = map_insert(m7, target_carrier_free_monoid, "FreeMonoid")
+  let m9 = map_insert(m8, target_carrier_outcome, "Outcome")
+  let m10 = map_insert(m9, target_carrier_model_core, "ModelCore")
+  let m11 = map_insert(m10, target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
+  let m12 = map_insert(m11, target_carrier_probe_heap, "ProbeHeap")
+  let m13 = map_insert(m12, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m14 = map_insert(m13, ^rust_collection_surface_hash_set, "std::collections::HashSet")
+  let m15 = map_insert(m14, ^rust_collection_surface_vec, "Vec")
+  let m16 = map_insert(m15, target_collection_set_carrier, "Set")
+  let m18 = map_insert(m16, ^rust_target_atom_type_spelling_string, "String")
+  let m19 = map_insert(m18, ^rust_sg_rc_ctor_rc_new, "Rc::new")
+  map_insert(m19, ^rust_sg_rc_ctor_box_new, "Box::new")
 }
 fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_ident_lex_rule(),
-      rust_lex_rule(token_class: rust_token_lt, text: "<"),
-      rust_lex_rule(token_class: rust_token_gt, text: ">"),
-      rust_lex_rule(token_class: rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
-      rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
-      rust_lex_rule(token_class: rust_token_pipe, text: " | ")
+      rust_lex_rule(token_class: ^rust_token_lt, text: "<"),
+      rust_lex_rule(token_class: ^rust_token_gt, text: ">"),
+      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
+      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+      rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
+      rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
+      rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
     ]
   }
 }
@@ -3577,8 +3459,9 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
         name: target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: Empty
-        }
+          children: Empty,
+          occurrence_id: SyntheticOccurrence
+}
       ),
       rust_named_edge(
         name: target_model_edge_selection_policy,
@@ -3590,7 +3473,7 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
         name: target_model_edge_reference_layer_tokens,
@@ -3602,8 +3485,9 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
           rows: rust_sg_rc_use_site_ownership_catalog()
         )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_type_expr_target_model_node() -> Node {
@@ -3619,69 +3503,15 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
               rows: rust_target_function_signature_realization_catalog
             )
           )
-        )
-      }
+        ),
+        occurrence_id: SyntheticOccurrence
+}
     _ => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
 
 fn rust_type_expression_projection_bundle_node() -> Node {
-  let row = rust_type_expression_projection()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_atom, target: rust_type_expr_atom_shape_node(form: row.atom_form)),
-      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_generic_apply_shape_node(form: row.conj_form)),
-      rust_named_edge(name: target_type_expr_field_disj, target: rust_type_expr_sum_shape_node(form: row.disj_form)),
-      rust_named_edge(name: target_type_expr_field_arrow, target: rust_type_expr_arrow_shape_node(form: row.arrow_form)),
-      rust_named_edge(name: target_type_expr_field_cardinality, target: rust_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
-      rust_named_edge(name: target_type_expr_field_instantiation, target: rust_type_expr_generic_apply_shape_node(form: row.instantiation_form))
-    ]
-  }
-}
-
-fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_ident_token, target: rust_inhabitant_atom(id: form.ident_token))
-    ]
-  }
-}
-
-fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
-      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
-    ]
-  }
-}
-
-fn rust_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_variant_separator, target: rust_inhabitant_atom(id: form.variant_separator))
-    ]
-  }
-}
-
-fn rust_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close)),
-      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow))
-    ]
-  }
+  type_expr_projection_step_algebra(projection: rust_type_expression_projection())
 }
 
 fn rust_sg2_serialize_source_node() -> Node {
@@ -3690,15 +3520,65 @@ fn rust_sg2_serialize_source_node() -> Node {
     children: [
       rust_named_edge(
         name: serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: rust_sg2_type_alias_literal)
+        target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+// SG-2 projection witness probe — bundle core without SG-RC ownership/reference-layer edges
+// so translate_apply_use_site_ownership disposition is false (pass-through) for conj/disj/sum
+// field slots while retaining the projection row + serialize authority.
+fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_serialize_source,
+        target: rust_sg2_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: Empty,
+          occurrence_id: SyntheticOccurrence
+}
+      ),
+      rust_named_edge(
+        name: target_model_edge_selection_policy,
+        target: rust_mvp1_selection_policy_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: rust_declared_inhabitants_root()
+      ),
+      rust_named_edge(
+        name: target_model_edge_collection_realization,
+        target: rust_collection_realization_catalog_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     authority_source_text: rust_sg2_type_alias_text
@@ -3717,14 +3597,12 @@ fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
     authority_source_text: rust_sg2_type_alias_text
   }
 }
-
-data rust_binding_sg5_non_ordable: Symbol = rust_binding_sg5_non_ordable
-
 fn rust_sg5_non_ordable_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: rust_binding_sg5_non_ordable } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^rust_binding_sg5_non_ordable } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 // SG-5 probe: Set<NonOrdable> as Cardinality(set_carrier, NonOrdable).
@@ -3734,8 +3612,9 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: target_collection_set_carrier_node() },
       Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 // SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Rc, Instantiation(FooBar, X, Y)).
@@ -3744,28 +3623,61 @@ fn rust_sg2_rc_foobar_xy_emitted() -> Node {
     form: rust_type_expression_projection().instantiation_form,
     head: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
-      identity: rust_binding_sg2_rc
+      identity: ^rust_binding_sg2_rc
     ),
     args: [
       target_type_expr_instantiation_emitted(
         form: rust_type_expression_projection().instantiation_form,
         head: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
-          identity: rust_binding_sg2_foobar
+          identity: ^rust_binding_sg2_foobar
         ),
         args: [
           target_type_expr_atom_emitted(
             form: rust_type_expression_projection().atom_form,
-            identity: rust_binding_sg2_x
+            identity: ^rust_binding_sg2_x
           ),
           target_type_expr_atom_emitted(
             form: rust_type_expression_projection().atom_form,
-            identity: rust_binding_sg2_y
+            identity: ^rust_binding_sg2_y
           )
         ]
       )
     ]
   )
+}
+
+fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_instantiation_source_type_node() -> Node {
@@ -3775,48 +3687,31 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_rc } },
-          children: []
-        }
+          kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
       },
       Edge {
         label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
-                children: []
-              }
-            }
-          ]
-        }
+        target: rust_sg2_foobar_xy_inner_instantiation_node()
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Perturbed twin: same inner apply without outer Rc — discriminates mode-2 emit text.
+fn rust_sg2_foobar_xy_no_rc_source_type_node() -> Node {
+  rust_sg2_foobar_xy_inner_instantiation_node()
 }
 
 fn rust_sg2_atom_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_arrow_xy_emitted() -> Node {
@@ -3825,13 +3720,13 @@ fn rust_sg2_arrow_xy_emitted() -> Node {
     inputs: Cons {
       head: target_type_expr_atom_emitted(
         form: rust_type_expression_projection().atom_form,
-        identity: rust_binding_sg2_x
+        identity: ^rust_binding_sg2_x
       ),
       tail: Empty
     },
     output: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
-      identity: rust_binding_sg2_y
+      identity: ^rust_binding_sg2_y
     )
   )
 }
@@ -3840,16 +3735,17 @@ fn rust_sg2_arrow_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) }
-    ]
-  }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_binary_fn_source_type_node() -> Node {
   algebra_binary_fn_node(
-    domain: rust_sg2_atom_node(binding: rust_binding_sg2_x),
-    codomain: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+    domain: rust_sg2_atom_node(binding: ^rust_binding_sg2_x),
+    codomain: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
   )
 }
 
@@ -3857,9 +3753,10 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) }
-    ]
-  }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_conj_xy_emitted() -> Node {
@@ -3867,17 +3764,17 @@ fn rust_sg2_conj_xy_emitted() -> Node {
     form: rust_type_expression_projection().conj_form,
     fields: [
       TargetTypeExprFieldSlot {
-        label: rust_binding_sg2_x,
+        label: ^rust_binding_sg2_x,
         type_expr: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
-          identity: rust_binding_sg2_x
+          identity: ^rust_binding_sg2_x
         )
       },
       TargetTypeExprFieldSlot {
-        label: rust_binding_sg2_y,
+        label: ^rust_binding_sg2_y,
         type_expr: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
-          identity: rust_binding_sg2_y
+          identity: ^rust_binding_sg2_y
         )
       }
     ]
@@ -3888,10 +3785,11 @@ fn rust_sg2_conj_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
-      rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))
-    ]
-  }
+      rust_named_edge(name: ^rust_binding_sg2_x, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x)),
+      rust_named_edge(name: ^rust_binding_sg2_y, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_sum_xy_emitted() -> Node {
@@ -3899,20 +3797,31 @@ fn rust_sg2_sum_xy_emitted() -> Node {
     form: rust_type_expression_projection().disj_form,
     variants: [
       TargetTypeExprVariantSlot {
-        label: rust_binding_sg2_x,
+        label: ^rust_binding_sg2_x,
         type_expr: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
-          identity: rust_binding_sg2_x
+          identity: ^rust_binding_sg2_x
         )
       },
       TargetTypeExprVariantSlot {
-        label: rust_binding_sg2_y,
+        label: ^rust_binding_sg2_y,
         type_expr: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
-          identity: rust_binding_sg2_y
+          identity: ^rust_binding_sg2_y
         )
       }
     ]
+  )
+}
+
+// GAP-2 prep: intentionally absent from rust_sg2_binding_spellings — mode-2 atom serialize must
+// resolve via projection atom_form.ident_token lex class, not map_get(binding_spellings).
+data rust_sg2_lex_only_atom_spelling: String = "LexOnlyProbe"
+
+fn rust_sg2_lex_only_atom_emitted() -> Node {
+  target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: ^rust_binding_sg2_lex_only_atom
   )
 }
 
@@ -3929,15 +3838,16 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
           }
         Positional => list_snoc_item(xs: acc, item: e)
       }
-    })
-  }
+    }),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
   rust_sg2_emitted_without_named_edge(
     base: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
-      identity: rust_binding_sg2_x
+      identity: ^rust_binding_sg2_x
     ),
     field: target_type_expr_field_surface
   )
@@ -3946,7 +3856,7 @@ fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
 fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
   let base = target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: rust_binding_sg2_x
+    identity: ^rust_binding_sg2_x
   )
   Node {
     kind: base.kind,
@@ -3955,45 +3865,48 @@ fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
       item: target_type_expr_surface_edge(
         surface: rust_type_expression_projection().atom_form.surface
       )
-    )
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
   let base = target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: rust_binding_sg2_x
+    identity: ^rust_binding_sg2_x
   )
   Node {
     kind: base.kind,
     children: list_snoc_item(
       xs: rust_sg2_emitted_without_named_edge(base: base, field: target_type_expr_field_surface).children,
-      item: target_type_expr_surface_edge(surface: rust_binding_sg2_bogus_meta)
-    )
-  }
+      item: target_type_expr_surface_edge(surface: ^rust_binding_sg2_bogus_meta)
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
   let base = target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: rust_binding_sg2_x
+    identity: ^rust_binding_sg2_x
   )
   Node {
     kind: base.kind,
     children: list_snoc_item(
       xs: base.children,
       item: rust_named_edge(
-        name: rust_binding_sg2_bogus_named,
-        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+        name: ^rust_binding_sg2_bogus_named,
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       )
-    )
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
   let base = target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: rust_binding_sg2_x
+    identity: ^rust_binding_sg2_x
   )
   Node {
     kind: base.kind,
@@ -4001,16 +3914,17 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
   let base = target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: rust_binding_sg2_x
+    identity: ^rust_binding_sg2_x
   )
   Node {
     kind: base.kind,
@@ -4019,8 +3933,9 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
         Positional => acc
         _ => list_snoc_item(xs: acc, item: e)
       }
-    })
-  }
+    }),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
@@ -4029,7 +3944,7 @@ fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
     inputs: Empty,
     output: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
-      identity: rust_binding_sg2_x
+      identity: ^rust_binding_sg2_x
     )
   )
 }
@@ -4050,10 +3965,11 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
@@ -4064,8 +3980,9 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    occurrence_id: SyntheticOccurrence
+}
 }

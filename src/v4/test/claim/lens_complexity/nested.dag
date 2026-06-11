@@ -36,47 +36,45 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.nat { Zero }
 import v4.std.witness { Witness }
-
-data nested_claim_file: Symbol = nested_claim_file
-data nested_claim_reason: Symbol = nested_claim_reason
-
 type LensComplexityClaim {
   input: Node
   expected_cost: SymbolicCost
   expected_complexity: ComplexityBound
   falsification: Diagnostic
 }
-
-data nested_body_atom: Symbol = nested_body_atom
-
 data nested_body_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: nested_body_atom } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^nested_body_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: nested_body_leaf }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_body }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_inner }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_claim: LensComplexityClaim = LensComplexityClaim {
@@ -93,8 +91,8 @@ data nested_claim: LensComplexityClaim = LensComplexityClaim {
     degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
   ),
   falsification: Diagnostic {
-    reason: nested_claim_reason,
-    at: Textual { file: nested_claim_file, extent: WholeFile },
+    reason: ^nested_claim_reason,
+    at: Textual { file: ^nested_claim_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

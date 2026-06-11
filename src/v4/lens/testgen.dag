@@ -4,9 +4,21 @@
 
 module v4.lens.testgen
 
-
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty, list_snoc_item }
+import v4.std.algebra {
+  FreeMonoid,
+  Empty,
+  Cons,
+  count_where,
+  filter,
+  fold_list,
+  fold_list_right,
+  length,
+  list_append,
+  non_empty,
+  list_snoc_item,
+  zip_eq
+}
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -43,13 +55,7 @@ import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   NatAlgebraLawObligation,
-  nat_declared_algebra_law_obligations,
-  law_nat_add_associativity,
-  law_nat_add_left_identity,
-  law_nat_add_right_identity,
-  law_nat_mul_annihilator,
-  law_nat_mul_associativity,
-  law_nat_mul_left_identity
+  nat_declared_algebra_law_obligations
 }
 import v4.std.node {
   Atom,
@@ -68,7 +74,8 @@ import v4.std.node {
   Loop,
   Bind,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
@@ -78,7 +85,7 @@ import v4.extdeps.file_system {
   FileSystemOperations,
   Filesystem
 }
-import v4.extdeps.languages.dag { dag_language_model_surface_id }
+
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -93,6 +100,7 @@ import v4.std.verification {
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   ManualAnchorAbsent,
   ManualAnchorKey,
@@ -164,7 +172,15 @@ import v4.std.effects {
   sample_state,
   sample_upsert_composable
 }
-
+// F.2-P1: generator identity + provenance cross-ref. GeneratorId / GeneratorProvenance
+// are authored in v4.std.artifact (artifact identity is its single authority); testgen
+// only consumes them — no artifact law is duplicated here. profile_metadata stays a
+// testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
+import v4.std.artifact {
+  GeneratorId,
+  GeneratorProvenance,
+  test_claim_generated_artifact
+}
 
 // 🟢 coproduct dissolution — LB-P4-3212.
 type TypeConstructionSubject
@@ -172,22 +188,16 @@ type TypeConstructionSubject
   = ConnectiveKernel { connective: Connective }
   | BehaviorValueSubject { behavior: Behavior }
 
-
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
-
 type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
-
-
 
 type LensApplicabilitySubject {
   lens: Symbol
   program: Node
 }
 
-
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
-
 
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type FrozenLanguageBehaviorSnapshot {
@@ -196,12 +206,10 @@ type FrozenLanguageBehaviorSnapshot {
   expected_value: Node
 }
 
-
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorIoMock {
   snapshot: FrozenLanguageBehaviorSnapshot
 }
-
 
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorEquivalenceSubject {
@@ -209,13 +217,11 @@ type LanguageBehaviorEquivalenceSubject {
   language: Symbol
 }
 
-
 // 🟡 coproduct dissolution — T19-REFINEMENT-PRESERVATION.
 type RefinementPreservationSubject {
   refined: Refined<List<Node>>
   original: List<Node>
 }
-
 
 // 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
@@ -232,22 +238,122 @@ type TestgenConcept
     }
   | RefinementPreservation { subject: RefinementPreservationSubject }
 
-
 // RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
+// 🟡 bootstrap-limitation interim — feature:B-GENERATOR-MATCH-ARM-1 — Generator<C> record
+// destructuring via v2 `match_pattern` Value::Record arm (ctrl#1476 B3 Gap-1); dissolve-on-arrival:
+// unified record/variant runtime representation so match arms need no per-type bridge; forbidden:
+// `match generator { Generator { ... } }` failing with non-exhaustive pattern on Generator.
+// F.2-P1: every generator carries its provenance (generator identity + emitted artifact,
+// bundled in v4.std.artifact.GeneratorProvenance) and its profile metadata. Bundling
+// generator_id inside `provenance` (rather than a third flat field) keeps future provenance
+// growth a single-type edit — CLAUDE.md Cost-of-Change — and mirrors NodeArtifactProvenance.
 type Generator<C> {
   kind: TestClaimCoproductVariant
   classification: TestClassification
   anchor: ClaimAnchorKey
   slot: C
+  provenance: GeneratorProvenance
+  profile_metadata: GeneratorProfile
 }
 
+// F.2-P1: testgen-local generation-profile metadata. v0 carries a single profile
+// reference Symbol (precedent: leaf_model_verification build_profile / tool_profile_ref);
+// the record shape lets profile facts grow without touching Generator construction sites.
+type GeneratorProfile { profile_ref: Symbol }
+
+// F.2-P1: default generation profile applied to all scheduled generators until the
+// testgen CLI (wise-wolf-799 lane) selects a profile per invocation.
+// F.2-P1: source file the testgen generators are authored in — the artifact file_path
+// for provenance until per-claim emit paths are modeled.
+data testgen_lens_file_path: String = "src/v4/lens/testgen.dag"
+
+fn default_generator_profile() -> GeneratorProfile {
+  GeneratorProfile { profile_ref: ^testgen_default_profile_ref }
+}
+fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^testgen_profile_roster_mismatch,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// F.2-P1: canonical per-anchor GeneratorId table. Identity is DERIVED from the row's
+// ClaimAnchorKey (single authority — not a coarse static category symbol), so distinct
+// anchors/obligations get distinct GeneratorIds and no two scheduled generators collide.
+// 🟡 dissolution target: replace this literal table with an anchor→Symbol reflection when
+// .dag can project a Symbol from a ClaimAnchorKey directly (T-19 TestClaim reflection).
+// F.2-P1: derive a generator's identity from its ManualAnchorKey (one id per manual anchor).
+fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
+  match key {
+    ManualTcConjEmpty => ^gen_id_tc_conj_empty
+    ManualTcDisjEmpty => ^gen_id_tc_disj_empty
+    ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
+    ManualTcCardinalityEmpty => ^gen_id_tc_cardinality_empty
+    ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
+    ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
+    ManualTcTransformEmpty => ^gen_id_tc_transform_empty
+    ManualTcBranchEmpty => ^gen_id_tc_branch_empty
+    ManualTcLoopEmpty => ^gen_id_tc_loop_empty
+    ManualTcBindZeroChildren => ^gen_id_tc_bind_zero_children
+    ManualTcConjEqualsRefl => ^gen_id_tc_conj_equals_refl
+    ManualNatAddLeftIdentity => ^gen_id_nat_add_left_identity
+    ManualNatAddRightIdentity => ^gen_id_nat_add_right_identity
+    ManualNatAddAssociativity => ^gen_id_nat_add_associativity
+    ManualNatMulLeftIdentity => ^gen_id_nat_mul_left_identity
+    ManualNatMulAnnihilator => ^gen_id_nat_mul_annihilator
+    ManualNatMulAssociativity => ^gen_id_nat_mul_associativity
+    ManualLbeConjDagSurface => ^gen_id_lbe_conj_dag_surface
+    ManualLbeDisjDagSurface => ^gen_id_lbe_disj_dag_surface
+    ManualLbeTransformDagSurface => ^gen_id_lbe_transform_dag_surface
+    ManualRefinementNonEmptyListBase => ^gen_id_refinement_nonempty_list_base
+    ManualAnchorAbsent => ^gen_id_anchor_absent
+  }
+}
+
+// F.2-P1: derive identity from a generated coproduct-exhaustiveness variant (one id per omitted arm).
+fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> GeneratorId {
+  match v {
+    TestClaimCompilesClaimVariant => ^gen_id_coproduct_compiles
+    TestClaimDiagnosticClaimVariant => ^gen_id_coproduct_diagnostic
+    TestClaimEqualsClaimVariant => ^gen_id_coproduct_equals
+    TestClaimStructuralEqualsClaimVariant => ^gen_id_coproduct_structural_equals
+    TestClaimRoundTripClaimVariant => ^gen_id_coproduct_roundtrip
+  }
+}
+
+fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
+  match key {
+    GeneratedCoproductExhaustiveness { omitted_variant } =>
+      generator_id_for_coproduct_variant(v: omitted_variant)
+  }
+}
+
+// F.2-P1: single-authority GeneratorId derivation — the row's ClaimAnchorKey IS its identity.
+fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
+  match anchor {
+    ManualClaimAnchor { manual_anchor } => generator_id_for_manual_anchor(key: manual_anchor)
+    GeneratedClaimAnchor { generated_anchor } => generator_id_for_generated_anchor(key: generated_anchor)
+  }
+}
+
+// F.2-P1: build a generator's provenance from its identity. The emitted artifact is a
+// refined GeneratedArtifact keyed by the same GeneratorId — the refined type makes
+// non-generated ArtifactKinds unrepresentable (Branch H §H.5 guardrail, authored in
+// v4.std.artifact). TestClaimArtifact is statically admitted, so the total constructor
+// test_claim_generated_artifact stays Outcome-free; no artifact law is re-declared here.
+fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
+  GeneratorProvenance {
+    generator_id: id,
+    artifact: test_claim_generated_artifact(id: id, file_path: testgen_lens_file_path),
+  }
+}
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -256,14 +362,12 @@ type CorpusTraversalScope
   = RecursiveCorpusWalk
   | SingleDirectoryCorpusWalk
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalOrder
 // 🟢 coproduct dissolution — LB-P4-3212
   = LexicalPathOrder
   | FilesystemNativeOrder
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -272,14 +376,12 @@ type CorpusDuplicatePolicy
   = PreserveDuplicateEntries
   | RejectDuplicatePaths
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusTraversalPolicy {
   scope: CorpusTraversalScope
   order: CorpusTraversalOrder
   duplicates: CorpusDuplicatePolicy
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationRequest {
@@ -290,33 +392,26 @@ type CorpusEnumerationRequest {
   traversal: CorpusTraversalPolicy
 }
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestResult = Outcome<Node>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReadResult<C> = Outcome<C>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensObservation<C> {
@@ -325,10 +420,8 @@ type CorpusLensObservation<C> {
   output: C
 }
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriver<C> = fn(
@@ -338,176 +431,109 @@ type CorpusLensDriver<C> = fn(
   CorpusLensReader<C>
 ) -> CorpusLensDriveResult<C>
 
-
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
-
 
 data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
-
 data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
-
 
 data lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
-
 data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
-data idempotent_operation_tautology_skip: Symbol = idempotent_operation_tautology_skip
 data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
-
-
-data testgen_lens_file: Symbol = testgen_lens_file
-
-
-data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
-
-
-data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_scheduled_slot
-
-
-data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
-
-
-data t19_algebra_law_tautological_sides: Symbol = t19_algebra_law_tautological_sides
-data t19_algebra_law_subject_field: Symbol = t19_algebra_law_subject_field
-data t19_algebra_law_algebra_field: Symbol = t19_algebra_law_algebra_field
-data t19_algebra_law_inhabitant_field: Symbol = t19_algebra_law_inhabitant_field
-data t19_algebra_law_law_field: Symbol = t19_algebra_law_law_field
-data t19_algebra_law_expression_field: Symbol = t19_algebra_law_expression_field
-data algebra_law_anchor_mismatch: Symbol = algebra_law_anchor_mismatch
-
-
-data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
-
-
-data coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = coproduct_exhaustiveness_diagnostic_claim_variant
-
-
-data coproduct_exhaustiveness_compiles_claim_variant: Symbol = coproduct_exhaustiveness_compiles_claim_variant
-
-
-data coproduct_exhaustiveness_equals_claim_variant: Symbol = coproduct_exhaustiveness_equals_claim_variant
-
-
-data coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = coproduct_exhaustiveness_roundtrip_claim_variant
-
-
 data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
-
-
-data coproduct_exhaustiveness_omitted_variant_edge: Symbol = coproduct_exhaustiveness_omitted_variant_edge
-
-
-data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
-
-
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_conj,
     expected_value: stub_empty_conj,
   }
 }
 
-
 fn lbe_frozen_snapshot_disj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_disj,
     expected_value: stub_empty_disj,
   }
 }
 
-
 fn lbe_frozen_snapshot_transform_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_transform,
     expected_value: stub_empty_transform,
   }
 }
 
-
 fn lbe_io_mock_conj_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_conj_dag_surface() }
 }
-
 
 fn lbe_io_mock_disj_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_disj_dag_surface() }
 }
 
-
 fn lbe_io_mock_transform_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_transform_dag_surface() }
 }
 
-
 fn lbe_subject_conj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: ConnectiveKernel { connective: Conj },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn lbe_subject_disj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: ConnectiveKernel { connective: Disj },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: BehaviorValueSubject { behavior: Transform },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
   refine(
     base: xs,
     by: Validation {
-      reason: refinement_preservation_empty_list_reason,
+      reason: ^refinement_preservation_empty_list_reason,
       admits: fn(candidate) { non_empty(xs: candidate) }
     },
     at: at
   )
 }
-
-
-data refinement_preservation_list_empty_node: Symbol = refinement_preservation_list_empty_node
-data refinement_preservation_list_cons_node: Symbol = refinement_preservation_list_cons_node
-data refinement_preservation_list_head_edge: Symbol = refinement_preservation_list_head_edge
-data refinement_preservation_list_tail_edge: Symbol = refinement_preservation_list_tail_edge
-
 fn refinement_preservation_list_node(xs: List<Node>) -> Node {
   fold_list_right(
     xs: xs,
     empty: Node {
-      kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
-      children: []
-    },
+      kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+},
     snoc: fn(tail_node, h) {
       Node {
-        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_cons_node } },
+        kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Named { name: refinement_preservation_list_head_edge }, target: h },
+          Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
           Edge {
-            label: Named { name: refinement_preservation_list_tail_edge },
+            label: Named { name: ^refinement_preservation_list_tail_edge },
             target: tail_node
           }
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     }
   )
 }
-
 
 fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
   let original = [stub_empty_conj]
@@ -523,7 +549,6 @@ fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPre
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
-
 
 fn testgen_emit_refinement_preservation_claim(
   anchor: ManualAnchorKey,
@@ -551,6 +576,16 @@ fn testgen_emit_refinement_preservation_claim(
   }
 }
 
+fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  match bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase) {
+    Accepted { value: generator, diagnostics: d } =>
+      Accepted {
+        value: [generator],
+        diagnostics: d,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
 
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
@@ -569,7 +604,6 @@ fn testgen_emit_idempotent_operation_equals_claim(
   }
 }
 
-
 fn testgen_emit_idempotent_operation_claim(
   label: String,
   subject: IdempotentOperationSubject,
@@ -580,8 +614,8 @@ fn testgen_emit_idempotent_operation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: idempotent_operation_tautology_skip,
-            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            reason: ^idempotent_operation_tautology_skip,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -595,7 +629,6 @@ fn testgen_emit_idempotent_operation_claim(
   }
 }
 
-
 fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
   [
     sample_read_composable,
@@ -603,7 +636,6 @@ fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempoten
     sample_delete_composable,
   ]
 }
-
 
 fn testgen_emit_language_behavior_equivalence_claim(
   anchor: ManualAnchorKey,
@@ -652,7 +684,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
   }
 }
 
-
 fn testgen_emit_algebra_law_claim(
   anchor: ManualAnchorKey,
   label: String,
@@ -664,8 +695,8 @@ fn testgen_emit_algebra_law_claim(
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: t19_algebra_law_tautological_sides,
-          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          reason: ^t19_algebra_law_tautological_sides,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -689,7 +720,6 @@ fn testgen_emit_algebra_law_claim(
   }
 }
 
-
 fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match algebra_law_subject_for_manual_anchor(anchor: anchor) {
     Accepted { value: subject, diagnostics: None } =>
@@ -705,60 +735,59 @@ fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawC
   }
 }
 
-
 fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
   match anchor {
     ManualNatAddLeftIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_left_identity,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_left_identity,
         },
         diagnostics: None,
       }
     ManualNatAddRightIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_right_identity,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_right_identity,
         },
         diagnostics: None,
       }
     ManualNatAddAssociativity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_associativity,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_associativity,
         },
         diagnostics: None,
       }
     ManualNatMulLeftIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_left_identity,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_left_identity,
         },
         diagnostics: None,
       }
     ManualNatMulAnnihilator =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_annihilator,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_annihilator,
         },
         diagnostics: None,
       }
     ManualNatMulAssociativity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_associativity,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_associativity,
         },
         diagnostics: None,
       }
@@ -766,8 +795,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: algebra_law_anchor_mismatch,
-            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -775,118 +804,79 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
   }
 }
 
-
 fn algebra_law_subject_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Named { name: t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Named { name: t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
-    ]
-  }
+      Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+    ],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Named { name: t19_algebra_law_expression_field }, target: expression },
-    ]
-  }
+      Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
-
 // 🟡 gated — feature:v4-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v4.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
-data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
-data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
-data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
-data witness_validity_field_witness: Symbol = witness_validity_field_witness
-data witness_validity_field_oracle_outcome: Symbol = witness_validity_field_oracle_outcome
-data witness_validity_field_algebra: Symbol = witness_validity_field_algebra
-data witness_validity_field_preservation_rule: Symbol = witness_validity_field_preservation_rule
-data witness_validity_field_property: Symbol = witness_validity_field_property
-data witness_validity_field_evidence: Symbol = witness_validity_field_evidence
-data witness_validity_outcome_holds: Symbol = witness_validity_outcome_holds
-data witness_validity_outcome_violates: Symbol = witness_validity_outcome_violates
-data witness_validity_diag_field_reason: Symbol = witness_validity_diag_field_reason
-data witness_validity_diag_field_at: Symbol = witness_validity_diag_field_at
-data witness_validity_diag_field_correction: Symbol = witness_validity_diag_field_correction
-data witness_validity_locus_tag_textual: Symbol = witness_validity_locus_tag_textual
-data witness_validity_locus_tag_node: Symbol = witness_validity_locus_tag_node
-data witness_validity_locus_tag_port: Symbol = witness_validity_locus_tag_port
-data witness_validity_locus_textual_file: Symbol = witness_validity_locus_textual_file
-data witness_validity_locus_textual_extent: Symbol = witness_validity_locus_textual_extent
-data witness_validity_extent_tag_whole_file: Symbol = witness_validity_extent_tag_whole_file
-data witness_validity_extent_tag_byte_range: Symbol = witness_validity_extent_tag_byte_range
-data witness_validity_correction_tag_suggested: Symbol = witness_validity_correction_tag_suggested
-data witness_validity_correction_tag_unavailable: Symbol = witness_validity_correction_tag_unavailable
-data witness_validity_no_correction_tag_user: Symbol = witness_validity_no_correction_tag_user
-data witness_validity_no_correction_tag_ambiguous: Symbol = witness_validity_no_correction_tag_ambiguous
-data witness_validity_no_correction_tag_external: Symbol = witness_validity_no_correction_tag_external
-data witness_validity_list_tag_empty: Symbol = witness_validity_list_tag_empty
-data witness_validity_list_cons_head: Symbol = witness_validity_list_cons_head
-data witness_validity_list_cons_tail: Symbol = witness_validity_list_cons_tail
-data witness_validity_diags_field_head: Symbol = witness_validity_diags_field_head
-data witness_validity_diags_field_tail: Symbol = witness_validity_diags_field_tail
-data witness_validity_diagnostics_tag_none: Symbol = witness_validity_diagnostics_tag_none
-data witness_validity_diagnostics_tag_some: Symbol = witness_validity_diagnostics_tag_some
-data witness_validity_outcome_accepted_value: Symbol = witness_validity_outcome_accepted_value
-data witness_validity_outcome_accepted_diagnostics: Symbol = witness_validity_outcome_accepted_diagnostics
-data witness_validity_byte_range_unencodable: Symbol = witness_validity_byte_range_unencodable
-
-
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: witness_validity_field_algebra }, target: p.algebra },
+      Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
       Edge {
-        label: Named { name: witness_validity_field_preservation_rule },
+        label: Named { name: ^witness_validity_field_preservation_rule },
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: witness_validity_field_property },
+        label: Named { name: ^witness_validity_field_property },
         target: witness_validity_symbol_atom_node(s: w.property)
       },
-      Edge { label: Named { name: witness_validity_field_evidence }, target: w.evidence }
-    ]
-  }
+      Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
+    ],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
   Diagnostic {
-    reason: witness_validity_byte_range_unencodable,
+    reason: ^witness_validity_byte_range_unencodable,
     at: node_locus(node: at_node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn witness_validity_subject_node(
   source_facts: Node,
@@ -908,40 +898,39 @@ fn witness_validity_subject_node(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Named { name: witness_validity_field_candidate }, target: candidate },
+            Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
+            Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
             Edge {
-              label: Named { name: witness_validity_field_predicate },
+              label: Named { name: ^witness_validity_field_predicate },
               target: witness_validity_predicate_node(p: predicate)
             },
             Edge {
-              label: Named { name: witness_validity_field_witness },
+              label: Named { name: ^witness_validity_field_witness },
               target: witness_validity_witness_node(w: witness)
             },
             Edge {
-              label: Named { name: witness_validity_field_oracle_outcome },
+              label: Named { name: ^witness_validity_field_oracle_outcome },
               target: oracle_outcome
             }
-          ]
-        },
+          ],
+          occurrence_id: SyntheticOccurrence
+},
         diagnostics: None
       }
     }
   )
 }
 
-
 fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
   match r {
     UserInputBoundary =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_user)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_user)
     AmbiguousIntent =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_ambiguous)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
     ExternalContractUnknown =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_external)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
   }
 }
-
 
 fn witness_validity_correction_node(c: Correction) -> Node {
   match c {
@@ -949,39 +938,39 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: witness_validity_correction_tag_suggested }, target: n }
-        ]
-      }
+          Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     Unavailable { reason: r } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: witness_validity_correction_tag_unavailable },
+            label: Named { name: ^witness_validity_correction_tag_unavailable },
             target: witness_validity_no_correction_reason_node(r: r)
           }
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
   }
 }
-
 
 fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
   match e {
     WholeFile =>
       Accepted {
-        value: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_whole_file),
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_whole_file),
         diagnostics: None
       }
     ByteRange { start: _, end: _ } =>
       outcome_rejected(
         d: witness_validity_byte_range_unencodable_diagnostic(
-          at_node: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_byte_range)
+          at_node: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_byte_range)
         )
       )
   }
 }
-
 
 fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
   match l {
@@ -992,23 +981,25 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_locus_tag_textual },
+                label: Named { name: ^witness_validity_locus_tag_textual },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: witness_validity_locus_textual_file },
+                      label: Named { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
                     Edge {
-                      label: Named { name: witness_validity_locus_textual_extent },
+                      label: Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
-                  ]
-                }
+                  ],
+                  occurrence_id: SyntheticOccurrence
+}
               }
-            ]
-          },
+            ],
+            occurrence_id: SyntheticOccurrence
+},
           diagnostics: None
         }
       })
@@ -1017,9 +1008,10 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: witness_validity_locus_tag_node }, target: a.at }
-          ]
-        },
+            Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
+          ],
+          occurrence_id: SyntheticOccurrence
+},
         diagnostics: None
       }
     PortLocus { anchor: a } =>
@@ -1028,16 +1020,16 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: witness_validity_locus_tag_port },
+              label: Named { name: ^witness_validity_locus_tag_port },
               target: witness_validity_symbol_atom_node(s: a.at)
             }
-          ]
-        },
+          ],
+          occurrence_id: SyntheticOccurrence
+},
         diagnostics: None
       }
   }
 }
-
 
 fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
   bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
@@ -1046,31 +1038,31 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: witness_validity_diag_field_reason },
+            label: Named { name: ^witness_validity_diag_field_reason },
             target: witness_validity_symbol_atom_node(s: d.reason)
           },
           Edge {
-            label: Named { name: witness_validity_diag_field_at },
+            label: Named { name: ^witness_validity_diag_field_at },
             target: at_node
           },
           Edge {
-            label: Named { name: witness_validity_diag_field_correction },
+            label: Named { name: ^witness_validity_diag_field_correction },
             target: witness_validity_correction_node(c: d.correction)
           }
-        ]
-      },
+        ],
+        occurrence_id: SyntheticOccurrence
+},
       diagnostics: None
     }
   })
 }
-
 
 // Consumes canonical fold_list_right (order-preserving structural output); no parallel walker.
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
   fold_list_right(
     xs: xs,
     empty: Accepted {
-      value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
+      value: witness_validity_symbol_atom_node(s: ^witness_validity_list_tag_empty),
       diagnostics: None
     },
     snoc: fn(acc, h) {
@@ -1080,10 +1072,11 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Named { name: witness_validity_list_cons_head }, target: hn },
-                Edge { label: Named { name: witness_validity_list_cons_tail }, target: prev_node }
-              ]
-            },
+                Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
+                Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
+              ],
+              occurrence_id: SyntheticOccurrence
+},
             diagnostics: None
           }
         })
@@ -1091,7 +1084,6 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
     }
   )
 }
-
 
 fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcome<Node> {
   bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
@@ -1101,27 +1093,27 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: witness_validity_diags_field_head },
+              label: Named { name: ^witness_validity_diags_field_head },
               target: hn
             },
             Edge {
-              label: Named { name: witness_validity_diags_field_tail },
+              label: Named { name: ^witness_validity_diags_field_tail },
               target: tn
             }
-          ]
-        },
+          ],
+          occurrence_id: SyntheticOccurrence
+},
         diagnostics: None
       }
     })
   })
 }
 
-
 fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
   match ds {
     None =>
       Accepted {
-        value: witness_validity_symbol_atom_node(s: witness_validity_diagnostics_tag_none),
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_diagnostics_tag_none),
         diagnostics: None
       }
     Some { diagnostics: nd } =>
@@ -1131,17 +1123,17 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_diagnostics_tag_some },
+                label: Named { name: ^witness_validity_diagnostics_tag_some },
                 target: ndn
               }
-            ]
-          },
+            ],
+            occurrence_id: SyntheticOccurrence
+},
           diagnostics: None
         }
       })
   }
 }
-
 
 fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outcome<Node> {
   match o {
@@ -1152,23 +1144,25 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_outcome_holds },
+                label: Named { name: ^witness_validity_outcome_holds },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: witness_validity_outcome_accepted_value },
+                      label: Named { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
                     Edge {
-                      label: Named { name: witness_validity_outcome_accepted_diagnostics },
+                      label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
-                  ]
-                }
+                  ],
+                  occurrence_id: SyntheticOccurrence
+}
               }
-            ]
-          },
+            ],
+            occurrence_id: SyntheticOccurrence
+},
           diagnostics: None
         }
       })
@@ -1179,17 +1173,17 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_outcome_violates },
+                label: Named { name: ^witness_validity_outcome_violates },
                 target: dn
               }
-            ]
-          },
+            ],
+            occurrence_id: SyntheticOccurrence
+},
           diagnostics: None
         }
       })
   }
 }
-
 
 // T-19 witness-validity emit helper: oracle = v4.std.find_witness::verify_witness; emits
 // RoundTripClaim whose input bundles subject + oracle outcome. Rejected only when the
@@ -1222,7 +1216,6 @@ fn testgen_emit_witness_validity_claim(
   )
 }
 
-
 fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
@@ -1233,6 +1226,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_conj_dag_surface(),
         mock: lbe_io_mock_conj_dag_surface(),
       },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeConjDagSurface)),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
@@ -1242,6 +1237,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_disj_dag_surface(),
         mock: lbe_io_mock_disj_dag_surface(),
       },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeDisjDagSurface)),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
@@ -1251,25 +1248,24 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
       },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeTransformDagSurface)),
+      profile_metadata: default_generator_profile(),
     },
   ]
 }
 
-
 fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: testgen_non_algebra_law_scheduled_slot,
-    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    reason: ^testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 type NatAlgebraLawScheduleRow {
   obligation: NatAlgebraLawObligation
   anchor: ManualAnchorKey
 }
-
 
 // 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
@@ -1279,7 +1275,6 @@ fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> Algebr
     law: o.law,
   }
 }
-
 
 fn append_nat_obligation_if_law_matches(
   found: Outcome<NatAlgebraLawObligation>,
@@ -1297,15 +1292,14 @@ fn append_nat_obligation_if_law_matches(
   }
 }
 
-
 fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
   fold_list(
     xs: nat_declared_algebra_law_obligations(),
     empty: Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: testgen_non_algebra_law_scheduled_slot,
-          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          reason: ^testgen_non_algebra_law_scheduled_slot,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -1320,21 +1314,20 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-
 // 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
 // dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
-  if law == law_nat_add_left_identity {
+  if law == ^law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
-  } else if law == law_nat_add_right_identity {
+  } else if law == ^law_nat_add_right_identity {
     Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
-  } else if law == law_nat_add_associativity {
+  } else if law == ^law_nat_add_associativity {
     Accepted { value: ManualNatAddAssociativity, diagnostics: None }
-  } else if law == law_nat_mul_left_identity {
+  } else if law == ^law_nat_mul_left_identity {
     Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
-  } else if law == law_nat_mul_annihilator {
+  } else if law == ^law_nat_mul_annihilator {
     Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
-  } else if law == law_nat_mul_associativity {
+  } else if law == ^law_nat_mul_associativity {
     Accepted { value: ManualNatMulAssociativity, diagnostics: None }
   } else {
     Rejected {
@@ -1345,13 +1338,11 @@ fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   }
 }
 
-
 fn testgen_manual_anchor_from_nat_obligation(
   o: NatAlgebraLawObligation
 ) -> Outcome<ManualAnchorKey> {
   testgen_manual_anchor_for_law(law: o.law)
 }
-
 
 fn nat_algebra_law_schedule_row_from_obligation(
   obligation: NatAlgebraLawObligation
@@ -1366,7 +1357,6 @@ fn nat_algebra_law_schedule_row_from_obligation(
     }
   )
 }
-
 
 // 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
 fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
@@ -1405,7 +1395,6 @@ fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
   }
 }
 
-
 fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   found: Outcome<NatAlgebraLawScheduleRow>,
   obligation: NatAlgebraLawObligation,
@@ -1427,7 +1416,6 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   }
 }
 
-
 fn nat_algebra_law_schedule_row_for_manual_anchor(
   anchor: ManualAnchorKey
 ) -> Outcome<NatAlgebraLawScheduleRow> {
@@ -1448,7 +1436,6 @@ fn nat_algebra_law_schedule_row_for_manual_anchor(
   )
 }
 
-
 fn testgen_algebra_law_generator_from_nat_obligation(
   obligation: NatAlgebraLawObligation
 ) -> Outcome<Generator<TestgenConcept>> {
@@ -1463,13 +1450,14 @@ fn testgen_algebra_law_generator_from_nat_obligation(
           slot: AlgebraLaw {
             subject: algebra_law_subject_from_nat_obligation(o: obligation),
           },
+          provenance: generator_provenance(id: generator_id_for_manual_anchor(key: anchor)),
+          profile_metadata: default_generator_profile(),
         },
         diagnostics: None,
       }
     }
   )
 }
-
 
 fn append_algebra_law_generator_from_nat_obligation(
   acc: Outcome<List<Generator<TestgenConcept>>>,
@@ -1491,7 +1479,6 @@ fn append_algebra_law_generator_from_nat_obligation(
   )
 }
 
-
 fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
   fold_list_right(
     xs: nat_declared_algebra_law_obligations(),
@@ -1505,7 +1492,6 @@ fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenC
   )
 }
 
-
 fn nat_algebra_law_obligation_for_manual_anchor(
   anchor: ManualAnchorKey
 ) -> Outcome<NatAlgebraLawObligation> {
@@ -1516,7 +1502,6 @@ fn nat_algebra_law_obligation_for_manual_anchor(
     }
   )
 }
-
 
 fn testgen_algebra_law_concept_for_manual_nat_anchor(
   anchor: ManualAnchorKey
@@ -1533,7 +1518,6 @@ fn testgen_algebra_law_concept_for_manual_nat_anchor(
     }
   )
 }
-
 
 fn testgen_algebra_law_subject_from_scheduled_generator(
   generator: Generator<TestgenConcept>
@@ -1580,7 +1564,6 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
   }
 }
 
-
 fn append_algebra_law_subject_from_scheduled_generator(
   acc: List<AlgebraLawSubject>,
   generator: Generator<TestgenConcept>
@@ -1595,7 +1578,6 @@ fn append_algebra_law_subject_from_scheduled_generator(
     }
   )
 }
-
 
 fn testgen_algebra_law_subjects_from_scheduled_generators(
   generators: List<Generator<TestgenConcept>>
@@ -1617,7 +1599,6 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
   )
 }
 
-
 fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
   bind_outcome(
     o: testgen_scheduled_algebra_law_generators(),
@@ -1626,7 +1607,6 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
     }
   )
 }
-
 
 fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
   GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
@@ -1644,62 +1624,48 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey 
   GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
 }
 
-
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace this hand-enumerated TestClaimCoproductVariant → Symbol projection with canonical arm-key → symbol mapping once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled arm-identity-to-symbol mapping outside the reflection primitive.
-fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Symbol {
-  match variant {
-    TestClaimCompilesClaimVariant => coproduct_exhaustiveness_compiles_claim_variant
-    TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_diagnostic_claim_variant
-    TestClaimEqualsClaimVariant => coproduct_exhaustiveness_equals_claim_variant
-    TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_roundtrip_claim_variant
-  }
-}
-
-
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
   match anchor {
     GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
   }
 }
 
-
 fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: test_claim_coproduct_variant_symbol(variant: variant) }
+      connective: Atom { identity: discriminant(v: variant) }
     },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: coproduct_exhaustiveness_testclaim_variant }
+      connective: Atom { identity: ^coproduct_exhaustiveness_testclaim_variant }
     },
     children: [
       Edge {
-        label: Named { name: coproduct_exhaustiveness_omitted_variant_edge },
+        label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
 }
-
+}
 
 fn coproduct_exhaustiveness_diagnostic(
   input: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: coproduct_exhaustiveness_missing_variant,
+    reason: ^coproduct_exhaustiveness_missing_variant,
     at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 fn testgen_emit_coproduct_exhaustiveness_claim(
   anchor: GeneratedAnchorKey
@@ -1719,7 +1685,6 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   }
 }
 
-
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
@@ -1729,6 +1694,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimCompilesClaimVariant)),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1737,6 +1704,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimDiagnosticClaimVariant)),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1745,6 +1714,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimEqualsClaimVariant)),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1753,15 +1724,164 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimRoundTripClaimVariant)),
+      profile_metadata: default_generator_profile(),
     },
   ]
 }
 
+// F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
+// own canonical anchor (single-authority — no row carries a foreign/colliding id), and it
+// must carry profile metadata. Checking against the anchor projection is the meaningful
+// property; the emitted artifact's kind/id are carried structurally by the refined
+// GeneratedArtifact + the total constructor, so they are not re-inspected here.
+fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
+  g.provenance.generator_id == generator_id_for_claim_anchor(anchor: g.anchor)
+    && g.profile_metadata.profile_ref == ^testgen_default_profile_ref
+}
+
+fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Bool {
+  fold_list(
+    xs: gens,
+    empty: true,
+    cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
+  )
+}
+
+// Fail-closed: a scheduler that cannot produce its generators fails the witness rather
+// than vacuously passing — the claim is that ALL scheduled generators carry provenance.
+fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>>>) -> Bool {
+  match o {
+    Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
+    Rejected { diagnostics: d } => false
+  }
+}
+
+// F.2-P1 close criterion: every scheduled generator carries consistent provenance +
+// profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
+// (LBE + coproduct-exhaustiveness) and the two Outcome-returning schedulers
+// (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
+fn scheduled_generators_carry_provenance() -> Bool {
+  all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
+}
+
+// F.2-P2 / F.2.6 — static schedulers (always List) plus Outcome schedulers combined
+// fail-closed: any Rejected scheduler rejects the whole roster (P3 — no silent truncation).
+fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
+  list_append(
+    left: testgen_scheduled_language_behavior_generators(),
+    right: testgen_scheduled_coproduct_exhaustiveness_generators()
+  )
+}
+
+fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConcept>>> {
+  let base = testgen_scheduled_generators_static_base()
+  bind_outcome(
+    o: testgen_scheduled_refinement_preservation_generators(),
+    f: fn(refinement_gens) {
+      bind_outcome(
+        o: testgen_scheduled_algebra_law_generators(),
+        f: fn(algebra_gens) {
+          outcome_accepted(
+            value: list_append(
+              left: base,
+              right: list_append(left: refinement_gens, right: algebra_gens)
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn testgen_scheduled_generators_roster_holds() -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: T-22 `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
+type TestgenRunReceipt {
+  profile_ref: Symbol
+  generators: List<Generator<TestgenConcept>>
+}
+
+fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
+  g.profile_metadata.profile_ref == profile_ref
+}
+
+fn testgen_scheduled_generators_matching_profile(
+  gens: List<Generator<TestgenConcept>>,
+  profile_ref: Symbol
+) -> List<Generator<TestgenConcept>> {
+  filter(
+    xs: gens,
+    predicate: fn(g) {
+      generator_matches_profile(g: g, profile_ref: profile_ref)
+    }
+  )
+}
+
+fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
+  bind_outcome(
+    o: testgen_scheduled_generators_outcome(),
+    f: fn(gens) {
+      let matched = testgen_scheduled_generators_matching_profile(gens: gens, profile_ref: profile_ref)
+      if length(xs: matched) == 0 && length(xs: gens) > 0 {
+        outcome_rejected(d: testgen_profile_roster_mismatch_diagnostic())
+      } else {
+        outcome_accepted(
+          value: TestgenRunReceipt {
+            profile_ref: profile_ref,
+            generators: matched
+          }
+        )
+      }
+    }
+  )
+}
+
+fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConcept>) -> Bool {
+  left.provenance.generator_id == right.provenance.generator_id
+}
+
+// Canonical roster equality for F.2-P2 receipts: FreeMonoid/List order is a carried fact
+// (facts-flow-forward). Authority: v4.std.algebra.zip_eq + generator_id_eq per position.
+fn testgen_generators_roster_equal_by_id(
+  left: List<Generator<TestgenConcept>>,
+  right: List<Generator<TestgenConcept>>
+) -> Bool {
+  zip_eq(
+    a: left,
+    b: right,
+    eq: fn(l, r) {
+      generator_id_eq(left: l, right: r)
+    }
+  )
+}
+
+fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: roster, diagnostics: _ } =>
+      testgen_generators_roster_equal_by_id(
+        left: receipt.generators,
+        right: testgen_scheduled_generators_matching_profile(
+          gens: roster,
+          profile_ref: receipt.profile_ref
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: manual_anchor_absent_bootstrap,
-    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    reason: ^manual_anchor_absent_bootstrap,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -1817,7 +1937,6 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
       }
   }
 }
-
 
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
   match test_claim_anchor(c: claim) {
@@ -1933,7 +2052,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
   }
 }
 
-
 fn bootstrap_claim_generator_for_manual_anchor(
   key: ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
@@ -1949,7 +2067,9 @@ fn bootstrap_claim_generator_for_manual_anchor(
               kind: test_claim_coproduct_variant(c: claim),
               classification: test_claim_classification(c: claim),
               anchor: test_claim_anchor(c: claim),
-              slot: slot
+              slot: slot,
+              provenance: generator_provenance(id: generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))),
+              profile_metadata: default_generator_profile(),
             },
             diagnostics: diagnostics_merge(outer: d0, inner: d1)
           }

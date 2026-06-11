@@ -20,11 +20,42 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
-# Required on every non-draft PR: fmt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
+  # Opt every JavaScript action (checkout, upload-artifact, cache, setup-rust-toolchain) onto
+  # Node.js 24 ahead of GitHub forcing it 2026-06-16 and removing Node 20 from the runner
+  # 2026-09-16. Workflow-level so it covers ALL jobs/actions uniformly without chasing each
+  # action's individually-Node24-compatible major version (which can change behavior). Quoted so
+  # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
+  # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Required on every PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
+  # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
+  # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
+  # gunbc is PUBLIC on the private self-hosted fleet, so
+  # fork-PR runs execute attacker-controlled code on srv1/srv2. The operator runner de-priv (jobs run
+  # as unprivileged `ghrunner`: non-root, not in docker/sudo/lxd/wheel/root, no passwordless sudo, no
+  # read on the App private key or docker.sock) lives in the fleet host config OUTSIDE this repo -- a
+  # silent host-side regression would re-expose the fleet with no in-repo diff. This job adversarially
+  # probes its own runtime privilege and fails closed the moment the runner is re-privileged. It runs
+  # UNCONDITIONALLY (no draft gate, no affected mask): the fork-PR exposure exists wherever a runner
+  # executes. It does NOT check out the repo or build -- no fork code runs in the guard itself. The
+  # operator branch-protection references the job id `infra_isolation`. Check set live-verified against
+  # the de-priv by calm-gull-119 (CI floor coordination, 2026-06-01).
+  infra_isolation:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Assert runner is de-privileged (adversarial)
+      run: |
+        fail(){ echo "::error::INFRA ISOLATION REGRESSION: $1"; exit 1; }
+        [ "$(id -u)" -ne 0 ] || fail "running as root"
+        for g in docker sudo lxd wheel root; do id -nG | tr ' ' '\n' | grep -qx "$g" && fail "in privileged group $g"; done
+        cat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail "can read the App private key"
+        sudo -n true 2>/dev/null && fail "has passwordless sudo"
+        { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
+        echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
   fmt:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
@@ -32,10 +63,40 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 1
     - name: Setup Rust
@@ -44,14 +105,61 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set host transport — Wave 3 shadow only (Class C). continue-on-error: not a §11.7.1 gate.
+  # Doc-authority reference gate -- model authority: docs/thesis/doc-authority.md.
+  # Every Markdown reference in a TOUCHED doc must resolve (scripts/check_doc_refs.py),
+  # diff-scoped via --changed origin/main: touch-driven, no repo-wide sweep, no ratchet
+  # baseline -- you fix a doc's references when you touch it. This is the construction-tier
+  # detection that keeps the doc tree from silently re-accreting the dangling references the
+  # consolidation cleared (doc-authority.md itself had drifted to cite a nonexistent ROADMAP
+  # structure). Pure stdlib Python; no build, no toolchain. Rolled into the `ci` aggregator.
+  doc_refs:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Doc references resolve (touched docs)
+      run: |
+        git fetch --no-tags origin main
+        python3 scripts/check_doc_refs.py --changed origin/main
+    - name: Doc-chain diagram is current (regenerated == embedded)
+      run: python3 scripts/check_doc_refs.py --check-graph
+  # Cross-layer import gate — INVARIANTS P2 dependency direction (std/ and extdeps/
+  # must not import v3.compiler / v4.compiler). Clean-tree scan plus perturb-check plants
+  # std->compiler and extdeps->compiler imports in a temp tree and requires detection.
+  layering_imports:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: No wrong-direction std/ or extdeps/ compiler imports
+      run: python3 scripts/check_v4_layering_imports.py
+    - name: Layering import gate detects planted violations
+      run: python3 scripts/check_v4_layering_imports.py --perturb-check
+  # Affected-set component host transport -- live fail-closed receipt.
+  # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
-    if: github.event.pull_request.draft != true
-    continue-on-error: true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -67,10 +175,40 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Setup Rust
@@ -78,6 +216,14 @@ jobs:
       with:
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Fetch main for diff base
@@ -85,10 +231,30 @@ jobs:
       run: git fetch origin main:refs/remotes/origin/main
     - name: Detect affected components
       id: detect
-      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
-  # §11.7.1 Class A safety floor — single job, one v2 build, two compiles (M1 rust + bootstrap dag).
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
+      continue-on-error: true
+      run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
+    # Wave-1 §11.7 kill-criterion instrumentation (work-item adhoc-0ae3efe5-52b). Measurement only:
+    # emits a per-PR JSON receipt (affected-set partition + bootstrap_required prediction) that the
+    # operator aggregates to decide whether to affected-set-gate ci_floor. Does NOT gate any job.
+    # See docs/planning/affected-set-ci-kill-criterion-instrumentation-2026-06-02.md.
+    # estimated-full-run-minutes is the PROVISIONAL ci_floor p50 (~13-15m, self-hosted arm64, runs
+    # this session; CI Manager 2026-06-02) — revise once we have a 20+ PR sample. Per-run wall-clock /
+    # actual_run_minutes await a follow-up aggregator job that reads GHA job timings via the API, so
+    # saved_minutes is not yet populated from real run time (actual_run_minutes defaults to 0).
+    - name: Emit affected-set CI kill-criterion receipt
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt.json" --estimated-full-run-minutes 15
+    - name: Upload affected-set CI receipt
+      uses: actions/upload-artifact@v6
+      with:
+        name: affected-set-ci-receipt
+        path: ${{ runner.temp }}/affected-set-ci-receipt.json
+        if-no-files-found: warn
+  # §11.7.1 Class A safety floor -- stage0 freshness receipt. DAG parity runs CONCURRENTLY in the
+  # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
+  # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -96,10 +262,41 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Setup Rust
@@ -108,21 +305,29 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
-    # right-way fix: src/v4/workflow/ci.dag cache-projection note + dsl/std/cache_interface.dag.
+    # right-way fix: the modeled cache_interface projection (dsl/std/cache_interface.dag).
     # The old key mixed in hashFiles('src/v3/compiler/src/**', …), which changes on nearly every
-    # commit — so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
+    # commit -- so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
     # flooding the repo's 10 GB budget and LRU-evicting the warm caches (including the v2
     # `gunbc-bin` build) before the next run could restore them. Cargo's own fingerprinting
     # already invalidates stale crates on top of a restored target/, so the v3-src component
-    # bought churn, not correctness. De-churned to Cargo.lock + toolchain → one cache per
+    # bought churn, not correctness. De-churned to Cargo.lock + toolchain -> one cache per
     # dependency set, restored via the broad restore-key, eviction pressure cut ~100×.
-    # Does NOT speed up the M1 emit-probe / bootstrap steps — those need content-addressed
-    # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
+    # Does NOT speed up the M1 emit-probe / bootstrap steps -- those need content-addressed
+    # sccache via the modeled cache_interface projection (see dsl/std/cache_interface.dag). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ${{ runner.temp }}/cargo/registry/index/
@@ -134,56 +339,423 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 floor)
       id: v4-v2-bin
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        # Broad restore-key fallback (independent of sccache): when the exact key misses (Cargo.lock /
+        # toolchain / stage0 churn), restore the most-recent prior gunbc binary instead of nothing. The
+        # build step below is gated on exact `cache-hit == 'true'`, so a partial restore still triggers a
+        # rebuild -- but on top of the warm `target/` restored by the Cargo cache, that rebuild is
+        # incremental (~3-6 min saved) rather than cold. Safe: a stale binary is overwritten by the rebuild.
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    # sccache honored via the probe-decided RUSTC_WRAPPER (set in the toolchain-isolation step
+    # above): no per-step `RUSTC_WRAPPER=` override. The probe already degrades to a cold build on
+    # any sccache unreachability, so this stays fail-closed (RR-L: observationally invisible +
+    # fail-closed).
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: cargo build -p v2-compiler --release
-    - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      timeout-minutes: 20
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: v2 stage0 freshness receipt
+      timeout-minutes: 30
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
+  # §11.7.1 Class A safety floor (parallel lane) -- v2 DAG emit parity receipt. Split out of
+  # `ci_floor` so parity (~159s) runs CONCURRENTLY with stage0 freshness (~120s). The parity step
+  # formerly reused release v2-compiler artifacts built in-job by stage0; this job instead relies on
+  # the shared Cargo cache (target/ in the cache path) + gunbc-bin cache to restore release artifacts
+  # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
+  # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
+  ci_floor_parity:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
       env:
-        V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
-        # Per-invocation --jobs ceiling, projected from v4.workflow.ci m1_probe_cargo_check_jobs_ceiling.
-        # Parallelism is jobserver-coupled (inherited MAKEFLAGS on GHA runners / ctrl-build in session
-        # containers): the host token pool pares actual concurrency below this ceiling — fill when idle,
-        # pare under load. No static fallback: the probe fails closed if neither coupling is present.
-        # See src/v4/workflow/ci.dag note.
-        V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
-        V4_M1_RUST_EMIT_PROBE_STRICT: "0"
-      run: bash scripts/v4-m1-rust-emit-probe.sh
-    - name: v2 -> v4 bootstrap compile (fail-closed full)
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (ci floor)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc binary (v4 floor)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 floor)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    # `--release` is load-bearing here, not cosmetic: the build step above (or the restored target/
+    # from the Cargo cache) must provide release-profile v2-compiler artifacts. A debug `cargo test`
+    # lives in a different profile dir (target/debug vs target/release) and shares ZERO artifacts,
+    # so it re-compiles the whole v2-compiler closure from scratch (~64s/run, measured run 27021002250
+    # step 11: 69s total, of which the test itself is 0.01s). Running the parity test in release
+    # makes the "shared closure" real -- it reuses release v2-compiler from cache/build and only
+    # compiles the small v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit
+    # parity, no debug_assert-dependent behavior), so this is observationally invisible +
+    # fail-closed (RR-L).
+    - name: v2 DAG emit parity receipt (shared closure)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
+    # get-off-v3 census ratchet: every direct compile_to_dag( call site must stay at or below the
+    # ceiling defined in get_off_v3_compile_to_dag_census_test.rs (PR #4652). Running under
+    # ci_floor_parity for infra reuse (shared Cargo cache, sccache). CI-enforcement authority:
+    # this step (the only CI wire for v3-compiler tests — CLAUDE.md documents all other
+    # v3-compiler tests as dormant in CI). sccache warms the v3-compiler debug compile; the test
+    # itself is fast file I/O (source tree walk + text scan, no runtime compilation).
+    - name: get-off-v3 compile_to_dag caller ceiling (census ratchet, #4652)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet
+  # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
+  # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
+  # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
+  # them only added wall-clock. This job needs only the `gunbc` binary (restored from the shared
+  # gunbc-bin cache, or cold-built on miss); it does NOT run stage0/parity. Required on every
+  # PR -- branch protection references `ci_floor_emit` by name (unchanged).
+  # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
+  ci_floor_emit:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (ci floor)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc binary (v4 floor)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 floor)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
-        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
-        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
-        V4_BOOTSTRAP_TIMEOUT_SECS: '900'
-      run: bash scripts/v4-bootstrap-viability.sh
-    - name: M1 v4 workflow CI model/YAML binding smoke
+        V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
+        V4_M1_RUST_EMIT_PROBE_STRICT: "0"
+      run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
+  # Real lens-analysis CI gate (parallel lane). Each wired row is a Bool witness run through
+  # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so the row proves
+  # red-under-mutation before CI treats the green as coverage. Split out of `v4_lens_ci` so the
+  # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
+  # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
+  v4_lens_gate:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 35
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
-        set -euo pipefail
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
-    - name: no-new-shell ratchet (required CI path)
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v4 lens CI)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
+        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        path: |
+          target/release/gunbc
+          target/release/discover_owned_data
+        key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens gate)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure discover_owned_data binary (v4 lens gate C9)
       run: |
-        bash scripts/check-ci-no-new-shell.sh --self-test
-        bash scripts/check-ci-no-new-shell.sh
+        if [[ ! -x target/release/discover_owned_data ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
+        fi
+    - name: v4 lens analysis must-pass discriminating witnesses
+      run: bash scripts/v4-lens-ci-gate.sh --perturb-check
+    - name: v4 glob-discovery substrate equivalence (C9)
+      run: bash scripts/v4-substrate-equivalence-gate.sh --perturb-check
+  # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
+  # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
+  v4_lens_ci:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v4 lens CI)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + claim_batch binaries (v4 lens CI)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        # This job runs the node-frontier gate, which needs BOTH gunbc and the
+        # claim_batch batch runner. Distinct key namespace ('gunbc-lens-bin-')
+        # from the gunbc-only jobs (ci_floor / ci_floor_emit / v4_lens_gate,
+        # key 'gunbc-bin-') so we never restore a gunbc-only cache and skip the
+        # build with claim_batch absent — both binaries are produced by the same
+        # `cargo build -p v2-compiler --release` and cached together.
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/claim_executor
+        key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens CI)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: affected-set node-frontier selection must-pass discriminating witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
+    # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
+    # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
+    # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
+    # host CONSUMES the .dag (drop a dependency -> rebatch) and that the
+    # executor's ordering gates execution (false gating claim -> batch 2 skipped).
+    - name: v4 executor batch-runner dogfood (must-pass, discriminating)
+      run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   ci:
-    if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [ci_floor]
+    if: always()
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: Validate prerequisites (fail-closed under skipped/failed deps)
       run: |
         set -euo pipefail
+        if [[ "${{ needs.affected.result }}" != "success" ]]; then
+          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.ci_floor.result }}" != "success" ]]; then
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
+        if [[ "${{ needs.ci_floor_parity.result }}" != "success" ]]; then
+          echo "::error::ci_floor_parity job did not succeed (result=${{ needs.ci_floor_parity.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.ci_floor_emit.result }}" != "success" ]]; then
+          echo "::error::ci_floor_emit job did not succeed (result=${{ needs.ci_floor_emit.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_lens_gate.result }}" != "success" ]]; then
+          echo "::error::v4_lens_gate job did not succeed (result=${{ needs.v4_lens_gate.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_lens_ci.result }}" != "success" ]]; then
+          echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
+          echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.doc_refs.result }}" != "success" ]]; then
+          echo "::error::doc_refs gate did not succeed (result=${{ needs.doc_refs.result }}); a touched doc has an unresolved reference -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.layering_imports.result }}" != "success" ]]; then
+          echo "::error::layering_imports gate did not succeed (result=${{ needs.layering_imports.result }}); std/ or extdeps/ has a wrong-direction compiler import -- ci aggregator fails closed."
+          exit 1
+        fi
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"

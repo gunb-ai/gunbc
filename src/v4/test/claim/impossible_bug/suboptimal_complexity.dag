@@ -32,7 +32,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -47,18 +47,10 @@ import v4.std.verification {
   impossible_bug_reason_suboptimal_inhabitance,
   manual_claim_anchor
 }
-
-
-data complexity_contract_symbol: Symbol = complexity_contract_symbol
-data complexity_body_linear_symbol: Symbol = complexity_body_linear_symbol
-data complexity_body_quadratic_symbol: Symbol = complexity_body_quadratic_symbol
-data complexity_body_contradictory_inhabitant_symbol: Symbol = complexity_body_contradictory_inhabitant_symbol
-data complexity_bound_field: Symbol = complexity_bound_field
-data complexity_body_field: Symbol = complexity_body_field
-
-
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -66,10 +58,11 @@ fn complexity_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: complexity_bound_field }, target: atom_node(s: complexity_contract_symbol) },
-      Edge { label: Named { name: complexity_body_field }, target: body },
-    ]
-  }
+      Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
+      Edge { label: Named { name: ^complexity_body_field }, target: body },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -84,10 +77,10 @@ fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) 
 }
 
 
-data within_bound_input: Node = complexity_contract(body: atom_node(s: complexity_body_linear_symbol))
+data within_bound_input: Node = complexity_contract(body: atom_node(s: ^complexity_body_linear_symbol))
 
 
-data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
+data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
 
 
 data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
@@ -112,7 +105,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticCla
 }
 
 
-data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: complexity_body_contradictory_inhabitant_symbol))
+data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
 
 
 data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {

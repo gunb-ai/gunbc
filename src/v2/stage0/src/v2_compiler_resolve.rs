@@ -3,15 +3,17 @@
 
 pub use crate::std_types::kernel_type_set;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CompilerDiagnostic::{
     CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
 };
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_std_core::{
     authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
-    module_imports, module_items, module_node, no_span, CompilerDiagnostic, Connective, ErrorNode,
-    NewlineIndex, Node,
+    module_imports, module_items, module_node, no_span,
 };
+pub use crate::v2_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

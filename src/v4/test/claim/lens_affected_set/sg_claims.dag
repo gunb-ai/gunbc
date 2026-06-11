@@ -1,0 +1,82 @@
+// src/v4/test/claim/lens_affected_set/sg_claims.dag
+// Scope: Wave-A W2 — foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
+// Excluded (A-blocked-v2-crash, not in roster): dimension_seed, excluded_propagation, leaf_suite.
+
+module v4.test.claim.lens_affected_set.sg_claims
+
+
+import v4.std.logic { Bool }
+import v4.test.claim.lens_affected_set.fail_closed_pending_escalation {
+  fail_closed_pending_escalation_claim_holds
+}
+import v4.test.claim.lens_affected_set.irt1_boundary_prune_receipt {
+  irt1_boundary_prune_receipt_claim_holds
+}
+import v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt {
+  irt1_empty_diff_frontier_receipt_claim_holds
+}
+import v4.test.claim.lens_affected_set.irt1_fail_closed_absorption_receipt {
+  irt1_fail_closed_absorption_receipt_claim_holds
+}
+
+
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {
+  irt1_boundary_prune_receipt_claim_holds()
+}
+
+
+fn lens_affected_set_irt1_fail_closed_pending_escalation_holds() -> Bool {
+  fail_closed_pending_escalation_claim_holds()
+}
+
+
+fn lens_affected_set_irt1_fail_closed_absorption_holds() -> Bool {
+  irt1_fail_closed_absorption_receipt_claim_holds()
+}
+
+
+fn lens_affected_set_irt1_empty_diff_frontier_holds() -> Bool {
+  irt1_empty_diff_frontier_receipt_claim_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_affected_set_irt1_boundary_prune_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_irt1_boundary_prune: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_irt1_boundary_prune_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_affected_set_irt1_fail_closed_pending_escalation_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_irt1_fail_closed_pending: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_irt1_fail_closed_pending_escalation_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_affected_set_irt1_fail_closed_absorption_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_irt1_fail_closed_absorption: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_irt1_fail_closed_absorption_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_affected_set_irt1_empty_diff_frontier_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_irt1_empty_diff: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_irt1_empty_diff_frontier_holds
+  }
+}

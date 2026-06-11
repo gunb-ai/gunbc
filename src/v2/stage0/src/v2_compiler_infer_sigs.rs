@@ -5,11 +5,13 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v2_compiler_infer_types::emit_map_has;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v2_std_core::ExprData::ExprCall;
+pub use crate::v2_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v2_std_core::{
-    authored_name_at, expr_call_func_at, make_error_node, no_span, CompilerDiagnostic,
-    DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

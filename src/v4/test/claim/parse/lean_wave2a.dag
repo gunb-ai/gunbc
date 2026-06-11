@@ -7,9 +7,13 @@ module v4.test.claim.parse.lean_wave2a
 import v4.std.grammar { ParseTree }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.parse { parse }
-import v4.extdeps.languages.lean { lean_mvp1_parse_fixture_file, lean_mvp1_source_text, lean_wave1_lex, lean_wave1_grammar }
+import v4.extdeps.languages.lean {
+  lean_mvp1_source_text,
+  lean_wave1_lex,
+  lean_wave1_grammar
+}
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.verification {
   EqualsClaim,
@@ -20,14 +24,14 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-data lean_wave2a_bool_true: Symbol = lean_wave2a_bool_true
-data lean_wave2a_bool_false: Symbol = lean_wave2a_bool_false
-
 fn lean_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: lean_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: lean_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^lean_wave2a_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^lean_wave2a_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
   }
 }
 
@@ -43,7 +47,7 @@ fn lean_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 fn lean_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   match tokenize(
     text: lean_mvp1_source_text,
-    file: lean_mvp1_parse_fixture_file,
+    file: ^lean_mvp1_parse_fixture_file,
     rules: lean_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

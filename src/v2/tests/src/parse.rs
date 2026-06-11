@@ -7,7 +7,10 @@
 use std::rc::Rc;
 
 use crate::helpers::*;
-use v2_compiler::v2_std_core::{InferredNode, TokenShape};
+use v2_compiler::std_types::SourceSpan;
+use v2_compiler::v2_compiler_tokenize::{source_code_point, source_len, SourceRef};
+use v2_compiler::v2_rt::{reset_text_lookup_chars_walked, take_text_lookup_chars_walked};
+use v2_compiler::v2_std_core::{build_newline_index, source_text_at, InferredNode, TokenShape};
 
 /// Median wall time over several tokenize passes, plus the token count from the last pass.
 /// Stabilizes `large_time / small_time` when the small baseline is only a few milliseconds
@@ -24,6 +27,75 @@ fn median_tokenize_secs(source: &str) -> (f64, usize) {
     }
     samples.sort_by(|a, b| a.total_cmp(b));
     (samples[RUNS / 2], last_len)
+}
+
+fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
+    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
+    Rc::new(SourceRef {
+        file: "tokenizer_lookup_flat.v3".to_string(),
+        text: source.to_string(),
+        source_chars: chars,
+    })
+}
+
+fn source_code_point_chars_walked(source: &Rc<SourceRef>, pos: i64, lookups: usize) -> u64 {
+    reset_text_lookup_chars_walked();
+    for _ in 0..lookups {
+        let _ = source_code_point(source.clone(), pos);
+    }
+    take_text_lookup_chars_walked()
+}
+
+fn source_text_at_chars_walked(
+    index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
+    span: &Rc<SourceSpan>,
+    lookups: usize,
+) -> u64 {
+    reset_text_lookup_chars_walked();
+    for _ in 0..lookups {
+        let _ = source_text_at(index.clone(), span.clone());
+    }
+    take_text_lookup_chars_walked()
+}
+
+/// Fixture with `k` named bindings separated by `pad` non-ASCII filler bytes.
+fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSpan>>) {
+    let filler = "§".repeat(pad);
+    let mut source = String::from("module pad_test\n");
+    let mut spans = Vec::with_capacity(k);
+    let file = "pad_test.dag".to_string();
+    for i in 0..k {
+        if i > 0 {
+            source.push_str(&filler);
+            source.push('\n');
+        }
+        let name = format!("fn_{i}");
+        // Char offsets (mirror tokenizer spans; chars_to_string is char-indexed).
+        let start = source.chars().count() as i64;
+        source.push_str(&name);
+        let end = source.chars().count() as i64;
+        spans.push(Rc::new(SourceSpan {
+            file: file.clone(),
+            start,
+            end,
+        }));
+        source.push_str(": Int = 0\n");
+    }
+    (source, spans)
+}
+
+fn total_source_text_at_chars_walked(
+    index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
+    spans: &[Rc<SourceSpan>],
+    lookups_per_span: usize,
+) -> u64 {
+    reset_text_lookup_chars_walked();
+    for _ in 0..lookups_per_span {
+        for span in spans {
+            let _ = source_text_at(index.clone(), span.clone());
+        }
+    }
+    take_text_lookup_chars_walked()
 }
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
@@ -382,12 +454,12 @@ fn shared_primitives_parses_strict() {
 
 // ── Phase 1b: tokenizer non-ASCII regression ───────────────────────────
 //
-// The tokenizer's source_substring calls v2_rt::substring, which has an
-// is_ascii() fast path (O(1) byte slice) and a slow path (O(pos) char
-// iteration). A single non-ASCII byte in a file disables the fast path
-// for ALL substring calls, making tokenization O(n²). This test catches
-// that regression by requiring that non-ASCII content doesn't blow up
-// tokenize time relative to ASCII-only content of the same size.
+// Tokenizer hot-path text lookup must stay flat in file size: `source_chars`
+// is precomputed once (O(n) at entry) and indexed in O(1). Regressions that
+// route per-token lookup through `v2_rt::substring` / `chars().nth(pos)` on
+// the raw `String` reintroduce O(pos) work per lookup and can make scanning
+// O(n²) on non-ASCII input. `tokenizer_text_lookup_flat_in_file_size` locks
+// the O(1) lookup contract; this test catches the composed end-to-end blow-up.
 
 #[test]
 fn tokenizer_non_ascii_performance_regression() {
@@ -432,6 +504,125 @@ fn tokenizer_non_ascii_performance_regression() {
         non_ascii_time.as_secs_f64() < 2.0,
         "tokenize took {:.3}s — budget is 2s for ~270KB file",
         non_ascii_time.as_secs_f64(),
+    );
+}
+
+#[test]
+fn tokenizer_text_lookup_flat_in_file_size() {
+    // Recurrence guard: each `source_code_point` does one vec-index unit of work,
+    // independent of absolute offset (no substring slow-path chars walked).
+    const LOOKUPS: usize = 1_000;
+    let large_source = read_v2_file("src/v2/02_parse.dag");
+    let source = tokenizer_source_ref(&large_source);
+    let tail_pos = source_len(source.clone()) - 1;
+
+    let head_walked = source_code_point_chars_walked(&source, 0, LOOKUPS);
+    let tail_walked = source_code_point_chars_walked(&source, tail_pos, LOOKUPS);
+
+    eprintln!(
+        "tokenizer lookup chars walked: head={head_walked} tail={tail_walked} ({}B source, {LOOKUPS} lookups each)",
+        large_source.len(),
+    );
+
+    assert_eq!(
+        head_walked, LOOKUPS as u64,
+        "head lookups should be one index op each"
+    );
+    assert_eq!(
+        tail_walked, LOOKUPS as u64,
+        "tail lookups should be one index op each (flat in file offset)"
+    );
+}
+
+// ── Name / span text lookup (authored_name_at → source_text_at) ─────────
+//
+// Flat-by-measurement: always-run locks assert source_text_at work is O(span
+// width), independent of file offset / file size. Tokenizer indexing is already
+// flat (`tokenizer_text_lookup_flat_in_file_size` above).
+//
+// HISTORY: these were tracked-red locks pinning the old O(offset) `substring`
+// char-walk. The char->byte offset table landed (NewlineIndex.char_codes +
+// chars_to_string, src/v2/00_core.dag), so they are flipped to assert FLAT — a
+// reintroduced char-walk now fails the guard. Spans use char offsets to mirror
+// the tokenizer (spans are char offsets; chars_to_string is char-indexed).
+
+#[test]
+fn source_text_at_lookup_flat_in_file_size() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    assert!(
+        !source.is_ascii(),
+        "fixture must include non-ASCII so a reintroduced substring slow path would be caught"
+    );
+    let index = build_newline_index("lookup_flat.dag".to_string(), source.clone());
+    let char_len = source.chars().count() as i64;
+    let tail = char_len - 4;
+    let head_span = Rc::new(SourceSpan {
+        file: "lookup_flat.dag".to_string(),
+        start: 0,
+        end: 4,
+    });
+    let tail_span = Rc::new(SourceSpan {
+        file: "lookup_flat.dag".to_string(),
+        start: tail,
+        end: tail + 4,
+    });
+
+    const LOOKUPS: usize = 200;
+    let head_walked = source_text_at_chars_walked(&index, &head_span, LOOKUPS);
+    let tail_walked = source_text_at_chars_walked(&index, &tail_span, LOOKUPS);
+
+    eprintln!(
+        "source_text_at chars walked: head={head_walked} tail={tail_walked} ({}B, {LOOKUPS} lookups each)",
+        source.len(),
+    );
+
+    // FLAT: chars_to_string walks only the span width (4), regardless of offset.
+    // A reintroduced O(offset) char-walk would inflate tail_walked far past head.
+    assert_eq!(head_walked, 800, "head span 0..4 × {LOOKUPS} lookups");
+    assert_eq!(
+        tail_walked, head_walked,
+        "tail span near EOF must walk the same as head — flat in file offset"
+    );
+}
+
+#[test]
+fn source_text_at_lookup_flat_in_file_padding() {
+    const K: usize = 8;
+    const SMALL_PAD: usize = 32;
+    const LARGE_PAD: usize = SMALL_PAD * 10;
+
+    let (small_source, small_spans) = name_lookup_padding_fixture(K, SMALL_PAD);
+    let (large_source, large_spans) = name_lookup_padding_fixture(K, LARGE_PAD);
+    let small_len = small_source.len();
+    let large_len = large_source.len();
+    assert!(
+        large_len > small_len * 5,
+        "large fixture should be >> small (got {large_len} vs {small_len} bytes)"
+    );
+
+    let small_index = build_newline_index("small_pad.dag".to_string(), small_source);
+    let large_index = build_newline_index("large_pad.dag".to_string(), large_source);
+
+    const LOOKUPS_PER_SPAN: usize = 50;
+    let small_walked =
+        total_source_text_at_chars_walked(&small_index, &small_spans, LOOKUPS_PER_SPAN);
+    let large_walked =
+        total_source_text_at_chars_walked(&large_index, &large_spans, LOOKUPS_PER_SPAN);
+
+    eprintln!(
+        "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked}"
+    );
+
+    // FLAT: chars_to_string walks only the name widths, independent of the
+    // surrounding filler — so 10× padding leaves the work identical. Names are
+    // "fn_0".."fn_7" (4 chars each): K*4*LOOKUPS_PER_SPAN = 8*4*50 = 1600.
+    assert_eq!(
+        small_walked, 1_600,
+        "K={K} names × 4 chars × {LOOKUPS_PER_SPAN}"
+    );
+    assert_eq!(
+        large_walked, small_walked,
+        "10× padding must not change source_text_at work — flat in file length"
     );
 }
 

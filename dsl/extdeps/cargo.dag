@@ -21,11 +21,17 @@ type CargoPackage {
 
 // -- Dependencies --------------------------------------------------
 // Cargo.toml dependency entry (Cargo Reference: Specifying Dependencies).
-// features defaults to empty (no extra features enabled).
+//
+// A dependency names a crate and a source. A registry dependency pins a
+// version (with optional features); a path dependency points at a local
+// crate directory. (Git/other sources extend this coproduct when needed.)
+type CargoDepSource
+  = RegistryDep  { version: String, features: List<String> }
+  | LocalPathDep { path: String }
+
 type CargoDependency {
   name: String
-  version: String
-  features: List<String>
+  source: CargoDepSource
 }
 
 // -- Targets -------------------------------------------------------
@@ -64,78 +70,7 @@ data default_edition: String = "2021"
 data default_profile: CargoProfile = "dev"
 
 // -- Service: shell transport wiring -----------------------------
-
-service cargo.Build {
-  operation Build {
-    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["cargo", "build", "--all-targets"] }
-    exit {
-      0 => Unit
-      101 => String "Compilation failed"
-    }
-  }
-
-  operation Test {
-    input { env: Map<String, String> = cargo_compile_env }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["cargo", "test", "--workspace"] }
-    exit {
-      0 => Unit
-      101 => String "Tests failed"
-    }
-  }
-
-  operation Clippy {
-    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
-    exit {
-      0 => Unit
-      101 => String "Clippy warnings or errors"
-    }
-  }
-
-  operation Doc {
-    input {}
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell { argv: ["cargo", "doc", "--no-deps"] }
-    exit {
-      0 => Unit
-      101 => String "Documentation generation failed"
-    }
-  }
-
-  operation Run {
-    input { package: String, bin: String, args: List<String> }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    // Note: args are appended to the command by the transport layer.
-    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}"] }
-    exit {
-      0 => Unit
-      101 => String "Run failed"
-      nonzero => String "Binary exited with error"
-    }
-  }
-}
+// The `cargo.Build` command service (build/test/clippy/doc/run) lives in
+// `extdeps.cargo_build` so this pure model can be imported by the compiler
+// (e.g. v2.compiler.stage0_crates) without dragging a shell-transport service
+// into the bootstrap seed. The model here carries no transport.

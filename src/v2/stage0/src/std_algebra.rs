@@ -11,6 +11,8 @@ use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -132,32 +134,32 @@ pub struct BooleanAlgebra<T> {
 
 #[derive(Clone)]
 pub struct FreeMonoid<T> {
-    pub concat: Rc<dyn Fn(Rc<FreeMonoid<T>>, Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>>>,
-    pub empty: Rc<FreeMonoid<T>>,
-    pub append: Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>,
-    pub slice: Rc<dyn Fn(i64, i64) -> Rc<FreeMonoid<T>>>,
+    pub concat: Rc<dyn Fn(Rc<Vec<T>>, Rc<Vec<T>>) -> Rc<Vec<T>>>,
+    pub empty: Rc<Vec<T>>,
+    pub append: Rc<dyn Fn(T) -> Rc<Vec<T>>>,
+    pub slice: Rc<dyn Fn(i64, i64) -> Rc<Vec<T>>>,
     pub length: Rc<dyn Fn() -> i64>,
     pub is_empty: Rc<dyn Fn() -> bool>,
     pub count: Rc<dyn Fn() -> i64>,
     pub first: Rc<dyn Fn() -> Option<T>>,
     pub last: Rc<dyn Fn() -> Option<T>>,
-    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<FreeMonoid<T>>>,
-    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<FreeMonoid<T>>>,
+    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<Vec<T>>>,
+    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<Vec<T>>>,
     pub fold: Rc<dyn Fn(T, Rc<dyn Fn(T, T) -> T>) -> T>,
-    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>) -> Rc<FreeMonoid<T>>>,
+    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<Vec<T>>>) -> Rc<Vec<T>>>,
     pub any: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
     pub all: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub enumerate: Rc<dyn Fn() -> Rc<FreeMonoid<(i64, T)>>>,
-    pub reverse: Rc<dyn Fn() -> Rc<FreeMonoid<T>>>,
-    pub skip: Rc<dyn Fn(i64) -> Rc<FreeMonoid<T>>>,
-    pub take: Rc<dyn Fn(i64) -> Rc<FreeMonoid<T>>>,
-    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<FreeMonoid<T>>>,
+    pub enumerate: Rc<dyn Fn() -> Rc<Vec<(i64, T)>>>,
+    pub reverse: Rc<dyn Fn() -> Rc<Vec<T>>>,
+    pub skip: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
+    pub take: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
+    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<Vec<T>>>,
     pub contains: Rc<dyn Fn(T) -> bool>,
 }
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
+    pub lookup: Rc<dyn Fn(K) -> Witness<V>>,
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
@@ -169,7 +171,9 @@ pub struct PartialFunction<K, V> {
     pub size: Rc<dyn Fn() -> i64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Ordering {
     Less,
@@ -177,7 +181,9 @@ pub enum Ordering {
     Greater,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -221,6 +227,9 @@ pub enum AlgebraTypeTemplate {
     OptionalOf {
         inner: Rc<AlgebraTypeTemplate>,
     },
+    WitnessOf {
+        inner: Rc<AlgebraTypeTemplate>,
+    },
     TupleOf {
         first: Rc<AlgebraTypeTemplate>,
         second: Rc<AlgebraTypeTemplate>,
@@ -234,7 +243,9 @@ pub enum AlgebraTypeTemplate {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
     ShrinkEffect,
@@ -242,7 +253,9 @@ pub enum CollectionSizeEffect {
     IdentityEffect,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CostShape {
     ShapeConstant,
@@ -1221,7 +1234,7 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Rc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+            return_type: Rc::new(AlgebraTypeTemplate::WitnessOf {
                 inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
             }),
             size_effect: None,

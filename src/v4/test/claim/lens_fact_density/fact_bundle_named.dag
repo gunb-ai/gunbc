@@ -15,7 +15,8 @@ import v4.std.node {
   Named,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -26,28 +27,25 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data fact_bundle_alias_symbol: Symbol = fact_bundle_alias_symbol
-data fact_bundle_width_field: Symbol = fact_bundle_width_field
-data fact_bundle_signedness_field: Symbol = fact_bundle_signedness_field
-
 data fact_bundle_alias: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_bundle_alias_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data fact_bundle_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: fact_bundle_width_field },
+      label: Named { name: ^fact_bundle_width_field },
       target: fact_bundle_alias
     },
     Edge {
-      label: Named { name: fact_bundle_signedness_field },
+      label: Named { name: ^fact_bundle_signedness_field },
       target: fact_bundle_alias
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn fact_bundle_named_claim_holds() -> Bool {
@@ -61,8 +59,9 @@ fn fact_bundle_named_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

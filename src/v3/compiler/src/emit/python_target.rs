@@ -1723,7 +1723,7 @@ fn render_value(v: &crate::dag::ValueNode) -> String {
         LiteralBits::Int(decimal) => decimal.clone(),
         LiteralBits::Bool(true) => "True".to_string(),
         LiteralBits::Bool(false) => "False".to_string(),
-        LiteralBits::String(s) => format!("{:?}", s),
+        LiteralBits::String(s) | LiteralBits::Symbol(s) => format!("{:?}", s),
     }
 }
 

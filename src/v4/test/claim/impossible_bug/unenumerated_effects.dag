@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -34,19 +34,10 @@ import v4.std.verification {
   impossible_bug_reason_redundant_read,
   manual_claim_anchor
 }
-
-
-data read_signature_symbol: Symbol = read_signature_symbol
-data write_signature_symbol: Symbol = write_signature_symbol
-data explicit_reread_symbol: Symbol = explicit_reread_symbol
-data effect_signature_field: Symbol = effect_signature_field
-data effect_body_field: Symbol = effect_body_field
-data effect_read_subject_field: Symbol = effect_read_subject_field
-data effect_write_subject_field: Symbol = effect_write_subject_field
-
-
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -56,8 +47,9 @@ fn effect_subject(signature: Node, body: Node) -> Node {
     children: [
       Edge { label: Positional, target: signature },
       Edge { label: Positional, target: body },
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -65,26 +57,28 @@ data effect_derived_from_signature_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: effect_read_subject_field },
-      target: effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: read_signature_symbol))
+      label: Named { name: ^effect_read_subject_field },
+      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
     },
     Edge {
-      label: Named { name: effect_write_subject_field },
-      target: effect_subject(signature: atom_node(s: write_signature_symbol), body: atom_node(s: write_signature_symbol))
+      label: Named { name: ^effect_write_subject_field },
+      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
     },
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
-data explicit_reread_input: Node = effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: explicit_reread_symbol))
+data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^explicit_reread_symbol))
 
 
 data falsification_redundant_read: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: effect_signature_field }, target: atom_node(s: read_signature_symbol) },
-    Edge { label: Named { name: effect_body_field }, target: atom_node(s: read_signature_symbol) },
-  ]
+    Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 

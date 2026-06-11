@@ -25,7 +25,7 @@ import v4.std.model_core {
   ResourceAccess,
   wave1_model_core
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime {
   AllocationSemantics,
   BindInterpreter,
@@ -54,19 +54,6 @@ import v4.std.runtime {
   runtime_value_resolved_type
 }
 import v4.std.witness { Violates, Witness }
-
-data v4_evaluator_runtime_id: Symbol = v4_evaluator_runtime_id
-data v4_eval_wave1_unit_type_symbol: Symbol = v4_eval_wave1_unit_type_symbol
-data v4_eval_wave1_boundary_operation_symbol: Symbol = v4_eval_wave1_boundary_operation_symbol
-data v4_eval_wave1_boundary_effect_symbol: Symbol = v4_eval_wave1_boundary_effect_symbol
-data v4_eval_wave1_semantics_deferred: Symbol = v4_eval_wave1_semantics_deferred
-data v4_eval_wave1_binding_miss: Symbol = v4_eval_wave1_binding_miss
-data v4_eval_wave1_allocate_literal_sym: Symbol = v4_eval_wave1_allocate_literal_sym
-data v4_eval_wave1_call_primitive_sym: Symbol = v4_eval_wave1_call_primitive_sym
-data v4_eval_wave1_choose_branch_sym: Symbol = v4_eval_wave1_choose_branch_sym
-data v4_eval_wave1_step_loop_sym: Symbol = v4_eval_wave1_step_loop_sym
-data v4_eval_wave1_bind_value_sym: Symbol = v4_eval_wave1_bind_value_sym
-
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore
@@ -77,28 +64,31 @@ type V4EvaluatorRuntime {
 
 fn v4_eval_wave1_unit_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_eval_wave1_unit_type_symbol } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_unit_type_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn v4_eval_wave1_boundary_operation_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_eval_wave1_boundary_operation_symbol } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_operation_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn v4_eval_wave1_effect_signature_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_eval_wave1_boundary_effect_symbol } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_effect_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn v4_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: v4_eval_wave1_semantics_deferred,
+    reason: ^v4_eval_wave1_semantics_deferred,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -107,8 +97,8 @@ fn v4_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {
 fn v4_eval_wave1_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
   Violates {
     diagnostic: Diagnostic {
-      reason: v4_eval_wave1_binding_miss,
-      at: port_locus(port: v4_eval_wave1_binding_miss),
+      reason: ^v4_eval_wave1_binding_miss,
+      at: port_locus(port: ^v4_eval_wave1_binding_miss),
       correction: Unavailable { reason: AmbiguousIntent }
     }
   }
@@ -276,11 +266,11 @@ fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
 
 fn v4_evaluator_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: v4_eval_wave1_allocate_literal_sym,
-    call_primitive: v4_eval_wave1_call_primitive_sym,
-    choose_branch: v4_eval_wave1_choose_branch_sym,
-    step_loop: v4_eval_wave1_step_loop_sym,
-    bind_value: v4_eval_wave1_bind_value_sym
+    allocate_literal: ^v4_eval_wave1_allocate_literal_sym,
+    call_primitive: ^v4_eval_wave1_call_primitive_sym,
+    choose_branch: ^v4_eval_wave1_choose_branch_sym,
+    step_loop: ^v4_eval_wave1_step_loop_sym,
+    bind_value: ^v4_eval_wave1_bind_value_sym
   }
 }
 
@@ -306,7 +296,7 @@ fn v4_evaluator_boundary_wave1() -> ResourceEffectBoundary {
 
 fn v4_evaluator_runtime_wave1() -> V4EvaluatorRuntime {
   V4EvaluatorRuntime {
-    runtime_identity: v4_evaluator_runtime_id,
+    runtime_identity: ^v4_evaluator_runtime_id,
     core: v4_evaluator_model_core_wave1(),
     values: v4_evaluator_value_representation_wave1(),
     execution: v4_evaluator_execution_wave1(),

@@ -16,7 +16,7 @@ import v4.lens.affected_set_examples {
   expected_affected_set_boundary_prune
 }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.node { Conj, Node, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -41,8 +41,9 @@ fn boundary_prune_receipt_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

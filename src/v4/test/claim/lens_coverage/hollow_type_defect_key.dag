@@ -11,7 +11,7 @@ import v4.lens.coverage {
   coverage_defect_hollow_type
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -21,12 +21,10 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data hollow_type_authority_symbol: Symbol = hollow_type_authority_symbol
-
 data hollow_type_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_type_authority_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^hollow_type_authority_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data expected_hollow_type_acceptance: CoverageDefectAcceptance = {
@@ -43,8 +41,9 @@ fn hollow_type_defect_key_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

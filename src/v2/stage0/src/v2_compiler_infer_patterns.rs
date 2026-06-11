@@ -3,23 +3,29 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_syntax::LiteralValue;
+use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name, TypeEnv};
+pub use crate::v2_compiler_infer_env::TypeEnv;
+pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
 use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::LitBool;
 use crate::v2_std_core::MatchPattern::LitPattern;
 pub use crate::v2_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, is_compiler_error, kernel_span,
-    make_error_node, no_span, none_type, with_optional_cardinality, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, LiteralValue, MatchPattern,
+    make_error_node, no_span, none_type, with_optional_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
     NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
@@ -27,6 +33,11 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
@@ -64,7 +75,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
@@ -87,10 +98,10 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_node = Rc::new(Node {
-            name: "Some".to_string(),
+        let present_node = Rc::new(Node {
+            name: "Present".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Some".to_string())),
+            ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![value_field]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -107,21 +118,153 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        some_node
+        present_node
     }
 }
 
-pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
+pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
+        let inner = match scrut.children.clone().first().cloned() {
+            Some(child) => child_type_node(child.clone()),
+            None => error_type(),
+        };
+        let value_field = Rc::new(Node {
+            name: "value".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("value".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: inner })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            name: "Holds".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Holds".to_string())),
+            children: Rc::new(vec![value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
+pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
+    {
+        let diagnostic_type = Rc::new(Node {
+            name: "Diagnostic".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Diagnostic".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let diagnostic_field = Rc::new(Node {
+            name: "diagnostic".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("diagnostic".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: diagnostic_type,
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            name: "Violates".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Violates".to_string())),
+            children: Rc::new(vec![diagnostic_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
+pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
+    loop {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
         if is_error {
-            Rc::new(PatternSubject::PatternLookupBlocked)
+            break Rc::new(PatternSubject::PatternLookupBlocked);
         } else {
-            Rc::new(PatternSubject::PatternResolved { node: n.clone() })
+            if (((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) > 0))
+                && (n.inferred.clone() != None))
+            {
+                match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let __tco_0 = target.clone();
+                        n = __tco_0;
+                        continue;
+                    }
+                    _ => {
+                        break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                    }
+                }
+            } else {
+                break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+            }
         }
     }
 }
@@ -212,40 +355,73 @@ pub fn lookup_variant_in_type(
                 node_lookup_failed(Rc::new(vec![]))
             } else {
                 {
-                    let direct_match = find_child_named(
-                        scrut_node.clone(),
-                        variant_name.clone(),
-                        source_indices.clone(),
-                    );
-                    let record_destructure = (((field_binding_count > 0)
-                        && (scrut_node.connective.clone() == Connective::Conj))
+                    let optional_cardinality_subject = (scrut_opt.clone()
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
-                            == variant_name.clone().as_str()));
-                    let fallback = if (scrut_opt.clone()
-                        && (variant_name.clone().as_str() == "Some".to_string().as_str()))
+                            != "Optional".to_string().as_str()));
+                    let witness_subject = (is_witness_type_name(authored_name_at(
+                        source_indices.clone(),
+                        scrut_node.clone(),
+                    )) && ((scrut_node.children.clone().len() as i64) == 1));
+                    if (optional_cardinality_subject.clone()
+                        && (variant_name.clone().as_str() == "Present".to_string().as_str()))
                     {
-                        node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
+                        node_lookup_resolved(synthesize_optional_present_variant(
+                            scrut_node.clone(),
+                        ))
                     } else {
-                        if (scrut_opt.clone()
-                            && (variant_name.clone().as_str() == "None".to_string().as_str()))
+                        if (optional_cardinality_subject.clone()
+                            && (variant_name.clone().as_str() == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())
                         } else {
-                            if record_destructure {
-                                node_lookup_resolved(scrut_node.clone())
-                            } else {
-                                variant_not_found_result(
+                            if (witness_subject.clone()
+                                && (variant_name.clone().as_str() == "Holds".to_string().as_str()))
+                            {
+                                node_lookup_resolved(synthesize_witness_holds_variant(
                                     scrut_node.clone(),
-                                    variant_name.clone(),
-                                    module_name,
-                                    source_indices.clone(),
-                                )
+                                ))
+                            } else {
+                                if (witness_subject.clone()
+                                    && (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str()))
+                                {
+                                    node_lookup_resolved(synthesize_witness_violates_variant(
+                                        scrut_node.clone(),
+                                    ))
+                                } else {
+                                    {
+                                        let direct_match = find_child_named(
+                                            scrut_node.clone(),
+                                            variant_name.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let record_destructure = (((field_binding_count > 0)
+                                            && (scrut_node.connective.clone()
+                                                == Connective::Conj))
+                                            && (authored_name_at(
+                                                source_indices.clone(),
+                                                scrut_node.clone(),
+                                            )
+                                            .as_str()
+                                                == variant_name.clone().as_str()));
+                                        let fallback = if record_destructure {
+                                            node_lookup_resolved(scrut_node.clone())
+                                        } else {
+                                            variant_not_found_result(
+                                                scrut_node.clone(),
+                                                variant_name.clone(),
+                                                module_name,
+                                                source_indices.clone(),
+                                            )
+                                        };
+                                        match direct_match {
+                                            Some(v) => node_lookup_resolved(v.clone()),
+                                            None => fallback,
+                                        }
+                                    }
+                                }
                             }
                         }
-                    };
-                    match direct_match {
-                        Some(v) => node_lookup_resolved(v.clone()),
-                        None => fallback,
                     }
                 }
             }
@@ -324,18 +500,27 @@ pub fn check_match_exhaustiveness(
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        if (is_coproduct || resolved_is_optional.clone()) {
+        let resolved_is_witness = (is_witness_type_name(authored_name_at(
+            env.source_indices.clone(),
+            resolved.clone(),
+        )) && ((resolved.children.clone().len() as i64) == 1));
+        if ((is_coproduct || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
-                    Rc::new(vec!["Some".to_string(), "None".to_string()])
+                    Rc::new(vec!["Present".to_string(), "Absent".to_string()])
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in resolved.children.clone().iter().cloned() {
-                            __result.push(authored_name_at(env.source_indices.clone(), c.clone()));
-                        }
-                        __result
-                    })
+                    if resolved_is_witness.clone() {
+                        Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
+                    } else {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in resolved.children.clone().iter().cloned() {
+                                __result
+                                    .push(authored_name_at(env.source_indices.clone(), c.clone()));
+                            }
+                            __result
+                        })
+                    }
                 };
                 let has_catch_all = {
                     let mut __found = false;

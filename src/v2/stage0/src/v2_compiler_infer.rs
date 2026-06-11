@@ -5,88 +5,105 @@ use self::SizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
+pub use crate::std_computation::ShrinkFactor;
+use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
-use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence, InductiveField, RecursionShape, ShrinkFactor, SubValueRelation,
+    sub_value_to_evidence,
 };
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
+use crate::std_syntax::BinOp::{
+    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
+};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
-    PositiveDescentAmount,
 };
-pub use crate::std_types::{container_param_name, SourceSpan};
-pub use crate::v2_compiler_infer_access::{
-    check_index_access_node, check_slice_access_node, AccessCheckResultNode,
-};
+pub use crate::std_types::container_param_name;
+pub use crate::std_types::SourceSpan;
+pub use crate::v2_compiler_infer_access::AccessCheckResultNode;
+pub use crate::v2_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v2_compiler_infer_cycle::detect_type_cycles_kahn;
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary, EmitGraphInfo,
-    EmitInfoBuildState, TypeRepr, TypeSummary,
+    derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary,
+};
+pub use crate::v2_compiler_infer_emit_info::{
+    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{
     inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
-    merge_inductive_fields, put_inductive_field, put_inductive_field_cross, TypeBinding, TypeEnv,
+    merge_inductive_fields, put_inductive_field, put_inductive_field_cross,
 };
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v2_compiler_infer_items::{
-    inferred_to_outputs, item_kind, variant_locals_from_items, ItemInfo, ItemKind, ResolvedGraph,
-    TypedGraph, TypedModule,
+    inferred_to_outputs, item_kind, variant_locals_from_items,
 };
+pub use crate::v2_compiler_infer_items::{
+    ItemInfo, ItemKind, ResolvedGraph, TypedGraph, TypedModule,
+};
+pub use crate::v2_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
     resolve_known_method_node, resolve_scrutinee_type_node, set_element_type_in_env,
-    KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
+    witness_of_element,
 };
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
     lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node, NodeLookupResult, PatternSubject,
+    pattern_subject_from_node,
 };
+pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
-    resolve_item_types, resolve_node, ItemResult, NodeResolveResult,
+    peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, resolve_item_types,
+    resolve_node,
 };
+pub use crate::v2_compiler_infer_resolve::{ItemResult, NodeResolveResult};
 pub use crate::v2_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
-    is_typed_service_call_receiver, service_op_entry, OpEntry, ServiceMethodResult, UniqueAccum,
+    is_typed_service_call_receiver, service_op_entry,
 };
-pub use crate::v2_compiler_infer_sigs::{
-    resolve_func_sigs, ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
-};
+pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
+pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
+pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v2_compiler_infer_types::KernelTypeBuild;
 pub use crate::v2_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
     extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_fully_resolved, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};
@@ -102,7 +119,6 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -131,17 +147,24 @@ pub use crate::v2_std_core::{
     module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality, BinOp,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    StringPart, UnaryOpKind, VarBindingKind,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
@@ -988,6 +1011,172 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn type_node_is_callable(n: Rc<Node>) -> bool {
+    ((n.params.clone().len() as i64) > 0)
+}
+
+pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
+    {
+        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
+            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
+        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 13)
+            && (v2_rt::substring(&module_name, 0, 13).as_str()
+                == "v2.compiler.".to_string().as_str()));
+        (is_v4 || is_compiler_substrate)
+    }
+}
+
+pub fn nominal_call_arg_brand_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        ((((((((formal.connective.clone() != Connective::Arrow)
+            && (actual.connective.clone() != Connective::Arrow))
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                .as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str()))
+            && !is_declared_container_alias_spelling(formal_name.clone()))
+            && !is_declared_container_alias_spelling(actual_name.clone()))
+    }
+}
+
+pub fn container_element_nominal_brand_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((node_is_element_collection(formal.clone(), source_indices.clone())
+        && node_is_element_collection(actual.clone(), source_indices.clone()))
+        && (authored_name_at(source_indices.clone(), formal.clone()).as_str()
+            == authored_name_at(source_indices.clone(), actual.clone()).as_str()))
+    {
+        match formal.children.clone().first().cloned() {
+            Some(formal_ch) => match actual.children.clone().first().cloned() {
+                Some(actual_ch) => {
+                    let formal_el = peel_nominal_alias_identity(
+                        child_type_node(formal_ch.clone()),
+                        type_env.clone(),
+                        module_name.clone(),
+                    );
+                    let actual_el = peel_nominal_alias_identity(
+                        child_type_node(actual_ch.clone()),
+                        type_env.clone(),
+                        module_name.clone(),
+                    );
+                    nominal_call_arg_brand_mismatch(formal_el, actual_el, source_indices.clone())
+                }
+                None => false,
+            },
+            None => false,
+        }
+    } else {
+        false
+    }
+}
+
+pub fn direct_call_arg_type_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
+        false
+    } else {
+        (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+            || container_element_nominal_brand_mismatch(
+                formal.clone(),
+                actual.clone(),
+                type_env,
+                module_name,
+                source_indices.clone(),
+            ))
+    }
+}
+
+pub fn direct_call_arg_mismatch_diags(
+    value_params: Rc<Vec<Rc<Node>>>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    call_subst: Rc<HashMap<String, Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let source_indices = type_env.source_indices.clone();
+        Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                value_params
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let formal_raw = param_node_type_expr(pair.1.clone());
+                        let formal_subst = substitute_generics(
+                            formal_raw.clone(),
+                            call_subst.clone(),
+                            source_indices.clone(),
+                        );
+                        let formal = peel_nominal_alias_identity(
+                            formal_subst.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                            Some(ta) => {
+                                let actual_raw = resolved_type(arg_value(ta.clone()));
+                                let actual = peel_nominal_alias_identity(
+                                    actual_raw.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
+                                );
+                                if direct_call_arg_type_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(formal.clone(), source_indices.clone()),
+                                        node_type_shape(actual.clone(), source_indices.clone()),
+                                        arg_value(ta.clone()).span.clone(),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                            None => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
@@ -1016,7 +1205,13 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         ..
                     }) => {
                         match map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
-                            Some(value_type) => with_optional_cardinality(value_type.clone()),
+                            Some(value_type) => {
+                                if (func_name.clone().as_str() == "lookup".to_string().as_str()) {
+                                    witness_of_element(value_type.clone())
+                                } else {
+                                    with_optional_cardinality(value_type.clone())
+                                }
+                            }
                             None => resolve_builtin_call_type(func_name.clone()),
                         }
                     }
@@ -1510,23 +1705,39 @@ pub fn annotate_pattern_parent_enums(
                         node: resolved_scrut_node,
                         ..
                     } => {
-                        if ((resolved_scrut_node.return_cardinality.clone()
-                            == Cardinality::CardOptional)
-                            && ((variant_name.clone().as_str() == "Some".to_string().as_str())
-                                || (variant_name.clone().as_str() == "None".to_string().as_str())))
+                        let scrutinee_name = authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            resolved_scrut_node.clone(),
+                        );
+                        let optional_cardinality_subject =
+                            ((resolved_scrut_node.return_cardinality.clone()
+                                == Cardinality::CardOptional)
+                                && (scrutinee_name.clone().as_str()
+                                    != "Optional".to_string().as_str()));
+                        let witness_container_subject =
+                            (is_witness_type_name(scrutinee_name.clone())
+                                && ((variant_name.clone().as_str()
+                                    == "Holds".to_string().as_str())
+                                    || (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str())));
+                        if (optional_cardinality_subject
+                            && ((variant_name.clone().as_str() == "Present".to_string().as_str())
+                                || (variant_name.clone().as_str()
+                                    == "Absent".to_string().as_str())))
                         {
                             Some("Optional".to_string())
                         } else {
-                            {
-                                let is_coproduct =
-                                    (resolved_scrut_node.connective.clone() == Connective::Disj);
-                                if is_coproduct {
-                                    Some(authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        resolved_scrut_node.clone(),
-                                    ))
-                                } else {
-                                    None
+                            if witness_container_subject {
+                                Some("Witness".to_string())
+                            } else {
+                                {
+                                    let is_coproduct = (resolved_scrut_node.connective.clone()
+                                        == Connective::Disj);
+                                    if is_coproduct {
+                                        Some(scrutinee_name.clone())
+                                    } else {
+                                        None
+                                    }
                                 }
                             }
                         }
@@ -1534,6 +1745,7 @@ pub fn annotate_pattern_parent_enums(
                     PatternSubject::PatternDynamic { span: _, .. } => None,
                     PatternSubject::PatternLookupBlocked => None,
                 };
+                let annotated_variant_name = variant_name.clone();
                 let variant_lookup = lookup_variant_in_type(
                     resolved_scrut.clone(),
                     variant_name.clone(),
@@ -1575,7 +1787,7 @@ pub fn annotate_pattern_parent_enums(
                 });
                 match inferred_parent {
                     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
-                        name: variant_name.clone(),
+                        name: annotated_variant_name,
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings,
                     }),
@@ -2533,54 +2745,92 @@ pub fn infer_expr(
                     Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
                     None => error_type(),
                 };
-                let arg_infer_results = if ((has_lambda && ((call_args.clone().len() as i64) >= 2))
+                let arg_call = if ((has_lambda && ((call_args.clone().len() as i64) >= 2))
                     && (sig.clone() == None))
                 {
-                    match call_args.clone().first().cloned() {
-                        Some(first_arg) => {
-                            let first_result =
-                                infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
-                            let first_type = resolved_type(first_result.typed.clone());
-                            let elem_type = for_each_element_type_node(
-                                first_type,
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            let call_elem_provenance = derive_element_provenance(
-                                first_result.typed.clone(),
-                                elem_type.clone(),
-                                scope.clone(),
-                            );
-                            let remaining_results = infer_method_args_with_fold(
-                                call_method_name.clone(),
-                                call_method_args.clone(),
-                                call_fold_info.clone(),
-                                call_fold_acc_type.clone(),
-                                elem_type.clone(),
-                                call_elem_provenance,
-                                scope.clone(),
-                            );
-                            v2_rt::concat(
-                                Rc::new(vec![Rc::new(ArgInferResult {
-                                    typed_arg: make_arg_node(
-                                        arg_name_at(
-                                            first_arg.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
+                    Rc::new(ArgGenericFoldState {
+                        subst: v2_rt::rc_empty_map::<String, Rc<Node>>(),
+                        results: match call_args.clone().first().cloned() {
+                            Some(first_arg) => {
+                                let first_result =
+                                    infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
+                                let first_type = resolved_type(first_result.typed.clone());
+                                let elem_type = for_each_element_type_node(
+                                    first_type,
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
+                                let call_elem_provenance = derive_element_provenance(
+                                    first_result.typed.clone(),
+                                    elem_type.clone(),
+                                    scope.clone(),
+                                );
+                                let remaining_results = infer_method_args_with_fold(
+                                    call_method_name.clone(),
+                                    call_method_args.clone(),
+                                    call_fold_info.clone(),
+                                    call_fold_acc_type.clone(),
+                                    elem_type.clone(),
+                                    call_elem_provenance,
+                                    scope.clone(),
+                                );
+                                v2_rt::concat(
+                                    Rc::new(vec![Rc::new(ArgInferResult {
+                                        typed_arg: make_arg_node(
+                                            arg_name_at(
+                                                first_arg.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            first_result.typed.clone(),
+                                            first_arg.span.clone(),
+                                            first_arg.span.clone(),
                                         ),
-                                        first_result.typed.clone(),
-                                        first_arg.span.clone(),
-                                        first_arg.span.clone(),
-                                    ),
-                                    diagnostics: first_result.diagnostics.clone(),
-                                })]),
-                                remaining_results,
-                            )
-                        }
-                        None => Rc::new(vec![]),
-                    }
+                                        diagnostics: first_result.diagnostics.clone(),
+                                    })]),
+                                    remaining_results,
+                                )
+                            }
+                            None => Rc::new(vec![]),
+                        },
+                    })
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for pair in Rc::new(
+                    {
+                        let value_params = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in sig_params.clone().iter().cloned() {
+                                if !param_is_generic_decl(
+                                    p.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        });
+                        let generic_names = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in Rc::new({
+                                let mut __result = Vec::new();
+                                for p in sig_params.clone().iter().cloned() {
+                                    if param_is_generic_decl(
+                                        p.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        __result.push(p);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    param_node_type_expr(p.clone()),
+                                ));
+                            }
+                            __result
+                        });
+                        let final_state = Rc::new(
                             call_args
                                 .clone()
                                 .iter()
@@ -2591,25 +2841,28 @@ pub fn infer_expr(
                         )
                         .iter()
                         .cloned()
-                        {
-                            __result.push({
+                        .fold(
+                            Rc::new(ArgGenericFoldState {
+                                results: Rc::new(vec![]),
+                                subst: v2_rt::rc_empty_map::<String, Rc<Node>>(),
+                            }),
+                            |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
                                 let a = pair.1.clone();
-                                let formal_param_type = match sig_params
-                                    .clone()
-                                    .get(pair.0.clone() as usize)
-                                    .cloned()
-                                {
+                                let formal_lookup =
+                                    value_params.clone().get(pair.0.clone() as usize).cloned();
+                                let formal_raw = match formal_lookup.clone() {
                                     Some(p) => param_node_type_expr(p.clone()),
                                     None => type_variable_node("callable_param".to_string()),
                                 };
-                                let has_formal = match sig_params
-                                    .clone()
-                                    .get(pair.0.clone() as usize)
-                                    .cloned()
-                                {
+                                let has_formal = match formal_lookup.clone() {
                                     Some(_) => true,
                                     None => false,
                                 };
+                                let formal_param_type = substitute_generics(
+                                    formal_raw.clone(),
+                                    st.subst.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
                                 let expected = if has_formal.clone() {
                                     Some(formal_param_type.clone())
                                 } else {
@@ -2620,23 +2873,44 @@ pub fn infer_expr(
                                     scope.clone(),
                                     expected.clone(),
                                 );
-                                Rc::new(ArgInferResult {
-                                    typed_arg: make_arg_node(
-                                        arg_name_at(
-                                            a.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        ar.typed.clone(),
-                                        a.span.clone(),
-                                        a.span.clone(),
+                                let next_subst = if (is_lambda_expr(arg_value(a.clone()))
+                                    || !has_formal.clone())
+                                {
+                                    st.subst.clone()
+                                } else {
+                                    unify_generics(
+                                        formal_raw.clone(),
+                                        resolved_type(ar.typed.clone()),
+                                        generic_names.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        st.subst.clone(),
+                                    )
+                                };
+                                Rc::new(ArgGenericFoldState {
+                                    results: v2_rt::concat(
+                                        st.results.clone(),
+                                        Rc::new(vec![Rc::new(ArgInferResult {
+                                            typed_arg: make_arg_node(
+                                                arg_name_at(
+                                                    a.clone(),
+                                                    scope.type_env.clone().source_indices.clone(),
+                                                ),
+                                                ar.typed.clone(),
+                                                a.span.clone(),
+                                                a.span.clone(),
+                                            ),
+                                            diagnostics: ar.diagnostics.clone(),
+                                        })]),
                                     ),
-                                    diagnostics: ar.diagnostics.clone(),
+                                    subst: next_subst.clone(),
                                 })
-                            });
-                        }
-                        __result
-                    })
+                            },
+                        );
+                        final_state
+                    }
                 };
+                let arg_infer_results = arg_call.results.clone();
+                let call_subst = arg_call.subst.clone();
                 let typed_args = Rc::new({
                     let mut __result = Vec::new();
                     for air in arg_infer_results.clone().iter().cloned() {
@@ -2655,9 +2929,37 @@ pub fn infer_expr(
                 if (sig.clone() != None) {
                     {
                         let resolved_type = match sig.clone() {
-                            Some(s) => s.inferred.clone(),
+                            Some(s) => substitute_generics(
+                                s.inferred.clone(),
+                                call_subst.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
                             None => error_type(),
                         };
+                        let value_params_for_check = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in sig_params.clone().iter().cloned() {
+                                if !param_is_generic_decl(
+                                    p.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        });
+                        let arg_compat_diags =
+                            if module_skips_direct_call_arg_check(scope.module_name.clone()) {
+                                Rc::new(vec![])
+                            } else {
+                                direct_call_arg_mismatch_diags(
+                                    value_params_for_check,
+                                    typed_args.clone(),
+                                    call_subst.clone(),
+                                    scope.type_env.clone(),
+                                    scope.module_name.clone(),
+                                )
+                            };
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),
@@ -2672,7 +2974,7 @@ pub fn infer_expr(
                                 span.clone(),
                                 node_name_span(texpr.clone()),
                             ),
-                            diagnostics: arg_diags,
+                            diagnostics: v2_rt::concat(arg_diags, arg_compat_diags),
                         })
                     }
                 } else {
@@ -4856,11 +5158,11 @@ pub fn infer_record_lit(
                     None => error_type(),
                 };
                 let expected_optional_parent = Some("Optional".to_string());
-                let is_some_ctor = ((type_name.clone().unwrap().as_str()
-                    == "Some".to_string().as_str())
+                let is_present_ctor = ((type_name.clone().unwrap().as_str()
+                    == "Present".to_string().as_str())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.as_deref()));
-                let resolved_node = if is_some_ctor {
+                let resolved_node = if is_present_ctor {
                     {
                         let val_field = Rc::new({
                             let mut __result = Vec::new();
@@ -7210,7 +7512,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
     None => if scrut_has_inductive.clone() {
                     match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
-    Some(ind_field) => if (vname.clone().as_str() == "Some".to_string().as_str()) {
+    Some(ind_field) => if (vname.clone().as_str() == "Present".to_string().as_str()) {
                         bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
     MatchPattern::Bind { name: bname, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
@@ -9123,6 +9425,57 @@ pub fn collect_variant_constructors(
                 }
                 None => acc.clone(),
             },
+            ExprData::ExprCall { .. } => {
+                let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
+                match v2_rt::map_get(&func_sigs, callee) {
+                    Some(sig) => {
+                        if ((authored_name_at(
+                            type_env.source_indices.clone(),
+                            sig.inferred.clone(),
+                        )
+                        .as_str()
+                            == parent_enum.clone().as_str())
+                            && ((Rc::new(v2_rt::map_keys(&sig.variant_provenance.clone())).len()
+                                as i64)
+                                > 0))
+                        {
+                            {
+                                let call_args = call_args_by_name(
+                                    body.clone(),
+                                    type_env.source_indices.clone(),
+                                );
+                                Rc::new(v2_rt::map_keys(&sig.variant_provenance.clone())).iter().cloned().fold(acc.clone(), |variant_acc: Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>, variant_name: String| match v2_rt::map_get(&sig.variant_provenance.clone(), variant_name.clone()) {
+    Some(field_map) => {
+                        let composed_field_map = Rc::new(v2_rt::map_keys(&field_map)).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(), |fm_acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, field_name: String| match v2_rt::map_get(&field_map, field_name.clone()) {
+    Some(param_map) => {
+                            let composed = compose_callee_param_map(param_map.clone(), call_args.clone(), param_names.clone(), param_types.clone(), type_env.clone(), func_sigs.clone(), let_prov.clone());
+if ((Rc::new(v2_rt::map_keys(&composed)).len() as i64) > 0) {
+                                v2_rt::rc_map_insert(fm_acc.clone(), field_name.clone(), composed.clone())
+                            } else {
+                                fm_acc.clone()
+                            }
+},
+    None => fm_acc.clone(),
+});
+if ((Rc::new(v2_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
+                            match v2_rt::map_get(&variant_acc, variant_name.clone()) {
+    Some(existing) => v2_rt::rc_map_insert(variant_acc.clone(), variant_name.clone(), merge_field_prov_maps(existing.clone(), composed_field_map.clone())),
+    None => v2_rt::rc_map_insert(variant_acc.clone(), variant_name.clone(), composed_field_map.clone()),
+}
+                        } else {
+                            variant_acc.clone()
+                        }
+},
+    None => variant_acc.clone(),
+})
+                            }
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    None => acc.clone(),
+                }
+            }
             ExprData::ExprMatch => match_arm_nodes(body.clone()).iter().cloned().fold(
                 acc.clone(),
                 |a: Rc<
@@ -9389,6 +9742,13 @@ pub fn populate_output_provenance(
                                             .cloned();
                                             match list_field.clone() {
                                                 Some(ind_field) => {
+                                                    let relation =
+                                                        Rc::new(SubValueRelation::StrictSubValue {
+                                                            field: ind_field.clone(),
+                                                            factor: Rc::new(
+                                                                ShrinkFactor::UnitShrink,
+                                                            ),
+                                                        });
                                                     let provenance =
                                                         Rc::new(vec![v2_rt::rc_map_insert(
                                                             v2_rt::rc_empty_map::<
@@ -9397,14 +9757,7 @@ pub fn populate_output_provenance(
                                                             >(
                                                             ),
                                                             pname.clone(),
-                                                            Rc::new(
-                                                                SubValueRelation::StrictSubValue {
-                                                                    field: ind_field.clone(),
-                                                                    factor: Rc::new(
-                                                                        ShrinkFactor::UnitShrink,
-                                                                    ),
-                                                                },
-                                                            ),
+                                                            relation.clone(),
                                                         )]);
                                                     match v2_rt::map_get(&acc, fn_name.clone()) {
                                                         Some(sig) => v2_rt::rc_map_insert(
@@ -10091,6 +10444,161 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ArgGenericFoldState {
+    pub results: Rc<Vec<Rc<ArgInferResult>>>,
+    pub subst: Rc<HashMap<String, Rc<Node>>>,
+}
+
+pub fn param_is_generic_decl(
+    p: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let pt = param_node_type_expr(p.clone());
+        let pname = param_node_name_at(p.clone(), source_indices.clone());
+        let tname = authored_name_at(source_indices.clone(), pt.clone());
+        ((((pt.children.clone().len() as i64) == 0)
+            && (pt.connective.clone() == Connective::NoConnective))
+            && ((pname.clone().as_str() != "".to_string().as_str())
+                && (pname.clone().as_str() == tname.as_str())))
+    }
+}
+
+pub fn unify_generics(
+    mut formal: Rc<Node>,
+    mut actual: Rc<Node>,
+    mut generic_names: Rc<Vec<String>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        let fname = authored_name_at(source_indices.clone(), formal.clone());
+        let f_bare = (((formal.children.clone().len() as i64) == 0)
+            && (formal.connective.clone() == Connective::NoConnective));
+        if (f_bare && {
+            let mut __found = false;
+            for g in generic_names.clone().iter().cloned() {
+                if (g.clone().as_str() == fname.clone().as_str()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            match v2_rt::map_get(&acc, fname.clone()) {
+                None => {
+                    break v2_rt::rc_map_insert(acc.clone(), fname.clone(), actual.clone());
+                }
+                Some(_) => {
+                    break acc.clone();
+                }
+            }
+        } else {
+            if (((formal.children.clone().len() as i64) == 1)
+                && ((actual.children.clone().len() as i64) == 1))
+            {
+                match formal.children.clone().first().cloned() {
+                    Some(fc) => match actual.children.clone().first().cloned() {
+                        Some(ac) => {
+                            let __tco_0 = fc.clone();
+                            let __tco_1 = ac.clone();
+                            formal = __tco_0;
+                            actual = __tco_1;
+                            continue;
+                        }
+                        None => {
+                            break acc.clone();
+                        }
+                    },
+                    None => {
+                        break acc.clone();
+                    }
+                }
+            } else {
+                break acc.clone();
+            }
+        }
+    }
+}
+
+pub fn substitute_generics(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((Rc::new(v2_rt::map_keys(&subst)).len() as i64) == 0) {
+            n.clone()
+        } else {
+            {
+                let nm = authored_name_at(source_indices.clone(), n.clone());
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
+                if is_bare {
+                    match v2_rt::map_get(&subst, nm) {
+                        Some(c) => c.clone(),
+                        None => n.clone(),
+                    }
+                } else {
+                    Rc::new(Node {
+                        name: n.name.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_generics(
+                                    c.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        connective: n.connective.clone(),
+                        params: Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.push(substitute_generics(
+                                    p.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        inferred: match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                Some(Rc::new(InferredNode::Resolved {
+                                    node: substitute_generics(
+                                        rt.clone(),
+                                        subst.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                }))
+                            }
+                            _ => n.inferred.clone(),
+                        },
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: n.uses.clone(),
+                        body: n.body.clone(),
+                        transport: n.transport.clone(),
+                        properties: n.properties.clone(),
+                        type_annotation: n.type_annotation.clone(),
+                        is_self_recursive: n.is_self_recursive.clone(),
+                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                        match_pattern: n.match_pattern.clone(),
+                        expr_data: n.expr_data.clone(),
+                        ident: None,
+                    })
+                }
+            }
+        }
+    })
+}
+
 pub fn collect_parent_bindings_filtered(
     envs: Rc<Vec<Rc<TypeEnv>>>,
 ) -> Rc<HashMap<i64, Rc<TypeBinding>>> {
@@ -10164,8 +10672,8 @@ pub fn build_type_env(
             );
         let source_indices = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -10198,8 +10706,8 @@ pub fn build_type_env(
             });
         let intern_table = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -10279,7 +10787,7 @@ pub fn build_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -10287,7 +10795,7 @@ pub fn build_type_env(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -10301,11 +10809,31 @@ pub fn build_type_env(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -10325,7 +10853,7 @@ pub fn build_type_env(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
@@ -10900,7 +11428,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -10908,7 +11436,7 @@ pub fn build_type_env_unresolved(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -10922,11 +11450,31 @@ pub fn build_type_env_unresolved(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -10946,7 +11494,7 @@ pub fn build_type_env_unresolved(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
@@ -11969,10 +12517,14 @@ pub fn topo_resolve_types(
                         let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
                         match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                             Some(binding) => {
-                                let result = resolve_node(
-                                    binding.resolved.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
+                                let pre = binding.resolved.clone();
+                                let result =
+                                    resolve_node(pre.clone(), env.clone(), module_name.clone());
+                                let resolved = preserve_nominal_brand_on_resolve(
+                                    pre.clone(),
+                                    result.resolved.clone(),
+                                    binding.name.clone(),
+                                    env.source_indices.clone(),
                                 );
                                 Rc::new(BindingsAccum {
                                     bindings: v2_rt::rc_map_insert(
@@ -11980,7 +12532,7 @@ pub fn topo_resolve_types(
                                         ident.clone(),
                                         Rc::new(TypeBinding {
                                             name: name.clone(),
-                                            resolved: result.resolved.clone(),
+                                            resolved: resolved.clone(),
                                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                         }),
                                     ),
@@ -12019,10 +12571,13 @@ pub fn topo_resolve_types(
                 let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
                 match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                     Some(binding) => {
-                        let result = resolve_node(
-                            binding.resolved.clone(),
-                            env.clone(),
-                            module_name.clone(),
+                        let pre = binding.resolved.clone();
+                        let result = resolve_node(pre.clone(), env.clone(), module_name.clone());
+                        let resolved = preserve_nominal_brand_on_resolve(
+                            pre.clone(),
+                            result.resolved.clone(),
+                            binding.name.clone(),
+                            env.source_indices.clone(),
                         );
                         Rc::new(BindingsAccum {
                             bindings: v2_rt::rc_map_insert(
@@ -12030,7 +12585,7 @@ pub fn topo_resolve_types(
                                 ident.clone(),
                                 Rc::new(TypeBinding {
                                     name: name.clone(),
-                                    resolved: result.resolved.clone(),
+                                    resolved: resolved.clone(),
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                 }),
                             ),

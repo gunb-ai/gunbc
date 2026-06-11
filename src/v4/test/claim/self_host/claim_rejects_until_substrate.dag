@@ -11,7 +11,7 @@ import v4.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -24,14 +24,10 @@ import v4.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
-
-
-data rejects_until_substrate_subject_symbol: Symbol = rejects_until_substrate_subject_symbol
-
-
 data rejects_until_substrate_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: rejects_until_substrate_subject_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^rejects_until_substrate_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 

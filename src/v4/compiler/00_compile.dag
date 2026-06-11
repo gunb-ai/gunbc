@@ -12,7 +12,6 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
 import v4.compiler.name_resolve {
   Admission,
-  Import,
   ResolutionSubject,
   resolve_with_admission
 }
@@ -20,11 +19,10 @@ import v4.compiler.normalize { normalize }
 import v4.compiler.parse { parse }
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
-import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { FreeMonoid, list_append, list_snoc_item }
+import v4.std.algebra { list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -43,12 +41,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v4.std.module_batch { ModuleBatch }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
-import v4.std.qualified_name {
-  QualifiedName,
-  qualified_name_projection_gated
-}
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -358,25 +351,6 @@ fn validate_then_compile(
       )
     }
   )
-}
-
-
-fn compile_with_batch_projection_gated_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: qualified_name_projection_gated,
-    at: port_locus(port: compile_stage_locus_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-fn compile_with_batch(
-  root: QualifiedName,
-  batch: ModuleBatch,
-  imports: FreeMonoid<Import>,
-  target: TargetModel
-) -> Outcome<Validated<CompileOutput>> {
-  outcome_rejected(compile_with_batch_projection_gated_diagnostic())
 }
 
 

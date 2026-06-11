@@ -5,6 +5,8 @@ use self::OwnershipKind::*;
 use self::SmartPointerKind::*;
 pub use crate::std_coercion::{CallableRepr, CastRule, CastSyntax, InhabitantDecl, TypeCheckpoint};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -14,7 +16,7 @@ use std::rc::Rc;
 pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Symbol", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}, {"dag_name": "Hash", "target_type": "v2_rt::Hash", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Symbol", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}, {"dag_name": "Hash", "target_type": "v2_rt::Hash", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Witness", "target_type": "Witness", "default_expr": null, "is_copy": false, "literal_suffix": null}, {"dag_name": "witness", "target_type": "Witness", "default_expr": null, "is_copy": false, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
@@ -68,7 +70,9 @@ pub fn rust_callable() -> Rc<CallableRepr> {
     CACHED.with(|c: &Rc<CallableRepr>| c.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum OwnershipKind {
     Owned,
@@ -103,7 +107,9 @@ pub fn mut_ref_prefix() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum SmartPointerKind {
     BoxPtr,

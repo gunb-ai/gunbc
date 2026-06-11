@@ -8,7 +8,7 @@ import v4.compiler.self_host {
   self_host_fixed_point_validate
 }
 import v4.std.diagnostic { Accepted, None }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -21,14 +21,10 @@ import v4.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
-
-
-data runner_compiles_subject_symbol: Symbol = runner_compiles_subject_symbol
-
-
 data runner_compiles_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: runner_compiles_subject_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^runner_compiles_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 

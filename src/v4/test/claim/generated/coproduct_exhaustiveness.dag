@@ -26,6 +26,7 @@ import v4.std.verification {
   TestClaimCompilesClaimVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   generated_claim_anchor,
   test_claim_input,
@@ -108,6 +109,11 @@ fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) ->
             TestClaimEqualsClaimVariant =>
               match omitted_variant {
                 TestClaimEqualsClaimVariant => true
+                _ => false
+              }
+            TestClaimStructuralEqualsClaimVariant =>
+              match omitted_variant {
+                TestClaimStructuralEqualsClaimVariant => true
                 _ => false
               }
             TestClaimRoundTripClaimVariant =>

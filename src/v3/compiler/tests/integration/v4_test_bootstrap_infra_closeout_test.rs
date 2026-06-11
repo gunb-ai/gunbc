@@ -5,11 +5,26 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
-//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
-//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
-//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
-//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
-//! harness coverage.
+//! **P5 receipt for same-path expansion (INVARIANTS.md §P5 Mechanism (b)):** explicit
+//! deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); this file remains inside
+//! the SG-0 T-PB-B test subset (`sg0_census_test.rs:1065`) and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated harness
+//! coverage.
+//!
+//! **PR #4295 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
+//! `check_t19_testgen_activation` — structural migration of the activation gate
+//! formerly enforced by `scripts/check_t19_testgen_activation.py` (deleted on main
+//! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
+//! `EXPECTED_HAND_AUTHORED_TEST` census row (ROADMAP.md:43,63; `sg0_census_test.rs:1065`);
+//! dissolves when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
+//!
+//! **PR #4335 P5 receipt (INVARIANTS.md §P5 Mechanism (b) — +0 SG-0 paths):**
+//! disposition (3) explicit deferral — **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); same-path expansion for
+//! `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` under existing census row
+//! `sg0_census_test.rs:1065` (no new `EXPECTED_HAND_AUTHORED_TEST` entry). Dissolves when
+//! modeled `.dag` `TestClaim` rows or generated harness coverage own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -26,6 +41,8 @@ const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const TESTGEN_PATH: &str = "src/v4/lens/testgen.dag";
 const BOOTSTRAP_DAG: &str = include_str!("../../../../v4/workflow/bootstrap.dag");
 const BOOTSTRAP_PATH: &str = "src/v4/workflow/bootstrap.dag";
+const CLI_DAG: &str = include_str!("../../../../v4/workflow/cli.dag");
+const CLI_PATH: &str = "src/v4/workflow/cli.dag";
 const CONNECTIVE_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
 const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_anchors.dag";
@@ -66,6 +83,18 @@ const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
 const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
 const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
+const DAG_INPUT_SURFACE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
+const DAG_INPUT_SURFACE_PATH: &str = "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
+const LBE_MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/lbe_anchor_manifest.dag");
+const LBE_MANIFEST_PATH: &str = "src/v4/test/claim/generated/lbe_anchor_manifest.dag";
+const REFINEMENT_MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/refinement_preservation_anchor_manifest.dag");
+const REFINEMENT_MANIFEST_PATH: &str =
+    "src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag";
+const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
+const VERIFICATION_PATH: &str = "src/v4/std/verification.dag";
 
 #[test]
 fn language_behavior_equivalence_generated_claims_parse() {
@@ -257,10 +286,16 @@ fn refinement_preservation_receipts_present() {
     assert!(
         TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
             && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_refinement_preservation_generators")
+            && TESTGEN_DAG.contains("-> Outcome<List<Generator<TestgenConcept>>>")
+            && !TESTGEN_DAG.contains("Rejected { diagnostics: _ } => Empty")
             && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
             && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
             && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
             && TESTGEN_DAG.contains("ManualRefinementNonEmptyListBase")
+            && TESTGEN_DAG.contains(
+                "bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase)"
+            )
             && REFINEMENT_GENERATED_DAG
                 .contains("refinement_preservation_subject_nonempty_list_base()")
             && REFINEMENT_GENERATED_DAG
@@ -270,8 +305,11 @@ fn refinement_preservation_receipts_present() {
             )
             && REFINEMENT_GENERATED_DAG.contains(
                 "data witness_refinement_preserves_nonempty_list_base: Bool"
+            )
+            && REFINEMENT_GENERATED_DAG.contains(
+                "data witness_refinement_preservation_scheduler_emits_one_generator: Bool"
             ),
-        "generated refinement-preservation corpus must derive a TestClaim through testgen_emit and prove refined_base preserves the accepted base"
+        "generated refinement-preservation corpus must derive a TestClaim through testgen_emit, prove refined_base preserves the accepted base, and prove the mandatory scheduler emits the refinement key"
     );
 }
 
@@ -384,8 +422,11 @@ fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
             && TESTGEN_DAG.contains("anchor: anchor")
             && TESTGEN_DAG.contains("at: node_locus(node: input)")
-            && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
-        "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
+            && !TESTGEN_DAG.contains("NodeLocus { node: input }")
+            && TESTGEN_DAG.contains("identity: discriminant(v: variant)")
+            && !TESTGEN_DAG.contains("fn test_claim_coproduct_variant_symbol")
+            && !TESTGEN_DAG.contains("coproduct_exhaustiveness_compiles_claim_variant"),
+        "coproduct-exhaustiveness generation must carry omitted variant into the input node, use canonical node_locus, and project variant identity via discriminant()"
     );
     assert!(
         COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
@@ -438,7 +479,7 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
     );
     assert!(
-        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: subject.input.evaluator_input)")
+        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: input)")
             && EVAL_DAG.contains("run_test_claim_round_trip_verdict_runtime(")
             && EVAL_DAG.contains("dag_round_trip_wave1_authorities_ready()"),
         "RoundTripClaim must admit witness input structurally (IRT-3), not runtime-eval TypeNode, and re-derive wave-1 readiness from dag.dag authorities (P2; not Deferred)"
@@ -472,6 +513,197 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
     );
 }
 
+/// T-19 testgen activation ratchet (INVARIANTS §P5 same-path expansion; +0 SG-0).
+/// Replaces `scripts/check_t19_testgen_activation.py` after #4252 removed `scripts/`.
+/// Substrate parse + structural substring receipts only.
+#[test]
+fn check_t19_testgen_activation() {
+    parse_module(DAG_INPUT_SURFACE_DAG, DAG_INPUT_SURFACE_PATH);
+    parse_module(LBE_MANIFEST_DAG, LBE_MANIFEST_PATH);
+    parse_module(REFINEMENT_MANIFEST_DAG, REFINEMENT_MANIFEST_PATH);
+    parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+    parse_module(TESTGEN_WISHLIST_DAG, TESTGEN_WISHLIST_PATH);
+    parse_module(ALGEBRA_LAW_GENERATED_DAG, ALGEBRA_LAW_GENERATED_PATH);
+    parse_module(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
+    );
+    parse_module(REFINEMENT_GENERATED_DAG, REFINEMENT_GENERATED_PATH);
+    parse_module(
+        IDEMPOTENT_OPERATION_GENERATED_DAG,
+        IDEMPOTENT_OPERATION_GENERATED_PATH,
+    );
+
+    require_substrings(
+        "lens_testgen/dag_input_surface",
+        DAG_INPUT_SURFACE_DAG,
+        &[
+            "witness_lens_testgen_schedules_dag_input_surface_green",
+            "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green",
+            "scheduled_language_behavior_generators_cover_dag_inputs()",
+            "for_all(",
+            "language_behavior_generator_uses_disj_dag_input",
+            "language_behavior_generator_uses_transform_dag_input",
+            "bootstrap_generator_has_conj_dag_input_surface()",
+            "dag_language_model_surface_id",
+            "testgen_scheduled_language_behavior_generators",
+            "bootstrap_claim_generator_for_manual_anchor",
+        ],
+    );
+    forbid_substrings(
+        "lens_testgen/dag_input_surface",
+        DAG_INPUT_SURFACE_DAG,
+        &["compile-only until T-19"],
+    );
+
+    require_substrings(
+        "lbe_anchor_manifest.dag",
+        LBE_MANIFEST_DAG,
+        &[
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
+        ],
+    );
+    require_substrings(
+        "refinement_preservation_anchor_manifest.dag",
+        REFINEMENT_MANIFEST_DAG,
+        &["ManualRefinementNonEmptyListBase"],
+    );
+
+    parse_module(VERIFICATION_DAG, VERIFICATION_PATH);
+
+    require_substrings(
+        VERIFICATION_PATH,
+        VERIFICATION_DAG,
+        &[
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
+            "type TestClaimCoproductVariant",
+            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
+            "GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
+            "ManualRefinementNonEmptyListBase",
+        ],
+    );
+
+    require_substrings(
+        "testgen.dag",
+        TESTGEN_DAG,
+        &[
+            "| LanguageBehaviorEquivalence {",
+            "type LanguageBehaviorEquivalenceSubject",
+            "type FrozenLanguageBehaviorSnapshot",
+            "type LanguageBehaviorIoMock",
+            "fn testgen_emit_language_behavior_equivalence_claim",
+            "fn testgen_emit_algebra_law_claim",
+            "if lhs == rhs",
+            "t19_algebra_law_tautological_sides",
+            "fn testgen_emit_idempotent_operation_claim",
+            "fn testgen_scheduled_language_behavior_generators",
+            "fn testgen_scheduled_idempotent_operation_subjects",
+            "dag_language_model_surface_id",
+            "ManualLbeConjDagSurface",
+            "ManualRefinementNonEmptyListBase",
+            "fn testgen_emit_coproduct_exhaustiveness_claim",
+            "fn testgen_scheduled_coproduct_exhaustiveness_generators",
+            "| RefinementPreservation { subject: RefinementPreservationSubject }",
+            "fn testgen_emit_refinement_preservation_claim",
+            "refined_base(r: subject.refined)",
+        ],
+    );
+
+    let concept_body = between(TESTGEN_DAG, "type TestgenConcept", "type Generator");
+    assert!(
+        concept_body.contains("LanguageBehaviorEquivalence"),
+        "LanguageBehaviorEquivalence must be a TestgenConcept variant"
+    );
+    assert!(
+        concept_body.contains("RefinementPreservation"),
+        "RefinementPreservation must be a TestgenConcept variant"
+    );
+    assert!(
+        !concept_body.contains("IdempotentOperationSubject"),
+        "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
+    );
+
+    let pending = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_pending_non_tautological_generator_wishlist",
+        "fn testgen_dispatched_non_tautological_generators",
+    );
+    assert_eq!(
+        pending.matches("TestgenWishlistRow {").count(),
+        3,
+        "generator wishlist must carry exactly three pending non-dispatched rows"
+    );
+    for shipped in ["slot: AlgebraLaw", "slot: DiagnosticExhaustiveness"] {
+        assert!(
+            !pending.contains(shipped),
+            "{shipped} has generated rows and must stay out of pending wishlist rows"
+        );
+    }
+
+    let dispatched = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_dispatched_non_tautological_generators",
+        "fn pending_non_tautological_generator_count_is_three",
+    );
+    assert_eq!(
+        dispatched.matches("TestgenWishlistRow {").count(),
+        4,
+        "generator wishlist must carry exactly four dispatched rows"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
+            && dispatched.contains("generator: dispatched_algebra_law_generator()")
+            && dispatched.contains("generator: dispatched_diagnostic_exhaustiveness_generator()")
+            && dispatched.contains("generator: dispatched_refinement_preservation_generator()"),
+        "dispatched wishlist rows must include LBE, AlgebraLaw, DiagnosticExhaustiveness, and RefinementPreservation"
+    );
+
+    require_substrings(
+        "language_behavior_equivalence.dag",
+        LBE_GENERATED_DAG,
+        &[
+            "run_test_claim_assert",
+            "run_test_claim(",
+            "witness_lbe_conj_snapshot_pass",
+            "witness_lbe_disj_snapshot_pass",
+            "witness_lbe_transform_snapshot_pass",
+            "witness_testgen_schedules_three_lbe_generators",
+            "lbe_io_mock_conj_dag_surface",
+        ],
+    );
+
+    require_substrings(
+        "coproduct_exhaustiveness.dag",
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        &[
+            "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4",
+            "witness_coproduct_exhaustiveness_generator_count",
+        ],
+    );
+
+    require_substrings(
+        "refinement_preservation.dag",
+        REFINEMENT_GENERATED_DAG,
+        &[
+            "witness_refinement_preserves_nonempty_list_base",
+            "refined_base(r: subject.refined) == subject.original",
+        ],
+    );
+
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG
+            .matches("data generated_nat_")
+            .count()
+            >= 3,
+        "algebra-law generator must produce at least three sample TestClaim rows"
+    );
+}
+
 #[test]
 fn testgen_concept_surface_stays_closed_and_classified() {
     let module = parse_module(TESTGEN_DAG, TESTGEN_PATH);
@@ -496,8 +728,10 @@ fn testgen_concept_surface_stays_closed_and_classified() {
             ("classification", "TestClassification"),
             ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
+            ("provenance", "GeneratorProvenance"),
+            ("profile_metadata", "GeneratorProfile"),
         ]),
-        "Generator<C> must carry claim kind, anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
+        "Generator<C> must carry claim kind, anchor, classification, slot, provenance bundle, and profile metadata (F.2-P1 #4316)"
     );
 }
 
@@ -718,6 +952,34 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
     );
 }
 
+#[test]
+fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
+    let _ = parse_module(BOOTSTRAP_DAG, BOOTSTRAP_PATH);
+    let _ = parse_module(CLI_DAG, CLI_PATH);
+
+    assert!(
+        BOOTSTRAP_DAG.contains("type BootstrapEvaluatorCorpusHarnessEntry")
+            && BOOTSTRAP_DAG.contains("fn bootstrap_evaluator_corpus_harness_entry()")
+            && BOOTSTRAP_DAG.contains("entry_fn: run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("entry_module: v4_test_claim_workflow_testclaim_corpus_runner")
+            && BOOTSTRAP_DAG.contains("runtime_model: v4_evaluator_runtime_wave1()")
+            && BOOTSTRAP_DAG.contains("stage0_binary: v4_stage0_binary")
+            && BOOTSTRAP_DAG.contains("data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool"),
+        "RR-A §5.2: bootstrap must model stage0 corpus harness with wave1 runtime pin and run_manual_testclaim_corpus_eval entry"
+    );
+    assert!(
+        CLI_DAG.contains("type GunbcTestCorpusHarnessRoute")
+            && CLI_DAG.contains(
+                "data gunbc_test_manual_corpus_harness_route: GunbcTestCorpusHarnessRoute"
+            )
+            && CLI_DAG.contains("harness: bootstrap_manual_corpus_harness")
+            && CLI_DAG.contains(".harness.entry_fn == run_manual_testclaim_corpus_eval")
+            && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
+        "cli.dag must expose harness route typed separately from GunbcTestRoute.selection_fn (P2)"
+    );
+}
+
 /// Returns true when a `data x: TestClaim = …` body directly assigns a ManualAnchorKey
 /// variant to the `anchor` field (not wrapped in `manual_claim_anchor`).
 /// Helper-function bodies (arity_rejection_claim, testgen_emit_*, etc.) are Call
@@ -926,6 +1188,30 @@ fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a Su
         .iter()
         .find_map(|field| (field.name == name).then_some(&field.value))
         .unwrap_or_else(|| panic!("missing record field {name}"))
+}
+
+fn require_substrings(label: &str, text: &str, needles: &[&str]) {
+    let missing: Vec<_> = needles
+        .iter()
+        .copied()
+        .filter(|n| !text.contains(n))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{label}: missing required substrings: {missing:?}"
+    );
+}
+
+fn forbid_substrings(label: &str, text: &str, needles: &[&str]) {
+    let present: Vec<_> = needles
+        .iter()
+        .copied()
+        .filter(|n| text.contains(n))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "{label}: forbidden substrings present: {present:?}"
+    );
 }
 
 fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {

@@ -19,9 +19,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+static WORK_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Wall-clock bound for `cargo build` of the ephemeral fixture crate.
 pub const HOST_BUILD_TIMEOUT: Duration = Duration::from_secs(300);
@@ -162,13 +165,25 @@ pub struct BuildLog {
     pub lines: Vec<String>,
 }
 
-/// Host fixture input pins — mirrors `.dag` split of `claim_input_root` (evaluator input /
-/// `Inputs.root` for `run_emit_host`) vs `expected_eval_root` (rhs / `expected_value` for eval).
-/// W2 MVP fixture ignores pin semantics; W3 wires Node→host ABI and rejects mismatched pins.
+/// Claim-only pins at the `run_emit_host_*` substrate transport boundary (`Inputs.root` only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmitHostTransportInputs {
+    pub claim_input_root: String,
+}
+
+/// Full emit-vs-eval fixture pins — claim + expected eval root (both required facts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmitHostFixtureInputs {
     pub claim_input_root: String,
     pub expected_eval_root: String,
+}
+
+impl EmitHostFixtureInputs {
+    pub fn transport(&self) -> EmitHostTransportInputs {
+        EmitHostTransportInputs {
+            claim_input_root: self.claim_input_root.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +234,127 @@ pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), RuntimeValueParseFai
             actual_len: bytes.len(),
         })
     }
+}
+
+/// B3 TypeScript row — four-byte signed little-endian i32 on stdout (Node `writeInt32LE`).
+pub fn runtime_value_parse_signed_i32_le(bytes: &[u8]) -> Result<i32, RuntimeValueParseFailure> {
+    const EXPECTED: usize = 4;
+    if bytes.len() != EXPECTED {
+        return Err(RuntimeValueParseFailure {
+            expected_len: EXPECTED,
+            actual_len: bytes.len(),
+        });
+    }
+    Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+/// Modeled identity for `ts_host_transport_mvp1_descriptor` (`typescript.dag`).
+pub const TS_HOST_TRANSPORT_MVP1_IDENTITY: &str = "ts_host_transport_mvp1_identity";
+
+const TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX: &str = "\
+const __gunbc_r = add(2, 3);
+const __gunbc_b = Buffer.alloc(4);
+__gunbc_b.writeInt32LE(__gunbc_r, 0);
+process.stdout.write(__gunbc_b);
+";
+
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// hand-rolled discriminator-over-Symbol with default-reject arm) — feature: T-22 host-emission
+// TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row
+// onto TargetModel and replace this per-target match (its mirror run_host_process below + the
+// emit_host.dag if-chains + the python hand-reification at emit_host_eval.rs:1022-1061) with a
+// generic row-lookup; point host-tool/descriptor identities at extdeps/languages/*::*_mvp1_source_text.
+// forbidden: adding a 5th per-target arm without the dissolution.
+fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
+    match identity {
+        "host_tool_npx" => Ok("npx".to_string()),
+        "host_tool_node" => Ok("node".to_string()),
+        "host_tool_tsc" => Ok("tsc".to_string()),
+        other => Err(HostSetupFailure::SpawnFailed {
+            phase: HostPhase::Build,
+            source: format!("unknown host tool identity: {other}"),
+        }),
+    }
+}
+
+/// Single generic host-process primitive — dispatches on modeled descriptor identity.
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// match on descriptor_identity against a single hard-coded TS identity with default-reject arm,
+// cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 —
+// dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target
+// match (its mirror resolve_host_tool above + the emit_host.dag if-chains + the python
+// hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup.
+// forbidden: adding a 5th per-target arm without the dissolution.
+pub fn run_host_process(
+    descriptor_identity: &str,
+    source: &str,
+    inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    validate_emit_host_transport_inputs(inputs)?;
+    match descriptor_identity {
+        TS_HOST_TRANSPORT_MVP1_IDENTITY => run_host_process_ts_mvp1(source, inputs, work_dir),
+        other => Err(HostSetupFailure::SpawnFailed {
+            phase: HostPhase::Build,
+            source: format!("unsupported host transport descriptor: {other}"),
+        }),
+    }
+}
+
+fn run_host_process_ts_mvp1(
+    source: &str,
+    _inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let fixture_ts = work_dir.join("fixture.ts");
+    let fixture_body = format!("{source}{TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX}");
+    fs::write(&fixture_ts, fixture_body).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
+    build_cmd.current_dir(work_dir).args([
+        "-y",
+        "typescript@5.9.2",
+        "tsc",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--outDir",
+        ".",
+        "fixture.ts",
+    ]);
+    let build = run_command_bounded(build_cmd, HOST_BUILD_TIMEOUT, HostPhase::Build)?;
+    let mut build_log = bounded_output_to_log(&build, "tsc");
+    if !matches!(build.status, Some(s) if s.success()) {
+        return Ok(EmitHostRunReceipt {
+            source_text: source.to_string(),
+            exit: host_exit_from_bounded(&build, HostPhase::Build),
+            stdout_bytes: build.stdout,
+            stderr_bytes: build.stderr,
+            build_log,
+        });
+    }
+
+    let fixture_js = work_dir.join("fixture.js");
+    let mut run_cmd = Command::new(resolve_host_tool("host_tool_node")?);
+    run_cmd.current_dir(work_dir).arg(&fixture_js);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
+    build_log
+        .lines
+        .extend(bounded_output_to_log(&run, "node").lines);
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log,
+    })
 }
 
 struct BoundedChildOutput {
@@ -396,13 +532,28 @@ fn host_exit_from_bounded(output: &BoundedChildOutput, phase: HostPhase) -> Host
     }
 }
 
-/// Fail-closed when fixture pins are absent (W3 will require typed Node pins).
-pub fn validate_emit_host_fixture_inputs(
-    inputs: &EmitHostFixtureInputs,
+/// Fail-closed when `run_emit_host_*` transport is invoked without a claim input pin.
+///
+/// At the substrate `run_emit_host_*` boundary only `claim_input_root` is modeled in
+/// `Inputs.root` (`emit_host.dag` `run_test_claim_emit_vs_eval_for_claim` passes
+/// `fixture_inputs: Inputs { root: claim_input_root }`). `expected_eval_root` is evaluated
+/// separately and is not in scope on this call path — do not require it here.
+pub fn validate_emit_host_transport_inputs(
+    inputs: &EmitHostTransportInputs,
 ) -> Result<(), HostSetupFailure> {
     if inputs.claim_input_root.is_empty() {
         return Err(HostSetupFailure::EmptyClaimInputRoot);
     }
+    Ok(())
+}
+
+/// Fail-closed when emit-vs-eval / harness callers omit either pin (both must be distinct facts).
+///
+/// Production callers: `emit_host_bridge` transport and cross-target parity entrypoints.
+pub fn validate_emit_host_fixture_inputs(
+    inputs: &EmitHostFixtureInputs,
+) -> Result<(), HostSetupFailure> {
+    validate_emit_host_transport_inputs(&inputs.transport())?;
     if inputs.expected_eval_root.is_empty() {
         return Err(HostSetupFailure::EmptyExpectedEvalRoot);
     }
@@ -412,10 +563,10 @@ pub fn validate_emit_host_fixture_inputs(
 /// Compile `source` as a Rust binary crate in `work_dir`, run it, capture stdout/stderr.
 pub fn run_emit_host_rust(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -478,10 +629,10 @@ pub fn run_emit_host_rust(
 /// Run `source` as a Go program in `work_dir` via `go run`, capture stdout/stderr.
 pub fn run_emit_host_go(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -514,10 +665,10 @@ pub fn python3_binary() -> String {
 /// Run `source` as a Python script in `work_dir`, capture stdout/stderr.
 pub fn run_emit_host_python(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -545,6 +696,12 @@ pub fn default_work_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(prefix)
 }
 
+/// Hermetic work directory unique per process and per call (concurrent eval / parallel tests safe).
+pub fn unique_work_dir(prefix: &str) -> PathBuf {
+    let seq = WORK_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    default_work_dir(&format!("{prefix}_{}_{seq}", std::process::id()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,6 +710,39 @@ mod tests {
     fn runtime_value_parse_rust_accepts_five_bytes() {
         assert!(runtime_value_parse_rust(&[0, 0, 0, 0, 0]).is_ok());
         assert!(runtime_value_parse_rust(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn runtime_value_parse_signed_i32_le_decodes_fixed_bytes() {
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[5, 0, 0, 0]).expect("four-byte LE"),
+            5
+        );
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[0xff, 0xff, 0xff, 0xff]).expect("four-byte LE"),
+            -1
+        );
+        assert!(runtime_value_parse_signed_i32_le(&[0, 0, 0]).is_err());
+    }
+
+    #[test]
+    fn unique_work_dir_differs_per_call_in_process() {
+        let a = unique_work_dir("gunbc_emit_host_unique_test");
+        let b = unique_work_dir("gunbc_emit_host_unique_test");
+        assert_ne!(
+            a, b,
+            "concurrent eval calls must not share a work directory"
+        );
+    }
+
+    #[test]
+    fn validate_emit_host_transport_inputs_accepts_claim_only() {
+        assert!(
+            validate_emit_host_transport_inputs(&EmitHostTransportInputs {
+                claim_input_root: "claim".into(),
+            })
+            .is_ok()
+        );
     }
 
     #[test]

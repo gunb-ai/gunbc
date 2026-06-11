@@ -63,8 +63,6 @@ mod cost_lens_symbolic_consumer_test;
 mod coverage_defect_acceptance_dag_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
-#[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
-mod ctrl_pr_digests_dag_smoke_test;
 #[path = "integration/dissolution_subsumption_carrier_test.rs"]
 mod dissolution_subsumption_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
@@ -87,6 +85,8 @@ mod extdeps_sql_transport_test;
 mod file_attachment_substrate_carrier_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
+#[path = "integration/get_off_v3_compile_to_dag_census_test.rs"]
+mod get_off_v3_compile_to_dag_census_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
 mod idempotency_lens_instance_blocker_test;
 #[path = "integration/int_literal_cardinality_test.rs"]
@@ -145,8 +145,6 @@ mod m1_fn_external_body_reconciliation_test;
 mod m1_lens_structural_resolution_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
-#[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
-mod m2_emit_multi_field_struct_variant_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
@@ -183,6 +181,8 @@ mod pb1_bootstrap_full_snapshot_test;
 mod pb_method_template_projection_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
+#[path = "integration/positional_conj_fold_list_emit_path_test.rs"]
+mod positional_conj_fold_list_emit_path_test;
 #[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
 mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
@@ -217,8 +217,6 @@ mod r3_substrate_gap_reflection_closure_test;
 mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
-#[path = "integration/services_carrier_shape_test.rs"]
-mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
@@ -241,8 +239,6 @@ mod sg7_prep_variant_payload_freshness_test;
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
 mod symbolic_cost_expr_equals_executable_ratchet_test;
-#[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
-mod t_ci_workflow_as_data_demo_test;
 #[path = "integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs"]
 mod t_gate_106_show_correct_code_diagnostic_coverage_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
@@ -279,24 +275,18 @@ mod thesis_validation_test;
 mod timing_lens_substrate_carrier_test;
 #[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
 mod v2_oracle_no_remaining_test_consumers_test;
-#[path = "integration/v4_bin_main_dag_smoke_test.rs"]
-mod v4_bin_main_dag_smoke_test;
-#[path = "integration/v4_compiler_compile_public_terminal_smoke_test.rs"]
-mod v4_compiler_compile_public_terminal_smoke_test;
-#[path = "integration/v4_compiler_emit_translate_smoke_test.rs"]
-mod v4_compiler_emit_translate_smoke_test;
-#[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
-mod v4_compiler_parse_table_dag_smoke_test;
+#[path = "integration/v4_emit_host_eval_dispatch_test.rs"]
+mod v4_emit_host_eval_dispatch_test;
 #[path = "integration/v4_emit_host_harness_test.rs"]
 mod v4_emit_host_harness_test;
-#[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
-mod v4_extdeps_coordination_dag_smoke_test;
-#[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
-mod v4_extdeps_file_system_dag_smoke_test;
-#[path = "integration/v4_extdeps_formatters_black_dag_smoke_test.rs"]
-mod v4_extdeps_formatters_black_dag_smoke_test;
-#[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
-mod v4_extdeps_react_dag_smoke_test;
+#[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
+mod v4_leaf_model_go_r1_r2_r3_external_test;
+#[path = "boundary/v4_leaf_model_python_cross_runtime_drift_test.rs"]
+mod v4_leaf_model_python_cross_runtime_drift_test;
+#[path = "boundary/v4_leaf_model_python_l1_static_receipts_test.rs"]
+mod v4_leaf_model_python_l1_static_receipts_test;
+#[path = "boundary/v4_leaf_model_python_l2_cross_target_parity_test.rs"]
+mod v4_leaf_model_python_l2_cross_target_parity_test;
 #[path = "boundary/v4_leaf_model_python_r1_test.rs"]
 mod v4_leaf_model_python_r1_test;
 #[path = "boundary/v4_leaf_model_python_r2_r3_external_test.rs"]
@@ -309,34 +299,14 @@ mod v4_leaf_model_rust_r2_r3_external_rustc_test;
 mod v4_leaf_model_rust_r3_internal_emit_coupling_test;
 #[path = "boundary/v4_leaf_model_typescript_r2_r3_external_test.rs"]
 mod v4_leaf_model_typescript_r2_r3_external_test;
-#[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
-mod v4_lens_affected_set_dag_smoke_test;
-#[path = "integration/v4_lens_application_dag_smoke_test.rs"]
-mod v4_lens_application_dag_smoke_test;
-#[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
-mod v4_lens_edit_locus_dag_smoke_test;
-#[path = "integration/v4_lens_identical_variant_payload_dag_smoke_test.rs"]
-mod v4_lens_identical_variant_payload_dag_smoke_test;
-#[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
-mod v4_lens_registry_dag_smoke_test;
-#[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
-mod v4_lens_testgen_dag_smoke_test;
 #[path = "integration/v4_p9_llvm_instruction_cost_single_owner_test.rs"]
 mod v4_p9_llvm_instruction_cost_single_owner_test;
-#[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
-mod v4_std_model_core_dag_smoke_test;
-#[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
-mod v4_std_target_realization_dag_smoke_test;
+#[path = "integration/v4_std_text_boundary_carrier_guard_test.rs"]
+mod v4_std_text_boundary_carrier_guard_test;
 #[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]
 mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
 mod v4_test_bootstrap_infra_closeout_test;
-#[path = "integration/v4_test_fixture_task_manager_demo_smoke_test.rs"]
-mod v4_test_fixture_task_manager_demo_smoke_test;
-#[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
-mod v4_workflow_ci_runner_dag_smoke_test;
-#[path = "integration/v4_workflow_release_dag_smoke_test.rs"]
-mod v4_workflow_release_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
@@ -353,11 +323,9 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    use crate::common::cached_compile_to_dag;
-    use v3_compiler::compile_to_dag;
+    use crate::common::{cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome};
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
-    use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
 
@@ -433,10 +401,10 @@ mod t_demo_fixture_test {
     #[test]
     fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
         let src = "let bad_shape = IsIdempotent(AppendEffect())\n";
-        let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
-            .expect_err("idempotency-violation witness should not compile");
-        let CompileError::Semantic(dag) = err else {
-            panic!("expected Semantic(Dag) handoff, got {err:?}");
+        let CachedCompileOutcome::Semantic(dag) =
+            cached_compile_outcome(src, "impossible_bug_idempotency.v3")
+        else {
+            panic!("idempotency-violation witness should not compile");
         };
         let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
         let append_needle = "AppendEffect";
@@ -480,15 +448,10 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_structural_cost_obligation_witness_compiles_cleanly() {
-        compile_to_dag(
+        cached_compile_to_dag(
             T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE,
             "t_demo_structural_cost_obligation.v3",
-        )
-        .unwrap_or_else(|err| {
-            panic!(
-                "T-Demo structural cost witness must compile so CostBounded exercises lens_cost::cost_of, not tokenizer/parse failures: {err:?}"
-            )
-        });
+        );
     }
 
     #[test]
@@ -510,8 +473,8 @@ mod t_demo_fixture_test {
 }
 
 mod lane2_stage_2f_dimension_test {
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::analyze_symbolic_cost_dimension;
-    use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::DimensionReport;
@@ -626,7 +589,7 @@ mod lane2_stage_2f_dimension_test {
 
     #[test]
     fn analyze_symbolic_cost_composed_matches_lens_at_workflow_root() {
-        let dag = compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3");
         let root = find_bind_root(&dag, "x");
         let report = analyze_symbolic_cost_dimension(&dag, root);
         let lens = match symbolic_cost_lookup(&dag, &find_bind_port(&dag, "x")) {
@@ -702,7 +665,7 @@ mod lane2_stage_2f_dimension_test {
 /// analyzer, and preserves the typed `DimensionReport` /
 /// `Diagnostic` partition without parsing `Witness::Violates.reason`.
 mod e7_analyze_complexity_integration {
-    use v3_compiler::compile_to_dag;
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::dag::Behavior;
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
@@ -735,7 +698,7 @@ mod e7_analyze_complexity_integration {
     /// fields. Single-authority via the public crate surface.
     #[test]
     fn analyze_complexity_public_api_delegates_to_symbolic_cost_dimension() {
-        let dag = compile_to_dag("let y = 3 + 4", "e7_int_match.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let y = 3 + 4", "e7_int_match.v3");
         let root = find_bind_root(&dag, "y");
 
         let via_complexity = analyze_complexity(&dag, root);
@@ -804,8 +767,7 @@ mod e7_analyze_complexity_integration {
     /// more nodes than the first.
     #[test]
     fn analyze_complexity_public_api_honors_supplied_workflow_root() {
-        let dag = compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3")
-            .expect("compiles");
+        let dag = cached_compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3");
 
         let root_a = find_bind_root(&dag, "a");
         let root_b = find_bind_root(&dag, "b");
@@ -897,7 +859,7 @@ mod e7_analyze_complexity_integration {
     /// Confirms the wrapper preserves the lens contract.
     #[test]
     fn analyze_complexity_composed_matches_lens_at_workflow_root() {
-        let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let z = 5 + 6", "e7_int_lens.v3");
         let root = find_bind_root(&dag, "z");
 
         let SymbolicCostLookup::Hit(lens_cost) =
@@ -931,7 +893,7 @@ mod e7_analyze_complexity_integration {
     /// API does not lose the typed envelope on the success path.
     #[test]
     fn analyze_complexity_public_api_preserves_typed_witness_envelope_on_ok() {
-        let dag = compile_to_dag("let w = 7 + 8", "e7_int_typed.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let w = 7 + 8", "e7_int_typed.v3");
         let root = find_bind_root(&dag, "w");
 
         let DimensionReport::DimensionOk { witnesses, .. } = analyze_complexity(&dag, root) else {
@@ -1167,6 +1129,31 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/machine_constraints.dag"),
             "dsl/std/machine_constraints.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_cache_identity_dag() {
+        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+        // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cache_identity`
+        // (P2 dup-authority substrate) until T-PB-B hand-Rust test floor reaches zero.
+        parse_file(
+            include_str!("../../../../dsl/std/cache_identity.dag"),
+            "dsl/std/cache_identity.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_compute_fabric_dag() {
+        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+        // `pb_rust_tests_outside_residual_zero`; Worksheet A §2 parser gate
+        // (`docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md`) until T-PB-B
+        // hand-Rust test floor reaches zero.
+        parse_file(
+            include_str!("../../../../dsl/std/compute_fabric.dag"),
+            "dsl/std/compute_fabric.dag",
         );
     }
 

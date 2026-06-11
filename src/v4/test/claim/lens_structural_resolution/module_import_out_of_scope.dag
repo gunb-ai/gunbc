@@ -20,38 +20,32 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.dependency {
   DependencyView,
-  ModuleDependsOn,
-  dependency_module_import_edge
+  ModuleDependsOn
 }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-
-data sr_mod_child_symbol: Symbol = sr_mod_child_symbol
-data sr_mod_type_symbol: Symbol = sr_mod_type_symbol
-data sr_mod_algebra_symbol: Symbol = sr_mod_algebra_symbol
-data sr_mod_descent_symbol: Symbol = sr_mod_descent_symbol
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 
 fn sr_mod_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
-data sr_mod_imported: Node = sr_mod_claim_atom(s: sr_mod_child_symbol)
+data sr_mod_imported: Node = sr_mod_claim_atom(s: ^sr_mod_child_symbol)
 
 data sr_mod_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: dependency_module_import_edge }, target: sr_mod_imported }
-  ]
+    Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data sr_mod_dependency: DependencyView = DependencyView {
@@ -64,11 +58,11 @@ data sr_mod_dependency: DependencyView = DependencyView {
 fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
   CanonicalGroundingWitness {
     structural: StructuralPropertyWitness {
-      property: constraint_property_being_canonical,
+      property: ^constraint_property_being_canonical,
       evidence: resolved
     },
     closedness: StructuralPropertyWitness {
-      property: constraint_property_candidate_set_closedness,
+      property: ^constraint_property_candidate_set_closedness,
       evidence: resolved
     }
   }
@@ -76,12 +70,11 @@ fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 
 fn sr_mod_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: sr_mod_type_symbol,
-    algebra_symbol: sr_mod_algebra_symbol,
-    descent_symbol: sr_mod_descent_symbol,
+    type_symbol: ^sr_mod_type_symbol,
+    algebra_symbol: ^sr_mod_algebra_symbol,
+    descent_symbol: ^sr_mod_descent_symbol,
   )
 }
-
 
 fn sr_mod_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   Map {

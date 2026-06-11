@@ -9,7 +9,7 @@ import v4.lens.coverage {
   coverage_defect_vacuous_arm
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -19,12 +19,10 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data near_miss_vacuous_symbol: Symbol = near_miss_vacuous_symbol
-
 data near_miss_vacuous_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: near_miss_vacuous_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^near_miss_vacuous_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn near_miss_vacuous_not_parallel_claim_holds() -> Bool {
@@ -37,8 +35,9 @@ fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

@@ -8,13 +8,15 @@
 
 module std.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.float { Float }
-import std.measure { Measure, Time, Memory, DataRate, Frequency, One, Hertz }
+import std.measure { Measure, Time, DataRate, Frequency, One, Hertz, ByteSize }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 import std.placement_supply { HostIdentity, PlacementSupplyRow, cpu_capacity_hz_row }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
-type Witness<C> = Node
+// Kept intentionally distinct from the kernel `Witness<T>` container.
+type ComputeWitness<C> = Node
 type Outcome<T> = Node
 
 // 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
@@ -53,14 +55,9 @@ type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type LogicalTime = NonEmptyStr where brand("LogicalTime")
-type ByteSize = Measure<Memory, One>
 type Bandwidth = Measure<DataRate, One>
 type Duration = Measure<Time, One>
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
-type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
-// Forward reference — Worksheet B / harness identity carrier (P2; no import cache_interface).
-type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 
 type ComputeArtifactLocality
   = InProcess
@@ -301,10 +298,10 @@ type ParallelismShape
     }
 
 type ReducerLaws {
-  associative: Witness<Associativity>
-  commutative: Option<Witness<Commutativity>>
+  associative: ComputeWitness<Associativity>
+  commutative: Option<ComputeWitness<Commutativity>>
   identity: Option<IdentityElement>
-  idempotent: Option<Witness<Idempotency>>
+  idempotent: Option<ComputeWitness<Idempotency>>
 }
 
 type ExecutionBudget {
@@ -351,11 +348,11 @@ type ComputeLease {
   offer: ComputeOffer
   demand: WorkDemand
   allocation: AllocationReceipt
-  eligibility: Witness<ComputeLeaseEligibility>
+  eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
 // 🟡 P-CF-WITNESS — `satisfies` signature + body land with supply row proofs (cases 7–8).
-// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> Witness<ComputeLeaseEligibility>
+// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> ComputeWitness<ComputeLeaseEligibility>
 
 // --- §1.1 executable unit + ingress --------------------------------------------
 

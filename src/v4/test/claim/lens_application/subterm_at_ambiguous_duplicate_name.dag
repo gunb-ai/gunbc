@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.subterm_at_ambiguous_duplicate_name
 import v4.lens.application { subterm_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -17,39 +17,37 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data ambiguous_dup_step: Symbol = ambiguous_dup_step
-data ambiguous_leaf_a_symbol: Symbol = ambiguous_leaf_a_symbol
-data ambiguous_leaf_b_symbol: Symbol = ambiguous_leaf_b_symbol
-
 data ambiguous_leaf_a: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ambiguous_leaf_a_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^ambiguous_leaf_a_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data ambiguous_leaf_b: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ambiguous_leaf_b_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^ambiguous_leaf_b_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data ambiguous_duplicate_name_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ambiguous_dup_step },
+      label: Named { name: ^ambiguous_dup_step },
       target: ambiguous_leaf_a
     },
     Edge {
-      label: Named { name: ambiguous_dup_step },
+      label: Named { name: ^ambiguous_dup_step },
       target: ambiguous_leaf_b
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   match subterm_at(
     root: ambiguous_duplicate_name_root,
-    path: Path { steps: [ambiguous_dup_step] }
+    path: Path { steps: [^ambiguous_dup_step] }
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false

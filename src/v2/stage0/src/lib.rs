@@ -13,6 +13,7 @@
 )]
 
 pub mod cli_run;
+pub mod extdeps_cargo;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;
@@ -46,8 +47,10 @@ pub mod v2_compiler_compile;
 pub mod v2_compiler_compiler_tests_rust;
 pub mod v2_compiler_complexity;
 pub mod v2_compiler_dag_collect;
+pub mod v2_compiler_dag_collect_support;
 pub mod v2_compiler_effect_derivation;
 pub mod v2_compiler_emit;
+pub mod v2_compiler_emit_core_support;
 pub mod v2_compiler_emit_go;
 pub mod v2_compiler_emit_python;
 pub mod v2_compiler_emit_rust;
@@ -71,8 +74,10 @@ pub mod v2_compiler_parse;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_runtime_go;
 pub mod v2_compiler_runtime_rust;
+pub mod v2_compiler_stage0_crates;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;
+pub mod v2_compiler_workspace_members;
 pub mod v2_interpreter;
 pub mod v2_rt;
 pub mod v2_std_core;

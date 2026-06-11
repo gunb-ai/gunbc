@@ -30,13 +30,16 @@ use crate::std_syntax::AlgebraFieldKind::{
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set, FilePath, NonEmptyStr, SourceSpan,
+    kernel_type_set,
 };
+pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -50,7 +53,9 @@ pub struct Token {
     pub shape: TokenShape,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum TokenShape {
     ShKeyword,
@@ -83,6 +88,7 @@ pub enum TokenShape {
     ShOr,
     ShQuestion,
     ShNullCoalesce,
+    ShCaret,
     ShPipe,
     ShPipeArrow,
     ShLitStr,
@@ -97,7 +103,9 @@ pub enum TokenShape {
     ShUnknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Connective {
     Conj,
@@ -106,14 +114,18 @@ pub enum Connective {
     Arrow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
     CardOptional,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum FieldAccessStyle {
     StoredField,
@@ -123,7 +135,9 @@ pub enum FieldAccessStyle {
     TupleSecond,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum FieldValueShape {
     PlainValue,
@@ -192,7 +206,9 @@ impl VarBindingKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
     PlainCallSemantics,
@@ -216,7 +232,9 @@ pub enum MethodSemantics {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ExprErrorKind {
     ParseRecoveryError,
@@ -289,7 +307,9 @@ pub enum MatchPattern {
     Wildcard,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum UnaryOpKind {
     Not,
@@ -303,7 +323,9 @@ pub enum StringPart {
     Interpolation { expr: Rc<Node> },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum OperationModifier {
     Idempotent,
@@ -1082,30 +1104,34 @@ pub fn make_resolved_param_node(
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    let children = match default_value {
-        Some(dv) => Rc::new(vec![type_expr.clone(), dv]),
-        None => Rc::new(vec![type_expr.clone()]),
-    };
-    Rc::new(Node {
-        name: name.clone(),
-        span: span,
-        ident_span: default_ident_span(name.clone(), name_span),
-        children: children,
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved { node: type_expr })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
-        properties: properties,
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
+    {
+        let children = match default_value {
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
+            None => Rc::new(vec![type_expr.clone()]),
+        };
+        Rc::new(Node {
+            name: name.clone(),
+            span: span,
+            ident_span: default_ident_span(name.clone(), name_span),
+            children: children,
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: type_expr.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: properties,
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
 }
 
 pub fn param_node_name_at(
@@ -1452,10 +1478,12 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
 }
 
 pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v2_rt::lookup(&expr_child_roles(), variant_name)
+    v2_rt::map_get(&expr_child_roles(), variant_name)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum NodeFieldRole {
     ChildrenListField,
@@ -1480,15 +1508,24 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
 
 pub fn is_children_list_field(field_name: String) -> bool {
     match v2_rt::lookup(&node_field_roles(), field_name) {
-        Some(NodeFieldRole::ChildrenListField) => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::ChildrenListField,
+            ..
+        } => true,
         _ => false,
     }
 }
 
 pub fn is_sub_value_field(field_name: String) -> bool {
     match v2_rt::lookup(&node_field_roles(), field_name) {
-        Some(NodeFieldRole::SubValueField) => true,
-        Some(NodeFieldRole::ChildrenListField) => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::SubValueField,
+            ..
+        } => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::ChildrenListField,
+            ..
+        } => true,
         _ => false,
     }
 }
@@ -1532,33 +1569,33 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 }
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::TreeSizePreserving) => true,
-        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
-        _ => false,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::TreeSizePreserving => true,
+            FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::TreeSizeReducing) => true,
-        _ => false,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::TreeSizeReducing => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 
 pub fn is_property_contraction(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
-        _ => false,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 
@@ -3308,14 +3345,15 @@ pub struct LineCol {
 pub struct NewlineIndex {
     pub file: String,
     pub offsets: Rc<Vec<i64>>,
-    pub source: String,
+    pub char_codes: Rc<Vec<i64>>,
 }
 
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     {
-        let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let char_codes = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
         let offsets = Rc::new(
             char_codes
+                .clone()
                 .iter()
                 .cloned()
                 .enumerate()
@@ -3334,7 +3372,7 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         Rc::new(NewlineIndex {
             file: file,
             offsets: offsets,
-            source: source.clone(),
+            char_codes: char_codes.clone(),
         })
     }
 }
@@ -3380,7 +3418,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
 
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     {
-        let src_len = v2_rt::string_length(&index.source.clone());
+        let src_len = (index.char_codes.clone().len() as i64);
         let line_start = if (line.clone() <= 1) {
             0
         } else {
@@ -3403,12 +3441,16 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             Some(o) => o.clone(),
             None => src_len.clone(),
         };
-        v2_rt::substring(&index.source.clone(), line_start, line_end)
+        v2_rt::chars_to_string(&index.char_codes.clone(), line_start, line_end)
     }
 }
 
 pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
-    v2_rt::substring(&index.source.clone(), span.start.clone(), span.end.clone())
+    v2_rt::chars_to_string(
+        &index.char_codes.clone(),
+        span.start.clone(),
+        span.end.clone(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

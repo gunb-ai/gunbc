@@ -128,8 +128,8 @@ fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<Strin
       EnumRepr { unit_only: _ } =>
         fold(map_keys(summary.variant_name_set), init: acc, f: (inner, vn) =>
           match map_get(inner, vn) {
-            Some { value: _ } => map_insert(inner, vn, "")
-            None => map_insert(inner, vn, summary.name)
+            Present { value: _ } => map_insert(inner, vn, "")
+            Absent => map_insert(inner, vn, summary.name)
           }
         )
       _ => acc
@@ -148,23 +148,23 @@ fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> B
 
 fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {
   match map_get(type_summaries, enum_name) {
-    Some { value: summary } =>
+    Present { value: summary } =>
       match summary.repr {
         EnumRepr { unit_only: _ } =>
           emit_map_has(m: summary.variant_name_set, key: variant_name)
         _ => false
       }
-    None => false
+    Absent => false
   }
 }
 
 fn is_enum_in_summaries(type_summaries: Map<String, TypeSummary>, type_name: String) -> Bool {
   match map_get(type_summaries, type_name) {
-    Some { value: summary } => match summary.repr {
+    Present { value: summary } => match summary.repr {
       EnumRepr { unit_only: _ } => true
       _ => false
     }
-    None => false
+    Absent => false
   }
 }
 
@@ -213,12 +213,12 @@ fn build_struct_field_summaries(parent: Node, source_indices: Map<String, Newlin
 
 fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match variants |> first {
-    Some { value: variant } =>
+    Present { value: variant } =>
       match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
-        Some { value: field_child } => Some { value: field_child }
-        None => none
+        Present { value: field_child } => Present { value: field_child }
+        Absent => none
       }
-    None => none
+    Absent => none
   }
 }
 
@@ -231,35 +231,35 @@ fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, 
 fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   variants |> all(variant =>
     match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
-      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_indices: source_indices)
-      None => false
+      Present { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_indices: source_indices)
+      Absent => false
     }
   )
 }
 
 fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
   let first_field_names = match variants |> first {
-    Some { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_indices: source_indices, node: f))
-    None => []
+    Present { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_indices: source_indices, node: f))
+    Absent => []
   }
   let shared = first_field_names |> filter(field_name =>
     enum_field_present_in_all_variants(variants: variants, field_name: field_name, source_indices: source_indices)
   )
   let consistent = shared |> filter(field_name =>
     match find_first_enum_field_node(variants: variants, field_name: field_name, source_indices: source_indices) {
-      Some { value: first_field } =>
+      Present { value: first_field } =>
         enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_type_node(ch:first_field), source_indices: source_indices)
-      None => false
+      Absent => false
     }
   )
   fold(consistent, init: empty_map(), f: (acc, field_name) =>
     match find_first_enum_field_node(variants: variants, field_name: field_name, source_indices: source_indices) {
-      Some { value: first_field } =>
+      Present { value: first_field } =>
         map_insert(acc, field_name, FieldSummary {
           access_style: EnumAccessor,
           value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch:first_field))
         })
-      None => acc
+      Absent => acc
     }
   )
 }
@@ -271,7 +271,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
 fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
   fold(children, init: empty_map(), f: (acc, child) =>
     match child.inferred {
-      Some { value: Resolved { node: ft } } =>
+      Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
         // Fail-closed: exclude empty names, type variables, and placeholder types.
@@ -293,12 +293,12 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {
-      Some { value: Resolved { node: rt } } => rt.connective == Arrow
+      Present { value: Resolved { node: rt } } => rt.connective == Arrow
       _ => false
     }
   )
   if is_product {
-    Some { value: TypeSummary {
+    Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
@@ -309,7 +309,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
-    Some { value: TypeSummary {
+    Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
@@ -323,14 +323,14 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
 
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
   match build_type_summary(item: item, source_indices: source_indices) {
-    Some { value: summary } =>
+    Present { value: summary } =>
       let with_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
               let v_has_fn = variant.children |> any(vc =>
                 match vc.inferred {
-                  Some { value: Resolved { node: rt } } => rt.connective == Arrow
+                  Present { value: Resolved { node: rt } } => rt.connective == Arrow
                   _ => false
                 }
               )
@@ -353,6 +353,6 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
       EmitInfoBuildState {
         type_summaries: next_summaries
       }
-    None => state
+    Absent => state
   }
 }

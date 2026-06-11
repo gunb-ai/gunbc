@@ -69,21 +69,21 @@ data kernel_type_set: Map<String, Bool> = {
 
 fn is_kernel_type(name: String) -> Bool {
   match map_get(kernel_type_set, name) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2
+  "List": 1, "Set": 1, "Map": 2, "Witness": 1
 }
 
 fn is_container_type(name: String) -> Bool {
   match container_expected_arity(name: name) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -94,17 +94,21 @@ fn container_expected_arity(name: String) -> Int? {
 // Container type parameter names: derived from algebra profile templates.
 // Element collections (FreeMonoid) → ["T"], keyed collections (PartialFunction) → ["K", "V"].
 fn container_param_names_for(kind_name: String) -> List<String> {
-  match map_get(kernel_algebra_profile, kind_name) {
-    Some { value: p } => algebra_type_param_names(profile: p)
-    None => []
+  if kind_name == "Witness" {
+    ["T"]
+  } else {
+    match map_get(kernel_algebra_profile, kind_name) {
+      Present { value: p } => algebra_type_param_names(profile: p)
+      Absent => []
+    }
   }
 }
 
 fn container_param_name(kind_name: String, index: Int) -> String? {
   let names = container_param_names_for(kind_name: kind_name)
   match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
-    Some { value: name } => Some { value: name }
-    None => none
+    Present { value: name } => Present { value: name }
+    Absent => none
   }
 }
 
@@ -145,16 +149,32 @@ data container_template_algebra_rows: Map<String, String> = {
   "partial_function": "PartialFunction"
 }
 
+// Alias spellings only: these names lower to target collection carriers. Algebra
+// self-identities above remain comparison canonicalization, not carrier aliases.
+data container_template_alias_rows: Map<String, String> = {
+  "List": "FreeMonoid",
+  "list": "FreeMonoid",
+  "Set": "BooleanAlgebra",
+  "set": "BooleanAlgebra",
+  "Map": "PartialFunction",
+  "map": "PartialFunction"
+}
+
 fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
 }
 
-// Ordered canonical container/algebra names (PascalCase).
-// Single authority for deterministic test generation — coercion.dag
-// imports this instead of maintaining a parallel list.
+fn container_template_alias_algebra(name: String) -> String? {
+  map_get(container_template_alias_rows, name)
+}
+
+// Ordered canonical parameterized-container/algebra names (PascalCase).
+// Single authority for deterministic test generation — coercion.dag imports
+// this instead of maintaining a parallel list. Consumers that need only
+// collection algebra surfaces must still filter through container_template_algebra.
 // Alphabetically sorted for fixed-point convergence.
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
@@ -301,6 +321,9 @@ type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
+// Opaque logical-instant nominal (fabric/cache observation axes). Not wall-clock
+// `Timestamp` (ISO String); comparable logical time for availability and receipts.
+type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md S9.

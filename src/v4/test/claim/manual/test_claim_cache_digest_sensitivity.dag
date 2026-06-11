@@ -18,15 +18,10 @@ import v4.compiler.eval {
 }
 import v4.extdeps.runtimes.v4_evaluator {
   v4_eval_wave1_allocate_literal,
-  v4_eval_wave1_allocate_literal_sym,
   v4_eval_wave1_bind_value,
-  v4_eval_wave1_bind_value_sym,
   v4_eval_wave1_call_primitive,
-  v4_eval_wave1_call_primitive_sym,
   v4_eval_wave1_choose_branch,
-  v4_eval_wave1_choose_branch_sym,
   v4_eval_wave1_step_loop,
-  v4_eval_wave1_step_loop_sym,
   v4_eval_wave1_unit_type_node,
   v4_evaluator_interpretation_structure_witness
 }
@@ -68,7 +63,8 @@ import v4.std.node {
   TypeNode,
   byte_offset_cache_key,
   byte_offset_cache_key_fingerprint,
-  byte_offset_cache_digest_max_limbs
+  byte_offset_cache_digest_max_limbs,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   CompilesClaim,
@@ -82,50 +78,32 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Violates }
-
-data tcc_cache_root_sym: Symbol = tcc_cache_root_sym
-data tcc_cache_eval_a_sym: Symbol = tcc_cache_eval_a_sym
-data tcc_cache_eval_b_sym: Symbol = tcc_cache_eval_b_sym
-data tcc_cache_facts_diag_a: Symbol = tcc_cache_facts_diag_a
-data tcc_cache_facts_diag_b: Symbol = tcc_cache_facts_diag_b
-data tcc_cache_expected_diag_a: Symbol = tcc_cache_expected_diag_a
-data tcc_cache_expected_diag_b: Symbol = tcc_cache_expected_diag_b
-data tcc_cache_interpretation_pin: Symbol = tcc_cache_interpretation_pin
-data tcc_cache_interpretation_semantics_tag: Symbol = tcc_cache_interpretation_semantics_tag
-data tcc_cache_evaluator_pin: Symbol = tcc_cache_evaluator_pin
-data tcc_cache_pass_sym: Symbol = tcc_cache_pass_sym
-data tcc_cache_fail_sym: Symbol = tcc_cache_fail_sym
-data tcc_cache_tail_diag_b: Symbol = tcc_cache_tail_diag_b
-data tcc_cache_tail_diag_c: Symbol = tcc_cache_tail_diag_c
-data tcc_cache_ineligible_pin_a: Symbol = tcc_cache_ineligible_pin_a
-data tcc_cache_ineligible_pin_b: Symbol = tcc_cache_ineligible_pin_b
-data tcc_stub_alloc_a_sym: Symbol = tcc_stub_alloc_a_sym
-data tcc_stub_call_b_sym: Symbol = tcc_stub_call_b_sym
-
 fn tcc_cache_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: tcc_cache_pass_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn tcc_cache_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: tcc_cache_fail_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^tcc_cache_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn tcc_cache_root() -> Node {
-  claim_atom_node(s: tcc_cache_root_sym)
+  claim_atom_node(s: ^tcc_cache_root_sym)
 }
 
 fn tcc_cache_eval_node_a() -> Node {
-  claim_atom_node(s: tcc_cache_eval_a_sym)
+  claim_atom_node(s: ^tcc_cache_eval_a_sym)
 }
 
 fn tcc_cache_eval_node_b() -> Node {
-  claim_atom_node(s: tcc_cache_eval_b_sym)
+  claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
 fn tcc_cache_facts_diagnostic(reason: Symbol) -> Diagnostic {
@@ -171,14 +149,14 @@ fn tcc_cache_subject(
     tree: tree,
     input: test_claim_typed_input_node(
       evaluator_input: evaluator_input,
-      evaluator_pin: tcc_cache_evaluator_pin
+      evaluator_pin: ^tcc_cache_evaluator_pin
     )
   }
 }
 
 fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
-  let tree_a = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_a)
-  let tree_b = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_b)
+  let tree_a = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_a)
+  let tree_b = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_b)
   let hash_a = test_claim_cache_interpretation_hash_node(
     subject: tcc_cache_subject(tree: tree_a, evaluator_input: tcc_cache_eval_node_a())
   )
@@ -227,12 +205,12 @@ fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
 }
 
 fn tcc_cache_diagnostic_reason_claim_hash_differs() -> Bool {
-  test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: tcc_cache_expected_diag_a)) !=
-    test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: tcc_cache_expected_diag_b))
+  test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: ^tcc_cache_expected_diag_a)) !=
+    test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: ^tcc_cache_expected_diag_b))
 }
 
 fn tcc_cache_evaluator_input_digest_differs() -> Bool {
-  let tree = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_a)
+  let tree = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_a)
   let hash_a = test_claim_cache_interpretation_hash_node(
     subject: tcc_cache_subject(tree: tree, evaluator_input: tcc_cache_eval_node_a())
   )
@@ -245,14 +223,14 @@ fn tcc_cache_evaluator_input_digest_differs() -> Bool {
 fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
   let digest_a = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
-      runtime_identity: tcc_cache_ineligible_pin_a,
+      runtime_identity: ^tcc_cache_ineligible_pin_a,
       interpretation: eval_default_interpretation(),
       structure_witness: v4_evaluator_interpretation_structure_witness()
     )
   )
   let digest_b = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
-      runtime_identity: tcc_cache_ineligible_pin_b,
+      runtime_identity: ^tcc_cache_ineligible_pin_b,
       interpretation: eval_default_interpretation(),
       structure_witness: v4_evaluator_interpretation_structure_witness()
     )
@@ -473,35 +451,35 @@ fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
 
 fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: tcc_stub_alloc_a_sym,
-    call_primitive: v4_eval_wave1_call_primitive_sym,
-    choose_branch: v4_eval_wave1_choose_branch_sym,
-    step_loop: v4_eval_wave1_step_loop_sym,
-    bind_value: v4_eval_wave1_bind_value_sym
+    allocate_literal: ^tcc_stub_alloc_a_sym,
+    call_primitive: ^v4_eval_wave1_call_primitive_sym,
+    choose_branch: ^v4_eval_wave1_choose_branch_sym,
+    step_loop: ^v4_eval_wave1_step_loop_sym,
+    bind_value: ^v4_eval_wave1_bind_value_sym
   }
 }
 
 fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: v4_eval_wave1_allocate_literal_sym,
-    call_primitive: tcc_stub_call_b_sym,
-    choose_branch: v4_eval_wave1_choose_branch_sym,
-    step_loop: v4_eval_wave1_step_loop_sym,
-    bind_value: v4_eval_wave1_bind_value_sym
+    allocate_literal: ^v4_eval_wave1_allocate_literal_sym,
+    call_primitive: ^tcc_stub_call_b_sym,
+    choose_branch: ^v4_eval_wave1_choose_branch_sym,
+    step_loop: ^v4_eval_wave1_step_loop_sym,
+    bind_value: ^v4_eval_wave1_bind_value_sym
   }
 }
 
 fn tcc_cache_same_pin_different_executed_slot_digest_differs() -> Bool {
   let digest_a = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
-      runtime_identity: tcc_cache_interpretation_pin,
+      runtime_identity: ^tcc_cache_interpretation_pin,
       interpretation: tcc_interp_stub_allocate_body(),
       structure_witness: tcc_witness_stub_allocate_body()
     )
   )
   let digest_b = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
-      runtime_identity: tcc_cache_interpretation_pin,
+      runtime_identity: ^tcc_cache_interpretation_pin,
       interpretation: tcc_interp_stub_call_body(),
       structure_witness: tcc_witness_stub_call_body()
     )
@@ -517,7 +495,7 @@ fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnost
     input: tcc_cache_root(),
     expected_rejection: NonEmptyDiagnostics {
       head: Diagnostic {
-        reason: tcc_cache_expected_diag_a,
+        reason: ^tcc_cache_expected_diag_a,
         at: node_locus(node: tcc_cache_root()),
         correction: Unavailable { reason: AmbiguousIntent }
       },
@@ -528,12 +506,12 @@ fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnost
 
 fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
   let diag_b = Diagnostic {
-    reason: tcc_cache_tail_diag_b,
+    reason: ^tcc_cache_tail_diag_b,
     at: node_locus(node: tcc_cache_root()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
   let diag_c = Diagnostic {
-    reason: tcc_cache_tail_diag_c,
+    reason: ^tcc_cache_tail_diag_c,
     at: node_locus(node: tcc_cache_root()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -560,7 +538,7 @@ fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
         d: Diagnostic {
-          reason: tcc_cache_expected_diag_a,
+          reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Suggested { node: ambiguous_tag_node }
         }
@@ -574,7 +552,7 @@ fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
         d: Diagnostic {
-          reason: tcc_cache_expected_diag_a,
+          reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Unavailable { reason: AmbiguousIntent }
         }
@@ -592,7 +570,7 @@ fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
         d: Diagnostic {
-          reason: tcc_cache_expected_diag_a,
+          reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Unavailable { reason: AmbiguousIntent }
         }
@@ -606,8 +584,8 @@ fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
         d: Diagnostic {
-          reason: tcc_cache_expected_diag_a,
-          at: port_locus(port: tcc_cache_root_sym),
+          reason: ^tcc_cache_expected_diag_a,
+          at: port_locus(port: ^tcc_cache_root_sym),
           correction: Unavailable { reason: AmbiguousIntent }
         }
       )

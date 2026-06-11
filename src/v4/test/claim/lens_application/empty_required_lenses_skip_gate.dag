@@ -18,7 +18,7 @@ import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }
 import v4.std.collection { empty_map }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -29,22 +29,21 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
-
-data empty_lenses_claim_symbol: Symbol = empty_lenses_claim_symbol
-
 data empty_lenses_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
-    children: []
-  },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+},
   lex: VoidLexRules,
   binding_spellings: empty_map(),
   authority_source_text: Empty
 }
 
 data empty_lenses_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: empty_lenses_claim_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^empty_lenses_claim_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn non_empty_diagnostics_contain_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
@@ -79,8 +78,9 @@ fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

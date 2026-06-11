@@ -10,7 +10,7 @@ module v4.test.claim.branch_dispatch.rung_0_to_2_three_targets
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -26,14 +26,10 @@ import v4.test.claim.computation_shapes.branch_dispatch {
   claim_branch_dispatch_equals_refl,
   claim_branch_dispatch_well_formed
 }
-
-
-data phase4_branch_dispatch_rung_subject_symbol: Symbol = phase4_branch_dispatch_rung_subject_symbol
-
-
 data phase4_branch_dispatch_rung_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: phase4_branch_dispatch_rung_subject_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^phase4_branch_dispatch_rung_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 

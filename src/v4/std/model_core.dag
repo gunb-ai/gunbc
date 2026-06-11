@@ -29,17 +29,33 @@ import v4.std.logic {
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates, Witness }
 
 
-data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
-data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
-// Range is a first-class primitive fact axis; Rust derives it from OverflowDisposition<RustIntegerCarrier>.ir_carrier via IntegerIntervalSpec.
-data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
-data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
-data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
-data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
+// 🟢 terminal — closed model_core primitive fact-axis vocabulary (PrimitiveFactBundle P2).
+// G.0 keys `PerLanguageFactBundleKey.fact_axis` here; target_model catalog axes widen in G.1.
+type ModelCorePrimitiveFactAxis
+  = ModelCoreFactAxisWidth {}
+  | ModelCoreFactAxisSignedness {}
+  | ModelCoreFactAxisRange {}
+  | ModelCoreFactAxisEncoding {}
+  | ModelCoreFactAxisSurfaceSpelling {}
+  | ModelCoreFactAxisOverflowDisposition {}
+
+// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
+fn model_core_primitive_fact_axis_is_surface(axis: Symbol) -> Bool {
+  axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
+}
+
+// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
+fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
+  (axis == discriminant(v: ModelCoreFactAxisEncoding {}))
+    || (axis == discriminant(v: ModelCoreFactAxisWidth {}))
+    || (axis == discriminant(v: ModelCoreFactAxisSignedness {}))
+    || (axis == discriminant(v: ModelCoreFactAxisRange {}))
+    || (axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
+}
 
 
 type PrimitiveFactBundle {
@@ -142,10 +158,6 @@ type ModelCoreWave1BoolLawKey
   | ModelCoreWave1BoolDistributivity
   | ModelCoreWave1BoolComplementInvolution
   | ModelCoreWave1BoolComplementBounds
-data model_core_wave1_bool_law_bounded_lattice_identities: Symbol = model_core_wave1_bool_law_bounded_lattice_identities
-data model_core_wave1_bool_law_distributivity: Symbol = model_core_wave1_bool_law_distributivity
-data model_core_wave1_bool_law_complement_involution: Symbol = model_core_wave1_bool_law_complement_involution
-data model_core_wave1_bool_law_complement_bounds: Symbol = model_core_wave1_bool_law_complement_bounds
 data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
 data model_core_wave1_law_field_algebra: Symbol = model_core_wave1_law_field_algebra
 data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
@@ -154,21 +166,21 @@ data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
 fn model_core_wave1_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
 fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
-  match axis {
-    primitive_fact_axis_width =>
-      Holds { value: bool_width_fact_node(width: facts.width) }
-    primitive_fact_axis_encoding =>
-      Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
-    _ =>
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+  if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+    Holds { value: bool_width_fact_node(width: facts.width) }
+  } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+    Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+  } else {
+    Violates {
+      diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+    }
   }
 }
 
@@ -210,16 +222,6 @@ fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
 }
 
 
-fn model_core_wave1_bool_law_symbol(key: ModelCoreWave1BoolLawKey) -> Symbol {
-  match key {
-    ModelCoreWave1BoolBoundedLatticeIdentities => model_core_wave1_bool_law_bounded_lattice_identities
-    ModelCoreWave1BoolDistributivity => model_core_wave1_bool_law_distributivity
-    ModelCoreWave1BoolComplementInvolution => model_core_wave1_bool_law_complement_involution
-    ModelCoreWave1BoolComplementBounds => model_core_wave1_bool_law_complement_bounds
-  }
-}
-
-
 fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -234,10 +236,11 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
       },
       Edge {
         label: Named { name: model_core_wave1_law_field_kind },
-        target: model_core_wave1_atom(id: model_core_wave1_bool_law_symbol(key: key))
+        target: model_core_wave1_atom(id: discriminant(v: key))
       },
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 

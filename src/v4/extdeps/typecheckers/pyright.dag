@@ -15,9 +15,7 @@ import v4.std.node { Symbol }
 import v4.std.text { String }
 
 // Stable tool identity referenced by StaticAnalysisRejected/Advisory.tool_id.
-// TargetStaticAnalysisInvocation.tool_profile_ref uses pyright_profile_l1_id below.
-data pyright_tool_id: Symbol = pyright_tool_id
-
+// TargetStaticAnalysisInvocation.tool_profile_ref uses ^pyright_profile_l1_id below.
 // pyright `typeCheckingMode` — closed set of external-spec keyword values (M4: enum, not
 // string proxy). 🟢 terminal — CP-PYRIGHT-TYPE-CHECKING-MODE-TERMINAL (analysis: PR #4158 review).
 type PyrightTypeCheckingMode
@@ -29,8 +27,8 @@ type PyrightTypeCheckingMode
 // Modeled projection: the pyright config-file `typeCheckingMode` keyword spelling for each
 // PyrightTypeCheckingMode variant. Keyed by the closed enum variant itself (not a String
 // proxy), so the enum and its spelling are one authority. Single authority for the emitted
-// keyword that host invocations write into pyrightconfig.json — consumed by
-// scripts/v4-leaf-model-python-l1-static-verify.sh (no parallel mode map in CI text).
+// keyword that host invocations write into pyrightconfig.json (single authority; no parallel
+// mode map). The shell runner that formerly consumed this was retired per operator directive #4252.
 type PyrightTypeCheckingModeSpelling {
   mode: PyrightTypeCheckingMode
   keyword: String
@@ -57,12 +55,10 @@ data pyright_profile_l1: PyrightConfig = PyrightConfig {
   type_checking_mode: PyrightModeStandard,
 }
 
-// Stable PROFILE identity for the pyright_profile_l1 row — distinct from pyright_tool_id
+// Stable PROFILE identity for the pyright_profile_l1 row — distinct from ^pyright_tool_id
 // (tool identity). TargetStaticAnalysisInvocation.tool_profile_ref references THIS (the
 // concrete per-tool profile/config row), not the bare tool id, so profile selection and
 // tool identity are not conflated.
-data pyright_profile_l1_id: Symbol = pyright_profile_l1_id
-
 // Per-tool diagnostic-rule namespace (NOT a shared cross-tool namespace, per Arbiter
 // ruling). code_id is the Symbol carried in StaticAnalysisRejected/Advisory;
 // rule_name is the literal pyright rule string emitted under --outputjson.
@@ -70,15 +66,9 @@ type PyrightDiagnosticRule {
   code_id: Symbol
   rule_name: String
 }
-
-data pyright_diag_report_return_type: Symbol = pyright_diag_report_return_type
-data pyright_diag_report_undefined_variable: Symbol = pyright_diag_report_undefined_variable
-data pyright_diag_report_missing_imports: Symbol = pyright_diag_report_missing_imports
-data pyright_diag_report_general_type_issues: Symbol = pyright_diag_report_general_type_issues
-
 data pyright_diagnostic_rules: List<PyrightDiagnosticRule> = [
-  PyrightDiagnosticRule { code_id: pyright_diag_report_return_type, rule_name: "reportReturnType" },
-  PyrightDiagnosticRule { code_id: pyright_diag_report_undefined_variable, rule_name: "reportUndefinedVariable" },
-  PyrightDiagnosticRule { code_id: pyright_diag_report_missing_imports, rule_name: "reportMissingImports" },
-  PyrightDiagnosticRule { code_id: pyright_diag_report_general_type_issues, rule_name: "reportGeneralTypeIssues" },
+  PyrightDiagnosticRule { code_id: ^pyright_diag_report_return_type, rule_name: "reportReturnType" },
+  PyrightDiagnosticRule { code_id: ^pyright_diag_report_undefined_variable, rule_name: "reportUndefinedVariable" },
+  PyrightDiagnosticRule { code_id: ^pyright_diag_report_missing_imports, rule_name: "reportMissingImports" },
+  PyrightDiagnosticRule { code_id: ^pyright_diag_report_general_type_issues, rule_name: "reportGeneralTypeIssues" },
 ]

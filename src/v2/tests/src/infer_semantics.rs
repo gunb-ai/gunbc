@@ -2,19 +2,23 @@ use std::rc::Rc;
 
 use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::std_types::container_param_name;
+use v2_compiler::v2_compiler_infer::InferScope;
 use v2_compiler::v2_compiler_infer_access;
+use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
+use v2_compiler::v2_compiler_infer_sigs::ResolvedFuncEnv;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, resolved_type,
+    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
 use v2_compiler::v2_std_core::{
     default_ident_span, leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
-    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
+    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, MatchPattern, Node,
+    SourceSpan,
 };
 
 fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
@@ -154,6 +158,56 @@ fn unit_expr() -> Rc<Node> {
     leaf_node("Unit".to_string())
 }
 
+fn empty_type_env() -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::new()),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: Rc::new(std::collections::HashMap::new()),
+        intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+    })
+}
+
+fn empty_infer_scope() -> Rc<InferScope> {
+    Rc::new(InferScope {
+        type_env: empty_type_env(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            signatures: Rc::new(std::collections::HashMap::new()),
+        }),
+        locals: Rc::new(std::collections::HashMap::new()),
+        match_bound_names: Rc::new(std::collections::HashMap::new()),
+        module_name: "test".to_string(),
+        service_registry: Rc::new(std::collections::HashMap::new()),
+        item_registry: Rc::new(std::collections::HashMap::new()),
+        lambda_param_provenance: Rc::new(std::collections::HashMap::new()),
+    })
+}
+
+fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: name.to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span(name.to_string(), sp),
+        children: Rc::new(variants),
+        connective: Connective::Disj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: cardinality,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
 fn variant_arm(name: &str) -> Rc<Node> {
     make_arm_node(
         Rc::new(MatchPattern::VariantPattern {
@@ -177,6 +231,203 @@ fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: 
         }
         other => panic!("expected CompilerError return type, got {:?}", other),
     }
+}
+
+#[test]
+fn m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation() {
+    let source = r#"
+module m1.brand_twins
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+
+    let result = crate::helpers::compile_dag_resolved(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "brand-twin infer probe should compile without diagnostics, got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v2_compiler::v2_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "m1.brand_twins"
+        })
+        .expect("m1.brand_twins module");
+
+    let user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
+        .expect("UserId type binding");
+    let same_user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
+        .expect("second UserId type binding");
+    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
+        .expect("AccountId type binding");
+    let refined_string = lookup_type_by_name(module.type_env.clone(), "Refined".to_string())
+        .expect("Refined type binding");
+    let string = lookup_type_by_name(module.type_env.clone(), "String".to_string())
+        .expect("String type binding");
+
+    assert_eq!(
+        user_id, same_user_id,
+        "M1 positive control: two references to the same brand declaration must compare equal"
+    );
+    assert_ne!(
+        user_id, account_id,
+        "M1 brand twins must keep distinct declaration identities; collapse here means A3 needs brand-aware rework"
+    );
+    assert_ne!(
+        user_id, refined_string,
+        "UserId must not collapse to the shared Refined carrier"
+    );
+    assert_ne!(
+        account_id, refined_string,
+        "AccountId must not collapse to the shared Refined carrier"
+    );
+    assert_ne!(
+        user_id, string,
+        "UserId must not collapse to the shared base String"
+    );
+    assert_ne!(
+        account_id, string,
+        "AccountId must not collapse to the shared base String"
+    );
+}
+
+// ── PD-3: A3 bounded direct-call arg check (node_type_compatible) ─────────
+// Relation threads brands-distinct (authored_name_at) + alias-tolerant
+// (canonical_template_name branch). Measured at relation + call-site.
+
+#[test]
+fn pd3_brand_twins_incompatible_at_node_type_compatible() {
+    let source = r#"
+module pd3.brand_relation
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+
+    let result = crate::helpers::compile_dag_resolved(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "PD-3 relation probe should resolve cleanly, got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v2_compiler::v2_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "pd3.brand_relation"
+        })
+        .expect("pd3.brand_relation module");
+
+    let user_id =
+        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId binding");
+    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
+        .expect("AccountId binding");
+
+    assert!(
+        !node_type_compatible(user_id.clone(), account_id, result.source_indices.clone()),
+        "PD-3: node_type_compatible must reject brand-twin UserId-for-AccountId"
+    );
+    assert!(
+        node_type_compatible(user_id.clone(), user_id, result.source_indices.clone()),
+        "PD-3: node_type_compatible must accept same-brand UserId-for-UserId"
+    );
+}
+
+#[test]
+fn pd3_direct_call_rejects_brand_twin_mismatch() {
+    let source = r#"
+module pd3.brand_call_reject
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+
+fn take_account(id: AccountId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  take_account(uid)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    let has_type_mismatch = result
+        .diagnostics
+        .iter()
+        .any(|diag| matches!(&*diag.diagnostic, CompilerDiagnostic::TypeMismatch { .. }));
+    assert!(
+        has_type_mismatch,
+        "PD-3: direct call must reject UserId-for-AccountId, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+}
+
+#[test]
+fn pd3_direct_call_accepts_same_brand() {
+    let source = r#"
+module pd3.brand_call_accept
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+
+fn take_user(id: UserId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  take_user(uid)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    crate::helpers::assert_no_diagnostics(&result);
+}
+
+#[test]
+fn pd3_direct_call_accepts_list_for_freemonoid_alias() {
+    let source = r#"
+module pd3.alias_call_accept
+
+fn take_fm(xs: FreeMonoid<Int>) -> Int {
+  0
+}
+
+fn caller(xs: List<Int>) -> Int {
+  take_fm(xs)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    crate::helpers::assert_no_diagnostics(&result);
 }
 
 #[test]
@@ -307,7 +558,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 }
 
 #[test]
-fn optional_pattern_lookup_still_resolves_some_variant() {
+fn optional_pattern_lookup_rejects_some_variant() {
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
         leaf_node("String".to_string()),
     ));
@@ -319,21 +570,194 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
         0,
     );
 
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
+    assert_eq!(lookup.diagnostics.len(), 1);
+}
+
+#[test]
+fn optional_pattern_lookup_resolves_present_variant() {
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+        leaf_node("String".to_string()),
+    ));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Present".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        0,
+    );
+
     match lookup.status.as_ref() {
         NodeLookupStatus::LookupResolved { node, .. } => {
-            assert_eq!(node.name, "Some");
+            assert_eq!(node.name, "Present");
             assert_eq!(node.children.len(), 1);
             assert_eq!(node.children[0].name, "value");
         }
-        status => panic!("expected Some lookup to resolve, got {:?}", status),
+        status => panic!("expected Present lookup to resolve, got {:?}", status),
     }
 }
 
 #[test]
-fn optional_match_exhaustiveness_reports_missing_none() {
+fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
+    let sp = make_span(0, 0);
+    let inner_present = Rc::new(Node {
+        name: "Present".to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span("Present".to_string(), sp.clone()),
+        children: Rc::new(vec![Rc::new(Node {
+            name: "inner".to_string(),
+            ident: None,
+            span: sp.clone(),
+            ident_span: default_ident_span("inner".to_string(), sp.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: leaf_node("Int".to_string()),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })]),
+        connective: Connective::Conj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let optional_inner_sum = Rc::new(Node {
+        name: "Inner".to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span("Inner".to_string(), sp.clone()),
+        children: Rc::new(vec![inner_present]),
+        connective: Connective::Disj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::CardOptional,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Present".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        1,
+    );
+
+    match lookup.status.as_ref() {
+        NodeLookupStatus::LookupResolved { node, .. } => {
+            assert_eq!(node.name, "Present");
+            assert_eq!(node.children[0].name, "value");
+        }
+        status => panic!(
+            "expected Optional Present lookup to resolve as Present, got {:?}",
+            status
+        ),
+    }
+}
+
+#[test]
+fn optional_present_absent_patterns_keep_canonical_names() {
+    let scope = empty_infer_scope();
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+        leaf_node("String".to_string()),
+    ));
+
+    let present = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Present".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject.clone(),
+        scope.clone(),
+    );
+    let absent = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Absent".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject,
+        scope,
+    );
+
+    assert!(matches!(
+        present.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "Present" && parent == "Optional"
+    ));
+    assert!(matches!(
+        absent.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "Absent" && parent == "Optional"
+    ));
+}
+
+#[test]
+fn real_optional_coproduct_preserves_present_absent_pattern_names() {
+    let scope = empty_infer_scope();
+    let optional_sum = sum_node(
+        "Optional",
+        vec![
+            leaf_node("Absent".to_string()),
+            leaf_node("Present".to_string()),
+        ],
+        Cardinality::CardOptional,
+    );
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
+
+    let present = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Present".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject,
+        scope,
+    );
+
+    assert!(matches!(
+        present.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "Present" && parent == "Optional"
+    ));
+}
+
+#[test]
+fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Some")]),
+        Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
@@ -349,11 +773,11 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     assert_eq!(diags.len(), 1);
     let diag0_msg = v2_compiler::v2_std_core::diagnostic_to_message(diags[0].diagnostic.clone());
     assert!(diag0_msg.contains("non-exhaustive"));
-    assert!(diag0_msg.contains("None"));
+    assert!(diag0_msg.contains("Absent"));
 }
 
 #[test]
-fn optional_match_exhaustiveness_accepts_some_and_none() {
+fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
@@ -369,9 +793,32 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
         "test".to_string(),
     );
 
+    assert_eq!(diags.len(), 1);
+    let diag0_msg = v2_compiler::v2_std_core::diagnostic_to_message(diags[0].diagnostic.clone());
+    assert!(diag0_msg.contains("Present"));
+    assert!(diag0_msg.contains("Absent"));
+}
+
+#[test]
+fn optional_match_exhaustiveness_accepts_present_and_absent() {
+    let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
+        with_optional_cardinality(leaf_node("String".to_string())),
+        Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
+        Rc::new(TypeEnv {
+            bindings: Rc::new(std::collections::HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(std::collections::HashMap::new()),
+            inductive_fields: Rc::new(std::collections::HashMap::new()),
+            source_indices: Rc::new(std::collections::HashMap::new()),
+            intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+        }),
+        zero_span(),
+        "test".to_string(),
+    );
+
     assert!(
         diags.is_empty(),
-        "Some/None arms should exhaust Optional matches, got {:?}",
+        "Present/Absent arms should exhaust Optional matches, got {:?}",
         diags
     );
 }
@@ -889,5 +1336,44 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",
         outputs.len()
+    );
+}
+
+// ── List ↔ FreeMonoid alias transparency (node_type_compatible) ──────────
+// `type List<T> = FreeMonoid<T>` (collection.dag) — but List is a container
+// (kept unexpanded as Container(List)) while FreeMonoid resolves to Node(FreeMonoid),
+// so the two declared-alias spellings reach type-comparison structurally distinct.
+// node_type_compatible canonicalizes container-template names via the existing
+// container_template_algebra authority so the aliases compare transparently —
+// element types still checked (red-when-wrong below).
+
+#[test]
+fn list_and_freemonoid_compatible_same_element() {
+    let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
+    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    assert!(
+        node_type_compatible(list_sym, fm_sym, empty_source_indices()),
+        "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
+    );
+}
+
+#[test]
+fn list_and_freemonoid_incompatible_different_element() {
+    // Red-when-wrong: canonicalize-at-compare must NOT collapse element types.
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
+    assert!(
+        !node_type_compatible(list_int, fm_string, empty_source_indices()),
+        "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
+    );
+}
+
+#[test]
+fn list_freemonoid_compat_is_symmetric() {
+    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
+    assert!(
+        node_type_compatible(fm_sym, list_sym, empty_source_indices()),
+        "alias compatibility must hold in both argument orders"
     );
 }

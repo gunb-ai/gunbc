@@ -10,12 +10,16 @@ pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v2_compiler_infer_types::child_type_node;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v2_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
+};
+pub use crate::v2_std_core::{
     Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
@@ -24,7 +28,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ItemKind {
     FnItem,

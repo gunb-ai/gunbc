@@ -6,15 +6,20 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
+pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
-pub use crate::v2_std_core::{SourceSpan, TextFile};
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
+pub use crate::v2_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum RenderTarget {
     Rust,
@@ -23,7 +28,9 @@ pub enum RenderTarget {
     Dag,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ArtifactKind {
     ServiceBinary,
@@ -41,7 +48,9 @@ pub struct Artifact {
     pub dependencies: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum BoundaryKind {
     DirectCall,
@@ -118,7 +127,7 @@ pub type DagNodeId = String;
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
-        node: DagNodeId,
+        node: Box<DagNodeId>,
     },
     TypeVariableRef {
         id: String,
@@ -131,7 +140,7 @@ pub enum DagInferredRecord {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
-    pub module: DagNodeId,
+    pub module: Box<DagNodeId>,
     pub items: Rc<Vec<DagNodeId>>,
     pub item_registry_keys: Rc<Vec<String>>,
 }

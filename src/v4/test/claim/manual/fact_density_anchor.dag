@@ -5,11 +5,9 @@
 
 module v4.test.claim.manual.fact_density_anchor
 
-
 import v4.lens.fact_density {
   carrier_spec_fact,
-  SourceSpecReadFact,
-  fact_density_kernel_ambient_bool
+  SourceSpecReadFact
 }
 import v4.std.node {
   Node,
@@ -18,51 +16,42 @@ import v4.std.node {
   Conj,
   Edge,
   Named,
-  Symbol
+  Symbol,
+  SyntheticOccurrence
 }
-
-
-data fact_density_anchor_int32_symbol: Symbol = fact_density_anchor_int32_symbol
-
 data fact_density_anchor_hollow_alias: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_density_anchor_int32_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
-
-
-data fact_density_anchor_width_field: Symbol = fact_density_anchor_width_field
-data fact_density_anchor_signedness_field: Symbol = fact_density_anchor_signedness_field
-
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: fact_density_anchor_width_field },
+      label: Named { name: ^fact_density_anchor_width_field },
       target: fact_density_anchor_hollow_alias
     },
     Edge {
-      label: Named { name: fact_density_anchor_signedness_field },
+      label: Named { name: ^fact_density_anchor_signedness_field },
       target: fact_density_anchor_hollow_alias
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
-
 
 data fact_density_anchor_kernel_ambient_bool: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_density_kernel_ambient_bool } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
-
 
 fn anchor_hollow_alias_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_hollow_alias)
 }
 
-
 fn anchor_fact_bundle_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_fact_bundle)
 }
-
 
 fn anchor_kernel_ambient_bool_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_kernel_ambient_bool)

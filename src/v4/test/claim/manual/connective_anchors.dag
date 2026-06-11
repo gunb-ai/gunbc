@@ -47,13 +47,15 @@ import v4.std.node {
   Loop,
   Node,
   Transform,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 
 
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -62,55 +64,64 @@ data stub_arrow_pair: Node = Node {
   children: [
     Edge { label: Positional, target: stub_empty_conj },
     Edge { label: Positional, target: stub_empty_conj }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_disj: Node = Node {
   kind: TypeNode { connective: Disj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_cardinality: Node = Node {
   kind: TypeNode { connective: Cardinality },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_instantiation: Node = Node {
   kind: TypeNode { connective: Instantiation },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_arrow: Node = Node {
   kind: TypeNode { connective: Arrow },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_transform: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_branch: Node = Node {
   kind: ComputationNode { behavior: Branch },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_empty_loop: Node = Node {
   kind: ComputationNode { behavior: Loop },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data stub_bind_zero_children: Node = Node {
   kind: ComputationNode { behavior: Bind },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 

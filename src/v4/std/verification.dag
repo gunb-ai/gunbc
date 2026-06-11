@@ -1,5 +1,5 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey.
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey; consolidation #4553 Phase 1 — BoolWitness + UnifiedTestClaim registration coproduct.
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
@@ -7,7 +7,9 @@ module v4.std.verification
 
 import v4.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
 import v4.std.collection { List }
+import v4.std.logic { Bool }
 import v4.std.node { Node, NodeFold, Symbol, fold_node }
+import v4.std.target_model { TargetModel }
 import v4.std.diagnostic {
   Accepted,
   Correction,
@@ -30,11 +32,21 @@ import v4.std.diagnostic {
 
 data v4_std_verification_file: Symbol = v4_std_verification_file
 data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+data unified_test_claim_bool_witness_absent: Symbol = unified_test_claim_bool_witness_absent
 
 
 fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: unified_test_claim_bool_witness_absent,
     at: Textual { file: v4_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -186,6 +198,7 @@ type TestClaimCoproductVariant
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant
+  | TestClaimStructuralEqualsClaimVariant
   | TestClaimRoundTripClaimVariant
 
 
@@ -226,6 +239,20 @@ type TestClaim
       rhs: Node
       classification: TestClassification
     }
+  // StructuralEqualsClaim — `lhs` and `rhs` are compared **structurally** (admitted
+  // well-formed, then node-equality), NOT runtime-evaluated. EqualsClaim is *reductive*
+  // (lhs reduces under the interpretation to rhs — e.g. add(2,3) == 5); a structural
+  // *receipt* comparison (two type/receipt nodes that should be identical) is a distinct
+  // intent and gets a distinct variant so the harness cannot confuse the two — see
+  // `gunbc-planning/v4-testclaim-route-through-v2-not-v3-2026-06-05.md` §6.3. Same fields as
+  // EqualsClaim; the discrimination is the variant tag, evaluated by `run_test_claim`.
+  | StructuralEqualsClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
   | RoundTripClaim {
       label: String
       anchor: ClaimAnchorKey
@@ -239,6 +266,7 @@ fn test_claim_input(c: TestClaim) -> Node {
     CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
     DiagnosticClaim { input: n, label: _, anchor: _, expected_rejection: _, classification: _ } => n
     EqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
+    StructuralEqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
     RoundTripClaim { input: n, label: _, anchor: _, classification: _ } => n
   }
 }
@@ -250,6 +278,7 @@ fn test_claim_label(c: TestClaim) -> String {
     CompilesClaim { label: l, anchor: _, input: _, expected_value: _, classification: _ } => l
     DiagnosticClaim { label: l, anchor: _, input: _, expected_rejection: _, classification: _ } => l
     EqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
+    StructuralEqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
     RoundTripClaim { label: l, anchor: _, input: _, classification: _ } => l
   }
 }
@@ -264,6 +293,8 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
       TestClaimDiagnosticClaimVariant
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       TestClaimEqualsClaimVariant
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      TestClaimStructuralEqualsClaimVariant
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRoundTripClaimVariant
   }
@@ -319,6 +350,8 @@ fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   match c {
     EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    StructuralEqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
     CompilesClaim { input: n, expected_value: e, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
     DiagnosticClaim { input: n, expected_rejection: e, label: _, anchor: _, classification: _ } =>
@@ -372,7 +405,7 @@ fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Nod
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v4.workflow.ci ci_select_from_rerun_nodes — bind TASKS.md T-24 — dissolve-on-arrival: delete when workflow/ci.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v4.workflow.affected_set_selection ci_select_from_rerun_nodes (relocated from the deleted v4.workflow.ci by PR #4543; lands with the affected-set gate at the #4540 rebase) — bind TASKS.md T-24 — dissolve-on-arrival: delete when workflow/affected_set_selection.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
 fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
   match c {
     DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
@@ -380,6 +413,7 @@ fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       false
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => false
   }
 }
@@ -389,6 +423,7 @@ fn test_claim_anchor(c: TestClaim) -> ClaimAnchorKey {
     CompilesClaim { anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
     DiagnosticClaim { anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
     EqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    StructuralEqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
     RoundTripClaim { anchor: k, label: _, input: _, classification: _ } => k
   }
 }
@@ -406,6 +441,7 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
     CompilesClaim { classification: c, label: _, anchor: _, input: _, expected_value: _ } => c
     DiagnosticClaim { classification: c, label: _, anchor: _, input: _, expected_rejection: _ } => c
     EqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
+    StructuralEqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
     RoundTripClaim { classification: c, label: _, anchor: _, input: _ } => c
   }
 }
@@ -429,9 +465,91 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
         value: Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
+    StructuralEqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
       }
   }
+}
+
+
+// Consolidation #4553 Phase 1 — Bool-witness registration descriptor (ctrl#1490 / test-claim-consolidation-design §3).
+// P2: descriptor fields only — execution output lives on run-receipt types in Phase 2 eval module.
+// RULING-1: pretty-much-done — nullary fn () -> Bool witness identity at registration boundary.
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1 terminal registration descriptor.
+type BoolWitness {
+  entry: String
+  function: Symbol
+}
+
+
+// Node-corpus transport mode on `UnifiedTestClaim.NodeCorpus` — not a separate runner.
+// RULING-1: pretty-much-done — closed NodeCorpus transport modes (design §3.4).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
+type TestClaimTransportMode
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+  = EvalOnly
+  | EmitVsEval { target: TargetModel }
+
+
+// Structural modality tag for unified dispatch — keys off the coproduct arm, not string heuristics.
+// RULING-1: pretty-much-done — closed modality tag for unified dispatch (design §3.1).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
+type UnifiedTestClaimModality
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+  = UnifiedNodeCorpusModality
+  | UnifiedBoolWitnessModality
+
+
+// Unified registration coproduct (both modalities, one authority).
+// `NodeCorpus` carries `claim` + `transport` at std layer; `TestClaimEvalSubject` binds at the
+// eval boundary in Phase 2 runner migration (std cannot import `v4.compiler.eval`).
+// RULING-1: needs-more-work — NodeCorpus lacks TestClaimEvalSubject until Phase 2 runner migration.
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 binds subject at eval boundary; dissolve-on: NodeCorpus.subject lands when unified runner migrates.
+type UnifiedTestClaim
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 runner migration
+  = NodeCorpus {
+      claim: TestClaim
+      transport: TestClaimTransportMode
+    }
+  | BoolWitnessClaim { witness: BoolWitness }
+
+
+fn unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality {
+  match c {
+    NodeCorpus { claim: _, transport: _ } => UnifiedNodeCorpusModality
+    BoolWitnessClaim { witness: _ } => UnifiedBoolWitnessModality
+  }
+}
+
+
+fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
+  BoolWitnessClaim { witness: w }
+}
+
+
+// Arm-specific projection — Rejected on NodeCorpus (no fabricated empty String/Symbol).
+fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
+  match c {
+    BoolWitnessClaim { witness: w } =>
+      Accepted { value: w, diagnostics: None }
+    NodeCorpus { claim: _, transport: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: unified_test_claim_bool_witness_absent_diagnostic())
+      }
+  }
+}
+
+
+fn bool_witness_matches_entry_function(
+  w: BoolWitness,
+  entry: String,
+  function: Symbol
+) -> Bool {
+  w.entry == entry && w.function == function
 }

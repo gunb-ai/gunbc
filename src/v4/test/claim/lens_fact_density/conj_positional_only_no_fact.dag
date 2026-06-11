@@ -13,7 +13,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -24,19 +25,18 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data conj_positional_only_child_symbol: Symbol = conj_positional_only_child_symbol
-
 data conj_positional_only_child: Node = Node {
-  kind: TypeNode { connective: Atom { identity: conj_positional_only_child_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data conj_positional_only_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge { label: Positional, target: conj_positional_only_child }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn conj_positional_only_no_fact_claim_holds() -> Bool {
@@ -49,8 +49,9 @@ fn conj_positional_only_no_fact_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

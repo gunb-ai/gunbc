@@ -1,2 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) T-LAS Slice A substrate dispatch tracked docs/briefs/r3-v-t-lens-application-surface-execution-split-worker.md (§Execution slice A — gates #88–#91 incl. lens_application_carrier_landed)

@@ -13,7 +13,17 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v4.std.collection { Set }
+import v4.std.collection {
+  Absent,
+  Map,
+  Present,
+  Set,
+  empty_map,
+  map_get,
+  map_insert,
+  optional_absent,
+  optional_present
+}
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -34,9 +44,11 @@ import v4.std.node {
   Edge,
   Node,
   NodeFold,
+  OccurrenceId,
   Symbol,
   TypeNode,
   fold_node,
+  node_with_occurrence_id,
   well_formed
 }
 
@@ -97,8 +109,8 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => Some { value: DeclaredBinding { name: sym } }
-    Positional => None
+    Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    Positional => optional_absent()
   }
 }
 
@@ -124,8 +136,8 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
         match try_edge_declared_binding(e: e) {
-          Some { value: b } => map_insert(a, b.name, b.name)
-          None => a
+          Present { value: b } => map_insert(a, b.name, b.name)
+          Absent => a
         }
       })
     _ => acc
@@ -151,9 +163,9 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
     TypeNode { connective: Arrow } =>
       if count(n.children) >= 1 {
         match first(n.children) {
-          Some { value: e0 } =>
+          Present { value: e0 } =>
             harvest_conj_named_bindings(root: e0.target, acc: acc)
-          None => acc
+          Absent => acc
         }
       } else {
         acc
@@ -168,9 +180,9 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
     ComputationNode { behavior: Bind } =>
       if count(n.children) == 3 {
         match first(n.children) {
-          Some { value: e0 } =>
+          Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
-          None => acc
+          Absent => acc
         }
       } else {
         acc
@@ -201,15 +213,39 @@ fn scope_root_module(s: Scope) -> Namespace {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: lookup_chain
-fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v4.std.collection);
+// site: lookup_chain — Rejected must not collapse to unbound (P3).
+fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
       match map_get(m, name) {
-        Some { value: v } => Some { value: v }
-        None => lookup_chain(s: o, name: name)
+        Accepted { value: opt, diagnostics: d_here } => match opt {
+          Present { value: v } =>
+            Accepted { value: optional_present(value: v), diagnostics: d_here }
+          Absent =>
+            match lookup_chain(s: o, name: name) {
+              Accepted { value: found, diagnostics: d_outer } =>
+                Accepted {
+                  value: found,
+                  diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
+                }
+              Rejected { diagnostics: ds } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: d_here, rejected: ds)
+                }
+            }
+        }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
-    ScopeRoot { module: mod } => map_get(mod.bindings, name)
+    ScopeRoot { module: mod } =>
+      match map_get(mod.bindings, name) {
+        Accepted { value: opt, diagnostics: d } => match opt {
+          Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
+          Absent => Accepted { value: optional_absent(), diagnostics: d }
+        }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
   }
 }
 
@@ -237,27 +273,42 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
 }
 
 
-fn canonical_atom(identity: Symbol) -> Node {
-  Node {
+fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
-  }
+    children: [],
+    occurrence_id: occurrence_id
+  )
 }
 
 
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
-    Some { value: canonical } =>
-      Accepted { value: canonical_atom(identity: canonical), diagnostics: None }
-    None =>
-      if namespace_has_canonical_symbol(
-        namespace: scope_root_module(s: scope),
-        name: identity
-      ) {
-        Accepted { value: canonical_atom(identity: identity), diagnostics: None }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n)) }
-      }
+    Accepted { value: found, diagnostics: pending } => match found {
+      Present { value: canonical } =>
+        Accepted {
+          value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+          diagnostics: pending
+        }
+      Absent =>
+        if namespace_has_canonical_symbol(
+          namespace: scope_root_module(s: scope),
+          name: identity
+        ) {
+          Accepted {
+            value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+            diagnostics: pending
+          }
+        } else {
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+            )
+          }
+        }
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
@@ -277,10 +328,10 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
-          Accepted { value: Node {
-              kind: n.kind,
-              children: resolved_children
-            }, diagnostics: d }
+          Accepted {
+            value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
+            diagnostics: d
+          }
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(n: n, scope: scope)
@@ -316,10 +367,10 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted { value: Node {
-          kind: n.kind,
-          children: resolved_children
-        }, diagnostics: d }
+      Accepted {
+        value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
+        diagnostics: d
+      }
   }
 }
 
@@ -401,7 +452,7 @@ fn resolve_edges_first_outer_then_inner(
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      Accepted { value: canonical_atom(identity: id), diagnostics: None }
+      Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
     _ =>
       Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
@@ -516,10 +567,10 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
-        Accepted { value: Node {
-            kind: n.kind,
-            children: resolved_children
-          }, diagnostics: d }
+        Accepted {
+          value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
+          diagnostics: d
+        }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }

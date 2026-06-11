@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   WholeFile,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -35,31 +35,10 @@ import v4.std.verification {ManualAnchorAbsent,
   RoundTripClaim,
   manual_claim_anchor
 }
-
-
-data correction_bad_complexity_symbol: Symbol = correction_bad_complexity_symbol
-data correction_good_complexity_symbol: Symbol = correction_good_complexity_symbol
-data correction_textual_whole_file_subject: Symbol = correction_textual_whole_file_subject
-data correction_textual_byte_range_subject: Symbol = correction_textual_byte_range_subject
-data correction_drift_client_symbol: Symbol = correction_drift_client_symbol
-data correction_drift_server_symbol: Symbol = correction_drift_server_symbol
-data correction_shared_contract_symbol: Symbol = correction_shared_contract_symbol
-data correction_english_boundary_symbol: Symbol = correction_english_boundary_symbol
-data correction_complexity_reason: Symbol = correction_complexity_reason
-data correction_transport_reason: Symbol = correction_transport_reason
-data correction_ambiguous_boundary_reason: Symbol = correction_ambiguous_boundary_reason
-data correction_textual_reason: Symbol = correction_textual_reason
-data correction_port_reason: Symbol = correction_port_reason
-data correction_external_contract_reason: Symbol = correction_external_contract_reason
-data correction_user_boundary_reason: Symbol = correction_user_boundary_reason
-data correction_source_file: Symbol = correction_source_file
-data correction_port_symbol: Symbol = correction_port_symbol
-data correction_left: Symbol = correction_left
-data correction_right: Symbol = correction_right
-
-
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -67,47 +46,48 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: correction_left }, target: atom_node(s: left) },
-      Edge { label: Named { name: correction_right }, target: atom_node(s: right) },
-    ]
-  }
+      Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
+      Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
-data complexity_correction_input: Node = pair_node(left: correction_bad_complexity_symbol, right: correction_good_complexity_symbol)
+data complexity_correction_input: Node = pair_node(left: ^correction_bad_complexity_symbol, right: ^correction_good_complexity_symbol)
 
 
-data complexity_correction_expected_node: Node = atom_node(s: correction_good_complexity_symbol)
+data complexity_correction_expected_node: Node = atom_node(s: ^correction_good_complexity_symbol)
 
 
 data falsification_complexity_diagnostic_without_correct_code: Node = complexity_correction_input
 
 
-data transport_correction_input: Node = pair_node(left: correction_drift_client_symbol, right: correction_drift_server_symbol)
+data transport_correction_input: Node = pair_node(left: ^correction_drift_client_symbol, right: ^correction_drift_server_symbol)
 
 
-data transport_correction_expected_node: Node = atom_node(s: correction_shared_contract_symbol)
+data transport_correction_expected_node: Node = atom_node(s: ^correction_shared_contract_symbol)
 
 
 data falsification_transport_diagnostic_without_correct_code: Node = transport_correction_input
 
 
-data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: correction_english_boundary_symbol)
+data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
 
 
-data falsification_textual_whole_file_without_locus: Node = atom_node(s: correction_textual_whole_file_subject)
+data falsification_textual_whole_file_without_locus: Node = atom_node(s: ^correction_textual_whole_file_subject)
 
 
-data falsification_textual_byte_range_without_locus: Node = atom_node(s: correction_textual_byte_range_subject)
+data falsification_textual_byte_range_without_locus: Node = atom_node(s: ^correction_textual_byte_range_subject)
 
 
-data falsification_port_diagnostic_without_locus: Node = atom_node(s: correction_drift_client_symbol)
+data falsification_port_diagnostic_without_locus: Node = atom_node(s: ^correction_drift_client_symbol)
 
 
-data falsification_external_contract_without_reason: Node = atom_node(s: correction_drift_server_symbol)
+data falsification_external_contract_without_reason: Node = atom_node(s: ^correction_drift_server_symbol)
 
 
-data falsification_user_boundary_without_reason: Node = atom_node(s: correction_english_boundary_symbol)
+data falsification_user_boundary_without_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
 
 
 data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticClaim {
@@ -116,7 +96,7 @@ data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticCl
   input: falsification_complexity_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_complexity_reason,
+        reason: ^correction_complexity_reason,
         at: node_locus(node: falsification_complexity_diagnostic_without_correct_code),
         correction: Suggested { node: complexity_correction_expected_node }
       }
@@ -131,7 +111,7 @@ data claim_transport_diagnostic_suggests_shared_contract: TestClaim = Diagnostic
   input: falsification_transport_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_transport_reason,
+        reason: ^correction_transport_reason,
         at: node_locus(node: falsification_transport_diagnostic_without_correct_code),
         correction: Suggested { node: transport_correction_expected_node }
       }
@@ -146,7 +126,7 @@ data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim =
   input: falsification_ambiguous_boundary_without_unavailable_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_ambiguous_boundary_reason,
+        reason: ^correction_ambiguous_boundary_reason,
         at: node_locus(node: falsification_ambiguous_boundary_without_unavailable_reason),
         correction: Unavailable { reason: AmbiguousIntent }
       }
@@ -161,8 +141,8 @@ data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticCl
   input: falsification_textual_whole_file_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_textual_reason,
-        at: Textual { file: correction_source_file, extent: WholeFile },
+        reason: ^correction_textual_reason,
+        at: Textual { file: ^correction_source_file, extent: WholeFile },
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
@@ -176,8 +156,8 @@ data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticCl
   input: falsification_textual_byte_range_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_textual_reason,
-        at: Textual { file: correction_source_file, extent: ByteRange { start: 0, end: 1 } },
+        reason: ^correction_textual_reason,
+        at: Textual { file: ^correction_source_file, extent: ByteRange { start: 0, end: 1 } },
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
@@ -191,8 +171,8 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   input: falsification_port_diagnostic_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_port_reason,
-        at: port_locus(port: correction_port_symbol),
+        reason: ^correction_port_reason,
+        at: port_locus(port: ^correction_port_symbol),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
@@ -206,7 +186,7 @@ data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = 
   input: falsification_external_contract_without_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_external_contract_reason,
+        reason: ^correction_external_contract_reason,
         at: node_locus(node: falsification_external_contract_without_reason),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -221,7 +201,7 @@ data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = Diag
   input: falsification_user_boundary_without_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: correction_user_boundary_reason,
+        reason: ^correction_user_boundary_reason,
         at: node_locus(node: falsification_user_boundary_without_reason),
         correction: Unavailable { reason: UserInputBoundary }
       }

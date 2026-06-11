@@ -6,21 +6,24 @@ use self::IterationDimension::*;
 use self::IterationPrimitive::*;
 use self::ShrinkFactor::*;
 use self::SizeBound::*;
+pub use crate::std_algebra::kernel_algebra_profile;
+pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
     FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
     PartialFunctionProfile,
 };
-pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
+pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::DescentUnknown;
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
-    positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
-    RankingDimension,
+    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -90,7 +93,9 @@ pub struct LoweringTarget {
     pub factor: Option<Rc<ShrinkFactor>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum IterationPrimitive {
     Fold,
@@ -205,7 +210,9 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum IterationDimension {
     TreeDescent,

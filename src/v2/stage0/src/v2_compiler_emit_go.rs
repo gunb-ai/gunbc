@@ -4,11 +4,13 @@
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::BinOp::NullCoalesce;
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Go;
 pub use crate::v2_compiler_emit::{
-    apply_named_template, apply_naming_case, apply_type_template1, apply_type_template2,
-    apply_type_template3, capitalize_first, compute_service_fields, effective_operation_transport,
+    apply_naming_case, compute_service_fields, effective_operation_transport,
     emit_algebra_method_template, emit_bin_op_symbol, emit_container, emit_default_bin_op,
     emit_error_expr, emit_expr_field_access_shared, emit_expr_var_shared, emit_ident,
     emit_inferred_shared, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
@@ -21,20 +23,26 @@ pub use crate::v2_compiler_emit::{
     emit_typed_string_interp_unified, emit_unary_op, emit_unified_init_block_stmts,
     emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
     emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
-    empty_emit_scope, escape_go_interp_text, escape_json_string, escape_string_literal_body,
-    extract_string_interp_parts, extract_test_projections, has_nested_records_node,
-    is_data_def_item, is_function_item, is_null_coalesce, is_resource_def_item,
-    is_service_def_item, is_service_item, is_tco_eligible, is_type_alias_item,
-    is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
-    lookup_item, make_indent, module_emit_scope, module_to_filename, order_typed_call_args,
-    sanitize_service_name, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_decls, service_var_name, test_file_path, test_function_name, to_lower_char,
-    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
-    ServiceFieldSet, TestProjection,
+    empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
+    is_null_coalesce, is_tco_eligible, lookup_item, module_emit_scope, order_typed_call_args,
+    scope_after_expr, seed_bindings, service_fallback_transport, service_field_decls,
+    test_file_path, typed_named_arg_matches,
 };
-pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope, InferScope};
-pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
+pub use crate::v2_compiler_emit_core_support::{
+    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
+    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
+    is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item, is_service_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_to_filename, sanitize_service_name, service_var_name,
+    test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper,
+    to_upper_char, unique_strings,
+};
+pub use crate::v2_compiler_emit_core_support::{EmitResult, TestProjection};
+pub use crate::v2_compiler_infer::InferScope;
+pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope};
+pub use crate::v2_compiler_infer_env::authored_name;
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -45,12 +53,13 @@ pub use crate::v2_compiler_infer_types::{
 };
 use crate::v2_compiler_languages::VisibilitySpec::CaseVisibility;
 pub use crate::v2_compiler_languages::{
-    is_string_like, scaffold_for_target, test_conventions_for_target, ItemKeywords,
-    TestConventions, VisibilitySpec,
+    is_string_like, scaffold_for_target, test_conventions_for_target,
 };
+pub use crate::v2_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
 pub use crate::v2_compiler_runtime_go::go_runtime_source;
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::NullCoalesce;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{
@@ -81,10 +90,12 @@ pub use crate::v2_std_core::{
     module_imports, module_items, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
     slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
-    transport_headers, with_required_cardinality, BinOp, Cardinality, Connective, DeclaredFuncSig,
-    ExprData, FieldAccessStyle, FieldSummary, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    transport_headers, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

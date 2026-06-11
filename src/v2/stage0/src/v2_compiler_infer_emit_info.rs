@@ -6,6 +6,8 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
@@ -13,8 +15,11 @@ use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v2_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality, Cardinality, Connective, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, NewlineIndex, Node,
+    with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

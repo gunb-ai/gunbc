@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +4
-
-SG-0 pairing: (a) removed src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs

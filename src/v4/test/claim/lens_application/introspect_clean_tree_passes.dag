@@ -8,7 +8,7 @@ import v4.compiler.compile { CompileLens, CompileLensIntrospect, apply_compile_l
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -24,20 +24,15 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data introspect_claim_symbol: Symbol = introspect_claim_symbol
-data introspect_type_symbol: Symbol = introspect_type_symbol
-data introspect_algebra_symbol: Symbol = introspect_algebra_symbol
-data introspect_descent_symbol: Symbol = introspect_descent_symbol
-data introspect_root: Node = claim_atom_node(s: introspect_claim_symbol)
+data introspect_root: Node = claim_atom_node(s: ^introspect_claim_symbol)
 
 fn introspect_tree() -> InferredTree {
   claim_inferred_tree(
     root: introspect_root,
     facts: claim_inferred_facts(
-      type_symbol: introspect_type_symbol,
-      algebra_symbol: introspect_algebra_symbol,
-      descent_symbol: introspect_descent_symbol,
+      type_symbol: ^introspect_type_symbol,
+      algebra_symbol: ^introspect_algebra_symbol,
+      descent_symbol: ^introspect_descent_symbol,
     )
   )
 }
@@ -61,8 +56,9 @@ fn introspect_clean_tree_passes_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

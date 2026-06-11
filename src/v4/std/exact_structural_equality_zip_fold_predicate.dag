@@ -8,18 +8,21 @@ module v4.std.exact_structural_equality_zip_fold_predicate
 
 
 import v4.std.algebra { list_snoc_item }
-import v4.std.node { Edge, Node, NodeFold, fold_node, well_formed }
+import v4.std.node { Edge, Node, NodeFold, fold_node, node_for_structural_equality, node_rebuild, well_formed }
+// occurrence_id is excluded from structural equality (design-node-identity-channels.md;
+// node.dag node_for_structural_equality). The canonical seed normalizes each node's
+// occurrence_id to SyntheticOccurrence here; because fold_node routes every node through
+// init() as its seed and step() preserves the (already-normalized) accumulator id, the
+// whole canonical tree is occurrence-id-insensitive — structurally identical trees with
+// distinct minted ids compare EQUAL. (Was node_rebuild, which preserved minted ids.)
 fn exact_structural_zip_fold_init(n: Node) -> Node {
-  Node {
-    kind: n.kind,
-    children: []
-  }
+  node_for_structural_equality(n: node_rebuild(n: n, children: []))
 }
 fn exact_structural_zip_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
-  Node {
-    kind: acc.kind,
+  node_rebuild(
+    n: acc,
     children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
-  }
+  )
 }
 fn exact_structural_zip_fold_algebra() -> NodeFold<Node> {
   NodeFold {
@@ -44,7 +47,11 @@ fn exact_structural_equality_zip_fold_preservation_holds(
   well_formed(n: source_facts)
     && well_formed(n: algebra)
     && well_formed(n: candidate)
-    && (algebra == source_facts)
+    // occurrence-id-insensitive identity check (was bare ==, which compared minted ids)
+    && exact_structural_equality_zip_fold(
+      source_facts: algebra,
+      candidate: source_facts
+    )
     && exact_structural_equality_zip_fold(
       source_facts: source_facts,
       candidate: candidate

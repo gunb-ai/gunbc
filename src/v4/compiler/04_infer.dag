@@ -3,9 +3,7 @@
 // Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
-
 module v4.compiler.infer
-
 
 import v4.std.algebra {
   BoundedLatticeInstanceCompleteness,
@@ -13,9 +11,6 @@ import v4.std.algebra {
   BoundedLatticeComplete,
   BoundedLatticePartial,
   NotBoundedLatticeInstance,
-  MissingMeet,
-  MissingJoin,
-  MissingLatticeField,
   algebra_edge,
   any,
   boolean_algebra_field_bounded_lattice,
@@ -33,8 +28,6 @@ import v4.std.constraints {
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {
@@ -72,13 +65,11 @@ import v4.std.node {
 }
 import v4.std.witness { Holds, Violates, Witness }
 
-
 // AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
   algebra: Node
   witness: Node
 }
-
 
 // Practice 2: InferredFacts bundles CanonicalGrounding + descent. std/constraints.dag
 // CanonicalGrounding is not yet proof-by-construction (scaffold:T-9-ground) — infer
@@ -89,38 +80,32 @@ type InferredFacts {
   descent: Witness<TerminationProof>
 }
 
-
+// Subject node (map key / grounding.node) vs resolved value type (structural algebra witness).
 fn inferred_facts_resolved_type(facts: InferredFacts) -> Node {
-  facts.grounding.node
+  facts.grounding.witness.structural.evidence
 }
-
 
 fn inferred_facts_algebra_ref(facts: InferredFacts) -> AlgebraRef {
   algebra_ref_from_grounding(grounding: facts.grounding)
 }
 
-
 fn inferred_facts_canonical_witness(facts: InferredFacts) -> CanonicalGroundingWitness {
   facts.grounding.witness
 }
 
-
 fn inferred_facts_descent(facts: InferredFacts) -> Witness<TerminationProof> {
   facts.descent
 }
-
 
 type InferredTree {
   root: Node
   facts: Map<Node, InferredFacts>
 }
 
-
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts
 }
-
 
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
@@ -128,10 +113,6 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 // 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 data infer_bounded_lattice_consumer_partial: Symbol = infer_bounded_lattice_consumer_partial
-data infer_bounded_lattice_partial_missing_meet: Symbol = infer_bounded_lattice_partial_missing_meet
-data infer_bounded_lattice_partial_missing_join: Symbol = infer_bounded_lattice_partial_missing_join
-data infer_bounded_lattice_partial_missing_lattice_field: Symbol = infer_bounded_lattice_partial_missing_lattice_field
-
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
@@ -148,7 +129,6 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-
 fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_algebra_ref_ungrounded,
@@ -157,27 +137,16 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-
-fn infer_bounded_lattice_missing_reason(missing: BoundedLatticeMissingWitness) -> Symbol {
-  match missing {
-    MissingMeet => infer_bounded_lattice_partial_missing_meet
-    MissingJoin => infer_bounded_lattice_partial_missing_join
-    MissingLatticeField => infer_bounded_lattice_partial_missing_lattice_field
-  }
-}
-
-
 fn infer_bounded_lattice_partial_instance_diagnostic(
   at: Locus,
   missing: BoundedLatticeMissingWitness,
 ) -> Diagnostic {
   Diagnostic {
-    reason: infer_bounded_lattice_missing_reason(missing: missing),
+    reason: discriminant(v: missing),
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn infer_bounded_lattice_consumer_partial_diagnostic(
   consumer: Node,
@@ -189,7 +158,6 @@ fn infer_bounded_lattice_consumer_partial_diagnostic(
     correction: Suggested { node: instance }
   }
 }
-
 
 fn infer_bounded_lattice_completeness_rejects(
   instance: Node,
@@ -210,7 +178,6 @@ fn infer_bounded_lattice_completeness_rejects(
   }
 }
 
-
 // SG-6: consumer-site gate only — partial declarations are tagged, not rejected here.
 // infer_bounded_lattice_instance_gate is exported for anchor/unit probes, not infer_node_facts.
 fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
@@ -219,7 +186,6 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
     completeness: bounded_lattice_instance_completeness(instance: instance)
   )
 }
-
 
 // Algebra-use edges only — module/containment declaration siblings are not consumption.
 fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
@@ -237,7 +203,6 @@ fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>)
     false
   }
 }
-
 
 fn infer_bounded_lattice_consumer_gate(
   consumer: Node,
@@ -280,7 +245,6 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
-
 fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
   match bounded_lattice_instance_completeness(instance: n) {
     BoundedLatticePartial { missing: _ } => [n]
@@ -288,7 +252,6 @@ fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
     BoundedLatticeComplete => []
   }
 }
-
 
 fn infer_partial_bounded_lattice_instances_fold_step(
   acc: List<Node>,
@@ -299,7 +262,6 @@ fn infer_partial_bounded_lattice_instances_fold_step(
     list_snoc_item(xs: a, item: p)
   })
 }
-
 
 fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
   fold_node(
@@ -315,7 +277,6 @@ fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
   )
 }
 
-
 // 🟡 gated — feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded — dissolve-on-arrival: std/node.dag or std/model_core.dag exports the canonical grounded-algebra query.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
@@ -328,7 +289,6 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   }
 }
 
-
 fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: infer_descent_not_derived,
@@ -336,7 +296,6 @@ fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 // SPI-3: infer owns the reason symbol; substrate/cardinality owns the failing locus (fold preserves child Violates).
 fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
@@ -349,7 +308,6 @@ fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
   }
 }
 
-
 fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   AlgebraRef {
     algebra: grounding.witness.structural.evidence,
@@ -357,18 +315,16 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   }
 }
 
-
 // Infer admission gate — not a post-hoc InferredFacts field patch. Validates the
 // algebra_ref_from_grounding / closedness alignment CanonicalGrounding must satisfy
 // before infer accepts or re-exports grounding as authoritative.
 fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
     && well_formed(n: grounding.witness.structural.evidence)
-    && (grounding.witness.structural.property == constraint_property_being_canonical)
-    && (grounding.witness.closedness.property == constraint_property_candidate_set_closedness)
+    && (grounding.witness.structural.property == ^constraint_property_being_canonical)
+    && (grounding.witness.closedness.property == ^constraint_property_candidate_set_closedness)
     && (grounding.witness.closedness.evidence == grounding.node)
 }
-
 
 fn inferred_facts_construction(
   grounding: CanonicalGrounding,
@@ -389,7 +345,6 @@ fn inferred_facts_construction(
   }
 }
 
-
 fn inferred_facts_from_grounding(
   grounding: CanonicalGrounding,
   descent: Witness<TerminationProof>,
@@ -397,11 +352,9 @@ fn inferred_facts_from_grounding(
   inferred_facts_construction(grounding: grounding, descent: descent)
 }
 
-
 fn empty_inferred_facts_entry_list() -> List<InferredFactsEntry> {
   []
 }
-
 
 fn concat_inferred_facts_entries(
   a: List<InferredFactsEntry>,
@@ -412,11 +365,9 @@ fn concat_inferred_facts_entries(
   })
 }
 
-
 fn infer_constraint_graph(n: Node) -> ConstraintGraph {
   ConstraintGraph { root: n }
 }
-
 
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
@@ -443,7 +394,6 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   }
 }
 
-
 fn lookup_inferred_facts_in_entries(
   entries: List<InferredFactsEntry>,
   key: Node,
@@ -466,7 +416,6 @@ fn lookup_inferred_facts_in_entries(
     }
   )
 }
-
 
 // Fail-closed map construction: rejects (with diagnostic) any entry where node != facts.grounding.node.
 // admitted_inferred_facts_entry is the primary enforcement point; this function is the secondary
@@ -500,11 +449,9 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
   }
 }
 
-
 fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
   tree.facts.lookup(node)
 }
-
 
 fn canonical_grounding_from_inferred_facts(
   node: Node,
@@ -524,7 +471,6 @@ fn canonical_grounding_from_inferred_facts(
   }
 }
 
-
 // RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
@@ -534,7 +480,6 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
       outcome_rejected(d)
   }
 }
-
 
 // Construction guard: enforces node == facts.grounding.node before admitting an entry.
 // Prevents an InferredFactsEntry where the map key diverges from the grounding subject.
@@ -549,62 +494,46 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
   }
 }
 
-
-fn infer_entries_fold_init(n: Node, partials: List<Node>) -> Outcome<List<InferredFactsEntry>> {
-  match infer_node_facts(n: n, partials: partials) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: entry, diagnostics: ed } =>
-          Accepted {
-            value: [entry],
-            diagnostics: diagnostics_merge(outer: d, inner: ed)
-          }
-      }
-  }
-}
-
-
 // Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
-fn infer_entries_fold_step(
-  acc: Outcome<List<InferredFactsEntry>>,
-  e: Edge,
-  child: Outcome<List<InferredFactsEntry>>,
-) -> Outcome<List<InferredFactsEntry>> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: acc_entries, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: child_entries, diagnostics: cd } =>
-          Accepted {
-            value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
-      }
-  }
-}
-
-
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   fold_node(
     n: tree,
     algebra: NodeFold {
       init: fn(n0) {
-        infer_entries_fold_init(n: n0, partials: partials)
+        match infer_node_facts(n: n0, partials: partials) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: n0, facts: facts) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: entry, diagnostics: ed } =>
+                Accepted {
+                  value: [entry],
+                  diagnostics: diagnostics_merge(outer: d, inner: ed)
+                }
+            }
+        }
       },
       step: fn(acc, e, child) {
-        infer_entries_fold_step(acc: acc, e: e, child: child)
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: acc_entries, diagnostics: ad } =>
+            match child {
+              Rejected { diagnostics: cr } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+                }
+              Accepted { value: child_entries, diagnostics: cd } =>
+                Accepted {
+                  value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
+                  diagnostics: diagnostics_merge(outer: ad, inner: cd)
+                }
+            }
+        }
       }
     }
   )
 }
-
 
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {

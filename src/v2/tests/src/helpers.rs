@@ -4,7 +4,10 @@
 
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
-use v2_compiler::v2_compiler_compile::{PipelineResult, SourceFile};
+use v2_compiler::v2_compiler_compile::{
+    compile_sources_with_options, compile_to_resolved, CompilePipelineOptions, PipelineResult,
+    ResolvedPipelineResult, SourceFile,
+};
 use v2_compiler::v2_compiler_parse::ParseResult;
 use v2_compiler::v2_std_core::Token;
 
@@ -242,8 +245,44 @@ fn resolve_imports_transitively_with_index(
 
 // ── Full pipeline ────────────────────────────────────────────────────────
 
+fn analyze_complexity_options() -> CompilePipelineOptions {
+    CompilePipelineOptions {
+        analyze_complexity: true,
+    }
+}
+
+pub fn compile_dag_analyze_complexity(source: &str) -> Rc<PipelineResult> {
+    let sources = resolve_imports_transitively("test.dag", source);
+    compile_sources_with_options(
+        Rc::new(sources),
+        RenderTarget::Rust,
+        analyze_complexity_options(),
+    )
+}
+
+pub fn compile_multi_analyze_complexity(files: &[(&str, &str)]) -> Rc<PipelineResult> {
+    let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    for (path, content) in files {
+        let resolved = resolve_imports_transitively(path, content);
+        for src in resolved {
+            all_sources.entry(src.path.clone()).or_insert(src);
+        }
+    }
+    let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
+    compile_sources_with_options(
+        Rc::new(sources),
+        RenderTarget::Rust,
+        analyze_complexity_options(),
+    )
+}
+
 pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
     compile_dag_named("test.dag", source, RenderTarget::Rust)
+}
+
+pub fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
+    let sources = resolve_imports_transitively("test.dag", source);
+    compile_to_resolved(Rc::new(sources))
 }
 
 pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResult> {

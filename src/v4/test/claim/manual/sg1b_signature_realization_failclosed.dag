@@ -8,14 +8,13 @@ module v4.test.claim.manual.sg1b_signature_realization_failclosed
 import v4.extdeps.languages.rust { rust_sg2_type_expr_target_model }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.target_model {
   FunctionBoundaryParam,
   target_atom_realization_catalog_row_decode_invalid,
   target_atom_realization_lookup_in_catalog_node,
   target_function_boundary_site_decode_invalid,
   target_function_boundary_site_from_node,
-  target_function_boundary_site_param,
   target_function_signature_realization_lookup_in_catalog_node,
   target_function_signature_realization_row_decode_invalid
 }
@@ -28,23 +27,20 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg1b_fc_pass_sym: Symbol = sg1b_fc_pass_sym
-data sg1b_fc_fail_sym: Symbol = sg1b_fc_fail_sym
-data sg1b_fc_probe_sym: Symbol = sg1b_fc_probe_sym
-
 fn sg1b_fc_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg1b_fc_pass_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg1b_fc_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn sg1b_fc_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg1b_fc_fail_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg1b_fc_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn sg1b_fc_claim_input(ok: Bool) -> Node {
@@ -57,35 +53,39 @@ fn sg1b_fc_claim_input(ok: Bool) -> Node {
 
 fn sg1b_fc_probe_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg1b_fc_probe_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 // Boundary-site atom carrying a child — violates the declared nullary shape.
 fn sg1b_fc_boundary_param_with_children() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: target_function_boundary_site_param } },
+    kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [
       Edge { label: Positional, target: sg1b_fc_probe_node() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 // Well-formed nullary boundary-site atom (happy-path sanity).
 fn sg1b_fc_boundary_param_nullary() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: target_function_boundary_site_param } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 // Catalog node that is not Conj — a present-but-malformed realizations catalog edge.
 fn sg1b_fc_non_conj_catalog() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg1b_fc_probe_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {

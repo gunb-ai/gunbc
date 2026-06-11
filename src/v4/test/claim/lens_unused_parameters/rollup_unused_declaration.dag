@@ -18,27 +18,21 @@ import v4.std.dependency {
   DependencyView
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data rollup_function_symbol: Symbol = rollup_function_symbol
-data rollup_parameter_symbol: Symbol = rollup_parameter_symbol
-data rollup_edge_symbol: Symbol = rollup_edge_symbol
-data rollup_type_symbol: Symbol = rollup_type_symbol
-data rollup_algebra_symbol: Symbol = rollup_algebra_symbol
-data rollup_descent_symbol: Symbol = rollup_descent_symbol
-data rollup_parameter: Node = claim_atom_node(s: rollup_parameter_symbol)
+data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 
 data rollup_function: Node = Node {
-  kind: TypeNode { connective: Atom { identity: rollup_function_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
   children: [
-    Edge { label: Named { name: rollup_edge_symbol }, target: rollup_parameter }
-  ]
+    Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 // `Contains` edge positions `rollup_parameter` as a declaration candidate
@@ -53,9 +47,9 @@ data rollup_contains_dependency: DependencyView = DependencyView {
 
 fn rollup_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: rollup_type_symbol,
-    algebra_symbol: rollup_algebra_symbol,
-    descent_symbol: rollup_descent_symbol,
+    type_symbol: ^rollup_type_symbol,
+    algebra_symbol: ^rollup_algebra_symbol,
+    descent_symbol: ^rollup_descent_symbol,
   )
 }
 

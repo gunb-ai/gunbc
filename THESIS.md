@@ -20,6 +20,22 @@ A `.dag` program is a dependency graph. Parallelism is the default because indep
 
 The compiler reads the dependency graph directly and can choose the target schedule mechanically from the same source.
 
+## The core flip: put the meaning in the types, derive the coercion
+
+Mainstream types are *lean*. `int`, `str`, `char` carry only what the machine needs to move the bits — almost no meaning. That is exactly why coercion between them is unsafe: there is nothing to check a conversion *against*, so mixing a `UserId` and an `AccountId` (both `int`) is invisible. Developers pay for this twice — they hand-write the translations between types, and they re-declare the same concept under thirty names across API, DB, wire, and frontend (the "nicknaming tax").
+
+gunbc flips the model. **Put the meaning into the types, and a safe coercion between any two becomes *derivable*** — because a structure-preserving map between two meaning-rich types is determined by their meanings. The compiler finds the witness that relates them. The thirty nicknames for one concept become thirty names for overlapping structures the compiler can see through, so the N² hand-written translations collapse: you declare the genuine semantic decisions once, and the compiler derives everything downstream. This is the one idea under the rest of the thesis — **emit is coercion *to* a target, ingest is coercion *from* a source, the glue developers write is coercion the compiler should derive. One engine** ([the derived homomorphism](#the-derived-homomorphism--model-local-derive-global)).
+
+Three things keep this from being the old unsafe implicit coercion with better branding:
+
+- **The safety is in what it *refuses*, not in automating everything.** The compiler derives every coercion the meaning *determines*. But some coercions lose information (rich → coarse) and some must add it (the target lacks a carrier, so it must be *realized*). Those can never be silent. The flip's safety is the **fail-closed boundary**: derive what's determined; fail closed — or realize with an explicit receipt — on loss, ambiguity, or a missing carrier. *That boundary is the product.* "All automatic" minus the boundary is the problem we're escaping.
+- **It only works if the types are actually distinct.** "The compiler sees what each type needs" requires `UserId ≠ AccountId` to be *enforced*, not just named. That distinctness is the **keystone**: no enforcement, no derivable coercion — meaning-in-the-types is cosmetic without it.
+- **Developers still make the genuine decisions.** The derivable part — most of it, the pure nicknaming — derives fully. Where two systems truly *disagree* on semantics (not just naming), the compiler detects the mismatch but cannot invent the resolution; that stays a human decision it **surfaces, not guesses**. The precise claim: declare the genuine semantic decisions once; the compiler derives everything downstream.
+
+**Positioning.** Rich types that *derive* coercion have relatives — dependent and refinement types, prover-backed coercions, type-driven deriving. gunbc's distinctive bet is not "rich types"; it is that the language is **closed and total**, so coercion is a **decision procedure that always terminates with a verdict** — not a heuristic, not an open-ended proof search. The one-liner: **decidable, not heuristic; derive behavior, not just shape.**
+
+**The litmus.** Does a design move meaning *into* the types and *derive* the coercion — or does it re-introduce manual translation and coarse types? That single question catches most drift.
+
 ## Why this works
 
 `.dag` is designed as a closed system: bounded data, bounded iteration, and composition that preserves those bounds.
@@ -60,11 +76,13 @@ See [docs/thesis/the-substrate-two-coordinated-shapes.md](docs/thesis/the-substr
 
 Lower layers should provide declared facts without leaking storage choices or forcing downstream reinterpretation.
 
-See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md).
+See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md). Current-state audit — how close v4 is to this principle, concept by concept (the "touch-once contract"): [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md).
 
 ### Self-inspection: the substrate is its own subject
 
 The same substrate that models user programs should be able to model and analyze the compiler’s own structures.
+
+This is the read axis of **programmatic access to the code** (paired with the write axis, "show the correct code", below). The roof over both axes — and the measured current-state — is assessed in ctrl planning doc `gunbc-planning/programmatic-access-single-roof-2026-06-07.md` (ctrl#1481): the substrate's *types-as-data* half is real, but the runtime *reflection-by-execution* half is **measured unbuilt** (ctrl#1480 Q2) — a build, not a settled fact.
 
 See [docs/thesis/self-inspection.md](docs/thesis/self-inspection.md).
 
@@ -132,33 +150,7 @@ See [docs/thesis/what-dag-catches-that-normal-compilers-dont.md](docs/thesis/wha
 
 ## How the docs connect
 
-```
-/ (direction — start here)
-  THESIS.md .............. this file — the goal
-  ROADMAP.md ............. current state and work plan
-  INVARIANTS.md .......... rules that protect the thesis
-  MODELING.md ............ how to extend the language safely
-
-docs/ (project-wide design — read for understanding)
-  architecture.md ........ substrate design (Node + Edge)
-  algebraic-type-spec.md . type system semantics
-  coercion-design.md ..... type coercion algebra (Tier 1, DONE)
-  error-examples.md ...... concrete .dag code + expected errors (TDD targets)
-
-src/v2/ (compiler implementation — read when working)
-  DESIGN.md .............. compiler design principles
-  dimensions-design.md ... general correctness dimension mechanism
-  cx-design.md ........... complexity (first dimension instance)
-  cx-computation-model.md  CX core model and evidence system
-  cx-violation-triage.md . CX violation snapshot
-  ownership-design.md .... ownership (second dimension instance)
-  compiler-laws.md ....... compiler structural laws
-  CM.md .................. concept model gaps
-  CM-inventory.md ........ heuristic inventory
-
-src/v2/tests/ (testing — read for verification)
-  testing-strategy.md .... generated tests (Tier 3)
-```
+The doc map and the single-authority rule (one fact, one home; every other mention links to it) live in one place: see [docs/thesis/doc-authority.md](docs/thesis/doc-authority.md).
 
 ## Thesis claims — complete list
 
@@ -206,7 +198,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Substrate shape (two coordinated substrates — must not be flattened):**
 - Types are Node trees with six connectives: `Atom | Conj | Disj | Arrow | Cardinality | Instantiation`. `service`, `fn`, `type`, `operation` are surface sugar over this layer (`MODELING.md` §"Composition layer"). `Instantiation` matches C++ template-instantiation vocabulary and is ONLY used for type parameterization; value construction (`transport shell { argv: [...] }`) uses plain Conj with an optional inhabits tag.
 - Computation is five L1 behaviors: `Value | Transform | Branch | Loop | Bind`. Validated by M0 under three reviewer rounds; the stop signal never fired.
-- Composition: Transform holds a FunctionRef to an Arrow declaration in the type substrate; the Arrow's body is a sub-DAG of L1 behaviors (for user functions) or a realization declaration in `extdeps/` (for primitives).
+- Composition: Transform holds a FunctionRef to an Arrow declaration in the type substrate; the Arrow's body is a sub-DAG of L1 behaviors (for user functions) or a realization declaration in `dsl/extdeps/` (for primitives).
 - Substrate extension is a C1-class stop signal (seventh connective or sixth behavior) — all four dissolution patterns from §"Structural decompression" must fail with structural arguments before extension is allowed.
 - Future candidate (NOT committed): unified substrate dissolving the five behaviors into patterns over Node. Recorded for future consideration only; revisiting requires new failure pressure, not aesthetic preference.
 
@@ -229,9 +221,9 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, and build orchestration modeled as .dag workflows (`workflow/bootstrap.dag`, `workflow/ci.dag`). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
+- Bootstrap and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`). CI is hand-authored directly in `.github/workflows/ci.yml` (the prior `src/v4/workflow/ci.dag` mirror was a descriptive-only model with no runtime consumer and was deleted; ci.yml is the direct authority). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
-- Adding a CI gate, a Node field, or a target language requires editing one .dag file.
+- Adding a Node field or a target language requires editing one .dag file. (CI gates are the exception: they are hand-authored in `.github/workflows/ci.yml`, the direct CI authority — not modeled as `.dag` data.)
 
 **Self-hosting — four facets:**
 
@@ -264,9 +256,9 @@ Self-hosting is not one capability; it's four. All four are targets.
    deliverable, couples to testgen.**
 
 4. **Recursive-flex / self-application.** gunbc applies its own correctness/
-   cost/parallelism lenses to its own **build/CI pipeline**, which
-   is modeled as `.dag` data (`workflow/bootstrap.dag`,
-   `workflow/ci.dag`). The same lens framework users get for their own
+   cost/parallelism lenses to its own **build pipeline**, which
+   is modeled as `.dag` data (`src/v4/workflow/bootstrap.dag`; CI itself is
+   hand-authored in `.github/workflows/ci.yml`, not modeled). The same lens framework users get for their own
    programs applies recursively to gunbc's own build/CI behavior —
    typed lenses for cost / complexity / parallelism over the
    pipeline that produces gunbc itself. (Timing is a projection of the
@@ -277,13 +269,16 @@ Self-hosting is not one capability; it's four. All four are targets.
 
    **Scope (narrowed):** gunbc does not model its own work-direction
    (briefs, cycles, retirement) as `.dag` data. This facet claims only
-   lens self-application to the build/CI pipeline (`bootstrap.dag`,
-   `ci.dag`). The `workflow/` substrate for **facet 4 lens
-   self-application** is `{ bootstrap, ci }` only. **Product release
-   distribution** (RELEASE_TODO §5 Phase 1) adds a bounded third workflow
-   model `src/v4/workflow/release.dag` (`v4.workflow.release_dist`) —
-   GH Releases binary matrix + hand-synced `release.yml` until YamlStatic
-   emission; it does not expand facet-4 lens scope.
+   lens self-application to the build/CI pipeline. The six live
+   `src/v4/workflow/` files are: `bootstrap.dag` (build orchestration),
+   `lens_ci_gate.dag` (CI pass/fail gate; replaced the deleted `ci.dag`
+   descriptive-only mirror), `affected_set_selection.dag` (CI
+   affected-set authority), `scheduler.dag`, `cli.dag`, and `release.dag`
+   (`v4.workflow.release_dist` — GH Releases binary matrix + hand-synced
+   `release.yml` until YamlStatic emission). The **facet-4 lens
+   self-application scope** is the CI-pipeline files: `{ bootstrap,
+   lens_ci_gate, affected_set_selection }`. `scheduler`, `cli`, and
+   `release` are in-tree workflow files but do not expand facet-4 scope.
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at
@@ -301,7 +296,7 @@ per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
 `docs/design-pure-bootstrap.md`).
 The live *count* of currently hand-authored files is tracked per-generation:
-v2 authority: `src/v2/compiler/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
+v2 authority: `src/v2/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
 v3 authority (historical — v3 is frozen): SG-0 census in
 `src/v3/compiler/tests/integration/sg0_census_test.rs` tracked hand-authored
 non-test and test subsets shrinking toward 0; that campaign is frozen
@@ -337,7 +332,7 @@ continues as substrate stages complete.
 **Adoption model — economics, not enforcement:**
 - The thesis claims every program gets complexity, effects, termination,
   idempotency, and ownership for free — by construction, not by opt-in.
-  This is structurally true (see §"Substrate shape" + `epistemic-stacking.md`):
+  This is structurally true (see §"Substrate shape" + `docs/thesis/epistemic-stacking.md`):
   the language vocabulary is the six type connectives and five behaviors;
   every program decomposes through them; lenses are folds over that
   decomposition. There is no in-language way to author a program the lenses
@@ -350,7 +345,7 @@ continues as substrate stages complete.
   does not need to — gunbc's lenses are folds over *our* primitives, so
   they don't apply to a different compiler's outputs by construction
   (until those outputs are grounded back into `.dag`). See
-  `epistemic-stacking.md` §"Positive corollary."
+  `docs/thesis/epistemic-stacking.md` §"Positive corollary."
 - Adoption is therefore gated by **economics, not enforcement**: low cost
   of entry (one composition layer, no annotation surface, surface syntax
   is sugar over six connectives) × high free value (every lens applies to

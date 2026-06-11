@@ -1214,12 +1214,24 @@ pub mod evaluator {
                     (
                         Value::LiteralValue(LiteralBits::String(a)),
                         Value::LiteralValue(LiteralBits::String(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::Symbol(a)),
+                        Value::LiteralValue(LiteralBits::Symbol(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::String(a)),
+                        Value::LiteralValue(LiteralBits::Symbol(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::Symbol(a)),
+                        Value::LiteralValue(LiteralBits::String(b)),
                     ) => match op {
                         ComparisonOp::Eq => a == b,
                         ComparisonOp::Ne => a != b,
                         _ => {
                             return Err(EvalError::BadTransformOperands {
-                                reason: "string comparison beyond Eq/Ne",
+                                reason: "string/symbol comparison beyond Eq/Ne",
                             });
                         }
                     },
@@ -1264,6 +1276,53 @@ pub mod evaluator {
                 let callee_decl = *callee_decl;
                 if let Some(value) = try_dispatch_std_list_is_empty(dag, callee_decl, &operands) {
                     return Ok(value);
+                }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_run_host_process(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
+                }
+                if let Some(result) =
+                    crate::emit_host_eval::try_dispatch_runtime_value_signed_i32_le_as_int(
+                        dag,
+                        callee_decl,
+                        &operands,
+                        state,
+                        strategy,
+                    )
+                {
+                    return result;
+                }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host_rust(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
+                }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host_go(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
+                }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
                 }
                 let connective = &dag.declaration(callee_decl).connective;
                 if let TypeConnective::Arrow { body, .. } = connective {
@@ -1521,6 +1580,47 @@ pub mod evaluator {
             ArithmeticOp::Div => Err(EvalError::UnsupportedTransformTarget {
                 kind: "ArithmeticDiv",
             }),
+        }
+    }
+
+    /// Evaluate a substrate `fn` declaration by `DeclarationId` (Arrow + UserDefined body).
+    pub fn eval_callable_declaration(
+        dag: &Dag,
+        callee_decl: DeclarationId,
+        operands: Vec<Value>,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let connective = &dag.declaration(callee_decl).connective;
+        let TypeConnective::Arrow { body, .. } = connective else {
+            return Err(EvalError::UnsupportedTransformTarget {
+                kind: "Callable (non-Arrow body)",
+            });
+        };
+        let ArrowBody::UserDefined(bind_id) = body else {
+            return Err(EvalError::UnsupportedTransformTarget {
+                kind: "Callable (non-UserDefined body)",
+            });
+        };
+        let bind_node_id = bind_id.node_id();
+        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+            return Err(EvalError::MissingNode { node: bind_node_id });
+        };
+        let bind = bind.clone();
+        if operands.len() != bind.params.len() {
+            return Err(EvalError::TransformArityMismatch {
+                expected: bind.params.len(),
+                got: operands.len(),
+            });
+        }
+        let bindings: Vec<(PortId, Value)> = bind.params.iter().copied().zip(operands).collect();
+        state.push_frame(EvalFrame::empty());
+        let body_result = eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
+        let pop_result = state.pop_frame();
+        match (body_result, pop_result) {
+            (Ok(value), Ok(_)) => Ok(value),
+            (Err(err), _) => Err(err),
+            (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
         }
     }
 
@@ -4095,8 +4195,10 @@ pub mod lens_unused_parameters {
     }
 }
 
+pub mod boundary_emit_gates;
 mod bounded_host_command;
 pub mod emit_host_bridge;
+pub mod emit_host_eval;
 /// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
 pub mod emit_rust_roundtrip_fixtures;
 pub mod gunbc_ci;

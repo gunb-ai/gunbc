@@ -2,9 +2,7 @@
 // Scope: MVP-1 T-10/T-11 receipt — grammar-inverse compile-inferred accepts for ts_mvp1 add-fn tree.
 // Status: T-11 TypeScript slice — mirrors mvp1_rust_add_translate.dag; authority_source_text poisoned on compile path.
 
-
 module v4.test.claim.manual.mvp1_typescript_add_translate
-
 
 import v4.compiler.emit { emit }
 import v4.compiler.compile {
@@ -27,9 +25,7 @@ import v4.compiler.translate {
 }
 import v4.extdeps.languages.typescript {
   ts_facts_number,
-  ts_ieee754_binary64,
   ts_inhabitant_atom,
-  ts_inhabitant_number,
   ts_inhabitant_number_node,
   ts_mvp1_binding_spellings,
   ts_mvp1_source_text,
@@ -38,12 +34,6 @@ import v4.extdeps.languages.typescript {
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
-  ts_production_mvp1_fn_add,
-  ts_std_projection_float64,
-  ts_surface_spelling_number,
-  ts_tag_bits64,
-  ts_tag_number_bitwise_int32_uint32,
-  ts_tag_number_ieee754_binary64,
   ts_wave1_lex
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -51,16 +41,13 @@ import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
-  infer_receipt_context,
-  infer_receipt_input_infer_add_mvp
+  infer_receipt_context
 }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map, empty_map }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.diagnostic {
   Accepted,
@@ -80,7 +67,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -90,22 +78,14 @@ import v4.std.verification {
   Tier1,
   Unit,
   CompilesClaim,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-
-
-data mvp1_ts_grounding_miss: Symbol = mvp1_ts_grounding_miss
-data mvp1_ts_emit_source_mismatch: Symbol = mvp1_ts_emit_source_mismatch
-data mvp1_ts_compile_source_mismatch: Symbol = mvp1_ts_compile_source_mismatch
-data mvp1_ts_serialize_unexpected_accept: Symbol = mvp1_ts_serialize_unexpected_accept
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
-
-data mvp1_ts_g1_grammar_inverse_production: Symbol = ts_production_mvp1_fn_add
-
-
 data mvp1_ts_number_inhabitant: Node = ts_inhabitant_number_node()
-
 
 data mvp1_ts_emitted_root: Node = Node {
   kind: TypeNode { connective: Arrow },
@@ -113,21 +93,17 @@ data mvp1_ts_emitted_root: Node = Node {
     Edge { label: Positional, target: mvp1_ts_number_inhabitant },
     Edge { label: Positional, target: mvp1_ts_number_inhabitant },
     Edge { label: Positional, target: mvp1_ts_number_inhabitant }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
-
 
 data mvp1_ts_number_facts_node: Node = ts_number_facts_node(facts: ts_facts_number)
 
-
 data mvp1_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantics_node()
-
 
 data mvp1_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
 
-
 data mvp1_ts_target_model: TargetModel = ts_mvp1_target_model()
-
 
 data mvp1_ts_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: ts_mvp1_target_model_node(),
@@ -136,12 +112,11 @@ data mvp1_ts_poisoned_authority_target_model: TargetModel = TargetModel {
   authority_source_text: mvp1_forbidden_authority_source_text
 }
 
-
 data mvp1_ts_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
-
 
 data mvp1_ts_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: mvp1_ts_empty_translation_rules_bundle,
@@ -150,7 +125,6 @@ data mvp1_ts_missing_translation_rules_target: TargetModel = TargetModel {
   authority_source_text: ""
 }
 
-
 fn anchor_mvp1_ts_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
   target_serialize_source_from_model(
     target: mvp1_ts_missing_translation_rules_target,
@@ -158,9 +132,7 @@ fn anchor_mvp1_ts_serialize_rejects_missing_translation_rules() -> Outcome<Targe
   )
 }
 
-
 data mvp1_ts_serialize_reject_receipt: Outcome<TargetSource> = anchor_mvp1_ts_serialize_rejects_missing_translation_rules()
-
 
 fn mvp1_ts_serialize_reject_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_serialize_reject_receipt {
@@ -169,7 +141,7 @@ fn mvp1_ts_serialize_reject_claim_outcome() -> Outcome<Node> {
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: mvp1_ts_serialize_unexpected_accept,
+            reason: ^mvp1_ts_serialize_unexpected_accept,
             at: node_locus(node: mvp1_ts_emitted_root),
             correction: Unavailable { reason: ExternalContractUnknown }
           }
@@ -177,7 +149,6 @@ fn mvp1_ts_serialize_reject_claim_outcome() -> Outcome<Node> {
       }
   }
 }
-
 
 fn mvp1_ts_canonical_grounding(
   node: Node,
@@ -187,17 +158,16 @@ fn mvp1_ts_canonical_grounding(
     node: node,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
     }
   }
 }
-
 
 // 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind TASKS.md T-10 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding.
 fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
@@ -215,7 +185,7 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_inhabitant_number) {
+  } else if node == ts_inhabitant_atom(id: ^ts_inhabitant_number) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -229,7 +199,7 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_surface_spelling_number) {
+  } else if node == ts_inhabitant_atom(id: ^ts_surface_spelling_number) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -243,7 +213,7 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_tag_number_ieee754_binary64) {
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -257,28 +227,28 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_tag_number_bitwise_int32_uint32) {
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
         algebra: mvp1_ts_bitwise_semantics_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_tag_bits64) {
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_bits64) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_ieee754_binary64) {
+  } else if node == ts_inhabitant_atom(id: ^ts_ieee754_binary64) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ts_std_projection_float64) {
+  } else if node == ts_inhabitant_atom(id: ^ts_std_projection_float64) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -288,14 +258,13 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: mvp1_ts_grounding_miss,
+        reason: ^mvp1_ts_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
 }
-
 
 fn mvp1_ts_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   match mvp1_ts_canonical_grounding_for(node: node) {
@@ -314,11 +283,9 @@ fn mvp1_ts_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-
 fn mvp1_ts_facts_lookup(key: Node) -> Witness<InferredFacts> {
   mvp1_ts_inferred_facts_for(node: key)
 }
-
 
 data mvp1_ts_inferred_tree: InferredTree = InferredTree {
   root: mvp1_ts_emitted_root,
@@ -327,11 +294,9 @@ data mvp1_ts_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-
 fn anchor_mvp1_ts_emit_accepts() -> Outcome<TargetSource> {
   emit(tree: mvp1_ts_inferred_tree, target: mvp1_ts_target_model)
 }
-
 
 fn anchor_mvp1_ts_compile_inferred_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
@@ -340,12 +305,18 @@ fn anchor_mvp1_ts_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-
 data mvp1_ts_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_emit_accepts()
 
+// R2 keystone execution witness — emit(add) must produce the canonical ts_mvp1 add-fn source.
+fn mvp1_ts_emit_add_fn_accepts_holds() -> Bool {
+  match mvp1_ts_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == ts_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 data mvp1_ts_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_ts_compile_inferred_accepts()
-
 
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
@@ -358,7 +329,7 @@ fn mvp1_ts_emit_claim_outcome() -> Outcome<Node> {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: Diagnostic {
-              reason: mvp1_ts_emit_source_mismatch,
+              reason: ^mvp1_ts_emit_source_mismatch,
               at: node_locus(node: mvp1_ts_emitted_root),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -368,7 +339,6 @@ fn mvp1_ts_emit_claim_outcome() -> Outcome<Node> {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-
 
 // 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
@@ -383,7 +353,7 @@ fn mvp1_ts_compile_inferred_claim_outcome() -> Outcome<Node> {
             Rejected {
               diagnostics: diagnostics_singleton(
                 d: Diagnostic {
-                  reason: mvp1_ts_compile_source_mismatch,
+                  reason: ^mvp1_ts_compile_source_mismatch,
                   at: node_locus(node: mvp1_ts_emitted_root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
@@ -394,7 +364,7 @@ fn mvp1_ts_compile_inferred_claim_outcome() -> Outcome<Node> {
           Rejected {
             diagnostics: diagnostics_singleton(
               d: Diagnostic {
-                reason: mvp1_ts_compile_source_mismatch,
+                reason: ^mvp1_ts_compile_source_mismatch,
                 at: node_locus(node: mvp1_ts_emitted_root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               }
@@ -405,7 +375,6 @@ fn mvp1_ts_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
-
 data claim_mvp1_ts_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: anchor_mvp1_ts_emit_accepts with canonical ts_mvp1 add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -413,7 +382,6 @@ data claim_mvp1_ts_emit_add_fn_accepts: TestClaim = CompilesClaim {
   expected_value: mvp1_ts_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_mvp1_ts_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1 G1: compile_inferred emits canonical ts_mvp1 add-fn source through grammar inverse production ts_production_mvp1_fn_add",
@@ -423,7 +391,6 @@ data claim_mvp1_ts_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 // T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_ts_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
@@ -432,10 +399,9 @@ data subject_mvp1_ts_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaim
   tree: mvp1_ts_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_ts_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_ts_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_ts_emit_add_fn_accepts),
@@ -446,7 +412,6 @@ data run_mvp1_ts_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   )
 }
 
-
 // T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
 // 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
@@ -455,10 +420,9 @@ data subject_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
   tree: mvp1_ts_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_ts_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_ts_compile_inferred_add_fn_accepts),
@@ -468,7 +432,6 @@ data run_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = Tes
     at: mvp1_ts_emitted_root
   )
 }
-
 
 data claim_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/mvp1: target_serialize_source_from_model rejects ts bundle missing translation_rules",
@@ -484,17 +447,15 @@ data claim_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaim = Diag
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data subject_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_ts_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_ts_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_ts_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_ts_serialize_rejects_missing_translation_rules),
@@ -503,4 +464,13 @@ data run_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimRun<Node,
     actual: mvp1_ts_serialize_reject_claim_outcome(),
     at: mvp1_ts_emitted_root
   )
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `mvp1_ts_emit_add_fn_accepts_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_mvp1_typescript_emit_add_fn: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag",
+    function: mvp1_ts_emit_add_fn_accepts_holds
+  }
 }

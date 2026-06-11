@@ -5,7 +5,7 @@
 module v4.std.effects
 
 
-import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
+import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -82,7 +82,8 @@ data sample_label_only_callable: Symbol = sample_label_only_callable
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: sample_state_value } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -140,7 +141,9 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
 
 
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -158,8 +161,9 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_path_param_value_field },
             target: atom_node(s: p)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     InputField { field: f } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -172,8 +176,9 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_input_value_field },
             target: atom_node(s: f)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
   }
 }
 
@@ -193,8 +198,9 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     DeleteEffect { key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -207,8 +213,9 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
   }
 }
 
@@ -225,8 +232,9 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
         label: Named { name: effect_shape_inner_field },
         target: idempotent_shape_node(shape: shape)
       },
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -238,8 +246,9 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
         label: Named { name: idempotent_operation_callable_field },
         target: atom_node(s: operation.callable)
       },
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -255,8 +264,9 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
         label: Named { name: idempotent_apply_operation_field },
         target: idempotent_operation_witness_node(subject: subject)
       },
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -287,8 +297,9 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -301,8 +312,9 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -315,7 +327,8 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
   }
 }

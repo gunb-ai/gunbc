@@ -17,10 +17,11 @@ use self::Platform::*;
 use self::SymlinkTarget::*;
 use self::TopologyNodeKind::*;
 use self::Vendor::*;
-pub use crate::std_algebra::{
-    algebra_type_param_names, kernel_algebra_profile, BooleanAlgebra, FreeMonoid, PartialFunction,
-};
+pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
+pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -59,6 +60,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
+            __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -77,9 +79,13 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
-    match v2_rt::map_get(&kernel_algebra_profile(), kind_name) {
-        Some(p) => algebra_type_param_names(p.clone()),
-        None => Rc::new(vec![]),
+    if (kind_name.clone().as_str() == "Witness".to_string().as_str()) {
+        Rc::new(vec!["T".to_string()])
+    } else {
+        match v2_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
+            Some(p) => algebra_type_param_names(p.clone()),
+            None => Rc::new(vec![]),
+        }
     }
 }
 
@@ -160,8 +166,28 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
+pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, String>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+}
+
 pub fn container_template_algebra(name: String) -> Option<String> {
     v2_rt::map_get(&container_template_algebra_rows(), name)
+}
+
+pub fn container_template_alias_algebra(name: String) -> Option<String> {
+    v2_rt::map_get(&container_template_alias_rows(), name)
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
@@ -172,10 +198,13 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "Map".to_string(),
         "PartialFunction".to_string(),
         "Set".to_string(),
+        "Witness".to_string(),
     ])
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Bool {
     True,
@@ -249,6 +278,8 @@ pub type Milliseconds = i64;
 
 pub type Seconds = i64;
 
+pub type LogicalTime = String;
+
 pub type IntentId = String;
 
 pub type IssueId = String;
@@ -281,7 +312,9 @@ pub type GcpProjectId = String;
 
 pub type ServiceAccountEmail = String;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Platform {
     Linux,
@@ -289,7 +322,9 @@ pub enum Platform {
     Windows,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum TopologyNodeKind {
     Pure,
@@ -298,7 +333,9 @@ pub enum TopologyNodeKind {
     Env,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum DocSourceKind {
     Template,
@@ -306,7 +343,9 @@ pub enum DocSourceKind {
     Static,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum FermiDepth {
     Xs,
@@ -327,7 +366,7 @@ pub enum CredentialFlow {
     },
     WorkloadIdentity {
         audience: NonEmptyStr,
-        service_account: Option<ServiceAccountEmail>,
+        service_account: Box<Option<ServiceAccountEmail>>,
         scopes: Rc<Vec<String>>,
     },
     InteractiveAuth {
@@ -338,7 +377,9 @@ pub enum CredentialFlow {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Arch {
     X86_64,
@@ -354,7 +395,9 @@ pub enum Arch {
     Wasm32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Vendor {
     UnknownVendor,
@@ -363,7 +406,9 @@ pub enum Vendor {
     W64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Os {
     Linux,
@@ -375,7 +420,9 @@ pub enum Os {
     Wasi,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum AbiEnv {
     NoneAbi,
@@ -389,7 +436,9 @@ pub enum AbiEnv {
     Eabihf,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ExecutionEnv {
     Native,
@@ -413,7 +462,9 @@ pub struct RuntimePlatform {
     pub env: ExecutionEnv,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum EntryKind {
     RegularFile,
@@ -423,7 +474,9 @@ pub enum EntryKind {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum SymlinkTarget {
     TargetFile,
@@ -437,7 +490,9 @@ pub type BinaryFilePath = String;
 
 pub type MimeType = String;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum HttpMethod {
     GET,
@@ -462,7 +517,7 @@ pub enum AuthScheme {
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<Timestamp>,
+    pub expires_at: Box<Option<Timestamp>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -627,7 +682,9 @@ pub struct CodegenTarget {
     pub runtime_env: Option<ExecutionEnv>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CodegenBackend {
     Rust,

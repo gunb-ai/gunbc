@@ -8,20 +8,19 @@ module v4.test.claim.manual.go_mvp1_grammar_claim
 
 import v4.compiler.parse {
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_stage_locus_port
 }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.go {
   go_mvp1_source_text,
-  go_production_mvp1_fn_add,
   go_wave1_grammar_root,
   go_wave1_lex
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.grammar { ParseTree }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -31,15 +30,14 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data go_mvp1_parse_fixture_file: Symbol = go_mvp1_parse_fixture_file
-data go_claim_bool_true: Symbol = go_claim_bool_true
-data go_claim_bool_false: Symbol = go_claim_bool_false
-
 fn go_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: go_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: go_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
   }
 }
 
@@ -66,7 +64,7 @@ fn go_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   match tokenize(
     text: go_mvp1_source_text,
-    file: go_mvp1_parse_fixture_file,
+    file: ^go_mvp1_parse_fixture_file,
     rules: go_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
@@ -74,10 +72,10 @@ fn go_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
       match grammar_validate_for_parse(root: go_wave1_grammar_root(), at: at) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
-          parse_production(
+          parse_production_tree(
             tokens: stream.tokens,
             validated: validated,
-            production_name: go_production_mvp1_fn_add
+            production_name: ^go_production_mvp1_fn_add
           )
       }
   }

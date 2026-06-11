@@ -8,7 +8,7 @@ module v4.test.claim.algebra_laws.is_prefix_of_prefix_check
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid, is_prefix_of }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -18,26 +18,22 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data prefix_sym_a: Symbol = prefix_sym_a
-data prefix_sym_b: Symbol = prefix_sym_b
-data prefix_pass_sym: Symbol = prefix_pass_sym
-data prefix_fail_sym: Symbol = prefix_fail_sym
-
-
 fn prefix_sym_eq(a: Symbol, b: Symbol) -> Bool { a == b }
 fn sym_empty() -> FreeMonoid<Symbol> { Empty }
-fn sym_a() -> FreeMonoid<Symbol> { Cons { head: prefix_sym_a, tail: Empty } }
-fn sym_b() -> FreeMonoid<Symbol> { Cons { head: prefix_sym_b, tail: Empty } }
-fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: prefix_sym_a, tail: Cons { head: prefix_sym_b, tail: Empty } } }
+fn sym_a() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Empty } }
+fn sym_b() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_b, tail: Empty } }
+fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { head: ^prefix_sym_b, tail: Empty } } }
 
 
 fn prefix_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: prefix_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 fn prefix_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: prefix_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 fn prefix_claim_input(ok: Bool) -> Node {
   if ok { prefix_pass_node() } else { prefix_fail_node() }

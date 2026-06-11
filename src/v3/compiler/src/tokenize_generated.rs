@@ -69,6 +69,7 @@ pub enum TokenKind {
     Semicolon,
     Pipe,
     Question,
+    Caret,
     Eof,
 }
 #[derive(Debug, Clone)]
@@ -354,6 +355,7 @@ fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {
         (b'?', _) => Some((TokenKind::Question, 1)),
         (b'[', _) => Some((TokenKind::LBracket, 1)),
         (b']', _) => Some((TokenKind::RBracket, 1)),
+        (b'^', _) => Some((TokenKind::Caret, 1)),
         (b'{', _) => Some((TokenKind::LBrace, 1)),
         (b'|', _) => Some((TokenKind::Pipe, 1)),
         (b'}', _) => Some((TokenKind::RBrace, 1)),

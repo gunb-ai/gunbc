@@ -12,13 +12,21 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use std::time::Instant;
 
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::{compile_sources, SourceFile};
-use v2_compiler::v2_std_core::{diagnostic_to_message, CompilerDiagnostic};
+use v2_compiler::v2_std_core::{diagnostic_to_message, diagnostic_to_span, CompilerDiagnostic};
+
+const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
+const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
+const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
+const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
+    "target/bootstrap_timing/v2_regen_stage0_receipt.json";
 
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
+    "extdeps_cargo.rs",
     "extdeps_languages_dag_emit.rs",
     "extdeps_languages_dag_syntax.rs",
     "extdeps_languages_dag_types.rs",
@@ -52,8 +60,10 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_compile.rs",
     "v2_compiler_compiler_tests_rust.rs",
     "v2_compiler_complexity.rs",
+    "v2_compiler_dag_collect_support.rs",
     "v2_compiler_effect_derivation.rs",
     "v2_compiler_emit.rs",
+    "v2_compiler_emit_core_support.rs",
     "v2_compiler_emit_go.rs",
     "v2_compiler_emit_python.rs",
     "v2_compiler_emit_rust.rs",
@@ -77,8 +87,10 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_resolve.rs",
     "v2_compiler_runtime_go.rs",
     "v2_compiler_runtime_rust.rs",
+    "v2_compiler_stage0_crates.rs",
     "v2_compiler_tokenize.rs",
     "v2_compiler_trace.rs",
+    "v2_compiler_workspace_members.rs",
     "v2_rt.rs",
     "v2_std_core.rs",
 ];
@@ -99,6 +111,13 @@ const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v2_compiler_dag_collec
 
 "#;
 
+const BOOTSTRAP_DAG_COLLECT_SUPPORT_USE: &str = r#"pub use crate::v2_compiler_dag_collect_support::{
+    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
+    inferred_fingerprint, json_quote, DagCollectAcc,
+};
+
+"#;
+
 /// Symbols delegated to `v2_compiler_dag_collect`; fresh codegen must not retain local `pub fn`.
 const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
     "collect_dag_nodes",
@@ -113,6 +132,16 @@ const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
     "dag_node_fingerprint",
     "dag_node_is_resolved_identity_shell",
     "dag_node_key",
+];
+
+/// Symbols delegated to `v2_compiler_dag_collect_support`.
+const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
+    "connective_name",
+    "dag_node_key_collision_error",
+    "dag_node_surface_fingerprint",
+    "expr_data_variant",
+    "inferred_fingerprint",
+    "json_quote",
 ];
 
 const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
@@ -175,6 +204,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
+    let run_started = Instant::now();
     let args: Vec<String> = env::args().skip(1).collect();
     let verify_only = match args.as_slice() {
         [] => false,
@@ -191,29 +221,139 @@ fn run() -> Result<(), String> {
     assert_registry_is_partitioned()?;
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace = workspace_root(&manifest_dir)?;
+    let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
     let fresh_dir = temp_dir("v2-regen-stage0-fresh");
     let _ = fs::remove_dir_all(&fresh_dir);
     fs::create_dir_all(fresh_dir.join("src"))
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
 
-    let emitted = compile_stage0(&workspace)?;
-    write_emitted_crate(&fresh_dir, &emitted)?;
-    copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
-    patch_bootstrap_dag_collect(&fresh_dir.join("src"))?;
-    patch_cargo_toml_for_generated_crate(&fresh_dir)?;
-    rustfmt_generated_crate(&fresh_dir)?;
-    assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))?;
+    let mut phases = Vec::new();
+    let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    time_phase(&mut phases, "write_emitted_crate", || {
+        write_emitted_crate(&fresh_dir, &emitted)
+    })?;
+    time_phase(&mut phases, "copy_hand_maintained_support", || {
+        copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
+        patch_bootstrap_dag_collect(&fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
+        assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_cargo_toml_for_generated_crate", || {
+        patch_cargo_toml_for_generated_crate(&fresh_dir)
+    })?;
+    time_phase(&mut phases, "rustfmt_generated_crate", || {
+        rustfmt_generated_crate(&fresh_dir)
+    })?;
+    time_phase(&mut phases, "assert_output_set_matches_registry", || {
+        assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))
+    })?;
 
     if verify_only {
-        verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))?;
+        let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
+            verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))
+        });
+        if let Err(message) = verify_result {
+            let changed_generated_files =
+                changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_stage0_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files,
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
+        if let Err(message) =
+            time_phase(&mut phases, "verify_stage0_split_crate_boundaries", || {
+                verify_stage0_split_crate_boundaries(&workspace)
+            })
+        {
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_stage0_split_crate_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files: Vec::new(),
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
+        if let Err(message) = time_phase(&mut phases, "verify_workspace_members", || {
+            verify_workspace_members(&workspace)
+        }) {
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_workspace_members_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files: Vec::new(),
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            verify_only,
+            status: "completed",
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
+            emitted_file_count: emitted.len(),
+            phases,
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
         let _ = fs::remove_dir_all(&fresh_dir);
         println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
         return Ok(());
     }
 
-    write_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
-    rustfmt_workspace(&manifest_dir)?;
+    let changed_generated_files = changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+    time_phase(&mut phases, "write_registered_outputs", || {
+        write_registered_outputs(&fresh_dir.join("src"), &stage0_src)
+    })?;
+    time_phase(&mut phases, "write_stage0_split_crate_boundaries", || {
+        write_stage0_split_crate_boundaries(&workspace)
+    })?;
+    time_phase(&mut phases, "write_workspace_members", || {
+        write_workspace_members(&workspace)
+    })?;
+    time_phase(&mut phases, "rustfmt_workspace", || {
+        rustfmt_workspace(&manifest_dir)
+    })?;
+    write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+        path: &receipt_path,
+        workspace: &workspace,
+        manifest_dir: &manifest_dir,
+        verify_only,
+        status: "completed",
+        generated_file_count: GENERATED_STAGE0_FILES.len(),
+        emitted_file_count: emitted.len(),
+        phases,
+        elapsed_ms: elapsed_ms(run_started),
+        changed_generated_files,
+    })?;
     let _ = fs::remove_dir_all(&fresh_dir);
     println!(
         "regen_stage0: wrote {} generated stage0 files.",
@@ -233,6 +373,142 @@ fn workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
                 manifest_dir.display()
             )
         })
+}
+
+fn time_phase<T, F>(phases: &mut Vec<BootstrapTimingPhase>, name: &str, f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String>,
+{
+    let started = Instant::now();
+    let result = f();
+    phases.push(BootstrapTimingPhase {
+        name: name.to_string(),
+        elapsed_ms: elapsed_ms(started),
+    });
+    result
+}
+
+fn elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapTimingReceipt {
+    schema: &'static str,
+    version: u32,
+    subject: &'static str,
+    mode: &'static str,
+    status: &'static str,
+    elapsed_ms: u128,
+    phases: Vec<BootstrapTimingPhase>,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    changed_generated_file_count: usize,
+    changed_generated_files: Vec<String>,
+    cargo_invalidation: CargoInvalidationReceipt,
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapTimingPhase {
+    name: String,
+    elapsed_ms: u128,
+}
+
+#[derive(serde::Serialize)]
+struct CargoInvalidationReceipt {
+    strategy: &'static str,
+    inputs: Vec<CargoInvalidationInput>,
+}
+
+#[derive(serde::Serialize)]
+struct CargoInvalidationInput {
+    path: String,
+    content_hash: String,
+    len_bytes: u64,
+}
+
+struct BootstrapTimingReceiptInput<'a> {
+    path: &'a Path,
+    workspace: &'a Path,
+    manifest_dir: &'a Path,
+    verify_only: bool,
+    status: &'static str,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    phases: Vec<BootstrapTimingPhase>,
+    elapsed_ms: u128,
+    changed_generated_files: Vec<String>,
+}
+
+fn bootstrap_timing_receipt_path(workspace: &Path) -> PathBuf {
+    env::var_os(BOOTSTRAP_TIMING_RECEIPT_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace.join(DEFAULT_BOOTSTRAP_TIMING_RECEIPT))
+}
+
+fn write_bootstrap_timing_receipt(input: BootstrapTimingReceiptInput<'_>) -> Result<(), String> {
+    let receipt = BootstrapTimingReceipt {
+        schema: BOOTSTRAP_TIMING_RECEIPT_SCHEMA,
+        version: BOOTSTRAP_TIMING_RECEIPT_VERSION,
+        subject: "v2_regen_stage0",
+        mode: if input.verify_only { "verify" } else { "write" },
+        status: input.status,
+        elapsed_ms: input.elapsed_ms,
+        phases: input.phases,
+        generated_file_count: input.generated_file_count,
+        emitted_file_count: input.emitted_file_count,
+        changed_generated_file_count: input.changed_generated_files.len(),
+        changed_generated_files: input.changed_generated_files,
+        cargo_invalidation: cargo_invalidation_receipt(input.workspace, input.manifest_dir)?,
+    };
+    let body = serde_json::to_string_pretty(&receipt)
+        .map_err(|e| format!("serialize bootstrap timing receipt: {e}"))?;
+    if let Some(parent) = input.path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(input.path, format!("{body}\n"))
+        .map_err(|e| format!("write {}: {e}", input.path.display()))
+}
+
+fn cargo_invalidation_receipt(
+    workspace: &Path,
+    manifest_dir: &Path,
+) -> Result<CargoInvalidationReceipt, String> {
+    let paths = [
+        workspace.join("Cargo.toml"),
+        workspace.join("Cargo.lock"),
+        manifest_dir.join("Cargo.toml"),
+    ];
+    let mut inputs = Vec::new();
+    for path in paths {
+        inputs.push(cargo_invalidation_input(workspace, &path)?);
+    }
+    Ok(CargoInvalidationReceipt {
+        strategy: "content_hashes_for_workspace_manifest_lockfile_and_stage0_manifest",
+        inputs,
+    })
+}
+
+fn cargo_invalidation_input(
+    workspace: &Path,
+    path: &Path,
+) -> Result<CargoInvalidationInput, String> {
+    let bytes = fs::read(path)
+        .map_err(|e| format!("read cargo invalidation input {}: {e}", path.display()))?;
+    Ok(CargoInvalidationInput {
+        path: display_source_path(path, workspace),
+        content_hash: format!("fnv1a64:{:016x}", fnv1a64(&bytes)),
+        len_bytes: bytes.len() as u64,
+    })
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -285,7 +561,16 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
                 CompilerDiagnostic::ComplexityUnknown { .. }
             )
         })
-        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .map(|d| {
+            let span = diagnostic_to_span(d.diagnostic.clone());
+            format!(
+                "{} ({}:{}-{})",
+                diagnostic_to_message(d.diagnostic.clone()),
+                span.file,
+                span.start,
+                span.end
+            )
+        })
         .collect();
     if !hard_errors.is_empty() {
         return Err(format!(
@@ -474,14 +759,26 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
             "pub mod v2_compiler_complexity;\n",
             "pub mod v2_compiler_complexity;\npub mod v2_compiler_dag_collect;\n",
         );
-        fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     }
+    if !lib_text.contains("pub mod v2_compiler_dag_collect_support;") {
+        lib_text = lib_text.replace(
+            "pub mod v2_compiler_dag_collect;\n",
+            "pub mod v2_compiler_dag_collect;\npub mod v2_compiler_dag_collect_support;\n",
+        );
+    }
+    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
 
     let compile_path = src_dir.join("v2_compiler_compile.rs");
     let text = fs::read_to_string(&compile_path)
         .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
-    let patched = patch_bootstrap_dag_collect_text(&text)?;
-    fs::write(&compile_path, patched).map_err(|e| format!("write {}: {e}", compile_path.display()))
+    let patch = patch_bootstrap_dag_collect_text(&text)?;
+    fs::write(&compile_path, patch.compile_text)
+        .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
+    fs::write(
+        src_dir.join("v2_compiler_dag_collect_support.rs"),
+        patch.support_text,
+    )
+    .map_err(|e| format!("write dag collect support: {e}"))
 }
 
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
@@ -494,6 +791,17 @@ fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
         }
     }
     if duplicates.is_empty() {
+        for symbol in DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS {
+            let marker = format!("pub fn {symbol}(");
+            if text.contains(&marker) {
+                duplicates.push(*symbol);
+            }
+        }
+        if text.contains("pub struct DagCollectAcc") {
+            duplicates.push("DagCollectAcc");
+        }
+    }
+    if duplicates.is_empty() {
         Ok(())
     } else {
         Err(format!(
@@ -503,40 +811,145 @@ fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
     }
 }
 
+struct DagCollectPatch {
+    compile_text: String,
+    support_text: String,
+}
+
 /// Patch in-memory compile.rs text (for unit tests).
-fn patch_bootstrap_dag_collect_text(text: &str) -> Result<String, String> {
+fn patch_bootstrap_dag_collect_text(text: &str) -> Result<DagCollectPatch, String> {
     if text.contains("pub use crate::v2_compiler_dag_collect") {
-        return Ok(text.to_string());
+        return Err(
+            "patch_bootstrap_dag_collect_text: compile.rs already contains dag collect delegation"
+                .to_string(),
+        );
     }
 
+    let json_quote_start = "pub fn json_quote";
+    let json_list_start = "pub fn json_list";
+    let acc_start =
+        "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectAcc";
+    let missing_ref_start = "pub fn dag_node_missing_ref_error";
     let pending_start =
         "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectPending";
-    let key_start = "pub fn dag_node_key";
-    let inferred_start = "pub fn inferred_fingerprint";
     let fingerprint_start = "pub fn dag_node_fingerprint";
     let collision_start = "pub fn dag_node_key_collision_error";
     let collect_start = "pub fn dag_collect_nodes_list";
     let build_key_start = "pub fn build_dag_key_to_id";
-
-    let mut patched = if text.contains("pub struct DagCollectPending") {
-        strip_between(text, pending_start, key_start)?
+    let connective_start = "pub fn connective_name";
+    let cardinality_start = "pub fn cardinality_name";
+    let fingerprint_helpers_start = "pub fn inferred_fingerprint";
+    let acc_end = if text.contains(pending_start) {
+        pending_start
     } else {
-        text.to_string()
+        fingerprint_helpers_start
     };
-    patched = strip_between(&patched, key_start, inferred_start)?;
-    patched = strip_between(&patched, fingerprint_start, collision_start)?;
-    patched = strip_between(&patched, collect_start, build_key_start)?;
 
-    let insert_after = "}\n\npub fn inferred_fingerprint";
-    if !patched.contains(insert_after) {
-        return Err("patch_bootstrap_dag_collect_text: missing DagCollectAcc anchor".to_string());
+    let support_text = render_dag_collect_support(
+        extract_between(text, json_quote_start, json_list_start)?,
+        extract_between(text, acc_start, acc_end)?,
+        extract_between(text, fingerprint_helpers_start, fingerprint_start)?,
+        extract_between(text, collision_start, missing_ref_start)?,
+        extract_between(text, connective_start, cardinality_start)?,
+    );
+
+    let mut patched = strip_between(text, json_quote_start, json_list_start)?;
+    patched = strip_between(&patched, acc_start, missing_ref_start)?;
+    patched = strip_between(&patched, collect_start, build_key_start)?;
+    patched = strip_between(&patched, connective_start, cardinality_start)?;
+
+    let insert_before = "pub fn dag_node_missing_ref_error";
+    if !patched.contains(insert_before) {
+        return Err(
+            "patch_bootstrap_dag_collect_text: missing dag_node_missing_ref_error anchor"
+                .to_string(),
+        );
     }
     patched = patched.replace(
-        insert_after,
-        &format!("}}\n\n{BOOTSTRAP_DAG_COLLECT_USE}pub fn inferred_fingerprint"),
+        insert_before,
+        &format!("{BOOTSTRAP_DAG_COLLECT_SUPPORT_USE}{BOOTSTRAP_DAG_COLLECT_USE}{insert_before}"),
     );
     assert_no_local_delegated_fns(&patched)?;
-    Ok(patched)
+    Ok(DagCollectPatch {
+        compile_text: patched,
+        support_text,
+    })
+}
+
+fn render_dag_collect_support(
+    json_quote: &str,
+    acc: &str,
+    fingerprint_helpers: &str,
+    collision_error: &str,
+    connective_name: &str,
+) -> String {
+    format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+        "// Generated by v2 compiler -- do not edit.",
+        "// Source module: v2.compiler.compile (DAG collect support surface).",
+        "",
+        "use crate::v2_compiler_emit::escape_json_string;",
+        "use crate::v2_rt;",
+        "use crate::v2_std_core::{make_error_node, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, Node, SourceSpan};",
+        "use std::collections::HashMap;",
+        "use std::rc::Rc;",
+        "",
+        [
+            json_quote.trim_end(),
+            acc.trim_end(),
+            fingerprint_helpers.trim_end(),
+            collision_error.trim_end(),
+            connective_name.trim_end(),
+        ]
+        .join("\n\n")
+    )
+}
+
+fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
+    let support_path = src_dir.join("v2_compiler_emit_core_support.rs");
+    let support_text = fs::read_to_string(&support_path)
+        .map_err(|e| format!("read {}: {e}", support_path.display()))?;
+    if !support_text.contains("// Source module: v2.compiler.emit_core_support") {
+        return Err(format!(
+            "{} must be emitted from v2.compiler.emit_core_support, not postprocessed",
+            support_path.display()
+        ));
+    }
+    for file_name in [
+        "v2_compiler_emit_go.rs",
+        "v2_compiler_emit_python.rs",
+        "v2_compiler_emit_rust.rs",
+    ] {
+        let path = src_dir.join(file_name);
+        let text =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if !text.contains("pub use crate::v2_compiler_emit_core_support::{") {
+            return Err(format!(
+                "{} must import backend-shared helpers from v2_compiler_emit_core_support",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn extract_between<'a>(
+    text: &'a str,
+    start_marker: &str,
+    end_marker: &str,
+) -> Result<&'a str, String> {
+    let start_idx = text
+        .find(start_marker)
+        .ok_or_else(|| format!("extract_between: missing start `{start_marker}`"))?;
+    let end_idx = text
+        .find(end_marker)
+        .ok_or_else(|| format!("extract_between: missing end `{end_marker}`"))?;
+    if end_idx <= start_idx {
+        return Err(format!(
+            "extract_between: `{end_marker}` must follow `{start_marker}`"
+        ));
+    }
+    Ok(&text[start_idx..end_idx])
 }
 
 fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<String, String> {
@@ -606,6 +1019,130 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+// Stage0 split-crate wrapper files (Cargo.toml + lib.rs for each split crate)
+// are modeled and emitted by the `.dag` authority
+// `v2.compiler.stage0_crates`. `regen_stage0` keeps only its writer/verifier
+// role: it calls the generated emitter and resolves each emitted relative path
+// against the workspace root. Paths and contents are NOT authored here.
+fn stage0_split_crate_boundaries(workspace: &Path) -> Vec<(PathBuf, String)> {
+    v2_compiler::v2_compiler_stage0_crates::stage0_crate_boundary_files()
+        .iter()
+        .map(|file| (workspace.join(&file.path), file.content.clone()))
+        .collect()
+}
+
+fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
+    let mut mismatches = Vec::new();
+    for (path, expected) in stage0_split_crate_boundaries(workspace) {
+        let committed =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if committed != expected {
+            mismatches.push(display_source_path(&path, workspace));
+        }
+    }
+    if mismatches.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Stage0 split crate boundary files are stale. Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate. Changed file(s): {}",
+            mismatches.join(", ")
+        ))
+    }
+}
+
+fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
+    for (path, contents) in stage0_split_crate_boundaries(workspace) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
+        fs::write(&path, contents).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+// Top-level `[workspace] members` membership authority.
+//
+// The generated stage0 crate entries inside the top-level `Cargo.toml` members
+// array are owned by the `.dag` authority `v2.compiler.workspace_members`,
+// which derives them from the same `stage0_crate_plan` that emits each crate's
+// `Cargo.toml`/`lib.rs`. `regen_stage0` keeps only the transport: it locates
+// the model-owned sentinel comment lines and rewrites the lines between them.
+// Marker text and region body are NOT authored here -- they come from the
+// model, so the hand-authored members and the rest of the manifest are
+// untouched.
+const WORKSPACE_MEMBERS_REGEN_HINT: &str =
+    "Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate.";
+
+fn workspace_members_markers_and_region() -> (String, String, String) {
+    (
+        v2_compiler::v2_compiler_workspace_members::workspace_members_region_begin_marker(),
+        v2_compiler::v2_compiler_workspace_members::workspace_members_region_end_marker(),
+        v2_compiler::v2_compiler_workspace_members::stage0_workspace_member_region(),
+    )
+}
+
+// Split the top-level Cargo.toml around the model-owned members region.
+// Returns `(prefix, body, suffix)` where `prefix` runs through the newline that
+// ends the BEGIN-marker line, `body` is the current bytes between the markers,
+// and `suffix` starts at the END marker. Reconstructing `prefix + body + suffix`
+// is the identity, so write and verify share this one locator.
+fn locate_workspace_members_region<'a>(
+    content: &'a str,
+    begin_marker: &str,
+    end_marker: &str,
+) -> Result<(&'a str, &'a str, &'a str), String> {
+    let begin = content.find(begin_marker).ok_or_else(|| {
+        format!("top-level Cargo.toml is missing the generated-members BEGIN marker. {WORKSPACE_MEMBERS_REGEN_HINT}")
+    })?;
+    let end = content.find(end_marker).ok_or_else(|| {
+        format!("top-level Cargo.toml is missing the generated-members END marker. {WORKSPACE_MEMBERS_REGEN_HINT}")
+    })?;
+    if begin >= end {
+        return Err(
+            "generated-members markers in top-level Cargo.toml are out of order".to_string(),
+        );
+    }
+    let after_begin_marker = begin + begin_marker.len();
+    let body_start = match content[after_begin_marker..].find('\n') {
+        Some(rel) => after_begin_marker + rel + 1,
+        None => return Err(
+            "generated-members BEGIN marker in top-level Cargo.toml is not followed by a newline"
+                .to_string(),
+        ),
+    };
+    Ok((
+        &content[..body_start],
+        &content[body_start..end],
+        &content[end..],
+    ))
+}
+
+fn verify_workspace_members(workspace: &Path) -> Result<(), String> {
+    let (begin, end, region) = workspace_members_markers_and_region();
+    let path = workspace.join("Cargo.toml");
+    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let (_, body, _) = locate_workspace_members_region(&content, &begin, &end)?;
+    if body == format!("{region}\n") {
+        Ok(())
+    } else {
+        Err(format!(
+            "Top-level Cargo.toml `[workspace] members` generated region is stale. {WORKSPACE_MEMBERS_REGEN_HINT}"
+        ))
+    }
+}
+
+fn write_workspace_members(workspace: &Path) -> Result<(), String> {
+    let (begin, end, region) = workspace_members_markers_and_region();
+    let path = workspace.join("Cargo.toml");
+    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let (prefix, _, suffix) = locate_workspace_members_region(&content, &begin, &end)?;
+    let updated = format!("{prefix}{region}\n{suffix}");
+    if updated != content {
+        fs::write(&path, updated).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn assert_output_set_matches_registry(
@@ -745,6 +1282,31 @@ fn diff_hint(committed: &Path, fresh: &Path) -> String {
     }
 }
 
+fn changed_registered_outputs(
+    fresh_src: &Path,
+    committed_src: &Path,
+) -> Result<Vec<String>, String> {
+    let mut changed = Vec::new();
+    for file_name in GENERATED_STAGE0_FILES {
+        let fresh = fresh_src.join(file_name);
+        let committed = committed_src.join(file_name);
+        let fresh_text = fs::read_to_string(&fresh)
+            .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
+        let committed_text = match fs::read_to_string(&committed) {
+            Ok(text) => text,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                changed.push((*file_name).to_string());
+                continue;
+            }
+            Err(e) => return Err(format!("read committed {}: {e}", committed.display())),
+        };
+        if fresh_text != committed_text {
+            changed.push((*file_name).to_string());
+        }
+    }
+    Ok(changed)
+}
+
 fn write_registered_outputs(fresh_src: &Path, committed_src: &Path) -> Result<(), String> {
     for file_name in GENERATED_STAGE0_FILES {
         let fresh = fresh_src.join(file_name);
@@ -822,6 +1384,102 @@ mod tests {
         let _ = fs::remove_dir_all(fresh);
     }
 
+    #[test]
+    fn changed_registered_outputs_lists_only_mismatched_generated_files() {
+        let committed = temp_test_dir("committed");
+        let fresh = temp_test_dir("fresh");
+        seed_registered_files(&committed, "same\n");
+        seed_registered_files(&fresh, "same\n");
+        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "changed\n")
+            .expect("write changed generated file");
+
+        let changed =
+            changed_registered_outputs(&fresh, &committed).expect("changed output receipt");
+        assert_eq!(changed, vec![GENERATED_STAGE0_FILES[0].to_string()]);
+
+        let _ = fs::remove_dir_all(committed);
+        let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn cargo_invalidation_receipt_hashes_workspace_and_stage0_manifests() {
+        let workspace = temp_test_dir("workspace");
+        let manifest_dir = workspace.join("src").join("v2").join("stage0");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::write(workspace.join("Cargo.toml"), "[workspace]\n").expect("write workspace toml");
+        fs::write(workspace.join("Cargo.lock"), "# lock\n").expect("write cargo lock");
+        fs::write(
+            manifest_dir.join("Cargo.toml"),
+            "[package]\nname = \"v2\"\n",
+        )
+        .expect("write stage0 toml");
+
+        let receipt = cargo_invalidation_receipt(&workspace, &manifest_dir).expect("cargo receipt");
+        assert_eq!(
+            receipt.strategy,
+            "content_hashes_for_workspace_manifest_lockfile_and_stage0_manifest"
+        );
+        let paths: Vec<_> = receipt
+            .inputs
+            .iter()
+            .map(|input| input.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            vec!["Cargo.toml", "Cargo.lock", "src/v2/stage0/Cargo.toml"]
+        );
+        assert!(receipt
+            .inputs
+            .iter()
+            .all(|input| input.content_hash.starts_with("fnv1a64:") && input.len_bytes > 0));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn bootstrap_timing_receipt_json_pins_v2_schema() {
+        let workspace = temp_test_dir("receipt-workspace");
+        let manifest_dir = workspace.join("src").join("v2").join("stage0");
+        let receipt_path = workspace.join("receipt.json");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::write(workspace.join("Cargo.toml"), "[workspace]\n").expect("write workspace toml");
+        fs::write(workspace.join("Cargo.lock"), "# lock\n").expect("write cargo lock");
+        fs::write(manifest_dir.join("Cargo.toml"), "[package]\n").expect("write stage0 toml");
+
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            verify_only: true,
+            status: "completed",
+            generated_file_count: 2,
+            emitted_file_count: 3,
+            phases: vec![BootstrapTimingPhase {
+                name: "compile_stage0".to_string(),
+                elapsed_ms: 7,
+            }],
+            elapsed_ms: 9,
+            changed_generated_files: Vec::new(),
+        })
+        .expect("write receipt");
+
+        let body = fs::read_to_string(&receipt_path).expect("read receipt");
+        let json: serde_json::Value = serde_json::from_str(&body).expect("parse receipt");
+        assert_eq!(json["schema"], BOOTSTRAP_TIMING_RECEIPT_SCHEMA);
+        assert_eq!(json["version"], BOOTSTRAP_TIMING_RECEIPT_VERSION);
+        assert_eq!(json["subject"], "v2_regen_stage0");
+        assert_eq!(json["mode"], "verify");
+        assert_eq!(
+            json["cargo_invalidation"]["inputs"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
     fn seed_registered_files(dir: &Path, contents: &str) {
         fs::create_dir_all(dir).expect("create temp stage0 dir");
         for file_name in GENERATED_STAGE0_FILES {
@@ -840,6 +1498,15 @@ mod tests {
     #[test]
     fn patch_bootstrap_dag_collect_strips_all_delegated_symbols() {
         let emitted = r#"
+pub fn json_quote(s: String) -> String {
+    s
+}
+
+pub fn json_list(items: ()) -> String {
+    "[]".to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
     pub seen: (),
 }
@@ -867,11 +1534,23 @@ pub fn inferred_fingerprint(value: Option<()>) -> String {
     "none".to_string()
 }
 
+pub fn expr_data_variant(data: ()) -> String {
+    "NoExprData".to_string()
+}
+
+pub fn dag_node_surface_fingerprint(node: ()) -> String {
+    "surface".to_string()
+}
+
 pub fn dag_node_fingerprint(node: ()) -> String {
     "fp".to_string()
 }
 
 pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
+    ()
+}
+
+pub fn dag_node_missing_ref_error(node: ()) -> () {
     ()
 }
 
@@ -886,18 +1565,102 @@ pub fn collect_dag_nodes(typed: ()) -> () {
 pub fn build_dag_key_to_id(order: ()) -> () {
     ()
 }
+
+pub fn connective_name(value: ()) -> String {
+    "NoConnective".to_string()
+}
+
+pub fn cardinality_name(value: ()) -> String {
+    "Required".to_string()
+}
 "#;
         let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
         assert!(
-            !patched.contains("pub struct DagCollectPending"),
+            !patched
+                .compile_text
+                .contains("pub struct DagCollectPending"),
             "DagCollectPending helper struct must be stripped from generated compile.rs"
         );
         for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
             assert!(
-                !patched.contains(&format!("pub fn {symbol}(")),
+                !patched.compile_text.contains(&format!("pub fn {symbol}(")),
                 "local definition remained for {symbol}"
             );
         }
-        assert!(patched.contains("pub use crate::v2_compiler_dag_collect"));
+        for symbol in DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS {
+            assert!(
+                !patched.compile_text.contains(&format!("pub fn {symbol}(")),
+                "local support definition remained for {symbol}"
+            );
+            assert!(
+                patched.support_text.contains(&format!("pub fn {symbol}(")),
+                "support definition missing for {symbol}"
+            );
+        }
+        assert!(!patched.compile_text.contains("pub struct DagCollectAcc"));
+        assert!(patched.support_text.contains("pub struct DagCollectAcc"));
+        assert!(patched
+            .compile_text
+            .contains("pub use crate::v2_compiler_dag_collect"));
+        assert!(patched
+            .compile_text
+            .contains("pub use crate::v2_compiler_dag_collect_support"));
+    }
+
+    #[test]
+    fn patch_bootstrap_dag_collect_support_does_not_require_pending() {
+        let emitted = r#"
+pub fn json_quote(s: String) -> String {
+    s
+}
+
+pub fn json_list(items: ()) -> String {
+    "[]".to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagCollectAcc {
+    pub seen: (),
+}
+
+pub fn inferred_fingerprint(value: Option<()>) -> String {
+    "none".to_string()
+}
+
+pub fn dag_node_fingerprint(node: ()) -> String {
+    "fp".to_string()
+}
+
+pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
+    ()
+}
+
+pub fn dag_node_missing_ref_error(node: ()) -> () {
+    ()
+}
+
+pub fn dag_collect_nodes_list(nodes: (), acc: ()) -> () {
+    acc
+}
+
+pub fn build_dag_key_to_id(order: ()) -> () {
+    ()
+}
+
+pub fn connective_name(value: ()) -> String {
+    "NoConnective".to_string()
+}
+
+pub fn cardinality_name(value: ()) -> String {
+    "Required".to_string()
+}
+"#;
+        let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
+        assert!(patched.support_text.contains("pub struct DagCollectAcc"));
+        assert!(patched.support_text.contains("pub fn inferred_fingerprint"));
+        assert!(!patched.compile_text.contains("pub struct DagCollectAcc"));
+        assert!(patched
+            .compile_text
+            .contains("pub use crate::v2_compiler_dag_collect_support"));
     }
 }

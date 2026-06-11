@@ -8,12 +8,13 @@ use self::IdempotencyEvidence::*;
 use self::KeySource::*;
 use self::ModifierAgreement::*;
 use crate::std_http_path::PathTemplateParseResult::{MalformedPathTemplate, ParsedPathTemplate};
-pub use crate::std_http_path::{
-    has_path_params, last_path_param, parse_path_template, PathTemplate, PathTemplateParseResult,
-};
+pub use crate::std_http_path::{has_path_params, last_path_param, parse_path_template};
+pub use crate::std_http_path::{PathTemplate, PathTemplateParseResult};
 pub use crate::std_types::HttpMethod;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

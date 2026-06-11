@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -36,23 +36,10 @@ import v4.std.verification {
   impossible_bug_reason_unhandled_index,
   manual_claim_anchor
 }
-
-
-data proven_nonzero_divisor_symbol: Symbol = proven_nonzero_divisor_symbol
-data proven_index_in_range_symbol: Symbol = proven_index_in_range_symbol
-data proven_optional_present_symbol: Symbol = proven_optional_present_symbol
-data total_division_symbol: Symbol = total_division_symbol
-data total_unwrap_symbol: Symbol = total_unwrap_symbol
-data unchecked_division_symbol: Symbol = unchecked_division_symbol
-data checked_index_symbol: Symbol = checked_index_symbol
-data unchecked_index_symbol: Symbol = unchecked_index_symbol
-data force_unwrap_symbol: Symbol = force_unwrap_symbol
-data operation_field: Symbol = operation_field
-data witness_field: Symbol = witness_field
-
-
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -60,29 +47,30 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: operation_field }, target: atom_node(s: op) },
-      Edge { label: Named { name: witness_field }, target: atom_node(s: witness) },
-    ]
-  }
+      Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
+      Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
-data total_division_input: Node = safety_subject(op: total_division_symbol, witness: proven_nonzero_divisor_symbol)
+data total_division_input: Node = safety_subject(op: ^total_division_symbol, witness: ^proven_nonzero_divisor_symbol)
 
 
-data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_index_in_range_symbol)
+data checked_index_input: Node = safety_subject(op: ^checked_index_symbol, witness: ^proven_index_in_range_symbol)
 
 
-data total_unwrap_input: Node = safety_subject(op: total_unwrap_symbol, witness: proven_optional_present_symbol)
+data total_unwrap_input: Node = safety_subject(op: ^total_unwrap_symbol, witness: ^proven_optional_present_symbol)
 
 
-data falsification_division_by_zero_unhandled: Node = safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
+data falsification_division_by_zero_unhandled: Node = safety_subject(op: ^unchecked_division_symbol, witness: ^force_unwrap_symbol)
 
 
-data falsification_oob_index_unhandled: Node = safety_subject(op: unchecked_index_symbol, witness: force_unwrap_symbol)
+data falsification_oob_index_unhandled: Node = safety_subject(op: ^unchecked_index_symbol, witness: ^force_unwrap_symbol)
 
 
-data falsification_force_unwrap_survives: Node = atom_node(s: force_unwrap_symbol)
+data falsification_force_unwrap_survives: Node = atom_node(s: ^force_unwrap_symbol)
 
 
 data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {

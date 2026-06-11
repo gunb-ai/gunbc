@@ -10,6 +10,9 @@ pub use crate::generated_method_template_projection::{
 };
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+use crate::std_syntax::BinOp::NullCoalesce;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -17,16 +20,31 @@ pub use crate::v2_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
     target_callable, target_optional_template,
 };
-pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
+pub use crate::v2_compiler_emit_core_support::{
+    apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
+    apply_type_template3, capitalize_first, escape_json_string, escape_string_literal_body,
+    extract_test_projections, has_mock_prefix, is_data_def_item, is_function_item,
+    is_resource_def_item, is_service_def_item, is_service_item, is_type_alias_item,
+    is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
+    make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
+    to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
+    to_upper_char, unique_strings,
+};
+pub use crate::v2_compiler_emit_core_support::{EmitResult, TestProjection};
+pub use crate::v2_compiler_infer::InferScope;
+pub use crate::v2_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
-pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_env::authored_name;
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
+    extract_typed_service_name, is_typed_service_call_receiver,
 };
+pub use crate::v2_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, emit_map_has, for_each_element_type_node, is_unit_like, node_is_collection,
+    child_type_node, emit_map_has, for_each_element_type_node,
+    is_declared_container_alias_spelling, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
     resolved_type,
 };
@@ -44,15 +62,18 @@ use crate::v2_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v2_compiler_languages::{
     binop_symbol, is_string_like, language_spec_for_target, service_method_depth,
     service_methods_inside_class, service_receiver_str, service_return_str, service_self_param,
-    target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax, EscapePair,
-    ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger, InterpStyle, LanguageSpec,
-    MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates,
-    StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax,
-    VisibilitySpec,
+    target_keyword, test_conventions_for_target, wrap_shared_type,
+};
+pub use crate::v2_compiler_languages::{
+    BlockSyntax, EscapePair, ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger,
+    InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy,
+    ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle,
+    VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
-use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{
@@ -84,10 +105,12 @@ pub use crate::v2_std_core::{
     method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality, AlgebraFieldKind, BinOp, Cardinality, Connective,
-    DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    TextFile, UnaryOpKind, VarBindingKind,
+    unaryop_operand, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -100,12 +123,6 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EmitResult {
-    pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -128,7 +145,9 @@ pub struct TcoReassignInput {
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum BackendCapability {
     CapServiceEmit,
@@ -142,117 +161,6 @@ pub enum BackendCapability {
 pub struct BackendInfo {
     pub target_name: String,
     pub capabilities: Rc<Vec<BackendCapability>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TestProjection {
-    pub module_name: String,
-    pub service_name: String,
-    pub operation_name: String,
-    pub inferred: Rc<Node>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub mock_field_inits: Rc<Vec<Rc<Node>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-}
-
-pub fn has_mock_prefix(name: String) -> bool {
-    if (v2_rt::string_length(&name) < 5) {
-        false
-    } else {
-        (v2_rt::substring(&name, 0, 5).as_str() == "mock_".to_string().as_str())
-    }
-}
-
-pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in typed.modules.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
-                        let mut __result = Vec::new();
-                        for item in tm.items.clone().iter().cloned() {
-                            if is_service_item(item.clone()) {
-                                __result.push(item);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        __result.extend(
-                            (*Rc::new({
-                                let mut __result = Vec::new();
-                                for c in Rc::new({
-                                    let mut __result = Vec::new();
-                                    for c in item.children.clone().iter().cloned() {
-                                        if {
-                                            let mut __found = false;
-                                            for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(field_init_node_name_at(
-                                                    p.clone(),
-                                                    tm.type_env.clone().source_indices.clone(),
-                                                )) {
-                                                    __found = true;
-                                                    break;
-                                                }
-                                            }
-                                            __found
-                                        } {
-                                            __result.push(c);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .iter()
-                                .cloned()
-                                {
-                                    __result.push(Rc::new(TestProjection {
-                                        module_name: authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
-                                            tm.module.clone(),
-                                        ),
-                                        service_name: authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
-                                            item.clone(),
-                                        ),
-                                        operation_name: authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
-                                            c.clone(),
-                                        ),
-                                        inferred: resolved_type(c.clone()),
-                                        params: c.params.clone(),
-                                        mock_field_inits: Rc::new({
-                                            let mut __result = Vec::new();
-                                            for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(field_init_node_name_at(
-                                                    p.clone(),
-                                                    tm.type_env.clone().source_indices.clone(),
-                                                )) {
-                                                    __result.push(p);
-                                                }
-                                            }
-                                            __result
-                                        }),
-                                        source_indices: tm.type_env.clone().source_indices.clone(),
-                                    }));
-                                }
-                                __result
-                            }))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
 }
 
 pub fn derive_module_imports(
@@ -846,28 +754,6 @@ pub fn order_typed_call_args(
     }
 }
 
-pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    {
-        let result = items.iter().cloned().fold(
-            Rc::new(UniqueAccum {
-                seen: v2_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
-            }),
-            |acc: Rc<UniqueAccum>, item: String| {
-                if emit_map_has(acc.seen.clone(), item.clone()) {
-                    acc.clone()
-                } else {
-                    Rc::new(UniqueAccum {
-                        seen: v2_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
-                        result: v2_rt::rc_list_push(acc.result.clone(), item.clone()),
-                    })
-                }
-            },
-        );
-        result.result.clone()
-    }
-}
-
 pub fn has_nested_records_node(
     mut n: Rc<Node>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -931,6 +817,10 @@ pub fn emit_data_value_json(
         match (*value.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
                 LiteralValue::LitStr { value: s, .. } => v2_rt::concat(
+                    v2_rt::concat("\"".to_string(), escape_json_string(s.clone())),
+                    "\"".to_string(),
+                ),
+                LiteralValue::LitSymbol { value: s, .. } => v2_rt::concat(
                     v2_rt::concat("\"".to_string(), escape_json_string(s.clone())),
                     "\"".to_string(),
                 ),
@@ -1007,188 +897,6 @@ pub fn emit_data_value_json(
     })
 }
 
-pub fn escape_json_string(s: String) -> String {
-    Rc::new(
-        Rc::new(
-            Rc::new(
-                Rc::new(
-                    s.split(&"\\".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
-                )
-                .join(&"\\\\".to_string())
-                .split(&"\"".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-            )
-            .join(&"\\\"".to_string())
-            .split(&"\n".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-        )
-        .join(&"\\n".to_string())
-        .split(&"\t".to_string())
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>(),
-    )
-    .join(&"\\t".to_string())
-}
-
-pub fn module_to_filename(name: String) -> String {
-    Rc::new(
-        name.split(&".".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .join(&"_".to_string())
-}
-
-pub fn make_indent(level: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (level.clone() <= 0) {
-            "".to_string()
-        } else {
-            v2_rt::concat("    ".to_string(), make_indent((level.clone() - 1)))
-        }
-    })
-}
-
-pub fn to_string(value: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (value.clone() < 0) {
-            v2_rt::concat("-".to_string(), (0 - value.clone()).to_string())
-        } else {
-            if (value.clone() == 0) {
-                "0".to_string()
-            } else {
-                {
-                    let digit_chars = Rc::new(vec![
-                        "0".to_string(),
-                        "1".to_string(),
-                        "2".to_string(),
-                        "3".to_string(),
-                        "4".to_string(),
-                        "5".to_string(),
-                        "6".to_string(),
-                        "7".to_string(),
-                        "8".to_string(),
-                        "9".to_string(),
-                    ]);
-                    to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
-                }
-            }
-        }
-    })
-}
-
-pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    loop {
-        if (value.clone() == 0) {
-            break acc;
-        } else {
-            let rest = (value.clone() / 10);
-            let digit = (value.clone() - (rest.clone() * 10));
-            let digit_chars = Rc::new(vec![
-                "0".to_string(),
-                "1".to_string(),
-                "2".to_string(),
-                "3".to_string(),
-                "4".to_string(),
-                "5".to_string(),
-                "6".to_string(),
-                "7".to_string(),
-                "8".to_string(),
-                "9".to_string(),
-            ]);
-            let ch = match Rc::new({
-                let mut __result = Vec::new();
-                for p in Rc::new(
-                    digit_chars
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    if (p.0.clone() == digit.clone()) {
-                        __result.push(p);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(p) => p.1.clone(),
-                None => "?".to_string(),
-            };
-            {
-                let __tco_0 = rest.clone();
-                let __tco_1 = v2_rt::concat(Rc::new(vec![ch]), acc);
-                value = __tco_0;
-                acc = __tco_1;
-                continue;
-            }
-        }
-    }
-}
-
-pub fn to_snake(name: String) -> String {
-    {
-        let chars_list = Rc::new(name.chars().map(|c| c as i64).collect::<Vec<_>>());
-        let result = Rc::new({
-            let mut __result = Vec::new();
-            for pair in Rc::new(
-                chars_list
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
-                __result.push({
-                    let idx = pair.0.clone();
-                    let ch = pair.1.clone();
-                    if is_upper(ch.clone()) {
-                        if (idx.clone() == 0) {
-                            to_lower_char(ch.clone())
-                        } else {
-                            v2_rt::concat("_".to_string(), to_lower_char(ch.clone()))
-                        }
-                    } else {
-                        v2_rt::from_code_point(ch.clone())
-                    }
-                });
-            }
-            __result
-        });
-        result.join(&"".to_string())
-    }
-}
-
-pub fn to_screaming_snake(name: String) -> String {
-    {
-        let snake = to_snake(name);
-        Rc::new({
-            let mut __result = Vec::new();
-            for ch in Rc::new(snake.chars().map(|c| c as i64).collect::<Vec<_>>())
-                .iter()
-                .cloned()
-            {
-                __result.push(to_upper_char(ch.clone()));
-            }
-            __result
-        })
-        .join(&"".to_string())
-    }
-}
-
 pub fn to_camel(name: String) -> String {
     {
         let parts = Rc::new(
@@ -1250,109 +958,6 @@ pub fn to_camel(name: String) -> String {
     }
 }
 
-pub fn is_upper(ch: i64) -> bool {
-    ((ch.clone() >= 65) && (ch.clone() <= 90))
-}
-
-pub fn to_lower_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
-            {
-                let lower_cp = (cp.clone() + 32);
-                v2_rt::from_code_point(lower_cp)
-            }
-        } else {
-            v2_rt::from_code_point(ch.clone())
-        }
-    }
-}
-
-pub fn to_upper_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
-            {
-                let upper_cp = (cp.clone() - 32);
-                v2_rt::from_code_point(upper_cp)
-            }
-        } else {
-            v2_rt::from_code_point(ch.clone())
-        }
-    }
-}
-
-pub fn sanitize_service_name(name: String) -> String {
-    {
-        let parts = Rc::new(
-            name.split(&".".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        let pascal_parts = Rc::new({
-            let mut __result = Vec::new();
-            for p in parts.iter().cloned() {
-                __result.push(capitalize_first(p.clone()));
-            }
-            __result
-        });
-        pascal_parts.join(&"".to_string())
-    }
-}
-
-pub fn capitalize_first(s: String) -> String {
-    {
-        let chars_list = Rc::new(s.chars().map(|c| c as i64).collect::<Vec<_>>());
-        if ((chars_list.clone().len() as i64) == 0) {
-            "".to_string()
-        } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    chars_list
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.push(if (pair.0.clone() == 0) {
-                        to_upper_char(pair.1.clone())
-                    } else {
-                        v2_rt::from_code_point(pair.1.clone())
-                    });
-                }
-                __result
-            })
-            .join(&"".to_string())
-        }
-    }
-}
-
-pub fn to_pascal(name: String) -> String {
-    {
-        let snake = to_snake(name);
-        let parts = Rc::new(
-            snake
-                .split(&"_".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        let pascal_parts = Rc::new({
-            let mut __result = Vec::new();
-            for p in parts.iter().cloned() {
-                __result.push(capitalize_first(p.clone()));
-            }
-            __result
-        });
-        pascal_parts.join(&"".to_string())
-    }
-}
-
 pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
     match case_style {
         NamingCase::PascalCase => {
@@ -1374,10 +979,6 @@ pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
         NamingCase::CamelCase => to_camel(name),
         NamingCase::AsAuthored => name,
     }
-}
-
-pub fn service_var_name(service_name: String) -> String {
-    to_snake(sanitize_service_name(service_name))
 }
 
 pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
@@ -1405,165 +1006,6 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
     }
 }
 
-pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
-    {
-        let conventions = test_conventions_for_target(target);
-        let formatted = match conventions.name_style.clone() {
-            TestNameStyle::SnakeCaseTestNames => v2_rt::concat(
-                v2_rt::concat(
-                    to_snake(sanitize_service_name(projection.service_name.clone())),
-                    "_".to_string(),
-                ),
-                to_snake(projection.operation_name.clone()),
-            ),
-            TestNameStyle::PascalCaseTestNames => v2_rt::concat(
-                to_pascal(sanitize_service_name(projection.service_name.clone())),
-                to_pascal(projection.operation_name.clone()),
-            ),
-        };
-        v2_rt::concat(conventions.function_prefix.clone(), formatted)
-    }
-}
-
-pub fn apply_type_template1(template: String, arg0: String) -> String {
-    Rc::new(
-        template
-            .split(&"{0}".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .join(&arg0)
-}
-
-pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
-    {
-        let parts = Rc::new(
-            template
-                .split(&"{0}".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        let replaced = Rc::new({
-            let mut __result = Vec::new();
-            for p in parts.iter().cloned() {
-                __result.push(
-                    Rc::new(
-                        p.clone()
-                            .split(&"{1}".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .join(&arg1.clone()),
-                );
-            }
-            __result
-        });
-        replaced.join(&arg0)
-    }
-}
-
-pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
-    {
-        let parts0 = Rc::new(
-            template
-                .split(&"{0}".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        let replaced = Rc::new({
-            let mut __result = Vec::new();
-            for p0 in parts0.iter().cloned() {
-                __result.push({
-                    let parts1 = Rc::new(
-                        p0.clone()
-                            .split(&"{1}".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    );
-                    let inner = Rc::new({
-                        let mut __result = Vec::new();
-                        for p1 in parts1.clone().iter().cloned() {
-                            __result.push(
-                                Rc::new(
-                                    p1.clone()
-                                        .split(&"{2}".to_string())
-                                        .map(|s| s.to_string())
-                                        .collect::<Vec<_>>(),
-                                )
-                                .join(&arg2.clone()),
-                            );
-                        }
-                        __result
-                    });
-                    inner.clone().join(&arg1.clone())
-                });
-            }
-            __result
-        });
-        replaced.join(&arg0)
-    }
-}
-
-pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
-    apply_named_template_nested(
-        template,
-        bindings.clone(),
-        Rc::new(v2_rt::map_keys(&bindings)),
-    )
-}
-
-pub fn apply_named_template_nested(
-    template: String,
-    bindings: Rc<HashMap<String, String>>,
-    keys: Rc<Vec<String>>,
-) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match keys.clone().first().cloned() {
-            None => template,
-            Some(key) => {
-                let rest = Rc::new(
-                    keys.clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
-                let placeholder =
-                    v2_rt::concat(v2_rt::concat("{".to_string(), key.clone()), "}".to_string());
-                match v2_rt::map_get(&bindings, key.clone()) {
-                    Some(val) => {
-                        let parts = Rc::new(
-                            template
-                                .split(&placeholder)
-                                .map(|s| s.to_string())
-                                .collect::<Vec<_>>(),
-                        );
-                        let processed = Rc::new({
-                            let mut __result = Vec::new();
-                            for part in parts.iter().cloned() {
-                                __result.push(apply_named_template_nested(
-                                    part.clone(),
-                                    bindings.clone(),
-                                    rest.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        processed.join(&val.clone())
-                    }
-                    None => {
-                        v2_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone())
-                    }
-                }
-            }
-        }
-    })
-}
-
-pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
-    language_spec_for_target(target)
-}
-
 pub fn reserved_prefix(target: RenderTarget) -> String {
     match (*language_spec(target)
         .reserved_words
@@ -1587,45 +1029,6 @@ pub fn reserved_suffix(target: RenderTarget) -> String {
     {
         ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
         _ => "".to_string(),
-    }
-}
-
-pub fn escape_string_literal_body(s: String) -> String {
-    {
-        let escaped_backslash = Rc::new(
-            s.split(&"\\".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\\\".to_string());
-        let escaped_quote = Rc::new(
-            escaped_backslash
-                .split(&"\"".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\\"".to_string());
-        let escaped_newline = Rc::new(
-            escaped_quote
-                .split(&"\n".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\n".to_string());
-        let escaped_return = Rc::new(
-            escaped_newline
-                .split(&"\\r".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\r".to_string());
-        Rc::new(
-            escaped_return
-                .split(&"\t".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\t".to_string())
     }
 }
 
@@ -1711,6 +1114,9 @@ pub fn is_null_coalesce(op: BinOp) -> bool {
 pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> String {
     match (*value).clone() {
         LiteralValue::LitStr { value: s, .. } => emit_string_literal(s.clone(), "".to_string()),
+        LiteralValue::LitSymbol { value: s, .. } => {
+            emit_string_literal(s.clone(), ".to_string()".to_string())
+        }
         LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
         LiteralValue::LitFloat { value: f, .. } => f.clone(),
         LiteralValue::LitBool { value: b, .. } => {
@@ -1750,6 +1156,19 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
             }
         }
         LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
+        LiteralValue::LitSymbol { value: s, .. } => {
+            let suffix = match literal_suffix(target.clone(), "Symbol".to_string()) {
+                Some(sfx) => sfx.clone(),
+                None => match literal_suffix(target.clone(), "String".to_string()) {
+                    Some(sfx) => sfx.clone(),
+                    None => emit_error_expr(
+                        "missing TypeCheckpoint for Symbol literal suffix".to_string(),
+                        target.clone(),
+                    ),
+                },
+            };
+            emit_string_literal(s.clone(), suffix)
+        }
     }
 }
 
@@ -2158,7 +1577,8 @@ pub fn render_node_type(
             {
                 let bare_is_map = (is_container_type(tn.clone())
                     && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
-                let bare_is_collection = (is_container_type(tn.clone()) && !bare_is_map.clone());
+                let bare_is_collection =
+                    (is_declared_container_alias_spelling(tn.clone()) && !bare_is_map.clone());
                 let has_container_template = match container_template_algebra(to_snake(tn.clone()))
                 {
                     Some(_) => true,
@@ -2361,17 +1781,6 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
             ts.empty.clone()
         }
     }
-}
-
-pub fn is_type_alias_return_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (authored_name_at(source_indices, n).as_str() != "Unit".to_string().as_str())
-}
-
-pub fn is_service_item(item: Rc<Node>) -> bool {
-    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
 pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
@@ -2829,56 +2238,9 @@ pub fn emit_unified_service_def(
     }
 }
 
-pub fn is_type_def_item(item: Rc<Node>) -> bool {
-    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
-}
-
-pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
-    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
-        && ((item.params.clone().len() as i64) == 0))
-        && (item.transport.clone() == None))
-        && ((item.children.clone().len() as i64) == 0))
-}
-
-pub fn is_type_alias_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (is_bare_leaf_item(item.clone())
-        && is_type_alias_return_node(resolved_type(item.clone()), source_indices))
-}
-
-pub fn is_type_decl_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    ((is_bare_leaf_item(item.clone())
-        && !is_type_alias_return_node(resolved_type(item.clone()), source_indices))
-        || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
-            && (item.transport.clone() == None))
-            && ((item.children.clone().len() as i64) == 0)))
-}
-
-pub fn is_function_item(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
-}
-
-pub fn is_data_def_item(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() != None))
-}
-
-pub fn is_service_def_item(item: Rc<Node>) -> bool {
-    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
-}
-
-pub fn is_resource_def_item(item: Rc<Node>) -> bool {
-    (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
-        || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
-            && ((item.properties.clone().len() as i64) > 0))
-            && (item.body.clone() == None)))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ExprCategory {
     ExprCatLeaf,
@@ -4471,8 +3833,10 @@ pub fn apply_bridge_method_overrides(
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
     match v2_rt::lookup(&overrides, name.clone()) {
-        Some(replacement) => replacement.clone(),
-        None => name.clone(),
+        v2_rt::Witness::Holds {
+            value: replacement, ..
+        } => replacement.clone(),
+        v2_rt::Witness::Violates { diagnostic: _, .. } => name.clone(),
     }
 }
 

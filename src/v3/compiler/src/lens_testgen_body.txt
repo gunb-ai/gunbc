@@ -57,7 +57,9 @@ impl<'a> GeneratedClaim<'a> {
         match value {
             FieldValue::Literal(LiteralBits::Int(decimal)) => decimal.clone(),
             FieldValue::Literal(LiteralBits::Bool(b)) => b.to_string(),
-            FieldValue::Literal(LiteralBits::String(s)) => quote_string(s),
+            FieldValue::Literal(LiteralBits::String(s) | LiteralBits::Symbol(s)) => {
+                quote_string(s)
+            }
             FieldValue::Reference(decl_id) => self
                 .dag
                 .declaration(*decl_id)

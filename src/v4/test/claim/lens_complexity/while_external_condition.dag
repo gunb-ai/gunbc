@@ -25,7 +25,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.witness { Witness }
 
@@ -35,19 +36,18 @@ type LensComplexityClaim {
   expected_complexity: ComplexityBound
   falsification: Diagnostic
 }
-
-data while_loop_body_atom: Symbol = while_loop_body_atom
-
 data while_loop_body_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: while_loop_body_atom } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data while_external_condition_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: while_loop_body_leaf }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {

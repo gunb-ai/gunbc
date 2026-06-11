@@ -8,17 +8,20 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
-use crate::v2_compiler_languages::BodyKind::{
-    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
-};
-use crate::v2_compiler_languages::ItemFormKind::OtherForm;
-pub use crate::v2_compiler_languages::{
-    BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
-};
-use crate::v2_rt;
-use crate::v2_std_core::BinOp::{
+use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
+use crate::std_syntax::BodyKind::{
+    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
+};
+use crate::std_syntax::ItemFormKind::OtherForm;
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
+pub use crate::std_types::SourceSpan;
+use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::ParseError;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -29,16 +32,15 @@ use crate::v2_std_core::ExprData::{
 };
 use crate::v2_std_core::ExprErrorKind::ParseRecoveryError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v2_std_core::OperationModifier::{Hermetic, Idempotent, Readonly};
 use crate::v2_std_core::StringPart::{Interpolation, Text};
 use crate::v2_std_core::TokenShape::{
-    ShAnd, ShArrow, ShBang, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq, ShFatArrow,
-    ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat, ShLitInt,
-    ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe, ShPipeArrow,
-    ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin, ShStrEnd,
-    ShStrMid, ShUnknown,
+    ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
+    ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
+    ShLitInt, ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe,
+    ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
+    ShStrEnd, ShStrMid, ShUnknown,
 };
 use crate::v2_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v2_std_core::{
@@ -54,10 +56,12 @@ pub use crate::v2_std_core::{
     rest_transport_node, service_config_properties, shell_transport_node, transport_body_key,
     transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
     transport_query_key, transport_response_format_key, transport_stdin_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality, BinOp, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternResult,
-    InternTable, LiteralValue, MatchPattern, NewlineIndex, Node, OperationModifier, SourceSpan,
-    StringPart, Token, TokenShape, UnaryOpKind,
+    variant_node_fields, variant_node_name_at, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier, StringPart,
+    Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -665,7 +669,9 @@ pub struct IntLitResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ParserHelperIdentity {
     ParserHelperSkipNewlines,
@@ -1400,6 +1406,7 @@ pub fn shape_display_name(shape: TokenShape) -> String {
         TokenShape::ShOr => "Or".to_string(),
         TokenShape::ShQuestion => "Question".to_string(),
         TokenShape::ShNullCoalesce => "NullCoalesce".to_string(),
+        TokenShape::ShCaret => "Caret".to_string(),
         TokenShape::ShPipe => "Pipe".to_string(),
         TokenShape::ShPipeArrow => "PipeArrow".to_string(),
         TokenShape::ShLitStr => "LitStr".to_string(),
@@ -1632,8 +1639,8 @@ pub fn expect_name(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
 pub fn is_name_keyword(token: Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
         match v2_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
-            Some(_) => false,
-            None => true,
+            v2_rt::Witness::Holds { value: _, .. } => false,
+            v2_rt::Witness::Violates { diagnostic: _, .. } => true,
         }
     } else {
         false
@@ -10663,6 +10670,132 @@ pub fn parse_prefix(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Exp
     }
 }
 
+pub fn parse_caret_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    {
+        let span = token_span(tokens.clone().first().cloned());
+        let dummy_expr = parse_recovery_placeholder();
+        let after_caret = Rc::new(
+            tokens
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        );
+        let next = after_caret.clone().first().cloned();
+        let next_shape = match next.clone() {
+            Some(t) => Some(t.shape.clone()),
+            None => None,
+        };
+        match next_shape.clone() {
+            Some(TokenShape::ShIdent) => {
+                let spelling = next.clone().unwrap().text.clone();
+                let end_span = token_span(next.clone());
+                let lit_span = make_span(span.start.clone(), end_span.end.clone());
+                Rc::new(ExprResult {
+                    expr: make_expr_node(
+                        Rc::new(ExprData::ExprLiteral {
+                            value: Rc::new(LiteralValue::LitSymbol { value: spelling }),
+                        }),
+                        Rc::new(vec![]),
+                        None,
+                        lit_span,
+                    ),
+                    tokens: Rc::new(
+                        after_caret
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+            Some(TokenShape::ShLParen) => {
+                let r = parse_expr(
+                    Rc::new(
+                        after_caret
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    ctx.clone(),
+                );
+                if has_err(r.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: r.expr.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                let tokens = skip_newlines(r.tokens.clone());
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                if has_err(r2.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: dummy_expr,
+                        tokens: r2.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r2.err.clone(),
+                    });
+                }
+                let call_span = make_span(
+                    span.start.clone(),
+                    r2.token.clone().span.clone().end.clone(),
+                );
+                let callee = make_named_expr_node(
+                    "discriminant".to_string(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    call_span.clone(),
+                    kernel_span("discriminant".to_string()),
+                );
+                let call = make_call_expr(
+                    callee,
+                    Rc::new(vec![r.expr.clone()]),
+                    call_span.clone(),
+                    ctx.source_indices.clone(),
+                );
+                Rc::new(ExprResult {
+                    expr: call,
+                    tokens: r2.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+            _ => {
+                let found = match next_shape.clone() {
+                    Some(shape) => shape_display_name(shape.clone()),
+                    None => "EOF".to_string(),
+                };
+                Rc::new(ExprResult {
+                    expr: parse_recovery_expr(
+                        span.clone(),
+                        format!(
+                            "expected identifier or `(` after `^`, found {}",
+                            found.clone()
+                        ),
+                    ),
+                    tokens: after_caret.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        format!(
+                            "expected identifier or `(` after `^`, found {}",
+                            found.clone()
+                        ),
+                        span.clone(),
+                    )),
+                })
+            }
+        }
+    }
+}
+
 pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
@@ -10677,7 +10810,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                 let lit_val =
                     v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val {
-                    Some(lv) => Rc::new(ExprResult {
+                    v2_rt::Witness::Holds { value: lv, .. } => Rc::new(ExprResult {
                         expr: make_expr_node(
                             Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
                             Rc::new(vec![]),
@@ -10695,7 +10828,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    None => {
+                    v2_rt::Witness::Violates { diagnostic: _, .. } => {
                         if (kw_text.clone().as_str() == "match".to_string().as_str()) {
                             parse_match(tokens.clone(), ctx.clone())
                         } else {
@@ -10831,6 +10964,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                 })
             }
             Some(TokenShape::ShStrBegin) => parse_string_interp(tokens.clone(), ctx.clone()),
+            Some(TokenShape::ShCaret) => parse_caret_expr(tokens.clone(), ctx.clone()),
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
                 parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
@@ -12493,7 +12627,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val = v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text);
                 match lit_val {
-                    Some(lv) => Rc::new(PatternResult {
+                    v2_rt::Witness::Holds { value: lv, .. } => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
                         tokens: Rc::new(
                             tokens
@@ -12506,7 +12640,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    None => Rc::new(PatternResult {
+                    v2_rt::Witness::Violates { diagnostic: _, .. } => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),

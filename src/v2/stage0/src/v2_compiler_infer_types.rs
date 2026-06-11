@@ -8,35 +8,43 @@ use crate::std_algebra::AlgebraProfile::{
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
-    ReceiverSelf, ReceiverValue, TupleOf,
+    ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
+pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
-    AlgebraTypeTemplate, ContainerSource,
+    AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
-pub use crate::std_types::{
-    container_expected_arity, container_param_name, is_container_type, SourceSpan,
-};
-use crate::v2_rt;
-use crate::v2_std_core::AlgebraFieldKind::{
+use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
-use crate::v2_std_core::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
+use crate::std_syntax::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{
+    container_expected_arity, container_param_name, container_template_algebra,
+    container_template_alias_algebra, is_container_type,
+};
+use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v2_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 pub use crate::v2_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
     none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality, AlgebraFieldKind, BinOp, Cardinality, CompilerDiagnostic,
-    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, LiteralValue, NewlineIndex, Node,
+    with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -102,7 +110,7 @@ pub fn node_is_collection(
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_container_type(authored_name_at(source_indices, n.clone())))
+        && is_declared_container_alias_spelling(authored_name_at(source_indices, n.clone())))
 }
 
 pub fn node_is_keyed_collection(
@@ -126,6 +134,59 @@ pub fn node_is_set_collection(
     (node_is_element_collection(n.clone(), source_indices.clone())
         && (authored_name_at(source_indices.clone(), n.clone()).as_str()
             == "Set".to_string().as_str()))
+}
+
+pub fn canonical_template_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let nm = authored_name_at(source_indices, n);
+        match container_template_algebra(nm.clone()) {
+            Some(algebra) => algebra.clone(),
+            None => nm.clone(),
+        }
+    }
+}
+
+pub fn is_declared_container_alias_spelling(name: String) -> bool {
+    match container_template_algebra(name) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+pub fn structural_carrier_template_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if (n.name.clone().as_str() != "".to_string().as_str()) {
+        canonical_template_name(
+            Rc::new(Node {
+                name: n.name.clone(),
+                span: n.span.clone(),
+                ident_span: Some(kernel_span(n.name.clone())),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                expr_data: n.expr_data.clone(),
+                ident: None,
+            }),
+            source_indices,
+        )
+    } else {
+        canonical_template_name(n.clone(), source_indices)
+    }
 }
 
 pub fn is_product_type(n: Rc<Node>) -> bool {
@@ -790,6 +851,15 @@ pub fn instantiate_algebra_type(
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
+            AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
+                let ib =
+                    instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
+                let built = make_container_type("Witness".to_string(), ib.ty.clone());
+                Rc::new(KernelTypeBuild {
+                    ty: built.ty.clone(),
+                    diagnostics: v2_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
+                })
+            }
             AlgebraTypeTemplate::TupleOf { first, second, .. } => {
                 let fb =
                     instantiate_algebra_type(first.clone(), base.clone(), source_indices.clone());
@@ -1396,6 +1466,19 @@ pub fn apply_type_substitution(
                 diagnostics: ib.diagnostics.clone(),
             })
         }
+        AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
+            let ib = apply_type_substitution(
+                inner.clone(),
+                subst.clone(),
+                receiver.clone(),
+                source_indices.clone(),
+            );
+            let built = make_container_type("Witness".to_string(), ib.ty.clone());
+            Rc::new(KernelTypeBuild {
+                ty: built.ty.clone(),
+                diagnostics: v2_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
+            })
+        }
         AlgebraTypeTemplate::TupleOf {
             first: ft,
             second: st,
@@ -1491,6 +1574,7 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => has_type_variable(inner.clone()),
+        AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::TupleOf {
             first: f,
             second: s,
@@ -1724,8 +1808,10 @@ pub fn node_type_compatible(
                         let right_is_container =
                             node_is_element_collection(right.clone(), source_indices.clone());
                         if (left_is_container && right_is_container) {
-                            if (authored_name_at(source_indices.clone(), left.clone()).as_str()
-                                != authored_name_at(source_indices.clone(), right.clone()).as_str())
+                            if (canonical_template_name(left.clone(), source_indices.clone())
+                                .as_str()
+                                != canonical_template_name(right.clone(), source_indices.clone())
+                                    .as_str())
                             {
                                 break false;
                             } else {
@@ -1761,33 +1847,91 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                let left_inner = with_required_cardinality(left.clone());
-                                let right_inner = with_required_cardinality(right.clone());
-                                let left_inner_is_unit = is_unit_like(left_inner.clone());
-                                let right_inner_is_unit = is_unit_like(right_inner.clone());
-                                if (left_inner_is_unit || right_inner_is_unit) {
-                                    break true;
-                                } else {
-                                    {
-                                        let __tco_0 = left_inner.clone();
-                                        let __tco_1 = right_inner.clone();
-                                        left = __tco_0;
-                                        right = __tco_1;
-                                        continue;
+                            if (((((canonical_template_name(
+                                left.clone(),
+                                source_indices.clone(),
+                            )
+                            .as_str()
+                                == canonical_template_name(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                )
+                                .as_str())
+                                && (authored_name_at(source_indices.clone(), left.clone())
+                                    .as_str()
+                                    != authored_name_at(source_indices.clone(), right.clone())
+                                        .as_str()))
+                                && ((left.children.clone().len() as i64) == 1))
+                                && ((right.children.clone().len() as i64) == 1))
+                                && (is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    left.clone(),
+                                )) || is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    right.clone(),
+                                ))))
+                            {
+                                match left.children.clone().first().cloned() {
+                                    Some(left_ch) => {
+                                        match right.children.clone().first().cloned() {
+                                            Some(right_ch) => {
+                                                let left_el = child_type_node(left_ch.clone());
+                                                let right_el = child_type_node(right_ch.clone());
+                                                if (is_unit_like(left_el.clone())
+                                                    || is_unit_like(right_el.clone()))
+                                                {
+                                                    break true;
+                                                } else {
+                                                    {
+                                                        let __tco_0 = left_el.clone();
+                                                        let __tco_1 = right_el.clone();
+                                                        left = __tco_0;
+                                                        right = __tco_1;
+                                                        continue;
+                                                    }
+                                                }
+                                            }
+                                            None => {
+                                                break true;
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        break true;
                                     }
                                 }
                             } else {
-                                if (left_opt.clone() || right_opt.clone()) {
-                                    break false;
+                                if (left_opt.clone() && right_opt.clone()) {
+                                    let left_inner = with_required_cardinality(left.clone());
+                                    let right_inner = with_required_cardinality(right.clone());
+                                    let left_inner_is_unit = is_unit_like(left_inner.clone());
+                                    let right_inner_is_unit = is_unit_like(right_inner.clone());
+                                    if (left_inner_is_unit || right_inner_is_unit) {
+                                        break true;
+                                    } else {
+                                        {
+                                            let __tco_0 = left_inner.clone();
+                                            let __tco_1 = right_inner.clone();
+                                            left = __tco_0;
+                                            right = __tco_1;
+                                            continue;
+                                        }
+                                    }
                                 } else {
-                                    break (authored_name_at(source_indices.clone(), left.clone())
-                                        .as_str()
-                                        == authored_name_at(
+                                    if (left_opt.clone() || right_opt.clone()) {
+                                        break false;
+                                    } else {
+                                        break (authored_name_at(
                                             source_indices.clone(),
-                                            right.clone(),
+                                            left.clone(),
                                         )
-                                        .as_str());
+                                        .as_str()
+                                            == authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            )
+                                            .as_str());
+                                    }
                                 }
                             }
                         }
@@ -2288,6 +2432,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
         LiteralValue::LitNull => with_optional_cardinality(unit_type()),
+        LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
 

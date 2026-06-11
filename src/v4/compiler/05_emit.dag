@@ -9,7 +9,6 @@ module v4.compiler.emit
 
 
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,
@@ -20,6 +19,7 @@ import v4.std.diagnostic {
   Outcome,
   bind_outcome
 }
+import v4.std.target_model { TargetModel }
 
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,

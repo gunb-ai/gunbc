@@ -7,7 +7,6 @@
 //   (cost-of-change = 1).
 // Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
 
-
 module v4.test.claim.lens_common.infer_fixture
 
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -15,18 +14,17 @@ import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 fn claim_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn claim_canonical_grounding(
@@ -39,11 +37,11 @@ fn claim_canonical_grounding(
     node: resolved,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: resolved
       }
     }
@@ -70,11 +68,11 @@ fn claim_inferred_facts_from_nodes(
       node: resolved,
       witness: CanonicalGroundingWitness {
         structural: StructuralPropertyWitness {
-          property: constraint_property_being_canonical,
+          property: ^constraint_property_being_canonical,
           evidence: algebra
         },
         closedness: StructuralPropertyWitness {
-          property: constraint_property_candidate_set_closedness,
+          property: ^constraint_property_candidate_set_closedness,
           evidence: resolved
         }
       }

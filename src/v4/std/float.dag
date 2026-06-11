@@ -42,8 +42,6 @@ type Float64 {
   body: FloatBody
 }
 type Float = Float64
-data float_totalizer_reason_ieee754_nan_unordered: Symbol = float_totalizer_reason_ieee754_nan_unordered
-data float_totalizer_port_ieee754_nan_totalizer: Symbol = float_totalizer_port_ieee754_nan_totalizer
 fn sign_rank_lex(s: Bit) -> Nat {
   match s {
     true => Zero
@@ -162,8 +160,8 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
 }
 fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
   Rejected { diagnostics: diagnostics_singleton(d: Diagnostic {
-      reason: float_totalizer_reason_ieee754_nan_unordered,
-      at: port_locus(port: float_totalizer_port_ieee754_nan_totalizer),
+      reason: ^float_totalizer_reason_ieee754_nan_unordered,
+      at: port_locus(port: ^float_totalizer_port_ieee754_nan_totalizer),
       correction: Unavailable { reason: UserInputBoundary },
     }) }
 }

@@ -6,7 +6,7 @@ module v4.test.claim.lens_cost.atom_zero
 
 import v4.lens.cost { cost_lens, zero_cost }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -17,12 +17,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds }
-
-data atom_zero_symbol: Symbol = atom_zero_symbol
-
 data atom_zero_input: Node = Node {
-  kind: TypeNode { connective: Atom { identity: atom_zero_symbol } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^atom_zero_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn atom_zero_claim_holds() -> Bool {
@@ -38,8 +36,9 @@ fn atom_zero_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
   }
 }
 

@@ -4,7 +4,7 @@
 
 This document catalogues structural questions that v3 consumers (lenses, inference, emission) ask about `Node`/`Declaration`/`Port`. When a consumer must reconstruct a fact the substrate doesn't expose, that reconstruction is a **substrate-consumer gap** — fix the substrate, don't bridge in the consumer.
 
-Historical enumeration (M1(2.7) → M1(2.8) — landed work, methodology, R16 audit, Consumer 1–4 walkthroughs) moved to [`docs/history/v3-substrate-consumer-enumeration-m1-2-7-to-2-8.md`](../../docs/history/v3-substrate-consumer-enumeration-m1-2-7-to-2-8.md) on 2026-04-17. Retained there for audit traceability.
+Historical enumeration (M1(2.7) → M1(2.8) — landed work, methodology, R16 audit, Consumer 1–4 walkthroughs) was pruned from this file on 2026-04-17.
 
 Several Class 5 entries now have dedicated DB docs or ROADMAP deferrals — cross-referenced inline where applicable. Where a gap is fully tracked elsewhere, the entry here is a one-line pointer; where it's genuinely still open and uncaptured, the full description remains.
 
@@ -268,21 +268,21 @@ those, `ValueBody::Structural { fields }` upgrades from
 similar), and the literal-bits inline form becomes a special
 case — not a separate variant.
 
-**Current status.** Literal-field bodies: ✅ closed at M1(3). Scalar `data x: T = v` bodies: ✅ closed at PR #496 (3a.2 via `ValueBody::Scalar`; see DB-10 in [`design-m2-feature-parity.md`](../../docs/design-m2-feature-parity.md)).
+**Current status.** Literal-field bodies: ✅ closed at M1(3). Scalar `data x: T = v` bodies: ✅ closed at PR #496 (3a.2 via `ValueBody::Scalar`; DB-10).
 Port-carried field bodies: ⏸ deferred to the M2+ consumer that
 forces the upgrade.
 
 ### Class 5 gap 5: `where` clause refinement facts
 
-**Status (as of 2026-04-17):** partial — parser foundation + `Declaration.refinement: Option<DeclarationId>` substrate edge landed via PR #496. Full semantics (predicate lowering, call-site structural-DAG check, Branch-arm narrowing extension) deferred; now tracked as **DB-11** in [`docs/design-m2-feature-parity.md`](../../docs/design-m2-feature-parity.md) and as **Deferral: 3a.3-full** in [`ROADMAP.md` §Active deferrals](../../ROADMAP.md).
+**Status (as of 2026-04-17):** partial — parser foundation + `Declaration.refinement: Option<DeclarationId>` substrate edge landed via PR #496. Full semantics (predicate lowering, call-site structural-DAG check, Branch-arm narrowing extension) deferred; now tracked as **DB-11** and as **Deferral: 3a.3-full** in [`ROADMAP.md` §Active deferrals](../../ROADMAP.md).
 
-The original entry is preserved in the historical enumeration file; the active tracker for remaining work is the DB/ROADMAP pair. This is the canonical pattern: once a class-5 entry lands a dedicated DB doc, its live description lives there — not duplicated here.
+The active tracker for remaining work is the DB/ROADMAP pair. This is the canonical pattern: once a class-5 entry lands a dedicated DB doc, its live description lives there — not duplicated here.
 
 ## Historical enumeration — preserved verbatim
 
-The original substrate-consumer gap enumeration (Consumer 1 through Consumer 4, Methodology, M1(2.7) Resolution summary, Round 9 / M1(2.8) / R16 audit sections, Write-pipeline gap summary, Substrate cross-reference) has been moved to [`docs/history/v3-substrate-consumer-enumeration-m1-2-7-to-2-8.md`](../../docs/history/v3-substrate-consumer-enumeration-m1-2-7-to-2-8.md) as part of the docs-pruning pass on 2026-04-17. All 14 original gaps closed structurally at M1(2.7); R9 and M1(2.8) addendums landed; the R16 scaffold-boundary audit completed. Retained there for audit traceability — not for active consumption.
+The original substrate-consumer gap enumeration (Consumer 1 through Consumer 4, Methodology, M1(2.7) Resolution summary, Round 9 / M1(2.8) / R16 audit sections, Write-pipeline gap summary, Substrate cross-reference) was pruned from this file in the docs-pruning pass on 2026-04-17. All 14 original gaps closed structurally at M1(2.7); R9 and M1(2.8) addendums landed; the R16 scaffold-boundary audit completed.
 
-Active substrate-consumer gaps (Class 5 items above, class-6 tokenizer escapes, class-7 realization narrowing, PR-B validation summary) remain in this file. When a new lens or surface form joins the pipeline, run the enumeration discipline against it; the history file shows the methodology.
+Active substrate-consumer gaps (Class 5 items above, class-6 tokenizer escapes, class-7 realization narrowing, PR-B validation summary) remain in this file. When a new lens or surface form joins the pipeline, run the enumeration discipline against it.
 
 ## The meta-pattern
 

@@ -16,7 +16,8 @@ import v4.std.node {
   Transform,
   TypeNode,
   content_hash,
-  loop_bound_edge
+  loop_bound_edge,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   CompilesClaim,
@@ -27,24 +28,20 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data content_hash_loop_body_sym: Symbol = content_hash_loop_body_sym
-data content_hash_loop_measure_sym: Symbol = content_hash_loop_measure_sym
-data content_hash_loop_pass_sym: Symbol = content_hash_loop_pass_sym
-data content_hash_loop_fail_sym: Symbol = content_hash_loop_fail_sym
-
 fn content_hash_loop_body_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_body_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_measure_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_measure_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_body() -> Node {
@@ -52,8 +49,9 @@ fn content_hash_loop_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_body_two() -> Node {
@@ -62,8 +60,9 @@ fn content_hash_loop_body_two() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body_leaf() },
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_bound_last() -> Node {
@@ -75,8 +74,9 @@ fn content_hash_loop_bound_last() -> Node {
         label: Named { name: loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_bound_first() -> Node {
@@ -88,8 +88,9 @@ fn content_hash_loop_bound_first() -> Node {
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_bound_middle() -> Node {
@@ -102,8 +103,9 @@ fn content_hash_loop_bound_middle() -> Node {
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body_two() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_bound_last_two_body() -> Node {
@@ -116,26 +118,26 @@ fn content_hash_loop_bound_last_two_body() -> Node {
         label: Named { name: loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_pass_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_fail_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
 }
-
-data content_hash_loop_extra_named_sym: Symbol = content_hash_loop_extra_named_sym
-
+}
 fn content_hash_loop_with_extra_named() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
@@ -146,11 +148,12 @@ fn content_hash_loop_with_extra_named() -> Node {
         target: content_hash_loop_measure_leaf()
       },
       Edge {
-        label: Named { name: content_hash_loop_extra_named_sym },
+        label: Named { name: ^content_hash_loop_extra_named_sym },
         target: content_hash_loop_body_leaf()
       }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn content_hash_loop_bound_edge_order_holds() -> Bool {

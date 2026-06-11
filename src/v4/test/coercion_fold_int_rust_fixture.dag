@@ -23,28 +23,27 @@ import v4.std.node {
   Atom,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.witness { StructuralPropertyWitness }
-data fixture_int_atom: Symbol = fixture_int_atom
-data fixture_property_closed_candidates: Symbol = fixture_property_closed_candidates
-data fixture_property_candidate_set_closedness: Symbol = fixture_property_candidate_set_closedness
 fn int_source_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: fixture_int_atom } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn int_source_grounding_fixture() -> CanonicalGrounding {
   CanonicalGrounding {
     node: int_source_node(),
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: fixture_property_closed_candidates,
+        property: ^fixture_property_closed_candidates,
         evidence: int_source_node()
       },
       closedness: StructuralPropertyWitness {
-        property: fixture_property_candidate_set_closedness,
+        property: ^fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }
@@ -55,7 +54,7 @@ fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
     set: CandidateSet {
       candidates: [rust_inhabitant_i32_node()],
       closedness: StructuralPropertyWitness {
-        property: fixture_property_candidate_set_closedness,
+        property: ^fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }

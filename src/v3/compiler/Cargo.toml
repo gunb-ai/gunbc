@@ -36,7 +36,7 @@ declaration-id-raw-test-witness = []
 # gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval` host
 # repr widens to `BigInt` to admit `u128::MAX`.
 num-bigint = { workspace = true }
-# W3 / T-38: executable `run_emit_host_rust` row (`emit_host_bridge.rs`); substrate stays deferred.
+# W3 / T-38 + T-22: `emit_host_bridge.rs` + `emit_host_eval.rs` → `tools/emit_host_runner`.
 emit_host_runner = { path = "../../../tools/emit_host_runner" }
 
 [target.'cfg(unix)'.dependencies]
@@ -90,6 +90,10 @@ path = "src/bin/self_host_fixed_point.rs"
 # R1C-E — `ExecuteCommand` logical child for T-Emit `.dag` `TestClaim` wrappers.
 # Subcommands wrap `v3_compiler::r1c_e_gates::check_*` so the host `#[test]`
 # harness and the `.dag`-driven gate share one implementation.
+[[bin]]
+name = "boundary_emit_gates"
+path = "src/bin/boundary_emit_gates.rs"
+
 [[bin]]
 name = "r1c_e_emit_gates"
 path = "src/bin/r1c_e_emit_gates.rs"

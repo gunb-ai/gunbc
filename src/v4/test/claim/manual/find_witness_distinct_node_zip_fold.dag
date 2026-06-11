@@ -41,7 +41,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  SyntheticOccurrence
 }
 import v4.std.verification {
   CompilesClaim,
@@ -53,26 +54,26 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
-data distinct_zip_source_atom: Symbol = distinct_zip_source_atom
-data distinct_zip_wrong_atom: Symbol = distinct_zip_wrong_atom
-data distinct_zip_closed_candidates: Symbol = distinct_zip_closed_candidates
 fn distinct_source_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_source_atom } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_target_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_source_atom } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_wrong_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_wrong_atom } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_source_add_node() -> Node {
   Node {
@@ -81,8 +82,9 @@ fn distinct_source_add_node() -> Node {
       Edge { label: Positional, target: distinct_source_leaf() },
       Edge { label: Positional, target: distinct_source_leaf() },
       Edge { label: Positional, target: distinct_source_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_target_add_node() -> Node {
   Node {
@@ -91,8 +93,9 @@ fn distinct_target_add_node() -> Node {
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_wrong_arity_node() -> Node {
   Node {
@@ -100,8 +103,9 @@ fn distinct_wrong_arity_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_wrong_leaf() },
       Edge { label: Positional, target: distinct_wrong_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_wrong_subtree_node() -> Node {
   Node {
@@ -110,8 +114,9 @@ fn distinct_wrong_subtree_node() -> Node {
       Edge { label: Positional, target: distinct_wrong_arity_node() },
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_source_nested_node() -> Node {
   Node {
@@ -119,8 +124,9 @@ fn distinct_source_nested_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_source_add_node() },
       Edge { label: Positional, target: distinct_source_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_target_nested_node() -> Node {
   Node {
@@ -128,18 +134,20 @@ fn distinct_target_nested_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_target_add_node() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 fn distinct_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: distinct_zip_closed_candidates,
+    property: ^distinct_zip_closed_candidates,
     evidence: distinct_target_add_node()
   }
 }
@@ -195,6 +203,7 @@ fn quality_is_exact(q: CoercionQuality) -> Bool {
   match q {
     Exact => true
     Identity => false
+    Widened => false
   }
 }
 data witness_find_witness_distinct_node_accepts: Bool = match find_witness(

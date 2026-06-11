@@ -30,7 +30,7 @@ import v4.std.algebra {
 import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -40,29 +40,21 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data anchor_meet_sym: Symbol = anchor_meet_sym
-data anchor_join_sym: Symbol = anchor_join_sym
-data anchor_top_sym: Symbol = anchor_top_sym
-data anchor_bottom_sym: Symbol = anchor_bottom_sym
-data anchor_partial_decl_sym: Symbol = anchor_partial_decl_sym
-data anchor_consumer_decl_sym: Symbol = anchor_consumer_decl_sym
-
-
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
 fn anchor_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -77,8 +69,9 @@ fn anchor_complete_lattice_node() -> Node {
     children: [
       anchor_named_edge(name: lattice_field_meet, target: anchor_fn_node()),
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -87,8 +80,9 @@ fn anchor_lattice_missing_meet_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
@@ -96,9 +90,10 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
-  ]
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -106,18 +101,20 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
-  ]
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data anchor_partial_missing_lattice_field_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
-  ]
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -128,7 +125,8 @@ data anchor_consumer_of_partial: Node = Node {
       name: inhabitant_edge,
       target: anchor_partial_bounded_lattice_instance
     )
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -136,10 +134,11 @@ data anchor_module_with_partial_only: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(
-      name: anchor_partial_decl_sym,
+      name: ^anchor_partial_decl_sym,
       target: anchor_partial_bounded_lattice_instance
     )
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -147,18 +146,19 @@ data anchor_module_with_partial_and_consumer: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(
-      name: anchor_partial_decl_sym,
+      name: ^anchor_partial_decl_sym,
       target: anchor_partial_bounded_lattice_instance
     ),
     anchor_named_edge(
-      name: anchor_consumer_decl_sym,
+      name: ^anchor_consumer_decl_sym,
       target: anchor_consumer_of_partial
     )
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
-data anchor_non_bl_node_is_not_complete_variant: Bool = match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: anchor_top_sym)) {
+data anchor_non_bl_node_is_not_complete_variant: Bool = match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: ^anchor_top_sym)) {
   NotBoundedLatticeInstance => true
   BoundedLatticeComplete => false
   BoundedLatticePartial { missing: _ } => false
@@ -229,25 +229,21 @@ fn anchor_infer_consumer_tree_is_rejected() -> Bool {
 
 
 data anchor_infer_consumer_tree_rejects: Bool = anchor_infer_consumer_tree_is_rejected()
-
-
-data sg6_pass_sym: Symbol = sg6_pass_sym
-data sg6_fail_sym: Symbol = sg6_fail_sym
-
-
 fn sg6_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg6_pass_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg6_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 
 fn sg6_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg6_fail_sym } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^sg6_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 

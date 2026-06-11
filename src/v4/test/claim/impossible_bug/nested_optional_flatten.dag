@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -35,21 +35,14 @@ import v4.std.verification {
   impossible_bug_reason_nested_optional,
   manual_claim_anchor
 }
-
-
-data optional_value_symbol: Symbol = optional_value_symbol
-data flattened_optional_symbol: Symbol = flattened_optional_symbol
-data double_unwrap_symbol: Symbol = double_unwrap_symbol
-data optional_inner: Symbol = optional_inner
-data optional_outer: Symbol = optional_outer
-
-
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
-data flattened_optional_input: Node = atom_node(s: flattened_optional_symbol)
+data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
 
 
 data falsification_nested_optional: Node = Node {
@@ -60,19 +53,22 @@ data falsification_nested_optional: Node = Node {
       target: Node {
         kind: TypeNode { connective: Cardinality },
         children: [
-          Edge { label: Positional, target: atom_node(s: optional_value_symbol) },
-        ]
-      }
+          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
+        ],
+        occurrence_id: SyntheticOccurrence
+}
     },
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 
 data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: atom_node(s: double_unwrap_symbol) },
-  ]
+    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 

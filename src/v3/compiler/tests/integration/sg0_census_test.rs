@@ -276,6 +276,16 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // F.14 / T-PB-B: `ExecuteCommand` logical child for `tests/dag/boundary_emit_gates.template.dag`.
+    // Irreducible host-shim bin (exit 0/1); calls `v3_compiler::boundary_emit_gates::check_*`.
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` and active deferral **PB-Runtime-External-Toolchain-TestClaims**
+    // (hand `tests/boundary/*.rs` → `.dag` `TestClaim` / substrate target verification).
+    // Dissolution: delete this bin when the last class-5 boundary host shim in `tests/boundary/`
+    // is retired and `boundary_emit_gates.template.dag` (or generated runner) is sole authority
+    // for the remaining `ExecuteCommand` claims — checkable: SG-0 `EXPECTED_HAND_AUTHORED_TEST`
+    // no longer lists any `tests/boundary/*` path still covered only by this bin.
+    "src/v3/compiler/src/bin/boundary_emit_gates.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -286,6 +296,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
+    // F.14 / T-PB-B: shared `check_*` for class-5 boundary emit gates; thin host `#[test]`
+    // shims and `boundary_emit_gates` bin both call (`tests/dag/boundary_emit_gates.template.dag`).
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` + **PB-Runtime-External-Toolchain-TestClaims**.
+    // Dissolution: delete when every claim in `boundary_emit_gates.template.dag` is evaluated by
+    // substrate `run_target_verification` / v4 `.dag` `TestClaim` runtime without this module
+    // (same lane as `r1c_e_gates.rs` scaffold, but boundary-class scope not R1C-E / issue #973).
+    "src/v3/compiler/src/boundary_emit_gates.rs",
     // E-5 / P2–P4: wall-bounded host subprocess I/O shared by `post_emit_verifier` and
     // W1/L5 `test_runner` (fail-closed vs unbounded `Command::output`).
     // **P5 receipt (Mechanism (b)):** matching row in `_internal/INVARIANTS_OPS.md`.
@@ -316,6 +334,21 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
+    // T-22: `emit_host_eval.rs` — rust/go/python rows (#4225/#4254 main) + B3 `run_host_process`
+    // omni-emission transport dispatch + SignedI32Le i32 reification (#4641).
+    // **P5 receipt (Mechanism (b)) — disposition (3) explicit deferral:** lane **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (gate marker
+    // `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag:25`; ROADMAP `ROADMAP.md:31`, `:43`).
+    // Paired execution (E-10 honest partition): `emit_host_runner` unit
+    // `runtime_value_parse_signed_i32_le_decodes_fixed_bytes` (hermetic byte-decode) +
+    // `emit_host_eval.rs` in-module `b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five`
+    // (eval intercept decode). **DORMANT:** `run_host_process` process-spawn (real tsc+node;
+    // v3-eval-intercept-only; v2 --claim-run has no hook) — dissolves at T-22 substrate eval /
+    // gunbc#4674. `v4_emit_host_eval_dispatch_test.rs` covers rust rows only; `comprep_b3_ts_descriptor_node_run.dag`
+    // is wire scaffold (not v2 --claim-run).
+    // Census **+0 NON_TEST** (row on main since #4225; #4641 extends eval hook, no new SG-0 path).
+    // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.
+    "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
@@ -396,7 +429,60 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
-    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // **P5 receipt (F.14 / T-PB-B):** `m2_emit_multi_field_struct_variant_test.rs` retired;
+    // `tests/dag/boundary_emit_gates.template.dag` + `boundary_emit_gates` bin are authority
+    // (`t_pb_b_1_dag_runner_test::boundary_emit_gates_suite_passes_through_runner`).
+    // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
+    // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
+    // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target
+    // verdicts; P5 deferral to ROADMAP.md `PB-Runtime-External-Toolchain-TestClaims`.
+    // Interim host runners: scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs",
+    // Phase 1 leaf-model python cross-runtime DRIFT (Worksheet C): boundary tokenize/parse smoke
+    // of the drift std/lens/claim dags + runtime divergence exercise for
+    // `python_cross_runtime_drift_*` (Python arbitrary precision vs Rust/Go fixed-width wrap);
+    // host runner `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh`.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
+    // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
+    // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
+    // **ROADMAP.md** "What v4 is building toward" rows "Tests as `.dag` `TestClaim` data"
+    // (`src/v4/test/claim/`) and "Pure bootstrap / self-host" (trajectory to zero hand-maintained
+    // Rust; `self_host.dag` ratchet). Concrete dissolution trigger: delete this hand-Rust test when
+    // the modeled `TestClaim` runner exercises
+    // `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly, so the boundary
+    // host-process bridge is no longer the only exerciser of the drift claim.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_cross_runtime_drift_test.rs",
+    // Python RCA release-minimum lane (#4137 section 11.8): L1 static structural mypy (Worksheet B);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh (pyright roster on main #4231).
+    //
+    // **P5 receipt (Mechanism (b), disposition (2)):** `EXPECTED_HAND_AUTHORED_TEST` 171 → 172;
+    // T-PB-B partition (module doc lines 9–10 + `tests/boundary/README.md`); lane
+    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh. Dissolution: drop when
+    // modeled verification supersedes `src/v4/test/claim/language_model/python_l1_static.dag`.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_l1_static_receipts_test.rs",
+    // Phase 1 leaf-model python L2 CROSS-TARGET PARITY (Worksheet C): boundary tokenize/parse smoke
+    // of the parity std/lens/claim dags + runtime AGREEMENT exercise for `python_l2_parity_*`
+    // (small-value add `2+3=5` and Symbol projection `x` agree across Python/Rust, Go corroborating).
+    // The positive complement of the cross-runtime DRIFT boundary test: drift proves divergence at
+    // the fixed-width boundary, parity proves agreement on the common domain.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
+    // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
+    // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
+    // **ROADMAP.md** `PB-Runtime-External-Toolchain-TestClaims` (the exact deferral for
+    // host-spawned toolchain boundary tests; same lane as the Go and drift leaf-model siblings at
+    // `:431` / `:439-448`) plus the "What v4 is building toward" rows "Tests as `.dag` `TestClaim`
+    // data" (`src/v4/test/claim/`) and "Pure bootstrap / self-host" (trajectory to zero
+    // hand-maintained Rust). Concrete dissolution trigger: delete this hand-Rust test when the
+    // modeled `TestClaim` runner executes the three target sources and binds observed stdout to
+    // `expected_parity.actual`, so the boundary host-process bridge is no longer the only exerciser
+    // of `src/v4/test/claim/language_model/python_l2_cross_target_parity.dag` (lane
+    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet C / #4137 §11.8).
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_l2_cross_target_parity_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner
@@ -406,11 +492,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // CPython exercise for R2a algebra ops, R2b arbitrary-precision add, R3-external Symbol
     // projection; host runners scripts/v4-leaf-model-python-r2{a,b,r3-external}-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_r2_r3_external_test.rs",
-    // Phase 1 leaf-model typescript R2a/R2b/R3-external (MW-D3 alpha lane): boundary tsc + Node
-    // exercise for R2a number algebra ops (TS2339 falsification), R2b bigint runtime vs number
-    // lane divergence, R3-external Symbol() factory vs `new Symbol` (TS7009); host runners
-    // scripts/v4-leaf-model-typescript-r2{a,b,r3-external}-verify.sh.
-    "src/v3/compiler/tests/boundary/v4_leaf_model_typescript_r2_r3_external_test.rs",
     // Phase 1 leaf-model verification R1 (`docs/planning/v4-leaf-model-verification-2026-05-30.md` §7):
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.
@@ -436,6 +517,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution: delete when modeled runner exercises
     // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs",
+    // Phase 1 leaf-model typescript R2a/R2b/R3-external (MW-D3 alpha lane): boundary tsc + Node
+    // exercise for R2a number algebra ops (TS2339 falsification), R2b bigint runtime vs number
+    // lane divergence, R3-external Symbol() factory vs `new Symbol` (TS7009); host runners
+    // scripts/v4-leaf-model-typescript-r2{a,b,r3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_typescript_r2_r3_external_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
@@ -518,10 +604,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
-    // R4 ctrl-migration Wave-1 catalog #8 (`dsl/ctrl/pr_digests.dag`): lexer + structural
-    // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
-    // way as expression programs (see INVARIANTS SG-0 receipt row).
-    "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
     // Dissolution-lens subsumption carrier: parse-level ratchet for
     // `src/v4/lens/subsumption.dag`; retires when v4 TestClaim/generated
     // coverage owns the same carrier and first-row projection.
@@ -562,6 +644,25 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
     "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // get-off-v3 by-execution caller census + down-only ratchet for
+    // `v3_compiler::compile_to_dag` (the v3 whole-source compile entry). A narrow
+    // hand-Rust instrument: it walks the live source tree at test time and counts
+    // direct calls to `compile_to_dag`, holding the discovered total at/under a
+    // single ceiling that ratchets toward zero (no per-caller pinned ledger; E-10 /
+    // #4633 by-execution lineage).
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the
+    // checkable receipt is this registration itself (per-PR mechanism (b)) — the
+    // `EXPECTED_HAND_AUTHORED_TEST` census moves by exactly +1 now and must shrink by
+    // 1 at dissolution; the sorted/unique and disk-vs-list census tests in this file
+    // mechanically enforce it. Deferral lane — `src/v3/SELF_HOSTING.md` self-host
+    // trajectory (hand-Rust v3 surface → 0) plus the M-CI / CI-via-dag lane that owns
+    // CI-enforcing this ratchet. Concrete dissolution trigger: this instrument
+    // dissolves with its own subject — when the ceiling reaches 0 (no direct
+    // `compile_to_dag` callers remain) and v3 retires, or earlier if the census is
+    // re-expressed as a `.dag` `TestClaim` under the CI-via-dag lane — at which point
+    // this hand-Rust test is deleted and the entry removed from this list (−1).
+    "src/v3/compiler/tests/integration/get_off_v3_compile_to_dag_census_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
     // wait for generic function-valued data-field matching, while imported
@@ -696,6 +797,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // ctrl#1476 B5: positional-Conj fold_list-by-construction detection on emit-path language models.
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
+    // dissolves when modeled `TestClaim` exercises emit-path grammar-relation token encode without
+    // this hand-Rust substring/parse ratchet.
+    "src/v3/compiler/tests/integration/positional_conj_fold_list_emit_path_test.rs",
     // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
     // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
     // docs/design-prereq-x-ho-field-call.md / PR #1264). Pins the parser
@@ -809,7 +916,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (`fixtures/r3_l5_corpus/*.v3` vs embedded `TestClaim.source` — byte equality ratchet in
     // `tests/boundary/l5_cross_target_consistency.rs`).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
-    "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
@@ -826,7 +932,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // retirement back to the `NotYetImplemented` shell trips here. Wider
     // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
     "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
-    "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
     // §1.8 gate #106 (`show_correct_code_diagnostic_coverage`): structural bootstrap locks on
     // `Correction` / substrate `Diagnostic` + one live-correction roundtrip anchor (`compile_to_dag`
     // → `apply_correction_and_reparse` → clean recompile). **P5 receipt:** matching INVARIANTS.md
@@ -893,28 +998,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
-    // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
-    "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
-    // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
-    "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
-    // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
-    // **This PR (+0 paths):** structural serialize-measure ratchet on `06_translate.dag`
-    // (parsed-surface receipts only); fail-closed exercised by mvp1 TestClaimRun — see
-    // INVARIANTS.md §SG-0 row `v4_compiler_emit_translate_smoke_test.rs`.
-    // **PR #3798 (+0 paths):** extends `v4_python_language_model_declares_t11_translation_rules`.
-    // **PR #4156 (+0 paths):** adds TS alpha-lane L0 grammar-inverse G1/G2 production-anchor
-    // receipts for `mvp1_typescript_add_translate.dag` and `mvp1_typescript_record_task_translate.dag`.
-    // **TS next-wave 3 (+0 paths):** extends G3+ grammar-inverse (`mvp1_typescript_pr3_typed_fn_translate.dag`)
-    // and SG-2 projection beyond L0 row-2 (`sg2_typescript_type_expression_projection.dag` +
-    // `v4_typescript_language_model_declares_type_expression_projection_row`).
-    // Explicit P5 deferral: ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` plus
-    // TASKS.md T-22; dissolves when these anchors are asserted by `.dag` TestClaim execution or
-    // generated harness coverage instead of host parse-surface traversal.
-    "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
-    // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // White-box sweep (#4511 + B7 closeout): all v4_*_dag_smoke_test.rs retired — last row
+    // `v4_bin_main_dag_smoke_test.rs` deleted (B-class decl-shape/source-grep duplicate of
+    // t15 harness; parse rides `claim_t15_self_host_fixed_point.dag` import of v4.bin.main).
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -922,65 +1014,50 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
-    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
+    // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
+    // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
+    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
+    // compiler-slice claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
+    // the parent rung gate fails closed when
+    // `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` and `go`/`gofmt` are missing.
+    // Dissolve with the same generated/TestClaim host setup receipt as #4229.
+    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
-    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
-    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
-    // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
-    "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
-    // T-4.16: `ConfigPatchRecord` / `config_patch_layer` consumer smoke on `black.dag`
-    // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
-    // SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
-    // T-4.7 React framework substrate: `compile_to_dag` smoke on
-    // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
-    // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
-    "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
-    // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
-    // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
-    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
-    // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
-    // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
-    // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
-    // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
-    // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
-    // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
-    // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
-    // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — ManualAnchorKey-driven
-    // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
-    // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
-    // for closed `TestClaim` schema only (no std present-key helper).
-    "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
+    // T-4.7 React framework substrate single-file smoke deleted: the live v4 full-tree
+    // rust emit probe now fail-closes on `gunbc compile --source-root src/v4 --target rust`
+    // with a 0-diagnostic receipt, covering `src/v4/extdeps/frameworks/react.dag` without
+    // a weaker v3 `compile_to_dag` oracle.
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
-    // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
-    // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
+    // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
+    // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
+    // smoke files (44 parse-surface/source-grep receipts) are DELETED, not deferred. Their two
+    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses via glob_discovery:
+    //   - src/v4/test/claim/std_model_core/bool_fact_lookup.dag (also retires the hand-Rust MIRROR
+    //     helper bool_fact_axis_dispatch — a tautology that re-stated the fold in Rust); and
+    //   - src/v4/test/claim/std_grounding/terminal_gate.dag.
+    // No INVARIANTS.md per-file rows exist for these (the §P5(b) references were the general gate).
+    // Host-test preservation justification (W1-W4 qualifying bar — provably runtime-inexpressible):
+    // non-behavioral: asserts type-ABSENCE of ByteString/FileBody/FileContent/TargetSource in
+    // text.dag — no runtime witness can express type-non-existence. (Behavioral content folded
+    // to discriminating .dag witnesses in src/v4/test/claim/std_text/carrier_claims.dag.)
+    // Dissolves when a .dag/host mechanism asserts a module's declared-type set as data.
+    "src/v3/compiler/tests/integration/v4_std_text_boundary_carrier_guard_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
+    // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
+    // PR #4335 (+0 paths): `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` RR-A §5.2
+    // bootstrap harness parse-surface ratchet (ROADMAP.md:43,63 T-PB-B deferral).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
-    // TestClaims or generated harness coverage.
+    // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
-    // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
-    "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
-    // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
-    "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
-    // RELEASE_TODO §5 Phase 1a: `workflow/release.dag` + hand-synced release.yml (install.dag Phase 1b).
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when YamlStatic emission replaces host probes.
-    "src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
@@ -1383,6 +1460,41 @@ fn sg0_v3_test_hand_authored_subratchet() {
         "T-PB-B test SG-0 sub-ratchet drifted. Retirements should be removed from \
          EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
          residual or wait for the testgen path."
+    );
+}
+
+/// ctrl#1467 §6.4 — the `v4_*_dag_smoke_test.rs` parse-surface subset is **closed to
+/// growth**. These hand-authored Rust tests `parse_for_test` a v4 model file and assert
+/// structural shape against the v3 compiler's internal parse surface — a layering/opacity
+/// inversion (see `gunbc-planning/v4-testclaim-route-through-v2-not-v3-2026-06-05.md`). New
+/// v4 coverage must land as a `.dag` `TestClaim` witness under `src/v4/test/claim/`, run
+/// through **v2** (`dag run --claim-run`), **not** as a new `EXPECTED_HAND_AUTHORED_TEST`
+/// entry. This subset may only **shrink** as smokes are re-homed as witnesses; it must never
+/// grow. Lowering the ceiling on retirement is the normal path; raising it is the regression
+/// this guard fails closed on.
+#[test]
+fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
+    // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
+    // 18 (ratification) → 0 after W-wave fold-deletes + B7 closeout: #4511 broader-corpus
+    // sweep, W3 #4512 std trio, React smoke, and final bin_main B-class delete. Subset is
+    // empty; a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
+    const V4_DAG_SMOKE_CEILING: usize = 0;
+    let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
+        .iter()
+        .copied()
+        .filter(|p| {
+            p.starts_with("src/v3/compiler/tests/integration/v4_")
+                && p.ends_with("_dag_smoke_test.rs")
+        })
+        .collect();
+    assert!(
+        v4_dag_smokes.len() <= V4_DAG_SMOKE_CEILING,
+        "v4_*_dag_smoke_test.rs roster grew to {} (ceiling {V4_DAG_SMOKE_CEILING}). \
+         ctrl#1467 §6.4: new v4 coverage must be a `.dag` `TestClaim` witness under \
+         src/v4/test/claim/ run through v2 — not a new hand-authored v3 parse-surface smoke. \
+         This subset is closed to growth; it may only shrink as smokes are re-homed as witnesses.\n\
+         Offending roster: {v4_dag_smokes:#?}",
+        v4_dag_smokes.len(),
     );
 }
 

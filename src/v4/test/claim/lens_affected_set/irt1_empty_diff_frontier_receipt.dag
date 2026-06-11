@@ -12,10 +12,7 @@ import v4.lens.affected_set {
   Propagates,
   FrontierDependency,
   FrontierProduced,
-  affected_set_boundary_pure_receipt_edge,
   affected_set_boundary_pure_receipt_node,
-  affected_set_default_dimension,
-  affected_set_dimension_not_read_receipt_edge,
   affected_set,
   canonical_transitive_frontier,
   canonical_propagation_receipt,
@@ -31,7 +28,7 @@ import v4.std.algebra { length }
 import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DataDependsOn, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -47,7 +44,6 @@ import v4.test.claim.lens_affected_set.node_precision {
   affected_set_mid,
   affected_set_mid_to_leaf_dependency,
   affected_set_root,
-  affected_set_root_edge_symbol,
   affected_set_root_to_mid_dependency
 }
 
@@ -60,27 +56,30 @@ data irt1_public_pure_boundary_receipt: Node = affected_set_boundary_pure_receip
 
 data irt1_public_malformed_pure_boundary_receipt: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
       target: irt1_public_pure_boundary_receipt
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_malformed_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
       target: irt1_public_malformed_pure_boundary_receipt
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_changed_edit: Edit = Edit {
@@ -99,47 +98,45 @@ data irt1_public_malformed_receipted_unchanged_edit: Edit = Edit {
 }
 
 data irt1_public_nonroot_changed_edit: Edit = Edit {
-  at: Path { steps: [affected_set_root_edge_symbol] },
+  at: Path { steps: [^affected_set_root_edge_symbol] },
   replacement: affected_set_claim_failure_node
 }
-
-data irt1_public_missing_path_symbol: Symbol = irt1_public_missing_path_symbol
-
 data irt1_public_missing_path_edit: Edit = Edit {
-  at: Path { steps: [irt1_public_missing_path_symbol] },
+  at: Path { steps: [^irt1_public_missing_path_symbol] },
   replacement: affected_set_claim_failure_node
 }
-
-data irt1_public_other_dimension: Symbol = irt1_public_other_dimension
-
 data irt1_public_dimension_not_read_receipt_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_set_default_dimension } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^affected_set_default_dimension } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: irt1_public_other_dimension } },
-  children: []
+  kind: TypeNode { connective: Atom { identity: ^irt1_public_other_dimension } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
       target: irt1_public_dimension_not_read_receipt_node
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_mismatched_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
       target: irt1_public_mismatched_dimension_not_read_receipt_node
     }
-  ]
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_nonfrontier_dependency_without_receipt: DependencyView = DependencyView {
@@ -182,7 +179,7 @@ data irt1_public_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierD
 
 data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
   edit: irt1_public_changed_edit,
-  dimension: affected_set_default_dimension
+  dimension: ^affected_set_default_dimension
 }
 
 fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
@@ -257,7 +254,7 @@ fn irt1_public_nonroot_frontier_points_to_ancestor() -> Bool {
     dag: affected_set_root,
     edit_dimension: EditDimension {
       edit: irt1_public_nonroot_changed_edit,
-      dimension: affected_set_default_dimension
+      dimension: ^affected_set_default_dimension
     }
   ) {
     FrontierProduced { dependencies: dependencies } =>

@@ -15,14 +15,13 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_execution_wave1,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_model_core_wave1,
-  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1,
   v4_evaluator_value_representation_wave1
 }
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.model_core { ModelCore, wave1_model_core }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime {
   ExecutionSemantics,
   InterpretationAlgebra,
@@ -39,9 +38,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data v4_evaluator_witness_fail_atom: Symbol = v4_evaluator_witness_fail_atom
-
 type v4_evaluator_anchor_runtime_type = V4EvaluatorRuntime
 
 data v4_evaluator_anchor_runtime: v4_evaluator_anchor_runtime_type = v4_evaluator_runtime_wave1()
@@ -66,7 +62,7 @@ data v4_evaluator_anchor_boundary: ResourceEffectBoundary = v4_evaluator_anchor_
 
 data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evaluator_boundary_wave1()
 
-data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id
+data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == ^v4_evaluator_runtime_id
 
 // T-22 registry receipt: InterpretationAlgebra == is structural on named top-level fn refs.
 data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_anchor_interpretation_standalone
@@ -94,9 +90,10 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v4_eval_wave1_trans
 
 fn v4_evaluator_witness_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_evaluator_witness_fail_atom } },
-    children: []
-  }
+    kind: TypeNode { connective: Atom { identity: ^v4_evaluator_witness_fail_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn v4_evaluator_witness_claim_input(ok: Bool) -> Node {

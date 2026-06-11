@@ -7,6 +7,65 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[cfg(feature = "text_lookup_work_counter")]
+use std::cell::Cell;
+
+#[cfg(feature = "text_lookup_work_counter")]
+thread_local! {
+    static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);
+}
+
+#[cfg(feature = "text_lookup_work_counter")]
+pub fn reset_text_lookup_chars_walked() {
+    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(0));
+}
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn reset_text_lookup_chars_walked() {}
+
+#[cfg(feature = "text_lookup_work_counter")]
+pub fn take_text_lookup_chars_walked() -> u64 {
+    TEXT_LOOKUP_CHARS_WALKED.with(|c| {
+        let walked = c.get();
+        c.set(0);
+        walked
+    })
+}
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn take_text_lookup_chars_walked() -> u64 {
+    0
+}
+
+#[cfg(feature = "text_lookup_work_counter")]
+fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
+    let walked = if s.is_ascii() {
+        take_len as u64
+    } else {
+        (start + take_len) as u64
+    };
+    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + walked));
+}
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+fn record_substring_chars_walked(_s: &str, _start: usize, _take_len: usize) {}
+
+#[cfg(feature = "text_lookup_work_counter")]
+fn record_source_chars_slice_walked(units: u64) {
+    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + units));
+}
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+fn record_source_chars_slice_walked(_units: u64) {}
+
+#[cfg(feature = "text_lookup_work_counter")]
+pub fn record_source_chars_index_lookup() {
+    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + 1));
+}
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn record_source_chars_index_lookup() {}
+
 pub trait V2Concat {
     fn v2_concat(self, other: Self) -> Self;
 }
@@ -63,12 +122,14 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
         if start >= len {
             return String::new();
         }
-        return s[start..end.min(len)].to_string();
+        let out_end = end.min(len);
+        let take_len = out_end.saturating_sub(start);
+        record_substring_chars_walked(s, start, take_len);
+        return s[start..out_end].to_string();
     }
-    s.chars()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect()
+    let take_len = end.saturating_sub(start);
+    record_substring_chars_walked(s, start, take_len);
+    s.chars().skip(start).take(take_len).collect()
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {
@@ -95,8 +156,19 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
 
-pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
-    table.get(&key).cloned()
+#[derive(Clone, Debug, PartialEq)]
+pub enum Witness<V> {
+    Holds { value: V },
+    Violates { diagnostic: String },
+}
+
+pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {
+    match table.get(&key).cloned() {
+        Some(value) => Witness::Holds { value },
+        None => Witness::Violates {
+            diagnostic: format!("lookup miss for key {}", key),
+        },
+    }
 }
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
@@ -164,6 +236,8 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let len = chars.len();
     let start = (start.max(0) as usize).min(len);
     let end = (end.max(0) as usize).min(len).max(start);
+    let units = (end.saturating_sub(start)) as u64;
+    record_source_chars_slice_walked(units);
     chars[start..end]
         .iter()
         .filter_map(|&cp| char::from_u32(cp as u32))

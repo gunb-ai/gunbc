@@ -139,8 +139,8 @@ fn empty_usage_accum() -> UsageAccum {
 fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
   let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
   let existing = match map_get(accum.bindings, name) {
-    Some { value: usage } => usage
-    None => BindingUsage { name: name, binding_kind: none, consumers: [] }
+    Present { value: usage } => usage
+    Absent => BindingUsage { name: name, binding_kind: none, consumers: [] }
   }
   let effective_kind = if existing.binding_kind != none { existing.binding_kind } else { binding_kind }
   let updated = BindingUsage {
@@ -161,8 +161,8 @@ fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
 
 fn map_usage_merge_at(base: Map<String, BindingUsage>, key: String, new_val: BindingUsage) -> Map<String, BindingUsage> {
   match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, max_usage_by_fan_out(a: existing, b: new_val))
-    None => map_insert(base, key, new_val)
+    Present { value: existing } => map_insert(base, key, max_usage_by_fan_out(a: existing, b: new_val))
+    Absent => map_insert(base, key, new_val)
   }
 }
 
@@ -208,7 +208,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
-          Some { value: ia } =>
+          Present { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
@@ -216,7 +216,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
-          None => accum
+          Absent => accum
         }
         let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
@@ -236,7 +236,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         let init_arg = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
-          Some { value: ia } =>
+          Present { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
@@ -244,7 +244,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
-          None => recv_accum
+          Absent => recv_accum
         }
         let non_init = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
@@ -273,8 +273,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
       let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail, si: si)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail, si: si)
-        None => c_accum
+        Present { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail, si: si)
+        Absent => c_accum
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
@@ -282,8 +282,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let v = let_value(texpr: texpr)
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si)
       match let_body(texpr: texpr) {
-        Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si)
-        None => v_accum
+        Present { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si)
+        Absent => v_accum
       }
 
     ExprBlock =>
@@ -297,9 +297,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             walk_expr(accum: acc, texpr: p.second, in_tail: false, si: si)
           )
         match ss |> last {
-          Some { value: last_expr } =>
+          Present { value: last_expr } =>
             walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail, si: si)
-          None => init_accum
+          Absent => init_accum
         }
       }
 
@@ -345,8 +345,8 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
     let consumed_sites = usage.consumers
       |> filter(c => match c.kind { Consumed => true, _ => false })
     let site = match consumed_sites |> first {
-      Some { value: c } => c.site
-      None => "unknown"
+      Present { value: c } => c.site
+      Absent => "unknown"
     }
     SoleOwner { binding: usage.name, site: site }
   } else {
@@ -372,7 +372,7 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
 
 fn is_owned_local(kind: VarBindingKind?) -> Bool {
   match kind {
-    Some { value: LocalValueBinding } => true
+    Present { value: LocalValueBinding } => true
     _ => false
   }
 }
@@ -408,7 +408,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
-        Some { value: FunctionValueBinding } =>
+        Present { value: FunctionValueBinding } =>
           let n = expr_var_name_at(texpr: texpr, source_indices: si)
           set_insert(empty_set(), n)
         _ => empty_set()
@@ -429,8 +429,8 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
       let cond = collect_callable_refs(texpr: if_condition(texpr: texpr), si: si)
       let then_br = collect_callable_refs(texpr: if_then_branch(texpr: texpr), si: si)
       let else_br = match if_else_branch(texpr: texpr) {
-        Some { value: eb } => collect_callable_refs(texpr: eb, si: si)
-        None => empty_set()
+        Present { value: eb } => collect_callable_refs(texpr: eb, si: si)
+        Absent => empty_set()
       }
       set_union(set_union(cond, then_br), else_br)
     ExprMatch =>
@@ -441,8 +441,8 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
     ExprLet =>
       let val = collect_callable_refs(texpr: let_value(texpr: texpr), si: si)
       match let_body(texpr: texpr) {
-        Some { value: lb } => set_union(val, collect_callable_refs(texpr: lb, si: si))
-        None => val
+        Present { value: lb } => set_union(val, collect_callable_refs(texpr: lb, si: si))
+        Absent => val
       }
     ExprBlock =>
       texpr.children |> fold(init: empty_set(), f: (acc, child) =>
@@ -450,8 +450,8 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
       )
     ExprReturn =>
       match texpr.children |> first {
-        Some { value: child } => collect_callable_refs(texpr: child, si: si)
-        None => empty_set()
+        Present { value: child } => collect_callable_refs(texpr: child, si: si)
+        Absent => empty_set()
       }
     ExprLambda =>
       collect_callable_refs(texpr: lambda_body(texpr: texpr), si: si)
@@ -473,12 +473,12 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
 fn fold_terminal_expr(body: Node) -> Node {
   match body.expr_data {
     ExprLet => match let_body(texpr: body) {
-      Some { value: inner } => fold_terminal_expr(body: inner)
-      None => body
+      Present { value: inner } => fold_terminal_expr(body: inner)
+      Absent => body
     }
     ExprBlock => match body.children |> last {
-      Some { value: last_child } => fold_terminal_expr(body: last_child)
-      None => body
+      Present { value: last_child } => fold_terminal_expr(body: last_child)
+      Absent => body
     }
     _ => body
   }
@@ -594,26 +594,26 @@ fn fold_body_consumes_acc_once(lambda_node: Node, acc_name: String, si: Map<Stri
 fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> FoldAccUnwrapProof {
   let args = method_arg_nodes(texpr: method_call)
   let init_arg_node = match args |> first {
-    Some { value: a } => arg_value(n: a)
-    None => method_call
+    Present { value: a } => arg_value(n: a)
+    Absent => method_call
   }
   let fold_lambda_node = match args |> skip(1) |> first {
-    Some { value: a } => arg_value(n: a)
-    None => method_call
+    Present { value: a } => arg_value(n: a)
+    Absent => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
     ExprLambda => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
-      Some { value: n } => n
-      None => ""
+      Present { value: n } => n
+      Absent => ""
     }
     _ => ""
   }
   let acc_type_name = match init_arg_node.inferred {
-    Some { value: Resolved { node: type_node } } => authored_name_at(source_indices: si, node: type_node)
+    Present { value: Resolved { node: type_node } } => authored_name_at(source_indices: si, node: type_node)
     _ => ""
   }
   let cond_required = match init_arg_node.inferred {
-    Some { value: Resolved { node: type_node } } => type_node.return_cardinality == Required
+    Present { value: Resolved { node: type_node } } => type_node.return_cardinality == Required
     _ => false
   }
   let cond_struct = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name, si: si)

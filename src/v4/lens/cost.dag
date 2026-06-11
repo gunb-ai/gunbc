@@ -73,11 +73,6 @@ import v4.std.node {
 }
 import v4.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v4.std.witness { Holds, Violates, Witness }
-
-
-data cost_reason_unmodeled_symbolic_cost: Symbol = cost_reason_unmodeled_symbolic_cost
-data cost_lattice_top_virtual_file: Symbol = cost_lattice_top_virtual_file
-
 // U2/T-12: this is the single cost carrier. Complexity imports the
 // `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
 // 🟢 coproduct dissolution — T-12-COST-CARRIER.
@@ -170,8 +165,8 @@ fn linear_in_node(n: Node) -> SymbolicCost {
 }
 
 data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
-  reason: cost_reason_unmodeled_symbolic_cost,
-  at: Textual { file: cost_lattice_top_virtual_file, extent: WholeFile },
+  reason: ^cost_reason_unmodeled_symbolic_cost,
+  at: Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
   correction: Unavailable { reason: AmbiguousIntent }
 }
 

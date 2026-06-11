@@ -18,7 +18,8 @@ import v4.std.grammar {
   GrammarProduction,
   Sequence,
   Terminal,
-  grammar_production_to_node
+  grammar_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   LexRule,
@@ -28,6 +29,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -52,21 +54,16 @@ import v4.std.model_core {
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -196,121 +193,42 @@ type CppLanguageModel {
   core: ModelCore
 }
 
-// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
-type CppConcreteSyntaxToken
-  = CppFixedToken { token_class: Symbol }
-  | CppBoundToken { token_class: Symbol, binding: Symbol }
+// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// per-target C++ coproduct dissolved into that std authority.
 
 type CppGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<CppConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
-
-data cpp_language_model_surface_id: Symbol = cpp_language_model_surface_id
-
-data cpp_inhabitant_int: Symbol = cpp_inhabitant_int
-data cpp_inhabitant_field_atom: Symbol = cpp_inhabitant_field_atom
-data cpp_inhabitant_field_facts: Symbol = cpp_inhabitant_field_facts
-data cpp_inhabitant_field_int: Symbol = cpp_inhabitant_field_int
-
-data cpp_surface_spelling_signed_char: Symbol = cpp_surface_spelling_signed_char
-data cpp_surface_spelling_short_int: Symbol = cpp_surface_spelling_short_int
-data cpp_surface_spelling_int: Symbol = cpp_surface_spelling_int
-data cpp_surface_spelling_long_int: Symbol = cpp_surface_spelling_long_int
-data cpp_surface_spelling_long_long_int: Symbol = cpp_surface_spelling_long_long_int
-data cpp_surface_spelling_unsigned_char: Symbol = cpp_surface_spelling_unsigned_char
-data cpp_surface_spelling_unsigned_short_int: Symbol = cpp_surface_spelling_unsigned_short_int
-data cpp_surface_spelling_unsigned_int: Symbol = cpp_surface_spelling_unsigned_int
-data cpp_surface_spelling_unsigned_long_int: Symbol = cpp_surface_spelling_unsigned_long_int
-data cpp_surface_spelling_unsigned_long_long_int: Symbol = cpp_surface_spelling_unsigned_long_long_int
-data cpp_surface_spelling_char: Symbol = cpp_surface_spelling_char
-data cpp_surface_spelling_wchar_t: Symbol = cpp_surface_spelling_wchar_t
-data cpp_surface_spelling_char8_t: Symbol = cpp_surface_spelling_char8_t
-data cpp_surface_spelling_char16_t: Symbol = cpp_surface_spelling_char16_t
-data cpp_surface_spelling_char32_t: Symbol = cpp_surface_spelling_char32_t
-data cpp_surface_spelling_bool: Symbol = cpp_surface_spelling_bool
-
-data cpp_tag_signed_integer: Symbol = cpp_tag_signed_integer
-data cpp_tag_unsigned_integer: Symbol = cpp_tag_unsigned_integer
-data cpp_tag_plain_char: Symbol = cpp_tag_plain_char
-data cpp_tag_wchar_t: Symbol = cpp_tag_wchar_t
-data cpp_tag_fixed_unsigned_code_unit_integer: Symbol = cpp_tag_fixed_unsigned_code_unit_integer
-data cpp_tag_bool: Symbol = cpp_tag_bool
-data cpp_tag_twos_complement: Symbol = cpp_tag_twos_complement
-data cpp_tag_unsigned_integer_representation: Symbol = cpp_tag_unsigned_integer_representation
-data cpp_tag_plain_char_representation: Symbol = cpp_tag_plain_char_representation
-data cpp_tag_wchar_t_representation: Symbol = cpp_tag_wchar_t_representation
-data cpp_tag_unsigned_code_unit_representation: Symbol = cpp_tag_unsigned_code_unit_representation
-data cpp_tag_bool_representation: Symbol = cpp_tag_bool_representation
-data cpp_tag_plain_char_signedness_selection: Symbol = cpp_tag_plain_char_signedness_selection
-data cpp_tag_wchar_t_signedness_selection: Symbol = cpp_tag_wchar_t_signedness_selection
-data cpp_tag_representable_result_required: Symbol = cpp_tag_representable_result_required
-data cpp_tag_unsigned_modulo_arithmetic: Symbol = cpp_tag_unsigned_modulo_arithmetic
-data cpp_tag_width_selection: Symbol = cpp_tag_width_selection
-
-data cpp_token_ty_int: Symbol = cpp_token_ty_int
-data cpp_token_ident: Symbol = cpp_token_ident
-data cpp_token_lparen: Symbol = cpp_token_lparen
-data cpp_token_rparen: Symbol = cpp_token_rparen
-data cpp_token_comma: Symbol = cpp_token_comma
-data cpp_token_plus: Symbol = cpp_token_plus
-data cpp_token_lbrace: Symbol = cpp_token_lbrace
-data cpp_token_kw_return: Symbol = cpp_token_kw_return
-data cpp_token_semicolon: Symbol = cpp_token_semicolon
-data cpp_token_rbrace: Symbol = cpp_token_rbrace
-data cpp_production_mvp1_fn_add: Symbol = cpp_production_mvp1_fn_add
-data cpp_binding_fn_add: Symbol = cpp_binding_fn_add
-data cpp_binding_param_x: Symbol = cpp_binding_param_x
-data cpp_binding_param_y: Symbol = cpp_binding_param_y
-data cpp_relation_rule_mvp1_fn_add: Symbol = cpp_relation_rule_mvp1_fn_add
-data cpp_mvp1_source_literal: Symbol = cpp_mvp1_source_literal
-data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
-data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
 
-data cpp_witness_representable_result_integer_arithmetic: Symbol = cpp_witness_representable_result_integer_arithmetic
-data cpp_witness_commutative_semiring_integer: Symbol = cpp_witness_commutative_semiring_integer
-data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
-
-data cpp_precondition_signed_integer_result_representable: Symbol = cpp_precondition_signed_integer_result_representable
-data cpp_partial_signed_integer_result_not_representable: Symbol = cpp_partial_signed_integer_result_not_representable
-
-fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
+fn cpp_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
-    CppFixedToken { token_class: cpp_token_lparen },
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-    CppFixedToken { token_class: cpp_token_comma },
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-    CppFixedToken { token_class: cpp_token_rparen },
-    CppFixedToken { token_class: cpp_token_lbrace },
-    CppFixedToken { token_class: cpp_token_kw_return },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-    CppFixedToken { token_class: cpp_token_plus },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-    CppFixedToken { token_class: cpp_token_semicolon },
-    CppFixedToken { token_class: cpp_token_rbrace }
+    FixedToken { token_class: ^cpp_token_ty_int },
+    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_fn_add },
+    FixedToken { token_class: ^cpp_token_lparen },
+    FixedToken { token_class: ^cpp_token_ty_int },
+    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
+    FixedToken { token_class: ^cpp_token_comma },
+    FixedToken { token_class: ^cpp_token_ty_int },
+    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
+    FixedToken { token_class: ^cpp_token_rparen },
+    FixedToken { token_class: ^cpp_token_lbrace },
+    FixedToken { token_class: ^cpp_token_kw_return },
+    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
+    FixedToken { token_class: ^cpp_token_plus },
+    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
+    FixedToken { token_class: ^cpp_token_semicolon },
+    FixedToken { token_class: ^cpp_token_rbrace }
   ]
 }
-
-data cpp_field_surface_spelling: Symbol = cpp_field_surface_spelling
-data cpp_field_scalar: Symbol = cpp_field_scalar
-data cpp_field_width_selection: Symbol = cpp_field_width_selection
-data cpp_field_signed_representation: Symbol = cpp_field_signed_representation
-data cpp_field_overflow_disposition: Symbol = cpp_field_overflow_disposition
-data cpp_field_unsigned_modulo_arithmetic: Symbol = cpp_field_unsigned_modulo_arithmetic
-data cpp_field_spelling: Symbol = cpp_field_spelling
-data cpp_field_target_profile: Symbol = cpp_field_target_profile
-
 fn cpp_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
@@ -319,21 +237,21 @@ fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
 
 fn cpp_signed_integer_spelling_node(spelling: CppSignedIntegerSurfaceSpelling) -> Node {
   match spelling {
-    SignedChar => cpp_atom(id: cpp_surface_spelling_signed_char)
-    ShortInt => cpp_atom(id: cpp_surface_spelling_short_int)
-    Int => cpp_atom(id: cpp_surface_spelling_int)
-    LongInt => cpp_atom(id: cpp_surface_spelling_long_int)
-    LongLongInt => cpp_atom(id: cpp_surface_spelling_long_long_int)
+    SignedChar => cpp_atom(id: ^cpp_surface_spelling_signed_char)
+    ShortInt => cpp_atom(id: ^cpp_surface_spelling_short_int)
+    Int => cpp_atom(id: ^cpp_surface_spelling_int)
+    LongInt => cpp_atom(id: ^cpp_surface_spelling_long_int)
+    LongLongInt => cpp_atom(id: ^cpp_surface_spelling_long_long_int)
   }
 }
 
 fn cpp_unsigned_integer_spelling_node(spelling: CppUnsignedIntegerSurfaceSpelling) -> Node {
   match spelling {
-    UnsignedChar => cpp_atom(id: cpp_surface_spelling_unsigned_char)
-    UnsignedShortInt => cpp_atom(id: cpp_surface_spelling_unsigned_short_int)
-    UnsignedInt => cpp_atom(id: cpp_surface_spelling_unsigned_int)
-    UnsignedLongInt => cpp_atom(id: cpp_surface_spelling_unsigned_long_int)
-    UnsignedLongLongInt => cpp_atom(id: cpp_surface_spelling_unsigned_long_long_int)
+    UnsignedChar => cpp_atom(id: ^cpp_surface_spelling_unsigned_char)
+    UnsignedShortInt => cpp_atom(id: ^cpp_surface_spelling_unsigned_short_int)
+    UnsignedInt => cpp_atom(id: ^cpp_surface_spelling_unsigned_int)
+    UnsignedLongInt => cpp_atom(id: ^cpp_surface_spelling_unsigned_long_int)
+    UnsignedLongLongInt => cpp_atom(id: ^cpp_surface_spelling_unsigned_long_long_int)
   }
 }
 
@@ -341,9 +259,9 @@ fn cpp_fixed_code_unit_spelling_node(
   spelling: CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
 ) -> Node {
   match spelling {
-    Char8T => cpp_atom(id: cpp_surface_spelling_char8_t)
-    Char16T => cpp_atom(id: cpp_surface_spelling_char16_t)
-    Char32T => cpp_atom(id: cpp_surface_spelling_char32_t)
+    Char8T => cpp_atom(id: ^cpp_surface_spelling_char8_t)
+    Char16T => cpp_atom(id: ^cpp_surface_spelling_char16_t)
+    Char32T => cpp_atom(id: ^cpp_surface_spelling_char32_t)
   }
 }
 
@@ -351,78 +269,85 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_width_selection, target: cpp_atom(id: cpp_tag_width_selection)),
-      cpp_named_edge(name: cpp_field_spelling, target: spelling),
+      cpp_named_edge(name: ^cpp_field_width_selection, target: cpp_atom(id: ^cpp_tag_width_selection)),
+      cpp_named_edge(name: ^cpp_field_spelling, target: spelling),
       cpp_named_edge(
-        name: cpp_field_target_profile,
+        name: ^cpp_field_target_profile,
         target: target_profile
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: kind)),
-      cpp_named_edge(name: cpp_field_target_profile, target: target_profile)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: kind)),
+      cpp_named_edge(name: ^cpp_field_target_profile, target: target_profile)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
-      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
-      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
-      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_bool)),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: ^cpp_tag_bool)),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_signed_integer_facts(
@@ -437,9 +362,9 @@ fn cpp_signed_integer_facts(
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
     width_fact: width_fact,
-    signedness_fact: cpp_atom(id: cpp_tag_signed_integer),
-    encoding_fact: cpp_atom(id: cpp_tag_twos_complement),
-    overflow_fact: cpp_atom(id: cpp_tag_representable_result_required)
+    signedness_fact: cpp_atom(id: ^cpp_tag_signed_integer),
+    encoding_fact: cpp_atom(id: ^cpp_tag_twos_complement),
+    overflow_fact: cpp_atom(id: ^cpp_tag_representable_result_required)
   }
 }
 
@@ -455,9 +380,9 @@ fn cpp_unsigned_integer_facts(
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
     width_fact: width_fact,
-    signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
-    encoding_fact: cpp_atom(id: cpp_tag_unsigned_integer_representation),
-    overflow_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
+    signedness_fact: cpp_atom(id: ^cpp_tag_unsigned_integer),
+    encoding_fact: cpp_atom(id: ^cpp_tag_unsigned_integer_representation),
+    overflow_fact: cpp_atom(id: ^cpp_tag_unsigned_modulo_arithmetic)
   }
 }
 
@@ -465,27 +390,27 @@ fn cpp_signed_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrim
   [
     cpp_signed_integer_facts(
       spelling: SignedChar,
-      surface_spelling: cpp_surface_spelling_signed_char,
+      surface_spelling: ^cpp_surface_spelling_signed_char,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: ShortInt,
-      surface_spelling: cpp_surface_spelling_short_int,
+      surface_spelling: ^cpp_surface_spelling_short_int,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: Int,
-      surface_spelling: cpp_surface_spelling_int,
+      surface_spelling: ^cpp_surface_spelling_int,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: LongInt,
-      surface_spelling: cpp_surface_spelling_long_int,
+      surface_spelling: ^cpp_surface_spelling_long_int,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: LongLongInt,
-      surface_spelling: cpp_surface_spelling_long_long_int,
+      surface_spelling: ^cpp_surface_spelling_long_long_int,
       target_profile: target_profile
     )
   ]
@@ -495,27 +420,27 @@ fn cpp_unsigned_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPr
   [
     cpp_unsigned_integer_facts(
       spelling: UnsignedChar,
-      surface_spelling: cpp_surface_spelling_unsigned_char,
+      surface_spelling: ^cpp_surface_spelling_unsigned_char,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedShortInt,
-      surface_spelling: cpp_surface_spelling_unsigned_short_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_short_int,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedInt,
-      surface_spelling: cpp_surface_spelling_unsigned_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_int,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedLongInt,
-      surface_spelling: cpp_surface_spelling_unsigned_long_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_long_int,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedLongLongInt,
-      surface_spelling: cpp_surface_spelling_unsigned_long_long_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_long_long_int,
       target_profile: target_profile
     )
   ]
@@ -536,17 +461,17 @@ fn cpp_signed_integer_algebra_inhabitance_facts_catalog(
   [
     cpp_signed_integer_facts(
       spelling: Int,
-      surface_spelling: cpp_surface_spelling_int,
+      surface_spelling: ^cpp_surface_spelling_int,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: LongInt,
-      surface_spelling: cpp_surface_spelling_long_int,
+      surface_spelling: ^cpp_surface_spelling_long_int,
       target_profile: target_profile
     ),
     cpp_signed_integer_facts(
       spelling: LongLongInt,
-      surface_spelling: cpp_surface_spelling_long_long_int,
+      surface_spelling: ^cpp_surface_spelling_long_long_int,
       target_profile: target_profile
     )
   ]
@@ -558,17 +483,17 @@ fn cpp_unsigned_integer_algebra_inhabitance_facts_catalog(
   [
     cpp_unsigned_integer_facts(
       spelling: UnsignedInt,
-      surface_spelling: cpp_surface_spelling_unsigned_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_int,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedLongInt,
-      surface_spelling: cpp_surface_spelling_unsigned_long_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_long_int,
       target_profile: target_profile
     ),
     cpp_unsigned_integer_facts(
       spelling: UnsignedLongLongInt,
-      surface_spelling: cpp_surface_spelling_unsigned_long_long_int,
+      surface_spelling: ^cpp_surface_spelling_unsigned_long_long_int,
       target_profile: target_profile
     )
   ]
@@ -576,61 +501,61 @@ fn cpp_unsigned_integer_algebra_inhabitance_facts_catalog(
 
 fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimitiveFacts> {
   let char_width_fact = cpp_width_selection_node(
-    spelling: cpp_atom(id: cpp_surface_spelling_char),
+    spelling: cpp_atom(id: ^cpp_surface_spelling_char),
     target_profile: target_profile
   )
   let wchar_t_width_fact = cpp_width_selection_node(
-    spelling: cpp_atom(id: cpp_surface_spelling_wchar_t),
+    spelling: cpp_atom(id: ^cpp_surface_spelling_wchar_t),
     target_profile: target_profile
   )
   let char8_t_width_fact = cpp_width_selection_node(
-    spelling: cpp_atom(id: cpp_surface_spelling_char8_t),
+    spelling: cpp_atom(id: ^cpp_surface_spelling_char8_t),
     target_profile: target_profile
   )
   let char16_t_width_fact = cpp_width_selection_node(
-    spelling: cpp_atom(id: cpp_surface_spelling_char16_t),
+    spelling: cpp_atom(id: ^cpp_surface_spelling_char16_t),
     target_profile: target_profile
   )
   let char32_t_width_fact = cpp_width_selection_node(
-    spelling: cpp_atom(id: cpp_surface_spelling_char32_t),
+    spelling: cpp_atom(id: ^cpp_surface_spelling_char32_t),
     target_profile: target_profile
   )
   [
     CppCharacterPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_char,
+      surface_spelling: ^cpp_surface_spelling_char,
       width_fact: char_width_fact,
       signedness_fact: cpp_target_profile_selection_node(
-        kind: cpp_tag_plain_char_signedness_selection,
+        kind: ^cpp_tag_plain_char_signedness_selection,
         target_profile: target_profile
       ),
-      encoding_fact: cpp_atom(id: cpp_tag_plain_char_representation)
+      encoding_fact: cpp_atom(id: ^cpp_tag_plain_char_representation)
     },
     CppCharacterPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_wchar_t,
+      surface_spelling: ^cpp_surface_spelling_wchar_t,
       width_fact: wchar_t_width_fact,
       signedness_fact: cpp_target_profile_selection_node(
-        kind: cpp_tag_wchar_t_signedness_selection,
+        kind: ^cpp_tag_wchar_t_signedness_selection,
         target_profile: target_profile
       ),
-      encoding_fact: cpp_atom(id: cpp_tag_wchar_t_representation)
+      encoding_fact: cpp_atom(id: ^cpp_tag_wchar_t_representation)
     },
     CppCharacterPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_char8_t,
+      surface_spelling: ^cpp_surface_spelling_char8_t,
       width_fact: char8_t_width_fact,
-      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
+      signedness_fact: cpp_atom(id: ^cpp_tag_unsigned_integer),
+      encoding_fact: cpp_atom(id: ^cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_char16_t,
+      surface_spelling: ^cpp_surface_spelling_char16_t,
       width_fact: char16_t_width_fact,
-      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
+      signedness_fact: cpp_atom(id: ^cpp_tag_unsigned_integer),
+      encoding_fact: cpp_atom(id: ^cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_char32_t,
+      surface_spelling: ^cpp_surface_spelling_char32_t,
       width_fact: char32_t_width_fact,
-      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
+      signedness_fact: cpp_atom(id: ^cpp_tag_unsigned_integer),
+      encoding_fact: cpp_atom(id: ^cpp_tag_unsigned_code_unit_representation)
     }
   ]
 }
@@ -638,8 +563,8 @@ fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimiti
 fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
   [
     CppBoolPrimitiveFacts {
-      surface_spelling: cpp_surface_spelling_bool,
-      encoding_fact: cpp_atom(id: cpp_tag_bool_representation)
+      surface_spelling: ^cpp_surface_spelling_bool,
+      encoding_fact: cpp_atom(id: ^cpp_tag_bool_representation)
     }
   ]
 }
@@ -715,18 +640,17 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
 fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: facts.width_fact }
-        primitive_fact_axis_signedness =>
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: facts.signedness_fact }
-        primitive_fact_axis_encoding =>
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: facts.encoding_fact }
-        primitive_fact_axis_overflow_disposition =>
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           Holds { value: facts.overflow_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -738,16 +662,15 @@ fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> 
 fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: facts.width_fact }
-        primitive_fact_axis_signedness =>
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: facts.signedness_fact }
-        primitive_fact_axis_encoding =>
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: facts.encoding_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -759,12 +682,11 @@ fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, No
 fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: facts.encoding_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -856,13 +778,14 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Sy
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: witness, target: cpp_atom(id: witness)),
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
-      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
-      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
@@ -870,20 +793,21 @@ fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> N
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(
-        name: cpp_witness_representable_result_integer_arithmetic,
-        target: cpp_atom(id: cpp_witness_representable_result_integer_arithmetic)
+        name: ^cpp_witness_representable_result_integer_arithmetic,
+        target: cpp_atom(id: ^cpp_witness_representable_result_integer_arithmetic)
       ),
       cpp_named_edge(
-        name: cpp_precondition_signed_integer_result_representable,
-        target: cpp_atom(id: cpp_precondition_signed_integer_result_representable)
+        name: ^cpp_precondition_signed_integer_result_representable,
+        target: cpp_atom(id: ^cpp_precondition_signed_integer_result_representable)
       ),
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
-      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
-      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -902,7 +826,7 @@ fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> 
     inhabitant: inhabitant,
     witness: cpp_integer_algebra_witness_node(
       facts: facts,
-      witness: cpp_witness_commutative_semiring_integer
+      witness: ^cpp_witness_commutative_semiring_integer
     )
   }
 }
@@ -911,11 +835,12 @@ fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_witness_bool_boolean_algebra, target: cpp_atom(id: cpp_witness_bool_boolean_algebra)),
-      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+      cpp_named_edge(name: ^cpp_witness_bool_boolean_algebra, target: cpp_atom(id: ^cpp_witness_bool_boolean_algebra)),
+      cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -996,18 +921,18 @@ fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
     operations: [
       cpp_fail_closed_partial_operation(
         operation: cpp_algebra_operation_node(operation: ring_field_add),
-        precondition: cpp_precondition_signed_integer_result_representable,
-        reason: cpp_partial_signed_integer_result_not_representable
+        precondition: ^cpp_precondition_signed_integer_result_representable,
+        reason: ^cpp_partial_signed_integer_result_not_representable
       ),
       cpp_fail_closed_partial_operation(
         operation: cpp_algebra_operation_node(operation: ring_field_mul),
-        precondition: cpp_precondition_signed_integer_result_representable,
-        reason: cpp_partial_signed_integer_result_not_representable
+        precondition: ^cpp_precondition_signed_integer_result_representable,
+        reason: ^cpp_partial_signed_integer_result_not_representable
       ),
       cpp_fail_closed_partial_operation(
         operation: cpp_algebra_operation_node(operation: group_field_inverse),
-        precondition: cpp_precondition_signed_integer_result_representable,
-        reason: cpp_partial_signed_integer_result_not_representable
+        precondition: ^cpp_precondition_signed_integer_result_representable,
+        reason: ^cpp_partial_signed_integer_result_not_representable
       )
     ]
   }
@@ -1025,7 +950,7 @@ fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
 
 fn cpp_language_model_wave1(target_profile: Node) -> CppLanguageModel {
   CppLanguageModel {
-    language_identity: cpp_language_model_surface_id,
+    language_identity: ^cpp_language_model_surface_id,
     canonical_symbols: cpp_language_model_canonical_symbols(target_profile: target_profile),
     core: cpp_model_core_wave1(target_profile: target_profile)
   }
@@ -1035,28 +960,106 @@ fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_inhabitant_field_atom, target: cpp_atom(id: cpp_inhabitant_int)),
+      cpp_named_edge(name: ^cpp_inhabitant_field_atom, target: cpp_atom(id: ^cpp_inhabitant_int)),
       cpp_named_edge(
-        name: cpp_inhabitant_field_facts,
+        name: ^cpp_inhabitant_field_facts,
         target: cpp_integer_facts_node(
           facts: cpp_signed_integer_facts(
             spelling: Int,
-            surface_spelling: cpp_surface_spelling_int,
+            surface_spelling: ^cpp_surface_spelling_int,
             target_profile: target_profile
           )
         )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
-    ]
-  }
+      cpp_named_edge(name: ^cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
+  let facts = cpp_signed_integer_facts(
+    spelling: Int,
+    surface_spelling: ^cpp_surface_spelling_int,
+    target_profile: target_profile
+  )
+  [
+    cpp_named_edge(
+      name: ^cpp_inhabitant_field_int,
+      target: cpp_int_inhabitant_node(target_profile: target_profile)
+    ),
+    cpp_named_edge(
+      name: ^cpp_inhabitant_field_mvp1_add_fn,
+      target: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_inhabitant_atom,
+      target: cpp_atom(id: ^cpp_inhabitant_int)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_facts,
+      target: cpp_integer_facts_node(facts: facts)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_spelling,
+      target: cpp_atom(id: ^cpp_surface_spelling_int)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_signed,
+      target: cpp_atom(id: ^cpp_tag_signed_integer)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_width,
+      target: cpp_atom(id: ^cpp_tag_width_selection)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_encoding,
+      target: cpp_atom(id: ^cpp_tag_twos_complement)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_overflow,
+      target: cpp_atom(id: ^cpp_tag_representable_result_required)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_scalar,
+      target: cpp_integer_scalar_fact_node(facts: facts)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_width_fact,
+      target: facts.width_fact
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_spelling_node,
+      target: cpp_signed_integer_spelling_node(spelling: Int)
+    ),
+    cpp_named_edge(
+      name: ^cpp_coercion_field_int_target_profile,
+      target: target_profile
+    )
+  ]
+}
+
+fn cpp_mvp1_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
+  cpp_mvp1_int_zip_fold_closure_edges(target_profile: target_profile)
+}
+
+fn cpp_mvp1_declared_inhabitants_root(target_profile: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: cpp_mvp1_coercion_candidate_edges(target_profile: target_profile),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_mvp1_selection_policy_node(target_profile: Node) -> Node {
@@ -1070,76 +1073,51 @@ fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
-fn cpp_concrete_token_class(token: CppConcreteSyntaxToken) -> Symbol {
-  match token {
-    CppFixedToken { token_class: c } => c
-    CppBoundToken { token_class: c, binding: _ } => c
-  }
+fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn cpp_concrete_token_node(token: CppConcreteSyntaxToken) -> Node {
-  match token {
-    CppFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_fixed)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c))
-        ]
-      }
-    CppBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_bound)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c)),
-          cpp_named_edge(name: concrete_syntax_token_field_binding, target: cpp_atom(id: b))
-        ]
-      }
-  }
-}
 
-fn cpp_positional_token_edge(token: CppConcreteSyntaxToken) -> Edge {
-  Edge { label: Positional, target: cpp_concrete_token_node(token: token) }
-}
-
-fn cpp_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: cpp_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: cpp_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn cpp_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      cpp_named_edge(name: cpp_mvp1_source_text_field, target: cpp_atom(id: cpp_mvp1_source_literal)),
-      cpp_named_edge(name: cpp_mvp1_source_grammar_field, target: cpp_atom(id: cpp_production_mvp1_fn_add))
+      cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_mvp1_source_literal)),
+      cpp_named_edge(name: ^serialize_source_field_source_grammar, target: cpp_atom(id: ^cpp_production_mvp1_fn_add))
     ],
-    right: cpp_positional_edges_from_token_classes()
+    right: [
+      cpp_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: cpp_mvp1_concrete_tokens(),
+          token_to_node: cpp_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
 fn cpp_mvp1_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children() }
+  Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children(),
+ occurrence_id: SyntheticOccurrence
+}
 }
 
 
-fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: cpp_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
@@ -1147,7 +1125,7 @@ fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<Form
 
 fn cpp_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: cpp_production_mvp1_fn_add,
+    lhs: ^cpp_production_mvp1_fn_add,
     rhs: cpp_formal_rhs_from_tokens(tokens: cpp_mvp1_concrete_tokens())
   )
 }
@@ -1172,27 +1150,27 @@ fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         CppGramBuild1StateInit =>
           CppGramBuild1StateReady {
-            expr: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+            expr: cpp_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         CppGramBuild1StateReady { expr: acc } =>
           CppGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+              right: cpp_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     CppGramBuild1StateInit =>
-      cpp_grammar_terminal(token_class: cpp_token_ty_int)
+      cpp_grammar_terminal(token_class: ^cpp_token_ty_int)
     CppGramBuild1StateReady { expr: result } => result
   }
 }
 
 fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {
   GrammarProduction {
-    name: cpp_production_mvp1_fn_add,
+    name: ^cpp_production_mvp1_fn_add,
     expression: cpp_grammar_sequence_from_token_classes(),
     emitted: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
   }
@@ -1206,15 +1184,6 @@ fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow 
   }
 }
 
-fn cpp_relation_token_edges(tokens: List<CppConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: cpp_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   Node {
@@ -1224,19 +1193,24 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
       cpp_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       cpp_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node { kind: TypeNode { connective: Conj }, children: cpp_relation_token_edges(tokens: row.tokens) }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: cpp_concrete_token_node
+        )
       )
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_mvp1_translation_rules_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_relation_rule_mvp1_fn_add, target: cpp_grammar_relation_row_node(row: cpp_mvp1_grammar_relation_row(target_profile: target_profile)))
-    ]
-  }
+      cpp_named_edge(name: ^cpp_relation_rule_mvp1_fn_add, target: cpp_grammar_relation_row_node(row: cpp_mvp1_grammar_relation_row(target_profile: target_profile)))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
@@ -1244,26 +1218,36 @@ fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: target_model_edge_selection_policy, target: cpp_mvp1_selection_policy_node(target_profile: target_profile)),
-      cpp_named_edge(name: target_model_edge_declared_inhabitants, target: cpp_declared_inhabitants_root(target_profile: target_profile)),
+      cpp_named_edge(name: target_model_edge_declared_inhabitants, target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)),
       cpp_named_edge(name: target_model_edge_translation_rules, target: cpp_mvp1_translation_rules_node(target_profile: target_profile)),
       cpp_named_edge(name: target_model_edge_serialize_source, target: cpp_mvp1_serialize_source_node())
-    ]
-  }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), cpp_binding_fn_add, "add"),
-      cpp_binding_param_x,
+      map_insert(empty_map(), ^cpp_binding_fn_add, "add"),
+      ^cpp_binding_param_x,
       "x"
     ),
-    cpp_binding_param_y,
+    ^cpp_binding_param_y,
     "y"
   )
 }
+data cpp_mvp1_target_profile: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^cpp_mvp1_target_profile_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
 
-fn cpp_mvp1_target_model(target_profile: Node) -> TargetModel {
+fn cpp_mvp1_target_model() -> TargetModel {
+  cpp_mvp1_target_model_for_profile(target_profile: cpp_mvp1_target_profile)
+}
+
+fn cpp_mvp1_target_model_for_profile(target_profile: Node) -> TargetModel {
   TargetModel {
     bundle: cpp_mvp1_target_model_node(target_profile: target_profile),
     lex: cpp_wave1_lex(),
@@ -1278,15 +1262,15 @@ fn cpp_lex_rule(token_class: Symbol, text: String) -> LexRule {
 
 fn cpp_wave1_lex_rules() -> List<LexRule> {
   [
-    cpp_lex_rule(token_class: cpp_token_ty_int, text: "int "),
-    cpp_lex_rule(token_class: cpp_token_lparen, text: "("),
-    cpp_lex_rule(token_class: cpp_token_comma, text: ", "),
-    cpp_lex_rule(token_class: cpp_token_rparen, text: ") "),
-    cpp_lex_rule(token_class: cpp_token_lbrace, text: "{ "),
-    cpp_lex_rule(token_class: cpp_token_kw_return, text: "return "),
-    cpp_lex_rule(token_class: cpp_token_plus, text: " + "),
-    cpp_lex_rule(token_class: cpp_token_semicolon, text: ";"),
-    cpp_lex_rule(token_class: cpp_token_rbrace, text: " }")
+    cpp_lex_rule(token_class: ^cpp_token_ty_int, text: "int "),
+    cpp_lex_rule(token_class: ^cpp_token_lparen, text: "("),
+    cpp_lex_rule(token_class: ^cpp_token_comma, text: ", "),
+    cpp_lex_rule(token_class: ^cpp_token_rparen, text: ") "),
+    cpp_lex_rule(token_class: ^cpp_token_lbrace, text: "{ "),
+    cpp_lex_rule(token_class: ^cpp_token_kw_return, text: "return "),
+    cpp_lex_rule(token_class: ^cpp_token_plus, text: " + "),
+    cpp_lex_rule(token_class: ^cpp_token_semicolon, text: ";"),
+    cpp_lex_rule(token_class: ^cpp_token_rbrace, text: " }")
   ]
 }
 

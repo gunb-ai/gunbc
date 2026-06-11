@@ -4,7 +4,17 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+// Persistent value carriers (ctrl#1533 phase 2), implementing the
+// v4.std.value_carrier declarations: HamtMap is a hash array mapped trie
+// (map_carrier), RrbVector a relaxed radix balanced tree (list_carrier).
+// Both are Rc-backed (im-rc), matching the thread-confined Rc-discipline of
+// Value. Updates share structure with the prior version instead of copying
+// it — the quadratic-allocation term ctrl#1533 phase 0 measured.
+use im_rc::HashMap as HamtMap;
+use im_rc::Vector as RrbVector;
 
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
@@ -85,6 +95,168 @@ use crate::v2_std_core::{
 };
 
 // ---------------------------------------------------------------------------
+// CanonKey — finite-map key keyed by the single Value-equality authority
+// ---------------------------------------------------------------------------
+//
+// A finite `Map<K, V>` is a finite set of key→value pairs (a finite functional
+// relation): the `lookup` partial function is *derived* from that set, not the
+// primitive. The std type `Map<K, V> { lookup: fn(K) -> Witness<V> }` declares the
+// observation interface; the runtime realizes a finite map as data so both
+// `lookup` (by application) AND whole-map `==` (extensional, set equality) are
+// decidable.
+//
+// `CanonKey` wraps the original key `Value` and uses it as the map key. Equality is
+// NOT a second authority: `PartialEq`/`Eq` delegate to `Value::eq` — the same
+// language `==` every other consumer reads (P2 single-authority). Only `Hash` is
+// derived here, and it is built to be *consistent* with `Value::eq` (equal values
+// hash equally): the FreeMonoid alias (`Str` ≡ `List` ≡ `Empty`/`Cons` chain that
+// flatten equally), `+0.0 == -0.0`, and the order-independence of record/variant
+// `fields` (a nondeterministic `HashMap`) are all reflected in the hash, mirroring
+// exactly the cases `Value::eq` unifies. `Value::eq` ignores `type_name` for
+// records/variants, so the hash does too. Original keys are preserved, so
+// `keys`/iteration recover real keys, not strings.
+//
+// A value is a valid map key iff it is reflexive under `Value::eq` (`v == v`). That
+// rejects `Closure`/`Fn` (the `_ => false` arm) and `Float` NaN — and anything
+// transitively containing them — using the same authority, with no parallel
+// classification. Insertion fails closed (P3) on an invalid key.
+#[derive(Debug, Clone)]
+pub struct CanonKey {
+    key: Value,
+}
+
+impl CanonKey {
+    /// Build a key, or `None` if `key` has no decidable identity under `Value::eq`
+    /// (not reflexive — e.g. closures, fn references, `Float` NaN, or a structure
+    /// containing one). Reflexivity is checked through the single equality authority.
+    fn new(key: Value) -> Option<CanonKey> {
+        if key == key {
+            Some(CanonKey { key })
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialEq for CanonKey {
+    fn eq(&self, other: &Self) -> bool {
+        // Single equality authority: the language `==` (Value::eq).
+        self.key == other.key
+    }
+}
+
+impl Eq for CanonKey {}
+
+impl Hash for CanonKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(value_hash(&self.key));
+    }
+}
+
+/// Structural hash of a key `Value`, consistent with `Value::eq`: every pair of
+/// values that `Value::eq` considers equal hashes identically. Collisions are
+/// permitted (that is what equality resolves), but eq-inconsistency is not.
+fn value_hash(v: &Value) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut h = DefaultHasher::new();
+
+    // FreeMonoid alias: a List, a String, or a well-formed `Empty`/`Cons` chain that
+    // flatten to the same element sequence are `==` (see Value::eq), so all hash
+    // through the flattened sequence. `Str` flattens to its codepoints (Char = Nat),
+    // matching a List/chain of the same Int codepoints — mirroring `char_value`.
+    match v {
+        Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(v) {
+                0xF0u8.hash(&mut h);
+                items.len().hash(&mut h);
+                for item in &items {
+                    value_hash(item).hash(&mut h);
+                }
+                return h.finish();
+            }
+        }
+        _ => {}
+    }
+
+    match v {
+        Value::Null => 0u8.hash(&mut h),
+        Value::Unit => 1u8.hash(&mut h),
+        Value::Bool(b) => {
+            2u8.hash(&mut h);
+            b.hash(&mut h);
+        }
+        Value::Int(n) => {
+            3u8.hash(&mut h);
+            n.hash(&mut h);
+        }
+        Value::Float(f) => {
+            4u8.hash(&mut h);
+            // Value::eq compares with `==`, so +0.0 and -0.0 are equal: normalize the
+            // zero bit-pattern. (NaN is not reflexive and is rejected as a key.)
+            let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
+            bits.hash(&mut h);
+        }
+        Value::Set(members) => {
+            5u8.hash(&mut h);
+            // BTreeSet iterates in sorted order — already stable.
+            members.len().hash(&mut h);
+            for m in members.iter() {
+                m.hash(&mut h);
+            }
+        }
+        // Value::eq ignores `type_name` for records/variants and compares `fields` as
+        // (order-independent) HashMaps, so hash the fields commutatively and omit
+        // `type_name`.
+        Value::Record { fields, .. } => {
+            6u8.hash(&mut h);
+            hash_fields_commutative(fields).hash(&mut h);
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            7u8.hash(&mut h);
+            variant_name.hash(&mut h);
+            hash_fields_commutative(fields).hash(&mut h);
+        }
+        Value::Map(m) => {
+            8u8.hash(&mut h);
+            // Order-independent over entries.
+            let mut acc: u64 = 0;
+            for (k, val) in m.iter() {
+                let mut eh = DefaultHasher::new();
+                value_hash(&k.key).hash(&mut eh);
+                value_hash(val).hash(&mut eh);
+                acc = acc.wrapping_add(eh.finish());
+            }
+            acc.hash(&mut h);
+        }
+        // Not valid keys (rejected at CanonKey::new); hashed defensively for totality.
+        Value::Closure { .. } => 9u8.hash(&mut h),
+        Value::Fn { .. } => 10u8.hash(&mut h),
+        // Handled by the FreeMonoid branch above.
+        Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
+    }
+    h.finish()
+}
+
+/// Order-independent combination of `(field_name, field_value)` hashes, so two
+/// records/variants whose `fields` HashMaps iterate in different orders (but hold the
+/// same entries) combine to the same value — matching `Value::eq`'s HashMap compare.
+fn hash_fields_commutative(fields: &HashMap<String, Value>) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut acc: u64 = 0;
+    for (name, val) in fields.iter() {
+        let mut fh = DefaultHasher::new();
+        name.hash(&mut fh);
+        value_hash(val).hash(&mut fh);
+        acc = acc.wrapping_add(fh.finish());
+    }
+    acc
+}
+
+// ---------------------------------------------------------------------------
 // Value
 // ---------------------------------------------------------------------------
 
@@ -95,8 +267,13 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Str(String),
-    List(Rc<Vec<Value>>),
-    Map(Rc<HashMap<String, Value>>),
+    // List/Map keep an Rc handle around the persistent carrier: Rc::as_ptr
+    // remains the value-identity used by pure-call memo keys
+    // (value_rc_identity) and the accounting walker's sharing dedup. The
+    // carrier inside the Rc shares structure across versions; the handle
+    // clone needed before an update is O(1).
+    List(Rc<RrbVector<Value>>),
+    Map(Rc<HamtMap<CanonKey, Value>>),
     /// String membership sets (`Set<String>` in .dag).
     Set(Rc<BTreeSet<String>>),
     Record {
@@ -113,10 +290,31 @@ pub enum Value {
         body: Rc<Node>,
         env: Rc<Env>,
     },
+    /// Reference to a module-level `fn` / `func` item (first-class function value).
+    Fn {
+        node: Rc<Node>,
+    },
     Unit,
 }
 
+/// Wrap a list carrier (or anything convertible to one, e.g. `Vec<Value>`)
+/// into a `Value::List`.
+fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
+    Value::List(Rc::new(items.into()))
+}
+
+/// Wrap a map carrier into a `Value::Map`.
+fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
+    Value::Map(Rc::new(entries))
+}
+
 impl Value {
+    /// Public name of this value's kind (e.g. "List", "Record", "Variant"),
+    /// for host diagnostics that walk interpreter values (see `claim_executor`).
+    pub fn type_label_public(&self) -> &'static str {
+        self.type_label()
+    }
+
     fn type_label(&self) -> &'static str {
         match self {
             Value::Null => "Null",
@@ -130,6 +328,7 @@ impl Value {
             Value::Record { .. } => "Record",
             Value::Variant { .. } => "Variant",
             Value::Closure { .. } => "Closure",
+            Value::Fn { .. } => "Fn",
             Value::Unit => "Unit",
         }
     }
@@ -167,7 +366,7 @@ impl fmt::Display for Value {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", k, v)?;
+                    write!(f, "{}: {}", k.key, v)?;
                 }
                 write!(f, "}}")
             }
@@ -210,6 +409,7 @@ impl fmt::Display for Value {
                 }
             }
             Value::Closure { .. } => write!(f, "<closure>"),
+            Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
     }
@@ -240,6 +440,38 @@ impl PartialEq for Value {
                 },
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
+            (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
+            // List <-> FreeMonoid alias-transparency. `List<T>` IS `FreeMonoid<T>` (std), and
+            // the alias is already honored in pattern matching (the Value::List -> Empty/Cons
+            // bridge) and in every list operation (free_monoid_to_vec / expect_list accept
+            // either representation). Equality is the single site it was never honored: a list
+            // literal builds Value::List, while snoc-built sequences (list_snoc_item — e.g.
+            // Node.children rebuilt by a fold) build an Empty/Cons Variant chain. Flatten BOTH
+            // sides through the canonical free_monoid_to_vec and compare element-wise (this
+            // recurses through `==`, so nested mixed representations reconcile too). A Variant
+            // that is not a well-formed Empty/Cons chain flattens to None, so a genuine
+            // non-list Variant (e.g. Some/None) still never equals a List.
+            (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
+                match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
+            // Same alias-transparency for `type String = FreeMonoid<Char>` (std/text.dag): a
+            // native Value::Str and a snoc/Cons-built (or list-literal) char sequence denote the
+            // same FreeMonoid<Char>. Flatten both through free_monoid_to_vec (Str -> codepoint
+            // Ints because Char = Nat) and compare. (Str,Str) is handled natively above; this
+            // only adds the cross-representation pairings, so it never slows the common
+            // string-equality path.
+            (Value::Str(_), Value::Variant { .. })
+            | (Value::Variant { .. }, Value::Str(_))
+            | (Value::Str(_), Value::List(_))
+            | (Value::List(_), Value::Str(_)) => {
+                match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }
@@ -336,6 +568,308 @@ pub type InterpResult<T> = Result<T, InterpError>;
 /// (service_node, operation_node) pair for service dispatch.
 type ServiceOp = (Rc<Node>, Rc<Node>);
 
+/// Memo for the explicitly-verified pure structural predicates (see
+/// `is_structural_pure_fn`), keyed by (fn node address, arg Rc addresses).
+/// The keepalive vecs are load-bearing for the address keys: a memoized arg's
+/// Rc must stay alive while its address is a live key, or a freed-and-reused
+/// allocation would alias a stale entry. Scoped to an `InterpContext`, both
+/// the map and the pins drop with the evaluation instead of growing for the
+/// life of the process.
+#[derive(Default)]
+struct PureCallMemo {
+    map: HashMap<(usize, Vec<usize>), Value>,
+    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
+    keepalive: Vec<Value>,
+    // Resolved fn nodes kept alive for the same reason (the key includes their address).
+    keepalive_fns: Vec<Rc<Node>>,
+}
+
+// ---------------------------------------------------------------------------
+// Phase-0 memory measurement (ctrl#1533)
+// ---------------------------------------------------------------------------
+
+/// Copy-work counters for the collection-update primitives.
+///
+/// `*_calls` is the linear term; `*_copied` counts entries copied from
+/// already-existing collections into the freshly allocated result — the
+/// quadratic term a persistent carrier removes. Fold-building an n-entry
+/// collection shows `copied ≈ n·(n−1)/2` here; that ratio (copied/calls) is
+/// the before/after receipt for the ctrl#1533 carrier work.
+///
+/// One definition per counter, chosen by operation SEMANTICS — not by which
+/// dispatch path (method, builtin function, binop) executed it:
+/// - add-one ops (`map_insert`, `list_push`, `set_insert`): `*_copied` is the
+///   receiver's pre-existing entries. The added element is excluded — it must
+///   be written under any carrier, so it is not copy-on-update overhead.
+/// - merge ops (`map_merge`, `list_concat`, `set_union`): `*_copied` is BOTH
+///   operands' entries — every element of the result is a copy of a
+///   pre-existing collection member.
+///
+/// A `.concat`/`.append`/`.push` method call is bucketed by what its argument
+/// IS: a collection argument merges (`list_concat`), an atomic argument
+/// appends one element (`list_push`).
+#[derive(Default, Clone)]
+pub struct MutationCounters {
+    pub map_insert_calls: u64,
+    pub map_insert_entries_copied: u64,
+    pub map_merge_calls: u64,
+    pub map_merge_entries_copied: u64,
+    pub list_push_calls: u64,
+    pub list_push_items_copied: u64,
+    pub list_concat_calls: u64,
+    pub list_concat_items_copied: u64,
+    pub set_insert_calls: u64,
+    pub set_insert_items_copied: u64,
+    pub set_union_calls: u64,
+    pub set_union_items_copied: u64,
+}
+
+impl fmt::Display for MutationCounters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rows: [(&str, u64, u64); 6] = [
+            (
+                "map_insert",
+                self.map_insert_calls,
+                self.map_insert_entries_copied,
+            ),
+            (
+                "map_merge",
+                self.map_merge_calls,
+                self.map_merge_entries_copied,
+            ),
+            (
+                "list_push",
+                self.list_push_calls,
+                self.list_push_items_copied,
+            ),
+            (
+                "list_concat",
+                self.list_concat_calls,
+                self.list_concat_items_copied,
+            ),
+            (
+                "set_insert",
+                self.set_insert_calls,
+                self.set_insert_items_copied,
+            ),
+            (
+                "set_union",
+                self.set_union_calls,
+                self.set_union_items_copied,
+            ),
+        ];
+        for (name, calls, copied) in rows {
+            writeln!(
+                f,
+                "  {:<12} {:>12} calls  {:>16} entries copied  (avg {:.1}/call)",
+                name,
+                calls,
+                copied,
+                if calls == 0 {
+                    0.0
+                } else {
+                    copied as f64 / calls as f64
+                }
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Per-variant slice of a retained-value walk.
+#[derive(Default, Clone)]
+pub struct VariantAccounting {
+    /// Value occurrences reached (including re-encounters of shared payloads).
+    pub occurrences: u64,
+    /// Distinct heap allocations behind those occurrences.
+    pub unique_allocations: u64,
+    /// Occurrences whose payload was already visited (structural sharing hits).
+    pub shared_references: u64,
+    /// Estimated heap bytes of the unique allocations (buffers + key strings;
+    /// excludes allocator/bucket overhead and `Rc` headers — a floor, not RSS).
+    pub heap_bytes: u64,
+}
+
+/// Sharing-aware byte accounting over a set of retained root values.
+#[derive(Default)]
+pub struct MemoryAccounting {
+    pub per_variant: std::collections::BTreeMap<&'static str, VariantAccounting>,
+    pub total_heap_bytes: u64,
+    pub total_unique_allocations: u64,
+    pub total_shared_references: u64,
+}
+
+impl fmt::Display for MemoryAccounting {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (label, v) in &self.per_variant {
+            writeln!(
+                f,
+                "  {:<10} {:>12} occurrences  {:>10} unique  {:>10} shared  {:>14} bytes",
+                label, v.occurrences, v.unique_allocations, v.shared_references, v.heap_bytes
+            )?;
+        }
+        writeln!(
+            f,
+            "  total: {} bytes across {} unique allocations ({} shared references)",
+            self.total_heap_bytes, self.total_unique_allocations, self.total_shared_references
+        )
+    }
+}
+
+impl MemoryAccounting {
+    fn variant(&mut self, label: &'static str) -> &mut VariantAccounting {
+        self.per_variant.entry(label).or_default()
+    }
+
+    fn add_unique(&mut self, label: &'static str, bytes: u64) {
+        let v = self.variant(label);
+        v.unique_allocations += 1;
+        v.heap_bytes += bytes;
+        self.total_unique_allocations += 1;
+        self.total_heap_bytes += bytes;
+    }
+
+    fn add_shared(&mut self, label: &'static str) {
+        self.variant(label).shared_references += 1;
+        self.total_shared_references += 1;
+    }
+}
+
+/// Marks `ptr` visited; returns false (and records a sharing hit) if it was
+/// already visited, so each allocation is accounted exactly once.
+fn accounting_first_visit(
+    ptr: usize,
+    label: &'static str,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) -> bool {
+    if visited.insert(ptr) {
+        true
+    } else {
+        acc.add_shared(label);
+        false
+    }
+}
+
+fn account_env(
+    env: &Rc<Env>,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(Rc::as_ptr(env) as usize, "(env)", visited, acc) {
+        return;
+    }
+    let mut bytes = (env.bindings.len() * std::mem::size_of::<(String, Value)>()) as u64;
+    for name in env.bindings.keys() {
+        bytes += name.len() as u64;
+    }
+    acc.add_unique("(env)", bytes);
+    for value in env.bindings.values() {
+        account_value(value, visited, acc);
+    }
+    if let Some(parent) = &env.parent {
+        account_env(parent, visited, acc);
+    }
+}
+
+fn account_named_fields(
+    label: &'static str,
+    fields: &Rc<HashMap<String, Value>>,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
+        return;
+    }
+    let mut bytes = (fields.len() * std::mem::size_of::<(String, Value)>()) as u64;
+    for key in fields.keys() {
+        bytes += key.len() as u64;
+    }
+    acc.add_unique(label, bytes);
+    for value in fields.values() {
+        account_value(value, visited, acc);
+    }
+}
+
+fn account_value(
+    value: &Value,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    let label = value.type_label();
+    acc.variant(label).occurrences += 1;
+    match value {
+        Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::Unit => {}
+        // Strings are owned per occurrence (not Rc-shared): every occurrence
+        // is its own allocation. type/variant/field names are accounted at
+        // their carriers below.
+        Value::Str(s) => acc.add_unique(label, s.len() as u64),
+        Value::List(items) => {
+            if !accounting_first_visit(Rc::as_ptr(items) as usize, label, visited, acc) {
+                return;
+            }
+            acc.add_unique(label, (items.len() * std::mem::size_of::<Value>()) as u64);
+            for item in items.iter() {
+                account_value(item, visited, acc);
+            }
+        }
+        Value::Map(entries) => {
+            if !accounting_first_visit(Rc::as_ptr(entries) as usize, label, visited, acc) {
+                return;
+            }
+            acc.add_unique(
+                label,
+                (entries.len() * (std::mem::size_of::<CanonKey>() + std::mem::size_of::<Value>()))
+                    as u64,
+            );
+            for (k, v) in entries.iter() {
+                account_value(&k.key, visited, acc);
+                account_value(v, visited, acc);
+            }
+        }
+        Value::Set(members) => {
+            if !accounting_first_visit(Rc::as_ptr(members) as usize, label, visited, acc) {
+                return;
+            }
+            let mut bytes = (members.len() * std::mem::size_of::<String>()) as u64;
+            for m in members.iter() {
+                bytes += m.len() as u64;
+            }
+            acc.add_unique(label, bytes);
+        }
+        Value::Record { type_name, fields } => {
+            acc.variant(label).heap_bytes += type_name.len() as u64;
+            acc.total_heap_bytes += type_name.len() as u64;
+            account_named_fields(label, fields, visited, acc);
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            let names = (type_name.len() + variant_name.len()) as u64;
+            acc.variant(label).heap_bytes += names;
+            acc.total_heap_bytes += names;
+            account_named_fields(label, fields, visited, acc);
+        }
+        // The AST body is program text (shared, graph-owned), not value heap;
+        // only the captured environment chain is retained value memory.
+        Value::Closure {
+            params,
+            env,
+            body: _,
+        } => {
+            let mut bytes = (params.len() * std::mem::size_of::<String>()) as u64;
+            for p in params {
+                bytes += p.len() as u64;
+            }
+            acc.add_unique(label, bytes);
+            account_env(env, visited, acc);
+        }
+        Value::Fn { .. } => {}
+    }
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -349,9 +883,55 @@ pub struct InterpContext {
     service_ops: HashMap<String, ServiceOp>,
     /// Dry-run mode: use mock responses instead of executing services.
     pub dry_run: bool,
+    /// Cache for evaluated `data` items (immutable global constants), keyed by
+    /// the data item's node identity. Preserves structural sharing across
+    /// references so a `data` referenced N times yields ONE Value, not N
+    /// rebuilds. Scoped to this context — a `data` item's cached value is valid
+    /// exactly as long as its resolved graph is the one being evaluated, and
+    /// the context is the owner with that lifetime. Keys (`Rc::as_ptr` of nodes
+    /// in `fn_nodes`) cannot dangle or alias across graphs: `fn_nodes` holds
+    /// the nodes alive as long as the cache, and the cache drops with the
+    /// context.
+    data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    /// Memo for pure structural predicates, with the same context scoping as
+    /// `data_cache` (see `PureCallMemo`).
+    pure_call_memo: std::cell::RefCell<PureCallMemo>,
+    /// Phase-0 measurement counters (ctrl#1533): copy work done by the
+    /// copy-on-update collection primitives, scoped to this context like the
+    /// caches above. Always on — a few integer adds next to O(n) clones.
+    mutation_counters: std::cell::RefCell<MutationCounters>,
 }
 
 impl InterpContext {
+    /// Snapshot of the copy-work counters accumulated by evaluations in this
+    /// context (phase-0 measurement, ctrl#1533).
+    pub fn mutation_counters_snapshot(&self) -> MutationCounters {
+        self.mutation_counters.borrow().clone()
+    }
+
+    /// Sharing-aware byte accounting over everything this context retains
+    /// (`data_cache`, pure-call memo results and keepalive pins) plus any
+    /// `extra_roots` (e.g. final claim values). One visited set across all
+    /// roots, so cross-root structural sharing is counted once.
+    pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
+        let mut visited = std::collections::HashSet::new();
+        let mut acc = MemoryAccounting::default();
+        for value in self.data_cache.borrow().values() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        let memo = self.pure_call_memo.borrow();
+        for value in memo.map.values() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        for value in memo.keepalive.iter() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        for value in extra_roots {
+            account_value(value, &mut visited, &mut acc);
+        }
+        acc
+    }
+
     pub fn new(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -398,6 +978,9 @@ impl InterpContext {
             fn_nodes,
             service_ops,
             dry_run,
+            data_cache: std::cell::RefCell::new(HashMap::new()),
+            pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
+            mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
         }
     }
 
@@ -419,7 +1002,7 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    run_with_options(graph, source_indices, entry_fn, false)
+    run_with_options(graph, source_indices, entry_fn, false, true)
 }
 
 pub fn run_with_options(
@@ -427,20 +1010,38 @@ pub fn run_with_options(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
     dry_run: bool,
+    eager_data_env: bool,
 ) -> InterpResult<Value> {
     let ctx = InterpContext::new(graph, source_indices, dry_run);
+    run_in_context(&ctx, entry_fn, eager_data_env)
+}
 
+/// Run an entry function against an existing context. Callers that evaluate
+/// many functions over the SAME resolved graph (see the `claim_batch` bin)
+/// build one `InterpContext` and loop this — sharing the per-context `data`
+/// cache and fn index across calls instead of rebuilding them per function.
+pub fn run_in_context(
+    ctx: &InterpContext,
+    entry_fn: &str,
+    eager_data_env: bool,
+) -> InterpResult<Value> {
     // Find the entry function
     let item_node = ctx
         .lookup_fn(entry_fn)
         .ok_or_else(|| InterpError::NoMainFunction)?
         .clone();
 
-    // Build initial environment with data items
-    let env = build_initial_env(&ctx)?;
+    // Default: evaluate all `data` items up front (legacy `dag run` behavior).
+    // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
+    // witnesses pull only what they need via lazy data-item resolution in eval_var.
+    let env = if eager_data_env {
+        build_initial_env(ctx)?
+    } else {
+        Env::empty()
+    };
 
     // Call the entry function with no arguments
-    call_function(&ctx, &item_node, &[], &env)
+    call_function(ctx, &item_node, &[], &env)
 }
 
 /// Evaluate all `data` items to build the initial environment.
@@ -477,9 +1078,22 @@ fn call_function(
         })?;
 
     // Bind parameters
+    // Positional argument binding must target VALUE params only. A generic type param
+    // (e.g. `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appears in
+    // `fn_node.params`; a value param is exactly one whose type-expr exists and differs from
+    // its own name (`d`'s type-expr is `Diagnostic`), whereas a type param's type-expr is
+    // itself (`T`'s is `T`). Counting type params would shift the positional index so the
+    // real value param never receives its arg.
     let param_names: Vec<String> = fn_node
         .params
         .iter()
+        .filter(|p| {
+            let name = authored_name_at(ctx.si(), (*p).clone());
+            match p.children.first() {
+                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                None => false,
+            }
+        })
         .map(|p| authored_name_at(ctx.si(), p.clone()))
         .collect();
 
@@ -536,7 +1150,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-            eval_binop(&op, left, right)
+            eval_binop(&op, left, right, ctx)
         }
 
         ExprData::ExprUnaryOp { op } => {
@@ -566,7 +1180,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 .iter()
                 .map(|child| eval_expr(child, env, ctx))
                 .collect::<InterpResult<_>>()?;
-            Ok(Value::List(Rc::new(items)))
+            Ok(list_value((items)))
         }
 
         ExprData::ExprLambda => {
@@ -614,6 +1228,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
             Ok(Value::Float(f))
         }
         LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
+        LiteralValue::LitSymbol { value } => Ok(Value::Str(value.clone())),
         LiteralValue::LitNull => Ok(Value::Null),
     }
 }
@@ -660,8 +1275,43 @@ fn eval_var(
         if info.kind == ItemKind::DataItem {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
                 if let Some(ref body) = fn_node.body {
-                    return eval_expr(body, env, ctx);
+                    // Symbol-declaration idiom: `data X: Symbol = X` is self-referential.
+                    // Resolve it to the symbol value (its interned name) instead of
+                    // evaluating the body, which would recurse `eval_var(X) -> eval_var(X)`
+                    // forever. Symbol values are their name; equality is by name.
+                    if let ExprData::ExprVar { .. } = &*body.expr_data {
+                        if expr_var_name_at(body.clone(), ctx.si()) == name {
+                            return Ok(Value::Str(name));
+                        }
+                    }
+                    // Data items are immutable global constants: evaluate the body once and
+                    // cache the resulting Value, returning the shared Rc on later references.
+                    // A `data` referenced N times then yields ONE Value instead of N rebuilds,
+                    // removing the dominant re-derivation cost in the emit pipeline.
+                    //
+                    // Evaluate against Env::empty(), NOT the caller's env: a data item is
+                    // module-scoped and must not resolve names against caller locals, or the
+                    // cached value would depend on whichever env first referenced it (unsound).
+                    // This matches the eager-preload path (build_initial_env) which also uses
+                    // Env::empty(), so lazy and eager resolution agree.
+                    let key = Rc::as_ptr(fn_node) as usize;
+                    if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
+                        return Ok(v);
+                    }
+                    let v = eval_expr(body, &Env::empty(), ctx)?;
+                    ctx.data_cache.borrow_mut().insert(key, v.clone());
+                    return Ok(v);
                 }
+            }
+        }
+        // Module-level fn/func items used as first-class values (higher-order refs).
+        // Precedence: eval_call resolves the callee via ctx.lookup_fn before env-bound
+        // Value::Fn, so a local `let f = …` does not shadow a same-named module fn at call sites.
+        if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            if let Some(fn_node) = ctx.lookup_fn(&name) {
+                return Ok(Value::Fn {
+                    node: fn_node.clone(),
+                });
             }
         }
     }
@@ -673,7 +1323,7 @@ fn eval_var(
 // Binary operators
 // ---------------------------------------------------------------------------
 
-fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
+fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     // NullCoalesce: short-circuit
     if matches!(op, BinOp::NullCoalesce) {
         return Ok(if matches!(left, Value::Null) {
@@ -690,12 +1340,45 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
         }
     }
 
-    // List concatenation
+    // List concatenation — List<T> IS FreeMonoid<T>; flatten operands (Option-B chokepoint).
+    // Str operands stay atomic when mixed with lists (ctrl#1476 B1; same as .append/.concat).
     if matches!(op, BinOp::Add) {
-        if let (Value::List(a), Value::List(b)) = (&left, &right) {
-            let mut result: Vec<Value> = a.to_vec();
-            result.extend(b.iter().cloned());
-            return Ok(Value::List(Rc::new(result)));
+        // Counter buckets follow operation semantics (see `MutationCounters`):
+        // an atomic Str operand appends as ONE new element (push: copy-work is
+        // the list operand only), list⊕list merges (concat: both operands).
+        let record_push = |copied: usize| {
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.list_push_calls += 1;
+            counters.list_push_items_copied += copied as u64;
+        };
+        match (&left, &right) {
+            (l, Value::Str(s)) => {
+                if let Some(mut result) = free_monoid_to_vec(l) {
+                    record_push(result.len());
+                    result.push(Value::Str(s.clone()));
+                    return Ok(list_value((result)));
+                }
+            }
+            (Value::Str(s), r) => {
+                if let Some(result) = free_monoid_to_vec(r) {
+                    record_push(result.len());
+                    let mut out = vec![Value::Str(s.clone())];
+                    out.extend(result);
+                    return Ok(list_value((out)));
+                }
+            }
+            _ => {
+                if let (Some(mut a), Some(b)) =
+                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += (a.len() + b.len()) as u64;
+                    drop(counters);
+                    a.extend(b);
+                    return Ok(list_value((a)));
+                }
+            }
         }
     }
 
@@ -890,6 +1573,61 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+fn char_value(c: char) -> Value {
+    Value::Int(c as i64)
+}
+
+fn native_map_absent_diagnostic_value() -> Value {
+    let mut anchor_fields = HashMap::new();
+    anchor_fields.insert("at".to_string(), Value::Str("map_lookup_port".to_string()));
+
+    let mut locus_fields = HashMap::new();
+    locus_fields.insert(
+        "anchor".to_string(),
+        Value::Record {
+            type_name: "LocusAnchor".to_string(),
+            fields: Rc::new(anchor_fields),
+        },
+    );
+
+    let mut correction_fields = HashMap::new();
+    correction_fields.insert(
+        "reason".to_string(),
+        Value::Variant {
+            type_name: "NoCorrectionReason".to_string(),
+            variant_name: "ExternalContractUnknown".to_string(),
+            fields: Rc::new(HashMap::new()),
+        },
+    );
+
+    let mut diagnostic_fields = HashMap::new();
+    diagnostic_fields.insert(
+        "reason".to_string(),
+        Value::Str("map_key_absent".to_string()),
+    );
+    diagnostic_fields.insert(
+        "at".to_string(),
+        Value::Variant {
+            type_name: "Locus".to_string(),
+            variant_name: "PortLocus".to_string(),
+            fields: Rc::new(locus_fields),
+        },
+    );
+    diagnostic_fields.insert(
+        "correction".to_string(),
+        Value::Variant {
+            type_name: "Correction".to_string(),
+            variant_name: "Unavailable".to_string(),
+            fields: Rc::new(correction_fields),
+        },
+    );
+
+    Value::Record {
+        type_name: "Diagnostic".to_string(),
+        fields: Rc::new(diagnostic_fields),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -915,7 +1653,7 @@ fn match_pattern(
 
         MatchPattern::VariantPattern {
             name,
-            parent_enum: _,
+            parent_enum,
             field_bindings,
         } => {
             match value {
@@ -925,6 +1663,39 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
+                    // Symmetric Witness projection: a *present* coproduct value bridges to
+                    // `v2_rt::Witness::Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
+                    // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
+                    // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
+                    // present coproduct value must satisfy the `Holds` arm. Same absent-arm
+                    // exclusions (`Violates`/`Absent`/`none` stay absent -> the `Violates` arm);
+                    // a genuine `Holds` is handled by nominal matching below.
+                    if name == "Holds"
+                        && parent_enum.as_deref() == Some("Witness")
+                        && variant_name != "Holds"
+                        && variant_name != "Violates"
+                    {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
+                    if name == "Present"
+                        && parent_enum.as_deref() == Some("Optional")
+                        && variant_name != "Present"
+                        && variant_name != "Absent"
+                    {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
                     if variant_name != name {
                         return None;
                     }
@@ -940,9 +1711,190 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                // Match on Option: Some { value: x } pattern
-                Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
-                _ if name == "Some" => {
+                // Destructure a record-typed value: `match r { TypeName { f, g } => ... }`.
+                // Records build as Value::Record (no parent enum), so a VariantPattern whose
+                // name is the record type must bind its fields here — the Value::Variant arm
+                // above only covers coproduct variants.
+                Value::Record { type_name, fields } => {
+                    if type_name != name {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Bridge list literals (Value::List) to FreeMonoid Empty/Cons patterns:
+                // `match xs { Empty => ..., Cons { head, tail } => ... }`. List literals build
+                // as Value::List, but fold_list (std/algebra) matches the FreeMonoid coproduct.
+                Value::List(items) => match name.as_str() {
+                    "Empty" => {
+                        if items.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        if items.is_empty() {
+                            None
+                        } else {
+                            let head = items[0].clone();
+                            let tail = {
+                                let mut rest = (**items).clone();
+                                list_value(rest.split_off(1))
+                            };
+                            let mut bindings = HashMap::new();
+                            for fb in field_bindings.iter() {
+                                let field_name =
+                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                // Cons has exactly head/tail; an unknown field (e.g. a typo
+                                // `Cons { hd, tl }`) fails the match rather than binding null.
+                                let field_val = match field_name.as_str() {
+                                    "head" => head.clone(),
+                                    "tail" => tail.clone(),
+                                    _ => return None,
+                                };
+                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                bindings.extend(sub_bindings);
+                            }
+                            Some(bindings)
+                        }
+                    }
+                    _ => None,
+                },
+                // Bridge String values (Value::Str) to FreeMonoid<Char> Empty/Cons patterns:
+                // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag), so
+                // fold_list/list_append walk a String as codepoint Int heads plus a String tail.
+                // [Recurring class: List=FreeMonoid alias honored per-operation — this is the
+                // String/Char surface of it; the representation-level dissolution is tracked
+                // separately.]
+                Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
+                    "Empty" => {
+                        if s.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        let mut chars = s.chars();
+                        match chars.next() {
+                            None => None,
+                            Some(c) => {
+                                let head = char_value(c);
+                                let tail = Value::Str(chars.as_str().to_string());
+                                let mut bindings = HashMap::new();
+                                for fb in field_bindings.iter() {
+                                    let field_name = field_binding_name_at(
+                                        fb.clone(),
+                                        ctx.source_indices.clone(),
+                                    );
+                                    let fb_pat = field_binding_pattern(fb.clone());
+                                    let field_val = match field_name.as_str() {
+                                        "head" => head.clone(),
+                                        "tail" => tail.clone(),
+                                        _ => return None,
+                                    };
+                                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                    bindings.extend(sub_bindings);
+                                }
+                                Some(bindings)
+                            }
+                        }
+                    }
+                    _ => None,
+                },
+                // Bridge host Int values into the modeled Nat coproduct. Numeric literals and
+                // String/Char codepoint heads enter the interpreter as Value::Int, while std/nat.dag
+                // matches on Zero/Succ. Negative values are not Nat inhabitants and fail the match.
+                Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
+                    "Zero" => {
+                        if *n == 0 {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Succ" => {
+                        if *n <= 0 {
+                            None
+                        } else {
+                            let mut bindings = HashMap::new();
+                            for fb in field_bindings.iter() {
+                                let field_name =
+                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                let field_val = match field_name.as_str() {
+                                    "prev" => Value::Int(n - 1),
+                                    _ => return None,
+                                };
+                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                bindings.extend(sub_bindings);
+                            }
+                            Some(bindings)
+                        }
+                    }
+                    _ => None,
+                },
+                // Bridge the native-map-miss sentinel (Value::Null) into the Witness
+                // coproduct, without reopening the deleted Optional Some/None bridge. A native
+                // `Value::Map` lookup returns Null on a missing key (raw_map_lookup), but
+                // the std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection)
+                // and the record-form empty_map presents an absent key as `Violates`. When a
+                // record-form map delegates its miss to a native base map (empty_map builtin
+                // shadows the .dag record form), the Null sentinel must still present as the
+                // `Violates` (absent) arm rather than falling through a Holds/Violates match
+                // non-exhaustively. `Holds` requires a present value and so never matches Null
+                // (it falls to the `_ => None` arm below).
+                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = match field_name.as_str() {
+                            "diagnostic" => native_map_absent_diagnostic_value(),
+                            _ => return None,
+                        };
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Diagnostics.None is represented by the interpreter's null sentinel.
+                // Keep this parent-scoped so legacy Optional None stays rejected.
+                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                    Some(HashMap::new())
+                }
+                // Match cardinality Optional through the canonical std surface.
+                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                    Some(HashMap::new())
+                }
+                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                    if matches!(value, Value::Null) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Symmetric to the Witness value projection above: a present
+                // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
+                // `v2_rt::Witness::Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
+                // falls through to the `Null -> Violates` projection above.
+                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -983,15 +1935,103 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    // Look up user-defined function
-    let fn_node = ctx
-        .lookup_fn(&func_name)
-        .ok_or_else(|| InterpError::NoSuchFunction {
-            name: func_name.clone(),
-        })?
-        .clone();
+    // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
+    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
+        node.clone()
+    } else {
+        match env.lookup(&func_name) {
+            Some(Value::Fn { node }) => node.clone(),
+            // Calling a closure-valued parameter directly, e.g. fold_list's `cons(empty, h)`.
+            // The arg names don't bind closure params (closures are positional), so pass values.
+            Some(closure @ Value::Closure { .. }) => {
+                let closure = closure.clone();
+                let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+                return apply_closure(&closure, &arg_vals, env, ctx);
+            }
+            _ => {
+                return Err(InterpError::NoSuchFunction {
+                    name: func_name.clone(),
+                });
+            }
+        }
+    };
 
+    // Sharing-preservation memo: cache results of pure module functions keyed by the
+    // RESOLVED function identity (collision-free) plus argument identities. Sound because a
+    // module fn is deterministic in its args and same-Rc args ⇒ same value, so a hit is
+    // never wrong. Builtins/closures returned above bypass this (they may carry effects or
+    // captured env). Covers (a) nullary constructors and (b) the single-node structural
+    // predicates (content_hash/well_formed/...), collapsing the emit pipeline's redundant
+    // re-derivation and re-traversal. Args are kept alive so their Rc pointers can't be reused.
+    if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
+        if let Some(v) = pure_call_memo_get(ctx, &key) {
+            return Ok(v);
+        }
+        let result = call_function(ctx, &fn_node, &args, env)?;
+        pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
+        return Ok(result);
+    }
     call_function(ctx, &fn_node, &args, env)
+}
+
+fn is_structural_pure_fn(name: &str) -> bool {
+    matches!(
+        name,
+        "content_hash"
+            | "well_formed"
+            | "locally_well_formed"
+            | "fold_node"
+            | "fold_node_content_hash"
+            | "node_subtree_count"
+    )
+}
+fn value_rc_identity(v: &Value) -> Option<usize> {
+    match v {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            Some(Rc::as_ptr(fields) as usize)
+        }
+        Value::List(xs) => Some(Rc::as_ptr(xs) as usize),
+        Value::Map(m) => Some(Rc::as_ptr(m) as usize),
+        Value::Set(s) => Some(Rc::as_ptr(s) as usize),
+        _ => None,
+    }
+}
+fn pure_call_memo_key(
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+) -> Option<(usize, Vec<usize>)> {
+    // Purity is NOT assumed from arity: a nullary module fn can wrap an effectful service
+    // call (eval_method_call -> transport dispatch), so caching it would run the effect once
+    // and skip it thereafter. Restrict the memo to an explicitly-verified pure surface — the
+    // structural Node predicates below, which contain no service/effect dispatch. Aggressive
+    // pure-constructor caching is deferred until it has a checkable purity basis.
+    if !is_structural_pure_fn(func_name) {
+        return None;
+    }
+    let fid = Rc::as_ptr(fn_node) as usize;
+    let mut ids = Vec::with_capacity(args.len());
+    for (_, v) in args {
+        ids.push(value_rc_identity(v)?);
+    }
+    Some((fid, ids))
+}
+fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<Value> {
+    ctx.pure_call_memo.borrow().map.get(key).cloned()
+}
+fn pure_call_memo_put(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    key: (usize, Vec<usize>),
+    args: &[(Option<String>, Value)],
+    result: Value,
+) {
+    let mut st = ctx.pure_call_memo.borrow_mut();
+    st.keepalive_fns.push(fn_node.clone());
+    for (_, v) in args {
+        st.keepalive.push(v.clone());
+    }
+    st.map.insert(key, result);
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,15 +2066,43 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
 
+    // Option-C dual-dispatch (ctrl#1476 B6): native `Value::Map` and record-form
+    // `Map { lookup: fn }` share one raw key-probe chokepoint.
+    if method_name == "lookup" {
+        let key = args.first().ok_or_else(|| InterpError::TypeError {
+            msg: "lookup requires a key argument".to_string(),
+        })?;
+        return raw_map_lookup(&receiver_val, key, env, ctx);
+    }
+
+    // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
+    // Checked BEFORE semantics dispatch because it applies whether or not the method was
+    // tagged AlgebraMethodSemantics — e.g. fold_node's `algebra.init(n)`/`algebra.step(...)`
+    // over a NodeFold record.
+    if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
+        if let Some(field_val) = fields.get(&method_name) {
+            match field_val {
+                Value::Closure { .. } => {
+                    let f = field_val.clone();
+                    return apply_closure(&f, &args, env, ctx);
+                }
+                Value::Fn { node } => {
+                    let node = node.clone();
+                    let named: Vec<(Option<String>, Value)> =
+                        args.iter().map(|v| (None, v.clone())).collect();
+                    return call_function(ctx, &node, &named, env);
+                }
+                _ => {}
+            }
+        }
+    }
+
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
             let mn = authored_name_at(ctx.si(), method_def.clone());
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
-        _ => {
-            // Plain method — try as algebra by method name
-            eval_algebra_method(&method_name, receiver_val, &args, env, ctx)
-        }
+        _ => eval_algebra_method(&method_name, receiver_val, &args, env, ctx),
     }
 }
 
@@ -1057,14 +2125,14 @@ fn eval_field_access(
         Some(FieldAccessStyle::TupleFirst) => {
             // Map entry: (key, value).first → key
             // Or list: first element
-            match &base_val {
-                Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
-                _ => extract_field(&base_val, &field_name),
+            match expect_list(&base_val, "tuple.first") {
+                Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
+                Err(_) => extract_field(&base_val, &field_name, env, ctx),
             }
         }
-        Some(FieldAccessStyle::TupleSecond) => match &base_val {
-            Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-            _ => extract_field(&base_val, &field_name),
+        Some(FieldAccessStyle::TupleSecond) => match expect_list(&base_val, "tuple.second") {
+            Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
+            Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
         Some(FieldAccessStyle::OptionalUnwrap) => {
             // .value on Optional — unwrap or return Null
@@ -1075,13 +2143,18 @@ fn eval_field_access(
         }
         Some(FieldAccessStyle::EnumAccessor) => {
             // Accessing a discriminant field on an enum value
-            extract_field(&base_val, &field_name)
+            extract_field(&base_val, &field_name, env, ctx)
         }
-        _ => extract_field(&base_val, &field_name),
+        _ => extract_field(&base_val, &field_name, env, ctx),
     }
 }
 
-fn extract_field(value: &Value, field: &str) -> InterpResult<Value> {
+fn extract_field(
+    value: &Value,
+    field: &str,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     match value {
         Value::Record { type_name, fields } => {
             fields
@@ -1101,7 +2174,7 @@ fn extract_field(value: &Value, field: &str) -> InterpResult<Value> {
                 type_name: type_name.clone(),
                 field: field.to_string(),
             }),
-        Value::Map(m) => Ok(m.get(field).cloned().unwrap_or(Value::Null)),
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -1192,19 +2265,13 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
 
-    match collection {
-        Value::List(items) => {
-            let mut results = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
-                results.push(eval_expr(&body_node, &iter_env, ctx)?);
-            }
-            Ok(Value::List(Rc::new(results)))
-        }
-        _ => Err(InterpError::TypeError {
-            msg: format!("foreach expects a list, got {}", collection.type_label()),
-        }),
+    let items = expect_list(&collection, "foreach")?;
+    let mut results = Vec::with_capacity(items.len());
+    for item in items.iter() {
+        let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
+        results.push(eval_expr(&body_node, &iter_env, ctx)?);
     }
+    Ok(list_value((results)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,11 +2283,17 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
     match (&base, &idx) {
-        (Value::List(items), Value::Int(i)) => {
+        // Exclude Value::Str: a String IS a FreeMonoid<Char>, but indexing must keep its
+        // dedicated Str arm (returns a one-char Str, not a char-list element via the
+        // chokepoint) (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
+        (base_val, Value::Int(i))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
+            let items = expect_list(base_val, "index")?;
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (Value::Map(m), Value::Str(k)) => Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null)),
+        (base, key) if is_map_lookup_receiver(base) => raw_map_lookup(base, key, env, ctx),
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
             Ok(s.chars()
@@ -1248,10 +2321,17 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
 
     match (&base, &start, &end) {
-        (Value::List(items), Value::Int(s), Value::Int(e)) => {
+        // Exclude Value::Str: slicing a String must return a substring (Str) via its
+        // dedicated arm below, not a char-list via the FreeMonoid chokepoint
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains).
+        (base_val, Value::Int(s), Value::Int(e))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
+            let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
-            Ok(Value::List(Rc::new(items[s..e].to_vec())))
+            let mut work = (*items).clone();
+            Ok(list_value(work.slice(s..e)))
         }
         (Value::Str(str_val), Value::Int(s), Value::Int(e)) => {
             let s = *s as usize;
@@ -1282,12 +2362,20 @@ fn eval_algebra_method(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match method {
+        // Option-C dual-dispatch chokepoint (ctrl#1476 B6): see `raw_map_lookup`.
+        "lookup" => {
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "lookup requires a key argument".to_string(),
+            })?;
+            raw_map_lookup(&receiver, key, env, ctx)
+        }
+
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
             items
                 .iter()
                 .map(|item| apply_closure(f, &[item.clone()], env, ctx))
                 .collect::<InterpResult<Vec<Value>>>()
-                .map(|v| Value::List(Rc::new(v)))
+                .map(|v| list_value((v)))
         }),
 
         "filter" => {
@@ -1299,7 +2387,7 @@ fn eval_algebra_method(
                         result.push(item.clone());
                     }
                 }
-                Ok(Value::List(Rc::new(result)))
+                Ok(list_value((result)))
             })
         }
 
@@ -1330,12 +2418,17 @@ fn eval_algebra_method(
                 let mut result = Vec::new();
                 for item in items.iter() {
                     let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                    match mapped {
-                        Value::List(inner) => result.extend(inner.iter().cloned()),
-                        _ => result.push(mapped),
+                    // Cons/List flatten only — Value::Str stays one element (ctrl#1476 B1).
+                    if matches!(&mapped, Value::Str(_)) {
+                        result.push(mapped);
+                    } else {
+                        match free_monoid_to_vec(&mapped) {
+                            Some(inner) => result.extend(inner),
+                            None => result.push(mapped),
+                        }
                     }
                 }
-                Ok(Value::List(Rc::new(result)))
+                Ok(list_value((result)))
             },
         ),
 
@@ -1367,47 +2460,78 @@ fn eval_algebra_method(
                     })
                     .collect::<InterpResult<_>>()?;
                 keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
-                Ok(Value::List(Rc::new(
-                    keyed.into_iter().map(|(_, v)| v).collect(),
-                )))
+                Ok(list_value(
+                    keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+                ))
             })
         }
 
-        "concat" | "append" | "push" => match &receiver {
-            Value::List(items) => {
-                let mut result = items.to_vec();
-                for arg in args {
-                    match arg {
-                        Value::List(other) => result.extend(other.iter().cloned()),
-                        _ => result.push(arg.clone()),
-                    }
-                }
-                Ok(Value::List(Rc::new(result)))
-            }
-            Value::Str(s) => {
+        "concat" | "append" | "push" => {
+            // String concat preserves the String representation: a String IS a
+            // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
+            // not explode it to a char list via the FreeMonoid chokepoint (ctrl#1476 B1).
+            if let Value::Str(s) = &receiver {
                 let mut result = s.clone();
                 for arg in args {
                     result.push_str(&format!("{}", arg));
                 }
-                Ok(Value::Str(result))
+                return Ok(Value::Str(result));
             }
-            _ => Err(InterpError::TypeError {
+            if let Ok(items) = expect_list(&receiver, "concat") {
+                let mut result = (*items).clone();
+                // Counter bucket is decided by what the args ARE, not which
+                // method name dispatched here (see `MutationCounters`): a
+                // flattening collection arg merges (concat: both operands'
+                // elements are copy-work), atomic args append one element each
+                // (push: receiver elements only). Under the persistent carrier
+                // (ctrl#1533 phase 2) native-List operands concatenate by
+                // structural sharing, so *_items_copied counts only elements
+                // actually copied through the FreeMonoid flatten.
+                let mut merged_items = 0usize;
+                let mut copied_items = 0usize;
+                for arg in args {
+                    // Non-list Str args append as one element, not char-exploded (ctrl#1476 B1).
+                    if matches!(arg, Value::Str(_)) {
+                        result.push_back(arg.clone());
+                    } else {
+                        match value_to_list_carrier(arg) {
+                            Some((other, copied)) => {
+                                merged_items += other.len();
+                                copied_items += copied as usize;
+                                result.append((*other).clone());
+                            }
+                            None => result.push_back(arg.clone()),
+                        }
+                    }
+                }
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                if merged_items > 0 {
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += copied_items as u64;
+                } else {
+                    counters.list_push_calls += 1;
+                }
+                drop(counters);
+                return Ok(list_value(result));
+            }
+            Err(InterpError::TypeError {
                 msg: format!("cannot concat on {}", receiver.type_label()),
-            }),
-        },
+            })
+        }
 
-        "length" | "count" | "size" => match &receiver {
-            Value::List(items) => Ok(Value::Int(items.len() as i64)),
-            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-            _ => Err(InterpError::TypeError {
-                msg: format!("cannot get length of {}", receiver.type_label()),
-            }),
+        "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
+            Some(items) => Ok(Value::Int(items.len() as i64)),
+            None => match &receiver {
+                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                _ => Err(InterpError::TypeError {
+                    msg: format!("cannot get length of {}", receiver.type_label()),
+                }),
+            },
         },
 
         "first" => {
             let items = expect_list(&receiver, "first")?;
-            Ok(items.first().cloned().unwrap_or(Value::Null))
+            Ok(items.front().cloned().unwrap_or(Value::Null))
         }
 
         "last" => {
@@ -1417,25 +2541,23 @@ fn eval_algebra_method(
 
         "reverse" => {
             let items = expect_list(&receiver, "reverse")?;
-            let mut result = items.to_vec();
-            result.reverse();
-            Ok(Value::List(Rc::new(result)))
+            Ok(list_value(items.iter().rev().cloned().collect::<Vec<_>>()))
         }
 
         "skip" => {
             let items = expect_list(&receiver, "skip")?;
             let n = expect_int(args.first(), "skip")?;
-            Ok(Value::List(Rc::new(
-                items.iter().skip(n as usize).cloned().collect(),
-            )))
+            Ok(list_value(
+                items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
+            ))
         }
 
         "take" => {
             let items = expect_list(&receiver, "take")?;
             let n = expect_int(args.first(), "take")?;
-            Ok(Value::List(Rc::new(
-                items.iter().take(n as usize).cloned().collect(),
-            )))
+            Ok(list_value(
+                items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
+            ))
         }
 
         "enumerate" => {
@@ -1453,25 +2575,41 @@ fn eval_algebra_method(
                     }
                 })
                 .collect();
-            Ok(Value::List(Rc::new(result)))
+            Ok(list_value((result)))
         }
 
+        // String/Map membership is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.contains` on a String means substring containment, not
+        // char-list membership — exploding it to chars would break multi-char queries
+        // (ctrl#1476 B1; same Str-representation rule as `concat`).
         "contains" | "has" => match &receiver {
-            Value::List(items) => {
-                let target = args.first().cloned().unwrap_or(Value::Null);
-                Ok(Value::Bool(items.iter().any(|item| *item == target)))
-            }
             Value::Map(m) => {
-                let key = expect_str(args.first(), "contains")?;
-                Ok(Value::Bool(m.contains_key(&key)))
+                // Keep the one-argument diagnostic boundary (P3): a missing key argument is
+                // a typed error, not a silently-coerced `Null` membership probe. Arity is
+                // validated FIRST, then the provided key is canonicalized. The key may be
+                // any value; an un-keyable key (closure/fn/NaN) cannot be a member of a map
+                // (insert rejects it), so it soundly answers false rather than fabricating.
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "contains requires a key argument".to_string(),
+                })?;
+                match CanonKey::new(key.clone()) {
+                    Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
+                    None => Ok(Value::Bool(false)),
+                }
             }
             Value::Str(s) => {
                 let sub = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(s.contains(&sub)))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("contains not supported on {}", receiver.type_label()),
-            }),
+            _ => match expect_list(&receiver, "contains") {
+                Ok(items) => {
+                    let target = args.first().cloned().unwrap_or(Value::Null);
+                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
+                }
+                Err(_) => Err(InterpError::TypeError {
+                    msg: format!("contains not supported on {}", receiver.type_label()),
+                }),
+            },
         },
 
         "join" => {
@@ -1481,55 +2619,71 @@ fn eval_algebra_method(
             Ok(Value::Str(strs.join(&sep)))
         }
 
-        "get" => match &receiver {
-            Value::Map(m) => {
-                let key = expect_str(args.first(), "get")?;
-                Ok(m.get(&key).cloned().unwrap_or(Value::Null))
-            }
-            Value::List(items) => {
+        // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
+        // same Str-representation rule as `index` / `slice` / `contains`).
+        "get" => {
+            if matches!(&receiver, Value::Str(_)) {
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "get requires a key argument".to_string(),
+                })?;
+                raw_map_lookup(&receiver, key, env, ctx)
+            } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
+            } else {
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "get requires a key argument".to_string(),
+                })?;
+                raw_map_lookup(&receiver, key, env, ctx)
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("get not supported on {}", receiver.type_label()),
-            }),
-        },
+        }
 
         "insert" | "map_insert" => {
             let m = expect_map(&receiver, "insert")?;
             let (key, val) = match args {
-                [k, v] => (format!("{}", k), v.clone()),
+                [k, v] => (k.clone(), v.clone()),
                 _ => {
                     return Err(InterpError::TypeError {
                         msg: "insert requires (key, value) arguments".to_string(),
                     })
                 }
             };
-            let mut new_map = HashMap::clone(&m);
-            new_map.insert(key, val);
-            Ok(Value::Map(Rc::new(new_map)))
+            let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+                msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
+            })?;
+            // Persistent update (ctrl#1533 phase 2): O(log32 n) path copy with
+            // structural sharing — no entries are copied, so the
+            // *_entries_copied counter is not incremented.
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.map_insert_calls += 1;
+            drop(counters);
+            Ok(map_value(m.update(ck, val)))
         }
 
         "merge" => {
             let base = expect_map(&receiver, "merge")?;
             let overlay = expect_map(args.first().unwrap_or(&Value::Null), "merge")?;
-            let mut result = HashMap::clone(&base);
-            for (k, v) in overlay.iter() {
-                result.insert(k.clone(), v.clone());
-            }
-            Ok(Value::Map(Rc::new(result)))
+            // Persistent merge (ctrl#1533 phase 2): structural union sharing
+            // unchanged subtrees — no entries are copied. im union keeps
+            // self's value on key collision, so overlay-as-self preserves the
+            // overlay-wins (last-write-wins) semantics.
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.map_merge_calls += 1;
+            drop(counters);
+            Ok(map_value((*overlay).clone().union((*base).clone())))
         }
 
         "keys" => {
             let m = expect_map(&receiver, "keys")?;
-            let keys: Vec<Value> = m.keys().map(|k| Value::Str(k.clone())).collect();
-            Ok(Value::List(Rc::new(keys)))
+            let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+            Ok(list_value((keys)))
         }
 
         "values" => {
             let m = expect_map(&receiver, "values")?;
             let vals: Vec<Value> = m.values().cloned().collect();
-            Ok(Value::List(Rc::new(vals)))
+            Ok(list_value((vals)))
         }
 
         // String-specific methods
@@ -1551,7 +2705,7 @@ fn eval_algebra_method(
             let s = expect_string(&receiver, "split")?;
             let sep = expect_str(args.first(), "split")?;
             let parts: Vec<Value> = s.split(&sep).map(|p| Value::Str(p.to_string())).collect();
-            Ok(Value::List(Rc::new(parts)))
+            Ok(list_value((parts)))
         }
 
         "trim" => {
@@ -1606,13 +2760,15 @@ fn eval_algebra_method(
             env,
             ctx,
             |items, f, env, ctx| {
-                let mut m = HashMap::new();
+                let mut m = HamtMap::new();
                 for item in items.iter() {
                     let key = apply_closure(f, &[item.clone()], env, ctx)?;
-                    let key_str = format!("{}", key);
-                    m.insert(key_str, item.clone());
+                    let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+                        msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
+                    })?;
+                    m.insert(ck, item.clone());
                 }
-                Ok(Value::Map(Rc::new(m)))
+                Ok(map_value(m))
             },
         ),
 
@@ -1800,7 +2956,7 @@ fn map_shell_outputs(
                     .lines()
                     .map(|l| Value::Str(l.to_string()))
                     .collect();
-                Value::List(Rc::new(lines))
+                list_value((lines))
             }
             _ => {
                 // Default: map by field name
@@ -1941,7 +3097,7 @@ fn dispatch_rest(
         match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
             Some(body_node) => {
                 let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(value_to_json(&body_val))
+                Some(value_to_json(&body_val)?)
             }
             None => None,
         };
@@ -2155,23 +3311,32 @@ fn substitute_template(template: &str, env: &Rc<Env>) -> String {
     result
 }
 
-/// Convert a Value to serde_json::Value for request bodies.
-fn value_to_json(val: &Value) -> serde_json::Value {
-    match val {
+/// Convert a Value to serde_json::Value for request bodies. Fails closed (P3) on a
+/// structural-key map: JSON object keys are strings, and rendering a non-String key
+/// (e.g. `Int(1)` vs `Str("1")`) via its Display form would collapse distinct keys
+/// and silently drop entries. Such a map has no faithful JSON-object representation.
+fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
+    Ok(match val {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Int(n) => serde_json::json!(*n),
         Value::Float(f) => serde_json::json!(*f),
         Value::Str(s) => {
             // If the string contains JSON, parse it (bridge for Json-typed params)
-            if (s.starts_with('[') || s.starts_with('{')) {
+            if s.starts_with('[') || s.starts_with('{') {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
-                    return parsed;
+                    return Ok(parsed);
                 }
             }
             serde_json::Value::String(s.clone())
         }
-        Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
+        Value::List(items) => {
+            let mut arr = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                arr.push(value_to_json(item)?);
+            }
+            serde_json::Value::Array(arr)
+        }
         Value::Set(members) => serde_json::Value::Array(
             members
                 .iter()
@@ -2179,23 +3344,38 @@ fn value_to_json(val: &Value) -> serde_json::Value {
                 .collect(),
         ),
         Value::Map(m) => {
-            let obj: serde_json::Map<String, serde_json::Value> = m
-                .iter()
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
-                .collect();
+            let mut obj = serde_json::Map::with_capacity(m.len());
+            for (k, v) in m.iter() {
+                let key = match &k.key {
+                    Value::Str(s) => s.clone(),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "cannot serialize map with non-string key to JSON (got {} key); \
+                                 JSON object keys are strings",
+                                other.type_label()
+                            ),
+                        })
+                    }
+                };
+                obj.insert(key, value_to_json(v)?);
+            }
             serde_json::Value::Object(obj)
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let obj: serde_json::Map<String, serde_json::Value> = fields
-                .iter()
-                .filter(|(_, v)| !matches!(v, Value::Null))
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
-                .collect();
+            let mut obj = serde_json::Map::new();
+            for (k, v) in fields.iter() {
+                if matches!(v, Value::Null) {
+                    continue;
+                }
+                obj.insert(k.clone(), value_to_json(v)?);
+            }
             serde_json::Value::Object(obj)
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
-    }
+        Value::Fn { node } => serde_json::Value::String(format!("<fn {}>", node.name)),
+    })
 }
 
 /// Map a text response to the operation's return type.
@@ -2316,14 +3496,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
         }
         serde_json::Value::String(s) => Value::Str(s.clone()),
         serde_json::Value::Array(arr) => {
-            Value::List(Rc::new(arr.iter().map(json_to_value).collect()))
+            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
         }
         serde_json::Value::Object(obj) => {
-            let fields: HashMap<String, Value> = obj
+            let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
-                .map(|(k, v)| (k.clone(), json_to_value(v)))
+                .filter_map(|(k, v)| {
+                    CanonKey::new(Value::Str(k.clone())).map(|ck| (ck, json_to_value(v)))
+                })
                 .collect();
-            Value::Map(Rc::new(fields))
+            map_value(fields)
         }
     }
 }
@@ -2350,7 +3532,7 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 fn eval_builtin(
     name: &str,
     args: &[(Option<String>, Value)],
-    _ctx: &InterpContext,
+    ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
 
@@ -2361,6 +3543,18 @@ fn eval_builtin(
             })?;
             Ok(Some(Value::Str(format!("{}", v))))
         }
+
+        // `discriminant(v)` reifies a coproduct/record value's own constructor name as a
+        // `Symbol` (Symbol values are interned strings — see eval_var's `data X: Symbol = X`
+        // idiom at Value::Str). This is the single intrinsic that dissolves the hand-written
+        // `fn ..._discriminant(v) -> Symbol { match v { Ctor{..} => ctor_tag ... } }` bridges
+        // that shadow a coproduct's arm-set with a parallel `data ctor_tag: Symbol` vocabulary.
+        // The constructor's own name IS the discriminant; no per-type code is required.
+        "discriminant" => match positional.first() {
+            Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
+            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            _ => Ok(None),
+        },
 
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
@@ -2381,28 +3575,70 @@ fn eval_builtin(
                 }
                 return Ok(Some(Value::Str(result)));
             }
+            // Same semantic bucketing as the binop/method paths (see
+            // `MutationCounters`): atomic Str operand → push, list⊕list → concat.
+            let record_push = |copied: usize| {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.list_push_calls += 1;
+                counters.list_push_items_copied += copied as u64;
+            };
             match positional.as_slice() {
-                [Value::List(a), Value::List(b)] => {
-                    let mut result = a.to_vec();
-                    result.extend(b.iter().cloned());
-                    Ok(Some(Value::List(Rc::new(result))))
-                }
+                [a, b] => match (a, b) {
+                    (l, Value::Str(s)) => match free_monoid_to_vec(l) {
+                        Some(mut result) => {
+                            record_push(result.len());
+                            result.push(Value::Str(s.clone()));
+                            Ok(Some(list_value((result))))
+                        }
+                        None => Ok(None),
+                    },
+                    (Value::Str(s), r) => match free_monoid_to_vec(r) {
+                        Some(result) => {
+                            record_push(result.len());
+                            let mut out = vec![Value::Str(s.clone())];
+                            out.extend(result);
+                            Ok(Some(list_value((out))))
+                        }
+                        None => Ok(None),
+                    },
+                    _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                        (Some(mut a_items), Some(b_items)) => {
+                            let mut counters = ctx.mutation_counters.borrow_mut();
+                            counters.list_concat_calls += 1;
+                            counters.list_concat_items_copied +=
+                                (a_items.len() + b_items.len()) as u64;
+                            drop(counters);
+                            a_items.extend(b_items);
+                            Ok(Some(list_value((a_items))))
+                        }
+                        _ => Ok(None),
+                    },
+                },
                 _ => Ok(None),
             }
         }
 
         "count" => match positional.first() {
-            Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
-            _ => Ok(None),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
         },
 
+        // String IS FreeMonoid<Char>, but list builtins must not char-explode Str operands
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
         "reverse" => match positional.first() {
-            Some(Value::List(items)) => {
-                let mut r = items.to_vec();
-                r.reverse();
-                Ok(Some(Value::List(Rc::new(r))))
-            }
-            _ => Ok(None),
+            Some(Value::Str(_)) => Ok(None),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => {
+                    let mut r = items;
+                    r.reverse();
+                    Ok(Some(list_value((r))))
+                }
+                None => Ok(None),
+            },
+            None => Ok(None),
         },
 
         "string_length" => {
@@ -2423,11 +3659,22 @@ fn eval_builtin(
             Ok(Some(Value::Str(v2_rt::char_at(&s, pos))))
         }
 
-        "string_contains" | "contains" => {
+        "string_contains" => {
             let s = expect_str(positional.first().copied(), "contains")?;
             let sub = expect_str(positional.get(1).copied(), "contains sub")?;
             Ok(Some(Value::Bool(s.contains(&sub))))
         }
+
+        // Function-call `contains` mirrors method `.contains`: strings use substring
+        // containment, while FreeMonoid/List values use element membership.
+        "contains" => match positional.as_slice() {
+            [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
+            [xs, target, ..] => match free_monoid_to_vec(xs) {
+                Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
+                None => Ok(None),
+            },
+            _ => Ok(None),
+        },
 
         "replace" => {
             let s = expect_str(positional.first().copied(), "replace")?;
@@ -2449,29 +3696,55 @@ fn eval_builtin(
         }
 
         "list_push" | "append" => match positional.as_slice() {
-            [Value::List(items), item] => {
-                let mut result = items.to_vec();
-                result.push((*item).clone());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
+            // Persistent O(log n) push_back (ctrl#1533 phase 2): a native
+            // List shares structure with the prior version — only a chain
+            // form copies (through the flatten), and only that is counted.
+            [list_val, item] => match value_to_list_carrier(list_val) {
+                Some((items, copied)) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += copied;
+                    drop(counters);
+                    let mut result = (*items).clone();
+                    result.push_back((*item).clone());
+                    Ok(Some(list_value(result)))
+                }
+                None => Ok(None),
+            },
             _ => Ok(None),
         },
 
         "list_concat" => match positional.as_slice() {
-            [Value::List(a), Value::List(b)] => {
-                let mut result = a.to_vec();
-                result.extend(b.iter().cloned());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
+            // Persistent O(log(n+m)) RRB concatenation (ctrl#1533 phase 2):
+            // native Lists share structure — only chain-form operands copy
+            // (through the flatten), and only those items are counted.
+            [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += a_copied + b_copied;
+                    drop(counters);
+                    let mut result = (*a_items).clone();
+                    result.append((*b_items).clone());
+                    Ok(Some(list_value(result)))
+                }
+                _ => Ok(None),
+            },
             _ => Ok(None),
         },
 
-        "empty_map" => Ok(Some(Value::Map(Rc::new(HashMap::new())))),
+        "empty_map" => Ok(Some(map_value(HamtMap::new()))),
 
         "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
 
         "set_insert" => match positional.as_slice() {
             [Value::Set(s), Value::Str(k)] => {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.set_insert_calls += 1;
+                counters.set_insert_items_copied += s.len() as u64;
+                drop(counters);
                 let mut result = s.as_ref().clone();
                 result.insert(k.clone());
                 Ok(Some(Value::Set(Rc::new(result))))
@@ -2481,6 +3754,10 @@ fn eval_builtin(
 
         "set_union" => match positional.as_slice() {
             [Value::Set(a), Value::Set(b)] => {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.set_union_calls += 1;
+                counters.set_union_items_copied += (a.len() + b.len()) as u64;
+                drop(counters);
                 let mut result = a.as_ref().clone();
                 result.extend(b.iter().cloned());
                 Ok(Some(Value::Set(Rc::new(result))))
@@ -2493,26 +3770,52 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        // Structural keys included: a finite map keys by any value with a decidable
+        // identity (CanonKey), not just `Value::Str`. This keeps maps in the native
+        // data representation (so whole-map `==` is decidable) instead of falling
+        // through to the `.dag` closure form on a non-String key.
         "map_insert" => match positional.as_slice() {
-            [Value::Map(m), Value::Str(k), v] => {
-                let mut result = HashMap::clone(&m);
-                result.insert(k.clone(), (*v).clone());
-                Ok(Some(Value::Map(Rc::new(result))))
-            }
+            // A recognized native map_insert with an invalid key fails closed (P3) — it
+            // does NOT return Ok(None), which would fall through to the `.dag` closure-form
+            // map_insert and silently build an unmatchable map. `Ok(None)` here means only
+            // "not this builtin shape" (a non-Map receiver).
+            [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
+                Some(ck) => {
+                    // Persistent update (ctrl#1533 phase 2): O(log32 n) path
+                    // copy with structural sharing — no entries are copied.
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.map_insert_calls += 1;
+                    drop(counters);
+                    Ok(Some(map_value(m.update(ck, (*v).clone()))))
+                }
+                None => Err(InterpError::TypeError {
+                    msg: format!(
+                        "map_insert key has no decidable identity (closure/fn/NaN): {}",
+                        k.type_label()
+                    ),
+                }),
+            },
             _ => Ok(None),
         },
 
-        "map_get" | "lookup" => match positional.as_slice() {
-            [Value::Map(m), Value::Str(k)] => {
-                Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null)))
-            }
+        // `lookup` is the low-level raw map probe (present -> value, missing -> Null). The typed
+        // std `map_get` (v4.std.collection, Outcome<Optional<V>>) wraps that probe into the
+        // canonical Optional surface. `map_get` is NOT handled here on purpose: the builtin
+        // arm previously SHADOWED the typed std map_get (eval_builtin wins over user fns at
+        // eval_call), so `map_get(...)` returned the RAW value and any `match { Accepted; Rejected }`
+        // consumer crashed non-exhaustively (B-LOOKUP-1). Dropping `map_get` here routes it to the
+        // typed v4.std.collection authority. [List=FreeMonoid/Option-alias recurrence: the bridge
+        // is honored per-operation (matching, ==, zip_eq, lookup) rather than once at the
+        // representation — tracked for the post-R2 representation-level dissolution.]
+        "lookup" => match positional.as_slice() {
+            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
             _ => Ok(None),
         },
 
         "map_keys" => match positional.first() {
             Some(Value::Map(m)) => {
-                let keys: Vec<Value> = m.keys().map(|k| Value::Str(k.clone())).collect();
-                Ok(Some(Value::List(Rc::new(keys))))
+                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                Ok(Some(list_value((keys))))
             }
             _ => Ok(None),
         },
@@ -2520,23 +3823,28 @@ fn eval_builtin(
         "map_values" => match positional.first() {
             Some(Value::Map(m)) => {
                 let vals: Vec<Value> = m.values().cloned().collect();
-                Ok(Some(Value::List(Rc::new(vals))))
+                Ok(Some(list_value((vals))))
             }
             _ => Ok(None),
         },
 
         "map_contains_key" | "map_has" => match positional.as_slice() {
-            [Value::Map(m), Value::Str(k)] => Ok(Some(Value::Bool(m.contains_key(k.as_str())))),
+            [Value::Map(m), k] => match CanonKey::new((*k).clone()) {
+                Some(ck) => Ok(Some(Value::Bool(m.contains_key(&ck)))),
+                None => Ok(Some(Value::Bool(false))),
+            },
             _ => Ok(None),
         },
 
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
-                let mut result = HashMap::clone(&base);
-                for (k, v) in overlay.iter() {
-                    result.insert(k.clone(), v.clone());
-                }
-                Ok(Some(Value::Map(Rc::new(result))))
+                // Persistent merge (ctrl#1533 phase 2): structural union, no
+                // entry copies. im union keeps self's value on key collision,
+                // so overlay-as-self preserves overlay-wins semantics.
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.map_merge_calls += 1;
+                drop(counters);
+                Ok(Some(map_value((**overlay).clone().union((**base).clone()))))
             }
             _ => Ok(None),
         },
@@ -2618,7 +3926,7 @@ fn list_method_with_closure<F>(
     f: F,
 ) -> InterpResult<Value>
 where
-    F: FnOnce(&Rc<Vec<Value>>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
+    F: FnOnce(&RrbVector<Value>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
 {
     let items = expect_list(&receiver, method_name)?;
     let closure = args.first().ok_or_else(|| InterpError::TypeError {
@@ -2627,16 +3935,153 @@ where
     f(&items, closure, env, ctx)
 }
 
-fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
+thread_local! {
+    /// Flattening counters for `free_monoid_to_vec` (phase-0 measurement,
+    /// ctrl#1533). Thread-local rather than context-scoped because the
+    /// chokepoint also fires inside `Value::eq` (`impl PartialEq`), which has
+    /// no context — and unlike the caches #4644 scoped, these are two
+    /// fixed-size integers: no keys, no keepalive, no growth.
+    static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+/// Snapshot of (calls, items materialized) by `free_monoid_to_vec` on this
+/// thread since process start. Sample before/after an evaluation for a delta.
+pub fn flatten_counters_snapshot() -> (u64, u64) {
+    FLATTEN_COUNTERS.with(|c| c.get())
+}
+
+fn record_flatten(items: usize) {
+    FLATTEN_COUNTERS.with(|c| {
+        let (calls, total) = c.get();
+        c.set((calls + 1, total + items as u64));
+    });
+}
+
+/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
+/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
+/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
+/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
+/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
+/// raises a type error rather than fabricating an empty/partial list.
+fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let mut out = Vec::new();
+    let mut cur = val.clone();
+    loop {
+        match &cur {
+            Value::List(items) => {
+                out.extend(items.iter().cloned());
+                record_flatten(out.len());
+                return Some(out);
+            }
+            // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag): a String IS
+            // its codepoint sequence. Explode to Value::Int codepoints so list ops and `==` treat
+            // it as a FreeMonoid<Char> (matches the Value::Str Empty/Cons pattern bridge above).
+            Value::Str(s) => {
+                out.extend(s.chars().map(char_value));
+                record_flatten(out.len());
+                return Some(out);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => match variant_name.as_str() {
+                "Empty" => {
+                    record_flatten(out.len());
+                    return Some(out);
+                }
+                "Cons" => match (fields.get("head"), fields.get("tail")) {
+                    (Some(head), Some(tail)) => {
+                        out.push(head.clone());
+                        cur = tail.clone();
+                    }
+                    _ => return None,
+                },
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+}
+
+/// Bridge a list-denoting value (native List, FreeMonoid Variant chain, or
+/// Str-as-FreeMonoid<Char>) to the list carrier, honoring the B1 alias
+/// transparency through ONE code path. A native List hands back its carrier
+/// handle without copying; chain forms flatten through free_monoid_to_vec —
+/// the second tuple element reports how many items that flatten copied (the
+/// phase-0 *_items_copied accounting). Non-list values return None.
+fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
     match val {
-        Value::List(items) => Ok(items.clone()),
-        _ => Err(InterpError::TypeError {
-            msg: format!("{} expects a list, got {}", context, val.type_label()),
+        Value::List(items) => Some((items.clone(), 0)),
+        _ => free_monoid_to_vec(val).map(|items| {
+            let copied = items.len() as u64;
+            (Rc::new(RrbVector::from(items)), copied)
         }),
     }
 }
 
-fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HashMap<String, Value>>> {
+fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
+    match val {
+        Value::List(items) => Ok(items.clone()),
+        _ => match free_monoid_to_vec(val) {
+            Some(items) => Ok(Rc::new(RrbVector::from(items))),
+            None => Err(InterpError::TypeError {
+                msg: format!("{} expects a list, got {}", context, val.type_label()),
+            }),
+        },
+    }
+}
+
+fn is_map_lookup_receiver(val: &Value) -> bool {
+    match val {
+        Value::Map(_) => true,
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            fields.contains_key("lookup")
+        }
+        _ => false,
+    }
+}
+
+/// Low-level map key probe for Option-C dual-dispatch (ctrl#1476 B6).
+///
+/// Native `Value::Map`: present -> value, missing -> `Null`.
+/// Record-form `Map { lookup: fn }`: invoke the `lookup` field (closure or fn).
+/// The pattern bridge (`Null` -> `None`, value -> `Some`) lets std `map_get`
+/// (v4.std.collection, `Outcome<Optional<V>>`) wrap the raw probe; `map_get` is
+/// intentionally absent from `eval_builtin` (B-LOOKUP-1).
+fn raw_map_lookup(
+    map: &Value,
+    key: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    match map {
+        Value::Map(m) => match CanonKey::new(key.clone()) {
+            Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
+            None => Ok(Value::Null),
+        },
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            let lookup = fields.get("lookup").ok_or_else(|| InterpError::TypeError {
+                msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+            })?;
+            match lookup {
+                Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
+                Value::Fn { node } => {
+                    let named = vec![(None, key.clone())];
+                    call_function(ctx, node, &named, env)
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "Map.lookup field is not callable".to_string(),
+                }),
+            }
+        }
+        _ => Err(InterpError::TypeError {
+            msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+        }),
+    }
+}
+
+fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HamtMap<CanonKey, Value>>> {
     match val {
         Value::Map(m) => Ok(m.clone()),
         _ => Err(InterpError::TypeError {

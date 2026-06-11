@@ -42,9 +42,13 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  name_occurrences
+  name_occurrences,
+  node_rebuild,
+  SyntheticOccurrence
 }
-import v4.std.node_query { find_named_child, named_child_ambiguous }
+import v4.std.node_query {
+  find_named_child
+}
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
 // 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
@@ -134,15 +138,9 @@ type IntrospectApplication<Output> {
   section: SectionRef
   span: SourceSpan
 }
-
-data path_unresolvable_reason: Symbol = path_unresolvable_reason
-data path_ambiguous_reason: Symbol = path_ambiguous_reason
-data lens_enforcement_violation_reason: Symbol = lens_enforcement_violation_reason
-data advisory_reports_empty_reason: Symbol = advisory_reports_empty_reason
-
 fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: path_unresolvable_reason,
+    reason: ^path_unresolvable_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -150,7 +148,7 @@ fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
 
 fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: path_ambiguous_reason,
+    reason: ^path_ambiguous_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -160,7 +158,7 @@ fn lens_enforcement_violation_diagnostic<Projected, Budget>(
   input: LensEnforcementViolationInput<Projected, Budget>
 ) -> Diagnostic {
   Diagnostic {
-    reason: lens_enforcement_violation_reason,
+    reason: ^lens_enforcement_violation_reason,
     at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -188,12 +186,12 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
 
 // Delegates to the 🟢-canonical find_named_child in std/node_query.dag; translates
 // node_query diagnostic vocabulary to the lens D1 path contract's own reasons
-// (path_unresolvable_reason / path_ambiguous_reason) so callers see only lens-boundary diagnostics.
+// (^path_unresolvable_reason / ^path_ambiguous_reason) so callers see only lens-boundary diagnostics.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
     Rejected { diagnostics: diags } =>
-      if diags.head.reason == named_child_ambiguous {
+      if diags.head.reason == ^named_child_ambiguous {
         outcome_rejected(d: path_ambiguous_diagnostic(at: root))
       } else {
         outcome_rejected(d: path_unresolvable_diagnostic(at: root))
@@ -217,8 +215,8 @@ fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
 }
 
 // Result<Node, Diagnostic> ≡ Outcome<Node> per DECISIONS item I / std/diagnostic.dag.
-fn subterm_at(root: Node, p: Path) -> Outcome<Node> {
-  subterm_at_steps(root: root, steps: p.steps)
+fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
+  subterm_at_steps(root: root, steps: path.steps)
 }
 
 fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
@@ -237,7 +235,7 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
   } else {
     outcome_accepted(value: fold_list(
       xs: steps,
-      empty: PathSplit { init: [], last: path_unresolvable_reason, first: true },
+      empty: PathSplit { init: [], last: ^path_unresolvable_reason, first: true },
       cons: fn(split, step) {
         match split.first {
           true => PathSplit { init: [], last: step, first: false }
@@ -257,8 +255,8 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
   if name_occurrences(name: name, children: root.children) == 0 {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else if name_occurrences(name: name, children: root.children) == 1 {
-    outcome_accepted(value: Node {
-      kind: root.kind,
+    outcome_accepted(value: node_rebuild(
+      n: root,
       children: fold(
         root.children,
         init: Empty,
@@ -274,7 +272,7 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
           }
         }
       )
-    })
+    ))
   } else {
     outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
@@ -393,12 +391,12 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
     DeclarationScope { declaration: declaration } =>
-      subterm_at(root: root, p: declaration.path)
+      subterm_at(root: root, path: declaration.path)
     NodeScope { declaration: declaration, node: node } =>
       bind_outcome(
-        o: subterm_at(root: root, p: declaration.path),
+        o: subterm_at(root: root, path: declaration.path),
         f: fn(declaration_subject) {
-          subterm_at(root: declaration_subject, p: node.path)
+          subterm_at(root: declaration_subject, path: node.path)
         }
       )
   }
@@ -486,7 +484,7 @@ type ReportDiagnosticsFold {
 
 fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: advisory_reports_empty_reason,
+    reason: ^advisory_reports_empty_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
