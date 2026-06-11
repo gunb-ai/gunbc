@@ -56,7 +56,6 @@ jobs:
         { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
         echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
   fmt:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
@@ -126,7 +125,6 @@ jobs:
   # consolidation cleared (doc-authority.md itself had drifted to cite a nonexistent ROADMAP
   # structure). Pure stdlib Python; no build, no toolchain. Rolled into the `ci` aggregator.
   doc_refs:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -146,7 +144,6 @@ jobs:
   # must not import v3.compiler / v4.compiler). Clean-tree scan plus perturb-check plants
   # std->compiler and extdeps->compiler imports in a temp tree and requires detection.
   layering_imports:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -163,7 +160,6 @@ jobs:
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -259,7 +255,6 @@ jobs:
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
   # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -372,7 +367,6 @@ jobs:
   # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
   # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
   ci_floor_parity:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -481,7 +475,6 @@ jobs:
   # non-draft PR -- branch protection references `ci_floor_emit` by name (unchanged).
   # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -577,7 +570,6 @@ jobs:
   # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 35
     steps:
@@ -647,7 +639,6 @@ jobs:
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
@@ -720,7 +711,7 @@ jobs:
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   ci:
-    if: ${{ always() && github.event.pull_request.draft != true }}
+    if: always()
     needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
