@@ -68,11 +68,11 @@ data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow
   function: "source_bridged_add_budget_claim_holds"
 }
 
-// complexity-gate S2 — fail-closed budget-roster completeness over lens gate subjects.
+// complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows (empty roster → false).
 data lens_ci_claim_run_row_complexity_gate_budget_roster_completeness: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "complexity_gate/budget_roster_completeness",
   entry: "src/v4/test/claim/complexity_gate/budget_roster_completeness.dag",
-  function: "complexity_budget_roster_completeness_holds"
+  function: "complexity_budget_roster_family_gate_holds"
 }
 
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [

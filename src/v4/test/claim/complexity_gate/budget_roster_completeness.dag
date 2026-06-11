@@ -1,55 +1,58 @@
 // src/v4/test/claim/complexity_gate/budget_roster_completeness.dag
-// Scope: complexity-gate S2 — fail-closed budget-roster completeness over lens gate subjects.
-//        Every gate-consumer subject-producer must appear in complexity_subject_budget_rows;
-//        missing coverage is red (design-lens-subject-supply §5).
+// Scope: complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows.
+//        For each roster row: subject_producer → extract body → complexity_lens → dominance.
+//        Empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent).
 // Status: executable --claim-run witness (lens_ci_gate row).
 
 module v4.test.claim.complexity_gate.budget_roster_completeness
 
-import v4.std.algebra { Empty, any, fold_list }
+import v4.lens.complexity {
+  complexity_bound_dominates,
+  complexity_lens
+}
+import v4.std.algebra { fold_list, is_empty }
 import v4.std.collection { List }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
+import v4.std.witness { Holds }
+import v4.test.claim.complexity_gate.lens_subject_body_supply {
+  lens_subject_arrow_body_for_budget_row
+}
 import v4.test.claim.complexity_gate.subject_complexity_budget_roster {
   LensSubjectComplexityBudgetRow,
-  complexity_budget_row_comprep_source_bridged_add,
-  complexity_lens_gate_consumer_rows,
+  complexity_declared_budget_for_row,
   complexity_subject_budget_rows
 }
 
-fn complexity_budget_row_subject_producer_covered(
-  subject: LensSubjectComplexityBudgetRow,
-  roster: List<LensSubjectComplexityBudgetRow>
-) -> Bool {
-  any(xs: roster, predicate: fn(row) {
-    row.subject_producer == subject.subject_producer
-  })
+fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool {
+  match lens_subject_arrow_body_for_budget_row(row: row) {
+    Accepted { value: body, diagnostics: _ } =>
+      match complexity_lens(n: body) {
+        Holds { value: computed } =>
+          complexity_bound_dominates(
+            a: complexity_declared_budget_for_row(row: row),
+            b: computed
+          )
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-fn complexity_budget_roster_covers_all_gate_consumers() -> Bool {
+fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexityBudgetRow>) -> Bool {
   fold_list(
-    xs: complexity_lens_gate_consumer_rows,
+    xs: rows,
     empty: true,
-    cons: fn(acc, consumer) {
-      acc
-        && complexity_budget_row_subject_producer_covered(
-          subject: consumer,
-          roster: complexity_subject_budget_rows
-        )
+    cons: fn(acc, row) {
+      acc && complexity_budget_row_dominates(row: row)
     }
   )
 }
 
-// Fail-closed semantic red: an uncovered producer against an empty roster must not pass.
-fn complexity_budget_roster_uncovered_producer_fails_closed() -> Bool {
-  !complexity_budget_row_subject_producer_covered(
-    subject: complexity_budget_row_comprep_source_bridged_add,
-    roster: Empty
-  )
-}
-
-fn complexity_budget_roster_completeness_holds() -> Bool {
-  complexity_budget_roster_covers_all_gate_consumers()
-    && complexity_budget_roster_uncovered_producer_fails_closed()
+fn complexity_budget_roster_family_gate_holds() -> Bool {
+  if is_empty(xs: complexity_subject_budget_rows) {
+    false
+  } else {
+    complexity_budget_roster_family_all_rows_hold(rows: complexity_subject_budget_rows)
+  }
 }

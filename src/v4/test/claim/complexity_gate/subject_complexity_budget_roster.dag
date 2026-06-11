@@ -7,14 +7,13 @@
 //        arrow_body_target_lookup accessor — std/node.dag — before cost_lens / complexity_lens).
 //        Do not declare a bound thinking it covers a whole-arrow fold.
 // Coverage: subject reach = COMPREP grammar coverage (design-lens-subject-supply.md §3).
-//        Wave-1 today: source-bridged add only (comprep_eval_by_execution.dag:293).
+//        Wave-1 today: source-bridged add only (comprep_wave1_add_subject_producer.dag).
 //        02_parse compiler-stage bodies arrive with COMPREP waves 2+ / self-host breadth;
 //        until a producer lands, do not add name-keyed placeholder rows — new rows attach
 //        when the §2 subject-producer composition exists. Unrated producers use
 //        unknown_complexity() (ClassUnknown fail-closed top), never omission.
 // Consumer: gate rows import named rows from this roster (not inline budgets).
-//        complexity_lens_gate_consumer_rows is the discovered-subject authority for S2 completeness.
-// Status: roster + gate-consumer registry authority (S2 completeness gate consumes both lists).
+// Status: roster authority; S2 family gate folds complexity_subject_budget_rows.
 // Anchor: docs/design-lens-subject-supply.md §5 + v4.lens.complexity ComplexityBound.
 
 module v4.test.claim.complexity_gate.subject_complexity_budget_roster
@@ -23,7 +22,7 @@ import v4.lens.complexity { ComplexityBound, ConstantComplexity }
 import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
 import v4.std.node { Node }
-import v4.test.claim.manual.comprep_eval_by_execution {
+import v4.test.claim.complexity_gate.comprep_wave1_add_subject_producer {
   comprep_source_bridged_add_arrow_with_body
 }
 
@@ -43,10 +42,5 @@ data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudg
   }
 
 data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
-  complexity_budget_row_comprep_source_bridged_add
-]
-
-// Gate-consumer registry: every row a lens gate witness binds must be budget-covered in the roster above.
-data complexity_lens_gate_consumer_rows: List<LensSubjectComplexityBudgetRow> = [
   complexity_budget_row_comprep_source_bridged_add
 ]
