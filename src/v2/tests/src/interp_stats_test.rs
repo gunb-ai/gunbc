@@ -61,10 +61,12 @@ fn build() -> Int {
     assert_eq!(counters.map_insert_entries_copied, 6);
 }
 
-/// Successive list concats copy 3 then 4 receiver items rebuilding the list
-/// each time — the same triangular growth on the list side.
+/// Concat is a merge: BOTH operands' elements are copy-work (every element of
+/// the result is a copy of a pre-existing collection member). [1,2,3]⊕[4]
+/// copies 4, then the 4-list⊕[5] copies 5 — the same triangular growth on the
+/// list side.
 #[test]
-fn list_concat_counts_receiver_copies() {
+fn list_concat_counts_both_operands() {
     let src = r#"module test.stats_list
 fn build() -> Int {
   let a = [1, 2, 3].concat([4])
@@ -82,7 +84,37 @@ fn build() -> Int {
     }
     let counters = ctx.mutation_counters_snapshot();
     assert_eq!(counters.list_concat_calls, 2);
-    assert_eq!(counters.list_concat_items_copied, 7);
+    assert_eq!(counters.list_concat_items_copied, 9);
+    assert_eq!(counters.list_push_calls, 0, "merge must not leak into push");
+}
+
+/// Appending an atomic element is a push regardless of dispatch surface: only
+/// the receiver's pre-existing elements are copy-work (the new element must be
+/// written under any carrier). Same primitive, one bucket — never split
+/// between `list_push` and `list_concat` by method-vs-builtin path.
+#[test]
+fn atomic_append_counts_as_push_not_concat() {
+    let src = r#"module test.stats_push
+fn build() -> Int {
+  let a = [1, 2, 3].append("x")
+  a.length()
+}
+"#;
+    let resolved = resolve(src);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+
+    match v2_interpreter::run_in_context(&ctx, "build", false) {
+        Ok(Value::Int(4)) => {}
+        other => panic!("expected Int(4), got {other:?}"),
+    }
+    let counters = ctx.mutation_counters_snapshot();
+    assert_eq!(counters.list_push_calls, 1);
+    assert_eq!(counters.list_push_items_copied, 3);
+    assert_eq!(
+        counters.list_concat_calls, 0,
+        "push must not leak into concat"
+    );
 }
 
 /// A cached `data` value reached from two roots is one unique allocation plus
