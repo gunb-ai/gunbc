@@ -11837,6 +11837,65 @@ pub fn type_binding_decl_binding_id(
     )
 }
 
+pub fn carrier_closure_direct_type_deps(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let n_name = authored_name_at(source_indices.clone(), n.clone());
+    let authored_ref = if (((n.ident_span.clone().is_some())
+        && (n_name.clone().as_str() != "".to_string().as_str()))
+        && (is_kernel_type(n_name.clone()) == false))
+    {
+        Rc::new(vec![n_name.clone()])
+    } else {
+        Rc::new(vec![])
+    };
+    v2_rt::concat(
+        authored_ref,
+        node_type_deps(n.clone(), source_indices.clone()),
+    )
+}
+
+pub fn carrier_closure_node_type_deps(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let base = carrier_closure_direct_type_deps(n.clone(), source_indices.clone());
+    let child_deps = if (n.connective.clone() == Connective::Conj) {
+        Rc::new(
+            n.children
+                .clone()
+                .iter()
+                .cloned()
+                .flat_map(|child: Rc<Node>| {
+                    carrier_closure_node_type_deps(
+                        field_node_type_expr(child.clone()),
+                        source_indices.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<String>>()
+                })
+                .collect::<Vec<String>>(),
+        )
+    } else {
+        Rc::new(
+            n.children
+                .clone()
+                .iter()
+                .cloned()
+                .flat_map(|child: Rc<Node>| {
+                    carrier_closure_node_type_deps(child.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<String>>()
+                })
+                .collect::<Vec<String>>(),
+        )
+    };
+    v2_rt::concat(base, child_deps)
+}
+
 pub fn add_type_binding_dependency_closure(
     state: Rc<CarrierClosureState>,
     binding: Rc<TypeBinding>,
@@ -11875,7 +11934,16 @@ pub fn add_type_binding_dependency_closure(
                         ),
                     }),
                 };
-                let deps = node_type_deps(stamped.resolved.clone(), source_indices.clone());
+                let deps = v2_rt::concat(
+                    carrier_closure_node_type_deps(
+                        binding.resolved.clone(),
+                        source_indices.clone(),
+                    ),
+                    carrier_closure_node_type_deps(
+                        stamped.resolved.clone(),
+                        source_indices.clone(),
+                    ),
+                );
                 let with_decl_binding =
                     match type_binding_decl_binding_id(dep_env.clone(), binding.clone()) {
                         Some(decl_binding_id) => Rc::new(CarrierClosureState {
@@ -11915,7 +11983,8 @@ pub fn add_node_dependency_closure(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CarrierClosureState> {
     {
-        let stamped = stamp_hidden_dependency_refs(n, dep_env.clone(), source_indices.clone());
+        let stamped =
+            stamp_hidden_dependency_refs(n.clone(), dep_env.clone(), source_indices.clone());
         let name = authored_name_at(source_indices.clone(), stamped.clone());
         let with_self = if (name.clone().as_str() != "".to_string().as_str()) {
             match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
@@ -11930,7 +11999,10 @@ pub fn add_node_dependency_closure(
         } else {
             state
         };
-        let deps = node_type_deps(stamped.clone(), source_indices.clone());
+        let deps = v2_rt::concat(
+            carrier_closure_node_type_deps(n.clone(), source_indices.clone()),
+            carrier_closure_node_type_deps(stamped.clone(), source_indices.clone()),
+        );
         deps.iter().cloned().fold(
             with_self,
             |acc: Rc<CarrierClosureState>, dep_name: String| {
