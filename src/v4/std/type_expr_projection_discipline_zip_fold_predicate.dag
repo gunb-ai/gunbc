@@ -36,9 +36,10 @@ import v4.std.type_expr_projection_row_schema {
   target_type_expr_field_child_slot_discipline,
   target_type_expr_field_child_slots
 }
+import v4.std.algebra { Empty }
 import v4.std.node_query {
   find_named_child,
-  node_envelope_without_named_coordinate
+  node_envelope_without_named_coordinate_go
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.exact_structural_equality_zip_fold_predicate {
@@ -95,9 +96,11 @@ fn type_expr_projection_row_envelope_exact_equal(
   candidate: Node,
   source_facts: Node
 ) -> Bool {
-  match node_envelope_without_named_coordinate(
-    children: source_facts.children,
-    coordinate: target_type_expr_field_child_slots
+  match node_envelope_without_named_coordinate_go(
+    xs: source_facts.children,
+    coordinate: target_type_expr_field_child_slots,
+    acc: Empty,
+    saw_coordinate: false
   ) {
     Present { value: envelope } =>
       type_expr_projection_edges_exact_equal(

@@ -22,7 +22,6 @@ import v4.std.diagnostic {
 import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.std.collection {
   List,
-  Optional,
   optional_absent,
   optional_present
 }
@@ -76,15 +75,15 @@ fn node_envelope_without_named_coordinate_go(
       match h.label {
         Named { name: n } =>
           if n == coordinate {
-            if saw_coordinate {
-              optional_absent()
-            } else {
-              node_envelope_without_named_coordinate_go(
-                xs: t,
-                coordinate: coordinate,
-                acc: acc,
-                saw_coordinate: true
-              )
+            match saw_coordinate {
+              true => optional_absent()
+              false =>
+                node_envelope_without_named_coordinate_go(
+                  xs: t,
+                  coordinate: coordinate,
+                  acc: acc,
+                  saw_coordinate: true
+                )
             }
           } else {
             node_envelope_without_named_coordinate_go(
@@ -103,18 +102,6 @@ fn node_envelope_without_named_coordinate_go(
           )
       }
   }
-}
-
-fn node_envelope_without_named_coordinate(
-  children: FreeMonoid<Edge>,
-  coordinate: Symbol
-) -> FreeMonoid<Edge>? {
-  node_envelope_without_named_coordinate_go(
-    xs: children,
-    coordinate: coordinate,
-    acc: Empty,
-    saw_coordinate: false
-  )
 }
 
 // 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
