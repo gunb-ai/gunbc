@@ -54,25 +54,37 @@ to cost.dag ⇒ operator-STOP escalation, but a one-point hook, not a second wal
 escalation is the point — the operator sees the single hook rather than a shadow fold
 growing next to the canonical one.
 
-## 3. Recursion and cycles: fail closed first, refine by witness later
+## 3. Recursion: lowered away before the fold — cycles are a defect backstop, not a semantics
 
-The call graph of real programs has cycles. Phase ordering:
+The substrate has no general recursion. "Recursive Syntax Is Sugar" (INVARIANTS;
+DB-9 for the mutual case): recursive surface forms lower through `CallPattern`
+classification (`dsl/std/computation.dag:192` — every pattern maps to a primitive,
+no unknown category) onto the closed iteration primitives (`dsl/std/iteration.dag:1`
+— descend / fold / repeat are the ONLY loop mechanism), with termination carried
+structurally by descent facts (`DescentEvidence` lattice, `dsl/std/termination.dag`).
+A recursive form that cannot classify does not lower and is rejected at the boundary
+(INVARIANTS "lower with an explicit bound or reject") — the cost lens never sees it.
 
-- **S3-P1 (fail-closed):** compute summaries in topological order over the call DAG's
-  strongly-connected components. Any SCC of size > 1, and any self-edge, summarizes to
-  `unknown_cost(...)` → `ClassUnknown` → dominance fails against every finite budget.
-  Sound, never silently green; recursive code simply cannot pass a finite budget yet.
-- **S3-P2 (witness-refined):** a recursive declaration may carry a termination witness
-  (`std/cardinality.dag` already models `TerminationProof` / `RequiresTerminationProof` /
-  `ProvenTermination`; `base_cost_for_loop` already consumes `loop_bound_witness_for_node`
-  the same way). A proven decreasing measure with a size bound lets the SCC summarize as
-  the measure's bound times the body's per-iteration cost — exactly the existing Loop
-  treatment, lifted from structural loops to recursive calls. No witness → P1 behavior.
-- **No fixpoint iteration.** The `SymbolicCost` lattice has unbounded ascending chains
-  (polynomial degrees); a Kleene fixpoint needs widening, and widening-to-top is
-  indistinguishable from P1's answer at far higher complexity. P1+P2 give the same
-  precision frontier with a witness obligation instead of an analysis heuristic — which is
-  the substrate's idiom (witnesses over cleverness).
+Consequence for S3: a **well-formed lowered call graph is acyclic by construction**,
+and the cost of recursive code is not an S3 problem at all. Recursion reaches the fold
+as `Loop` nodes, and the node-local fold already prices those (`base_cost_for_loop`
+consuming `loop_bound_witness_for_node`: bound × per-iteration body cost). The consult
+only ever follows acyclic call edges; S3 adds no recursion machinery.
+
+The SCC/self-edge clause survives only as an **integrity backstop**: if summary
+computation encounters a cycle in the lowered graph, the lowering invariant was
+violated (compiler defect, or an unlowered recursive form leaked past the boundary).
+Summarize to `unknown_cost(...)` → `ClassUnknown` → red. Never silently green — but a
+red here is a defect report against the lowering, not a budget verdict the function's
+author can act on. No fixpoint/widening machinery is warranted for a case that is
+by-construction a defect.
+
+**Rejected (was "P2" in an earlier draft): witness-refined SCC summaries at the lens
+level.** Consuming termination witnesses inside the cost lens to bound call cycles
+would re-derive, at analysis time, exactly the fact the CallPattern lowering already
+establishes structurally — a second path to the same authority (INVARIANTS second-path
+ban). The witness obligation lives in the lowering (descent facts), and the cost lens
+inherits it for free through the Loop treatment.
 
 ## 4. What this is NOT
 
@@ -95,7 +107,7 @@ The call graph of real programs has cycles. Phase ordering:
 | `lens/cost.dag` consult hook (§2a) | one parameterized point in the fold | **operator-STOP — escalate with this doc before touching** |
 | canonical Transform-callee accessor | consumed, not defined here | lands with COMPREP callee-dispatch wave; S3 blocks on it |
 | budget roster / family gate (S1/S2) | none — computed side sharpens | — |
-| `std/cardinality.dag` termination witnesses | consumed in P2 | additive consumers |
+| `std/cardinality.dag` loop-bound witnesses | already consumed by the node-local Loop fold — recursion arrives lowered as `Loop`, no new consumption | — |
 
 ## 6. Activation ladder and perturb obligations
 
@@ -104,18 +116,22 @@ there is nothing for the consult to consult. The ladder:
 
 1. **Now (pre-callee-wave):** this design ratified; no implementation. The roster's
    wave-1 subjects are callee-free and the gate is sound without S3.
-2. **COMPREP callee-dispatch wave lands:** S3-P1 must land **in the same wave or before
+2. **COMPREP callee-dispatch wave lands:** S3 must land **in the same wave or before
    the first call-containing roster row** — tracked as a blocking edge, not a follow-up
    hope. The first call-containing budget row's witness must include the S3 semantic reds.
-3. **Recursion appears in subjects:** S3-P2, witness-by-witness.
+3. **Recursion appears in subjects:** nothing attaches to S3 — recursive surface forms
+   arrive at the fold already lowered to `Loop` (the recursion-sugar wave, §3), priced
+   by the existing Loop treatment. The gate's reach over recursion is gated on the
+   lowering wave, not on more lens work.
 
-Perturb obligations for the first S3-P1 witness, beyond the standard `--perturb-check`:
+Perturb obligations for the first S3 witness, beyond the standard `--perturb-check`:
 
 - **Consult red:** a subject whose body calls a deliberately superlinear helper, with a
   constant declared budget → must fail dominance (proves the consult, not just the
   plumbing — the S3 analogue of S1's tightened-budget red).
-- **Cycle red:** a deliberately self-recursive subject with any finite budget → must fail
-  (proves SCC fail-closure).
+- **Cycle red:** a hand-built cyclic call-graph fixture (not legal surface code — legal
+  recursion lowers to `Loop`, §3) with any finite budget → must fail (proves the
+  integrity backstop closes; a lowering defect cannot read as green).
 - **Missing-summary red:** a call edge whose callee summary is absent (unresolvable
   binding) → `ClassUnknown` → fail (proves the absent-case is closed, mirroring the
   roster's missing-budget rule).
