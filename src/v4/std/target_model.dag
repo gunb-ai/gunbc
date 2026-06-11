@@ -1904,11 +1904,11 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
 fn target_operator_realization_lookup_step(
   acc: TargetOperatorRealizationLookup,
   row: Node,
-  operation: CanonicalOperation
+  canonical_op: CanonicalOperation
 ) -> TargetOperatorRealizationLookup {
   match target_operator_realization_from_wire_row(row: row) {
     Accepted { value: realization, diagnostics: _ } =>
-      if canonical_operation_equal(left: realization.operation, right: operation) {
+      if canonical_operation_equal(left: realization.operation, right: canonical_op) {
         match acc {
           TargetOperatorRealizationUnique { realization: _ } =>
             TargetOperatorRealizationAmbiguous
@@ -1925,7 +1925,7 @@ fn target_operator_realization_lookup_step(
 
 fn target_operator_realization_catalog_lookup(
   catalog: Node,
-  operation: CanonicalOperation
+  canonical_op: CanonicalOperation
 ) -> Outcome<TargetOperatorRealization> {
   bind_outcome(
     o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
@@ -1942,7 +1942,7 @@ fn target_operator_realization_catalog_lookup(
                     target_operator_realization_lookup_step(
                       acc: acc,
                       row: e.target,
-                      operation: operation
+                      canonical_op: canonical_op
                     )
                   } else {
                     acc
@@ -1983,8 +1983,8 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<
             Named { name: n } =>
               if n == target_value_expr_field_operation {
                 match canonical_operation_from_wire_node(wire: e.target) {
-                  Accepted { value: operation, diagnostics: _ } =>
-                    optional_present(value: operation)
+                  Accepted { value: canonical_op, diagnostics: _ } =>
+                    optional_present(value: canonical_op)
                   Rejected { diagnostics: _ } => acc
                 }
               } else {
@@ -1995,10 +1995,10 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<
       }
     }
   ) {
-    Present { value: operation } => outcome_accepted(operation)
+    Present { value: canonical_op } => outcome_accepted(canonical_op)
     Absent =>
       outcome_rejected(
-        target_value_expr_primitive_apply_wire_malformed_diagnostic(wire: wire)
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
       )
   }
 }
@@ -2013,46 +2013,32 @@ fn target_value_expression_binding_ref_token(
   }
 }
 
-fn target_value_expression_binding_refs_to_tokens(
+fn target_value_expression_binding_refs_intersperse_separator(
   bindings: List<Symbol>,
-  projection: TargetValueExpressionProjection
-) -> List<ConcreteSyntaxToken> {
-  fold_list(
-    xs: bindings,
-    init: [],
-    f: fn(binding, acc) {
-      list_snoc_item(
-        xs: acc,
-        x: target_value_expression_binding_ref_token(
-          binding: binding,
-          projection: projection
-        )
-      )
-    }
-  )
-}
-
-fn target_concrete_syntax_tokens_intersperse_fixed(
-  tokens: List<ConcreteSyntaxToken>,
+  projection: TargetValueExpressionProjection,
   separator: Symbol
 ) -> List<ConcreteSyntaxToken> {
-  match tokens {
-    Empty => []
-    Cons { head: first, tail: rest } =>
-      fold_list(
-        xs: rest,
-        init: [first],
-        f: fn(token, acc) {
-          list_append(
-            left: list_append(
-              left: acc,
-              right: [FixedToken { token_class: separator }]
-            ),
-            right: [token]
-          )
-        }
+  fold_list_right(
+    xs: bindings,
+    empty: Empty,
+    snoc: fn(acc, binding) {
+      let token = target_value_expression_binding_ref_token(
+        binding: binding,
+        projection: projection
       )
-  }
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
 }
 
 fn target_operator_shape_emit_primitive_apply_tokens(
@@ -2081,17 +2067,22 @@ fn target_operator_shape_emit_primitive_apply_tokens(
                 )
               Present { value: right_binding } =>
                 outcome_accepted(
-                  [
-                    target_value_expression_binding_ref_token(
+                  Cons {
+                    head: target_value_expression_binding_ref_token(
                       binding: left_binding,
                       projection: projection
                     ),
-                    FixedToken { token_class: op_token },
-                    target_value_expression_binding_ref_token(
-                      binding: right_binding,
-                      projection: projection
-                    )
-                  ]
+                    tail: Cons {
+                      head: FixedToken { token_class: op_token },
+                      tail: Cons {
+                        head: target_value_expression_binding_ref_token(
+                          binding: right_binding,
+                          projection: projection
+                        ),
+                        tail: Empty
+                      }
+                    }
+                  }
                 )
             }
         }
@@ -2109,13 +2100,16 @@ fn target_operator_shape_emit_primitive_apply_tokens(
             )
           Present { value: binding } =>
             outcome_accepted(
-              [
-                FixedToken { token_class: op_token },
-                target_value_expression_binding_ref_token(
-                  binding: binding,
-                  projection: projection
-                )
-              ]
+              Cons {
+                head: FixedToken { token_class: op_token },
+                tail: Cons {
+                  head: target_value_expression_binding_ref_token(
+                    binding: binding,
+                    projection: projection
+                  ),
+                  tail: Empty
+                }
+              }
             )
         }
       }
@@ -2123,19 +2117,23 @@ fn target_operator_shape_emit_primitive_apply_tokens(
       outcome_accepted(
         list_append(
           left: list_append(
-            left: [
-              FixedToken { token_class: projection.primitive_apply_form.open },
-              FixedToken { token_class: callee }
-            ],
-            right: target_concrete_syntax_tokens_intersperse_fixed(
-              tokens: target_value_expression_binding_refs_to_tokens(
-                bindings: bindings,
-                projection: projection
-              ),
+            left: Cons {
+              head: FixedToken { token_class: projection.primitive_apply_form.open },
+              tail: Cons {
+                head: FixedToken { token_class: callee },
+                tail: Empty
+              }
+            },
+            right: target_value_expression_binding_refs_intersperse_separator(
+              bindings: bindings,
+              projection: projection,
               separator: projection.primitive_apply_form.separator
             )
           ),
-          right: [FixedToken { token_class: projection.primitive_apply_form.close }]
+          right: Cons {
+            head: FixedToken { token_class: projection.primitive_apply_form.close },
+            tail: Empty
+          }
         )
       )
     MethodIdent { ident: _ } =>
@@ -2162,7 +2160,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
                   catalog: catalog,
-                  operation: canonical_op
+                  canonical_op: canonical_op
                 ),
                 f: fn(realization) {
                   target_operator_shape_emit_primitive_apply_tokens(
@@ -2189,12 +2187,13 @@ fn target_value_expression_binding_ref_to_concrete_tokens(
     o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
     f: fn(binding) {
       outcome_accepted(
-        [
-          target_value_expression_binding_ref_token(
+        Cons {
+          head: target_value_expression_binding_ref_token(
             binding: binding,
             projection: projection
-          )
-        ]
+          ),
+          tail: Empty
+        }
       )
     }
   )
@@ -2223,26 +2222,6 @@ fn target_value_expression_to_concrete_tokens(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
       )
   }
-}
-
-fn target_value_expression_to_concrete_tokens_from_target(
-  expr: TargetValueExpression,
-  target: TargetModel,
-  projection: TargetValueExpressionProjection
-) -> Outcome<List<ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: find_named_child(
-      root: target.bundle,
-      name: target_model_edge_operator_realizations
-    ),
-    f: fn(catalog) {
-      target_value_expression_to_concrete_tokens(
-        expr: expr,
-        projection: projection,
-        catalog: catalog
-      )
-    }
-  )
 }
 
 fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {

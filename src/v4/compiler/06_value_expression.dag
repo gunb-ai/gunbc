@@ -58,10 +58,11 @@ import v4.std.target_model {
   TargetValueExpressionProjection,
   TargetValueExprPrimitiveApply,
   decode_value_expression_projection_bundle,
+  target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply,
-  target_value_expression_to_concrete_tokens_from_target
+  target_value_expression_to_concrete_tokens
 }
 
 data value_expr_reason_surface_op_unmapped: Symbol = value_expr_reason_surface_op_unmapped
@@ -372,10 +373,18 @@ fn value_expression_to_concrete_tokens(
   target: TargetModel,
   projection: TargetValueExpressionProjection
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  target_value_expression_to_concrete_tokens_from_target(
-    expr: expr,
-    target: target,
-    projection: projection
+  bind_outcome(
+    o: target_bundle_named_child(
+      target: target,
+      edge_name: target_model_edge_operator_realizations
+    ),
+    f: fn(catalog) {
+      target_value_expression_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
   )
 }
 
