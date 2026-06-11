@@ -8,6 +8,7 @@ module v4.std.host_transport
 
 import v4.std.collection { List }
 import v4.std.integer { Int }
+import v4.std.node { Symbol }
 import v4.std.text { String }
 
 
