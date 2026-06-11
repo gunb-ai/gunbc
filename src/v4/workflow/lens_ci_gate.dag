@@ -60,13 +60,22 @@ data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow 
   function: "witness_parse_stamp_span_index_holds"
 }
 
+// complexity-gate S1a — source-bridged COMPREP wave-1 `add` body (design-lens-subject-supply §3);
+// cost_lens → complexity projection; declared budget dominates computed class.
+data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "complexity_gate/source_bridged_add_budget",
+  entry: "src/v4/test/claim/complexity_gate/source_bridged_add_budget.dag",
+  function: "source_bridged_add_budget_claim_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
   lens_ci_claim_run_row_coverage_hollow_type_defect_key,
   lens_ci_claim_run_row_structural_resolution_binds_to_resolved,
   lens_ci_claim_run_row_provenance_occurrence_id_model,
-  lens_ci_claim_run_row_provenance_parse_stamp_span_index
+  lens_ci_claim_run_row_provenance_parse_stamp_span_index,
+  lens_ci_claim_run_row_complexity_gate_source_bridged_add
 ]
 
-data lens_ci_claim_run_row_count: String = "6"
+data lens_ci_claim_run_row_count: String = "7"
