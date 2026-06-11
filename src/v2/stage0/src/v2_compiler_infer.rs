@@ -12506,6 +12506,12 @@ pub fn build_type_env(
                 .clone();
                 let item_name = authored_name_at(source_indices.clone(), item.clone());
                 let has_structure = (item.connective.clone() != Connective::NoConnective);
+                let params_are_generic_decls = item
+                    .params
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .all(|p| param_is_generic_decl(p.clone(), source_indices.clone()));
                 if has_structure.clone() {
                     {
                         let type_node = Rc::new(Node {
@@ -12540,9 +12546,9 @@ pub fn build_type_env(
                         )
                     }
                 } else {
-                    if (((item.inferred.clone() != None)
-                        && ((item.params.clone().len() as i64) == 0))
-                        && (item.body.clone() == None))
+                    if (((item.inferred.clone() != None) && (item.body.clone() == None))
+                        && (((item.params.clone().len() as i64) == 0)
+                            || (params_are_generic_decls.clone() == false)))
                     {
                         {
                             let alias_node = Rc::new(Node {
@@ -12597,7 +12603,8 @@ pub fn build_type_env(
                                 )
                             }
                         } else {
-                            if (((((item.params.clone().len() as i64) > 0)
+                            if ((((((item.params.clone().len() as i64) > 0)
+                                && params_are_generic_decls.clone())
                                 && (item.connective.clone() == Connective::NoConnective))
                                 && (item.body.clone() == None))
                                 && (item.transport.clone() == None))
@@ -13147,6 +13154,12 @@ pub fn build_type_env_unresolved(
                 .id
                 .clone();
                 let has_structure = (item.connective.clone() != Connective::NoConnective);
+                let params_are_generic_decls = item
+                    .params
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .all(|p| param_is_generic_decl(p.clone(), source_indices.clone()));
                 if has_structure.clone() {
                     {
                         let type_node = Rc::new(Node {
@@ -13181,9 +13194,9 @@ pub fn build_type_env_unresolved(
                         )
                     }
                 } else {
-                    if (((item.inferred.clone() != None)
-                        && ((item.params.clone().len() as i64) == 0))
-                        && (item.body.clone() == None))
+                    if (((item.inferred.clone() != None) && (item.body.clone() == None))
+                        && (((item.params.clone().len() as i64) == 0)
+                            || (params_are_generic_decls.clone() == false)))
                     {
                         {
                             let alias_node = Rc::new(Node {

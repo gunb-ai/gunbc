@@ -5905,6 +5905,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let item_name = authored_name_at(source_indices: source_indices, node: item)
     let has_structure = item.connective != NoConnective
+    let params_are_generic_decls = item.params |> all(p => param_is_generic_decl(p: p, source_indices: source_indices))
     if has_structure {
       let type_node = Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
@@ -5914,7 +5915,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: type_node, provenance: SubValueUnknown)
-    } else if item.inferred != none && item.params |> count == 0 && item.body == none {
+    } else if item.inferred != none && item.body == none && (item.params |> count == 0 || params_are_generic_decls == false) {
       let alias_node = Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [],
         connective: NoConnective, params: [], inferred: item.inferred,
@@ -5926,7 +5927,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
       register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: ref_node, provenance: SubValueUnknown)
-    } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
+    } else if item.params |> count > 0 && params_are_generic_decls && item.connective == NoConnective && item.body == none && item.transport == none {
       // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
       // Register as a nominal type with params so generics can find the declaration.
       // Preserve .inferred so alias chains (List → FreeMonoid) survive into the
@@ -6063,10 +6064,11 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
+    let params_are_generic_decls = item.params |> all(p => param_is_generic_decl(p: p, source_indices: source_indices))
     if has_structure {
       let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
-    } else if item.inferred != none && item.params |> count == 0 && item.body == none {
+    } else if item.inferred != none && item.body == none && (item.params |> count == 0 || params_are_generic_decls == false) {
       let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
