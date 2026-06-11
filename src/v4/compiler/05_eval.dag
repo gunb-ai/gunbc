@@ -1307,6 +1307,13 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node fail-closed
+// unsupported-callee arm (executed by comprep_eval_by_execution keystone) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
+// node_query connective dispatch surface instead of inline Node.kind/TypeNode shape matches;
+// owner/lane: Mgr-RUNTIME (neat-bat-593) — trigger: the source-driven callee-dispatch wave
+// lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
