@@ -950,11 +950,11 @@ fn target_atom_realization_catalog_row_decode_invalid_diagnostic(
 }
 
 fn target_atom_realization_catalog_lookup_step(
-  acc: TargetAtomRealizationCatalogLookup,
+  acc: PassingCandidateFold,
   row_node: Node,
   source_carrier: Node,
   host_target_model: TargetModel
-) -> TargetAtomRealizationCatalogLookup {
+) -> PassingCandidateFold {
   match target_atom_realization_from_row_node(
     row_node: row_node,
     host_target_model: host_target_model
@@ -962,17 +962,14 @@ fn target_atom_realization_catalog_lookup_step(
     Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
-          TargetAtomRealizationCatalogMissing =>
-            TargetAtomRealizationCatalogUnique { row: row }
-          TargetAtomRealizationCatalogUnique { row: _ } =>
-            TargetAtomRealizationCatalogAmbiguous
-          TargetAtomRealizationCatalogAmbiguous => TargetAtomRealizationCatalogAmbiguous
-          TargetAtomRealizationCatalogInvalid => TargetAtomRealizationCatalogInvalid
+          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+          ManyPassingCandidates => ManyPassingCandidates
         }
       } else {
         acc
       }
-    Rejected { diagnostics: _ } => TargetAtomRealizationCatalogInvalid
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -1188,7 +1185,7 @@ fn target_atom_realization_lookup_in_catalog_node(
     TypeNode { connective: Conj } =>
       match fold(
         catalog.children,
-        init: TargetAtomRealizationCatalogMissing,
+        init: NoPassingCandidate,
         f: fn(acc, e) {
           target_atom_realization_catalog_lookup_step(
             acc: acc,
@@ -1198,18 +1195,15 @@ fn target_atom_realization_lookup_in_catalog_node(
           )
         }
       ) {
-        TargetAtomRealizationCatalogMissing =>
+        NoPassingCandidate =>
           outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-        TargetAtomRealizationCatalogUnique { row: row } =>
-          Accepted { value: row, diagnostics: None }
-        TargetAtomRealizationCatalogAmbiguous =>
-          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
-        TargetAtomRealizationCatalogInvalid =>
-          outcome_rejected(
-            target_atom_realization_catalog_row_decode_invalid_diagnostic(
-              source_carrier: source_carrier
-            )
+        OnePassingCandidate { candidate: row_node } =>
+          target_atom_realization_from_row_node(
+            row_node: row_node,
+            host_target_model: host_target_model
           )
+        ManyPassingCandidates =>
+          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
       }
     _ =>
       outcome_rejected(
@@ -1460,7 +1454,7 @@ fn target_function_signature_realization_from_row_node(
 
 // 🟢 coproduct dissolution — internal fold state for the SG-1b signature-realization catalog scan
 // (Result-style: heterogeneous arms — Unique carries a row payload, the other three are nullary
-// outcome tags). Mirrors TargetAtomRealizationCatalogLookup; not an N-arm identical-payload coproduct.
+// outcome tags). Not an N-arm identical-payload coproduct; PassingCandidateFold does not apply here.
 type TargetFunctionSignatureRealizationCatalogLookup
   = TargetFunctionSignatureRealizationCatalogMissing
   | TargetFunctionSignatureRealizationCatalogUnique { row: TargetFunctionSignatureRealization }
