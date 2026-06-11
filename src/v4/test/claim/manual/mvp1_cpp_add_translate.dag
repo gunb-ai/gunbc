@@ -44,7 +44,7 @@ import v4.extdeps.languages.cpp {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModel, TargetModelBundle }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   infer_receipt_context
@@ -136,9 +136,17 @@ data mvp1_cpp_missing_translation_rules_target: TargetModel = TargetModel {
   authority_source_text: ""
 }
 
+fn mvp1_cpp_target_model_bundle() -> TargetModelBundle {
+  mvp1_cpp_target_model
+}
+
+fn mvp1_cpp_missing_translation_rules_bundle() -> TargetModelBundle {
+  mvp1_cpp_missing_translation_rules_target
+}
+
 fn anchor_mvp1_cpp_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
   target_serialize_source_from_model(
-    target: mvp1_cpp_missing_translation_rules_target,
+    target: mvp1_cpp_missing_translation_rules_bundle(),
     emitted: mvp1_cpp_emitted_root
   )
 }
@@ -313,7 +321,7 @@ data mvp1_cpp_inferred_tree: InferredTree = InferredTree {
 }
 
 fn anchor_mvp1_cpp_emit_accepts() -> Outcome<TargetSource> {
-  emit(tree: mvp1_cpp_inferred_tree, target: mvp1_cpp_target_model)
+  emit(tree: mvp1_cpp_inferred_tree, target: mvp1_cpp_target_model_bundle())
 }
 
 fn anchor_mvp1_cpp_compile_inferred_accepts() -> Outcome<CompileOutput> {
