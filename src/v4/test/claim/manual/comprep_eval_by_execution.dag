@@ -527,7 +527,7 @@ fn comprep_swapped_add_arrow() -> Node {
 fn comprep_excess_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
@@ -542,7 +542,7 @@ fn comprep_excess_signature_arrow() -> Node {
 fn comprep_eval_canonical_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
@@ -556,7 +556,7 @@ fn comprep_eval_canonical_body() -> Node {
 fn comprep_excess_body_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
@@ -569,7 +569,7 @@ fn comprep_excess_body_arrow() -> Node {
 fn comprep_excess_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
@@ -585,7 +585,7 @@ fn comprep_excess_body() -> Node {
 fn comprep_excess_actual_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
       Edge { label: Positional, target: comprep_eval_literal_two_node() },
