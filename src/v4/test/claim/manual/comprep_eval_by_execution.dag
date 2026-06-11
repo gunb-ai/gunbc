@@ -5,7 +5,8 @@
 module v4.test.claim.manual.comprep_eval_by_execution
 
 import v4.compiler.body_producer {
-  produce_mvp1_add_arrow_with_body
+  produce_mvp1_add_arrow_with_body,
+  produce_mvp1_add_arrow_with_body_from_resolved
 }
 import v4.compiler.eval {
   EvalContext,
@@ -269,6 +270,35 @@ fn comprep_eval_context() -> EvalContext {
   )
 }
 
+fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(text: dag_mvp1_source_text, file: ^comprep_eval_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: comprep_eval_parse_mvp1_add_tokens(tokens: tokens.tokens),
+        f: fn(parsed) {
+          bind_outcome(
+            o: normalize(parse_tree: parsed),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn comprep_source_bridged_add_arrow_with_body() -> Outcome<Node> {
+  bind_outcome(
+    o: comprep_source_resolved_add_arrow(),
+    f: fn(resolved) {
+      produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: resolved)
+    }
+  )
+}
+
 fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
@@ -424,11 +454,6 @@ fn comprep_eval_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-// The executed callee is the COMPREP-produced add body (produce_mvp1_add_arrow_with_body,
-// #4608) — NOT the resolved source. Source ingestion is asserted SEPARATELY as an admission
-// gate (comprep_eval_source_pipeline_admits_add_holds), never folded into the run tree, so a
-// wrong resolved Arrow cannot ride a hard-coded green. Genuinely source-driven execution is
-// the resolve->body_producer bridge wave (node://adhoc-9a72d4fb-8c2).
 fn comprep_eval_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
   let call = comprep_eval_add_call(callee: callee)
   let root = comprep_eval_tree_root(call: call, expected: expected)
@@ -437,7 +462,7 @@ fn comprep_eval_inferred_run_tree(callee: Node, expected: Node) -> Outcome<Infer
 
 fn comprep_eval_claim(input: Node, expected: Node) -> TestClaim {
   CompilesClaim {
-    label: "manual/comprep: COMPREP-produced add body executes through eval callee dispatch (source pipeline admitted separately)",
+    label: "manual/comprep: source-bridged add Arrow.body executes through eval callee dispatch",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
@@ -581,11 +606,6 @@ fn comprep_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bo
   }
 }
 
-// Admission gate ONLY: source `fn add(x:Int,y:Int)->Int{x+y}` tokenizes->parses->normalizes
-// ->resolves without rejection. This proves the source pipeline ADMITS add; it does NOT
-// drive the executed body (that is the resolve->body_producer bridge wave,
-// node://adhoc-9a72d4fb-8c2). Kept a separate conjunct precisely so the keystone never
-// conflates "source admits" with "source drives execution".
 fn comprep_eval_source_pipeline_admits_add_holds() -> Bool {
   match comprep_source_ingested_add_infers() {
     Accepted { value: _, diagnostics: _ } => true
@@ -609,7 +629,7 @@ fn comprep_eval_runtime_value_is_five(value: RuntimeValue) -> Bool {
 }
 
 fn comprep_eval_direct_runtime_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match comprep_source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = comprep_eval_add_call(callee: arrow)
       match comprep_eval_inferred_run_tree(callee: arrow, expected: comprep_eval_literal_five_node()) {
@@ -630,9 +650,21 @@ fn comprep_eval_direct_runtime_holds() -> Bool {
   }
 }
 
-// Executes the COMPREP-produced (#4608) add Arrow.body through eval callee dispatch and
-// checks the run verdict is Pass (result == 5) BY EXECUTION. The executed subject is the
-// produced body, named honestly — not "source-driven".
+// resolve→body_producer bridge (node://adhoc-9a72d4fb-8c2): source-resolved MVP add Arrow
+// drives the executed callee body through eval; result == 5 BY EXECUTION.
+fn comprep_eval_source_driven_add_executes_holds() -> Bool {
+  match comprep_source_bridged_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      comprep_eval_run_passes(
+        run: comprep_eval_run(
+          callee: arrow,
+          expected: comprep_eval_literal_five_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn comprep_eval_produced_add_body_executes_holds() -> Bool {
   match produce_mvp1_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
@@ -706,17 +738,15 @@ fn comprep_excess_actual_red_holds() -> Bool {
   comprep_excess_actual_executes_to_five() == false
 }
 
-// COMPREP wave-1 runtime keystone, single Bool witness. Three honest conjuncts:
-//   1. produced-body-executes — the #4608 COMPREP-produced add Arrow.body executes through
-//      eval callee dispatch to result == 5 BY EXECUTION (retiring call_primitive-as-only-arm);
-//   2. source-pipeline-admits — source `fn add` tokenizes->parses->normalizes->resolves
-//      (a SEPARATE admission gate, NOT a driver of the executed body);
-//   3. swapped-operands-red — the discriminating red: a swapped-operand body fails the run.
-// The claim does NOT assert source-driven execution; that is the resolve->body_producer
-// bridge wave (node://adhoc-9a72d4fb-8c2). The co-located BoolWitnessClaim marker below makes
-// this the glob-discovered executed consumer (INVARIANTS E-10).
+// COMPREP wave-1 runtime keystone, single Bool witness:
+//   1. source-driven-executes — resolve→body_producer bridge (#4646) wires source-resolved MVP
+//      add through body_producer; the bridged Arrow.body executes to result == 5 BY EXECUTION;
+//   2. direct-runtime — same bridged callee through eval directly;
+//   3. source-pipeline-admits — source `fn add` tokenizes->parses->normalizes->resolves;
+//   4. swapped-operands-red — discriminating red: swapped-operand body fails the run;
+//   5–7. exact-arity reds — oversized signature / body / actuals refuse (P3/P5, #4634).
 fn comprep_eval_by_execution_keystone_holds() -> Bool {
-  comprep_eval_produced_add_body_executes_holds()
+  comprep_eval_source_driven_add_executes_holds()
     && comprep_eval_direct_runtime_holds()
     && comprep_eval_source_pipeline_admits_add_holds()
     && comprep_eval_swapped_operands_red_holds()
