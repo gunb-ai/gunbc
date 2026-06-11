@@ -361,6 +361,7 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
       Accepted { value: done, diagnostics: ad } =>
         match e.label {
           Positional =>
+            // Wave-1: operator is positional-0; later positions resolve as ordinary nodes.
             if length(xs: done) == 0 {
               match resolve_transform_operator_child(n: e.target, scope: scope, lm: lm) {
                 Rejected { diagnostics: r } =>

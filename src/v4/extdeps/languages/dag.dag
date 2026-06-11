@@ -194,7 +194,7 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
   }
 }
 
-// `lm` is reserved for a model-derived canonicalization table; wave-1 delegates to _member.
+// shell: `lm` reserved for PR-T-FINISH translate_algebra §1.5 model-derived table; wave-1 delegates to _member.
 fn dag_surface_operator_canonicalization_lookup(
   lm: DagLanguageModel,
   surface_token: Symbol
@@ -3292,6 +3292,7 @@ fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagn
 
 data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_atom_binding_port
 
+// Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
 fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
