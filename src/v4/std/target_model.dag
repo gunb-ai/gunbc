@@ -44,6 +44,10 @@ import v4.std.diagnostic {
 import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.find_witness {
   CandidateSet,
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate,
+  PassingCandidateFold,
   PreservationPredicate,
   UniqueOnly,
   find_witness,
@@ -630,22 +634,16 @@ fn target_value_template_mismatch_diagnostic(source_carrier: Node) -> Diagnostic
   }
 }
 
-type TargetAtomRealizationLookup
-  = TargetAtomRealizationMissing
-  | TargetAtomRealizationUnique { row: TargetAtomRealization }
-  | TargetAtomRealizationAmbiguous
-
 fn target_atom_realization_lookup_step(
-  acc: TargetAtomRealizationLookup,
+  acc: PassingCandidateFold,
   row: TargetAtomRealization,
   source_carrier: Node
-) -> TargetAtomRealizationLookup {
+) -> PassingCandidateFold {
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
     match acc {
-      TargetAtomRealizationMissing =>
-        TargetAtomRealizationUnique { row: row }
-      TargetAtomRealizationUnique { row: _ } => TargetAtomRealizationAmbiguous
-      TargetAtomRealizationAmbiguous => TargetAtomRealizationAmbiguous
+      NoPassingCandidate => OnePassingCandidate { candidate: row.source_carrier }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
     }
   } else {
     acc
@@ -661,7 +659,7 @@ fn target_atom_realization_lookup_in_catalog(
 ) -> Outcome<TargetAtomRealization> {
   match fold_list(
     xs: catalog,
-    empty: TargetAtomRealizationMissing,
+    empty: NoPassingCandidate,
     cons: fn(acc, row) {
       target_atom_realization_lookup_step(
         acc: acc,
@@ -670,11 +668,29 @@ fn target_atom_realization_lookup_in_catalog(
       )
     }
   ) {
-    TargetAtomRealizationMissing =>
+    NoPassingCandidate =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-    TargetAtomRealizationUnique { row: row } =>
-      Accepted { value: row, diagnostics: None }
-    TargetAtomRealizationAmbiguous =>
+    OnePassingCandidate { candidate: _ } =>
+      match fold_list(
+        xs: catalog,
+        empty: optional_absent(),
+        cons: fn(acc, row) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+                optional_present(value: row)
+              } else {
+                acc
+              }
+          }
+        }
+      ) {
+        Present { value: row } => Accepted { value: row, diagnostics: None }
+        Absent =>
+          outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+      }
+    ManyPassingCandidates =>
       outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
   }
 }
@@ -912,12 +928,6 @@ fn target_atom_realization_catalog_node(
     span: Unanchored
 }
 }
-
-type TargetAtomRealizationCatalogLookup
-  = TargetAtomRealizationCatalogMissing
-  | TargetAtomRealizationCatalogUnique { row: TargetAtomRealization }
-  | TargetAtomRealizationCatalogAmbiguous
-  | TargetAtomRealizationCatalogInvalid
 
 fn target_atom_realization_target_model_bundle_mismatch_diagnostic(
   source_carrier: Node
