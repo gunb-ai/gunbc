@@ -197,6 +197,7 @@ import v4.std.target_model {
   lex_rules_literal_for_class,
   lex_rules_literal,
   token_spelling_from_model,
+  concrete_syntax_token_from_node,
   type_expr_spelling_for_atom,
   serialize_type_expr_record_field_label,
   serialize_type_expr_arrow_param_spelling,
@@ -831,81 +832,6 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
   optional_named_child_ignoring_positional(
     parent: parent,
     edge_name: concrete_syntax_token_field_kind
-  )
-}
-// Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11). The
-// `concrete_syntax_token_kind_{fixed,bound}` wire tags are read exactly here; every downstream
-// consumer (token_spelling_from_model, token_sequence_item_kind) dispatches structurally on the
-// resulting ConcreteSyntaxToken carrier rather than re-comparing Symbols. Fail-closed: a kind that
-// is neither fixed nor bound, a fixed token carrying a binding, or a bound token missing one is
-// Rejected.
-fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
-  bind_outcome(
-    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_kind),
-    f: fn(kind_node) {
-      bind_outcome(
-        o: node_atom_identity(node: kind_node),
-        f: fn(kind) {
-          bind_outcome(
-            o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
-            f: fn(class_node) {
-              bind_outcome(
-                o: node_atom_identity(node: class_node),
-                f: fn(token_class) {
-                  bind_outcome(
-                    o: conj_optional_named_child(
-                      parent: token,
-                      edge_name: concrete_syntax_token_field_binding
-                    ),
-                    f: fn(binding_node) {
-                      if kind == concrete_syntax_token_kind_fixed {
-                        match binding_node {
-                          Present { value: _ } =>
-                            outcome_rejected(
-                              translate_concrete_token_kind_invalid_diagnostic(token: token)
-                            )
-                          Absent =>
-                            Accepted {
-                              value: FixedToken { token_class: token_class },
-                              diagnostics: None
-                            }
-                        }
-                      } else {
-                        if kind == concrete_syntax_token_kind_bound {
-                          match binding_node {
-                            Present { value: binding_node } =>
-                              bind_outcome(
-                                o: node_atom_identity(node: binding_node),
-                                f: fn(binding) {
-                                  Accepted {
-                                    value: BoundToken {
-                                      token_class: token_class,
-                                      binding: binding
-                                    },
-                                    diagnostics: None
-                                  }
-                                }
-                              )
-                            Absent =>
-                              outcome_rejected(
-                                translate_concrete_token_kind_invalid_diagnostic(token: token)
-                              )
-                          }
-                        } else {
-                          outcome_rejected(
-                            translate_concrete_token_kind_invalid_diagnostic(token: token)
-                          )
-                        }
-                      }
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
   )
 }
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {

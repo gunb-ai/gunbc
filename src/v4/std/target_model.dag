@@ -234,6 +234,7 @@ fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
 // Per-target lex + binding-spelling lookup (tokens/layout authority for translate serialize).
 data target_lex_rule_literal_not_found: Symbol = target_lex_rule_literal_not_found
 data target_binding_spelling_not_found: Symbol = target_binding_spelling_not_found
+data target_concrete_token_kind_invalid: Symbol = target_concrete_token_kind_invalid
 data target_type_expr_projection_bundle_malformed: Symbol = target_type_expr_projection_bundle_malformed
 data target_collection_shape_malformed: Symbol = target_collection_shape_malformed
 
@@ -259,6 +260,98 @@ fn target_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+fn target_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_concrete_token_kind_invalid,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_optional_named_child(root: Node, name: Symbol) -> Outcome<Optional<Node>> {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: d } =>
+      Accepted { value: optional_present(value: child), diagnostics: d }
+    Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+  }
+}
+
+fn target_node_atom_identity(node: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
+  }
+}
+
+// Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11).
+fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: find_named_child(root: token, name: concrete_syntax_token_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: target_node_atom_identity(node: kind_node),
+        f: fn(kind) {
+          bind_outcome(
+            o: find_named_child(root: token, name: concrete_syntax_token_field_class),
+            f: fn(class_node) {
+              bind_outcome(
+                o: target_node_atom_identity(node: class_node),
+                f: fn(token_class) {
+                  bind_outcome(
+                    o: target_optional_named_child(
+                      root: token,
+                      name: concrete_syntax_token_field_binding
+                    ),
+                    f: fn(binding_node) {
+                      if kind == concrete_syntax_token_kind_fixed {
+                        match binding_node {
+                          Present { value: _ } =>
+                            outcome_rejected(
+                              target_concrete_token_kind_invalid_diagnostic(token: token)
+                            )
+                          Absent =>
+                            outcome_accepted(
+                              FixedToken { token_class: token_class }
+                            )
+                        }
+                      } else {
+                        if kind == concrete_syntax_token_kind_bound {
+                          match binding_node {
+                            Present { value: binding_child } =>
+                              bind_outcome(
+                                o: target_node_atom_identity(node: binding_child),
+                                f: fn(binding) {
+                                  outcome_accepted(
+                                    BoundToken {
+                                      token_class: token_class,
+                                      binding: binding
+                                    }
+                                  )
+                                }
+                              )
+                            Absent =>
+                              outcome_rejected(
+                                target_concrete_token_kind_invalid_diagnostic(token: token)
+                              )
+                          }
+                        } else {
+                          outcome_rejected(
+                            target_concrete_token_kind_invalid_diagnostic(token: token)
+                          )
+                        }
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
