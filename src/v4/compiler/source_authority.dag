@@ -41,6 +41,14 @@ import v4.std.witness { Holds, Violates, Witness }
 
 type DagSource = String
 
+// 🟡 transparent carrier boundary adapters — owner: Mgr-SOUNDNESS with
+// Mgr-SELFHOST; lane: v4 tree-carrier alias collapse after #4587 BindingId.
+// These are call-boundary conversions between declared transparent carriers
+// (TargetSource, TargetModelBundle, ParseTree, NormalizedTree, ResolvedTree)
+// and the current stage APIs that still consume their raw structural carriers.
+// They do not branch, compare, or originate identity. Dissolve when the stage
+// signatures accept the declared carriers directly, or when the aliases collapse
+// to one canonical carrier in the v4 source-authority model.
 fn target_source_to_string(source: TargetSource) -> String {
   source
 }

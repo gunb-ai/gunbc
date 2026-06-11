@@ -18,6 +18,12 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // If that intern row is shadowed by another visible same-name import,
 // carrier_bindings may still supply the exact BindingId-keyed hidden row;
 // without that exact carrier row, lookup returns a compiler error.
+// 🟡 tracked scaffold — owner: Mgr-SOUNDNESS; lane: #4587 BindingId phase-2.
+// Dissolve when declaration registration stamps every local/imported transparent
+// alias through one BindingId-keyed declaration table before lookup: fold
+// carrier_bindings into decl_registry-backed rows and demote `bindings` to the
+// unresolved pre-registration spelling index only. Forbidden steady state:
+// payload-owning parallel maps or spelling fallback for BindingId-stamped nodes.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   carrier_bindings: Map<BindingId, TypeBinding>
