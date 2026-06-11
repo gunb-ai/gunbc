@@ -650,6 +650,30 @@ fn target_atom_realization_lookup_step(
   }
 }
 
+// Second-pass extraction for the typed-list path: after PassingCandidateFold confirms exactly
+// one matching row, re-scan to retrieve the typed TargetAtomRealization. Named helper avoids
+// nested fn(acc, row) closures that confuse the v2 type-inference engine.
+fn target_atom_realization_lookup_extract_row(
+  catalog: List<TargetAtomRealization>,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  fold_list(
+    xs: catalog,
+    empty: optional_absent(),
+    cons: fn(acc, item) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if content_hash(n: item.source_carrier) == content_hash(n: source_carrier) {
+            optional_present(value: item)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
 // Typed-list lookup for row authoring (e.g. rust_target_atom_realization_catalog before
 // target_atom_realization_catalog_node encode). Translate consumers use the Node-keyed
 // target_atom_realization_lookup_in_catalog_node path on the bundle catalog edge.
@@ -671,20 +695,9 @@ fn target_atom_realization_lookup_in_catalog(
     NoPassingCandidate =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
     OnePassingCandidate { candidate: _ } =>
-      match fold_list(
-        xs: catalog,
-        empty: optional_absent(),
-        cons: fn(acc, row) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
-                optional_present(value: row)
-              } else {
-                acc
-              }
-          }
-        }
+      match target_atom_realization_lookup_extract_row(
+        catalog: catalog,
+        source_carrier: source_carrier
       ) {
         Present { value: row } => Accepted { value: row, diagnostics: None }
         Absent =>
