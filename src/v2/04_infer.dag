@@ -5836,6 +5836,21 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
   )
 }
 
+fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> CarrierClosureState {
+  fold(env.decl_registry |> map_values, init: state, f: (acc, decl) =>
+    if map_contains_key(acc.seen_names, decl.name) && !map_contains_key(acc.carrier_bindings, decl.binding_id) {
+      match map_get(env.bindings, decl.binding_key) {
+        Present { value: binding } =>
+          CarrierClosureState {
+            carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id, binding),
+            seen_names: acc.seen_names
+          }
+        Absent => acc
+      }
+    } else { acc }
+  )
+}
+
 fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<BindingId, TypeBinding> {
   let closure_state = fold(env.bindings |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map() }, f: (state, binding) =>
     if imp.module_path == "std.types" && is_type_variable_name(name: binding.name) {
@@ -5846,7 +5861,7 @@ fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, 
       state
     }
   )
-  closure_state.carrier_bindings
+  carrier_closure_with_decl_rows(state: closure_state, env: env).carrier_bindings
 }
 
 fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, typed_parent: TypedModule) -> Map<BindingId, TypeBinding> {
@@ -5861,7 +5876,7 @@ fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<BindingId, TypeBi
       state
     }
   )
-  closure_state.carrier_bindings
+  carrier_closure_with_decl_rows(state: closure_state, env: env).carrier_bindings
 }
 
 fn import_allows_binding_name(imp: ResolvedImport, name: String) -> Bool {

@@ -1358,21 +1358,7 @@ pub fn direct_call_transparent_alias_to(
     match direct_call_node_binding(env.clone(), alias_node.clone()) {
         Some(binding) => {
             match direct_call_bare_alias_target_name(binding.clone(), env.source_indices.clone()) {
-                Some(alias_target) => {
-                    if target_name == "Node" || binding.name == "ParseTree" {
-                        eprintln!(
-                            "DBG alias Some binding={} alias_node={} bid={:?} resolved_name={} resolved_conn={:?} alias_target={} target={}",
-                            binding.name,
-                            authored_name_at(env.source_indices.clone(), alias_node.clone()),
-                            alias_node.binding_id,
-                            authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
-                            binding.resolved.connective,
-                            alias_target,
-                            target_name
-                        );
-                    }
-                    (alias_target.clone().as_str() == target_name.as_str())
-                }
+                Some(alias_target) => (alias_target.clone().as_str() == target_name.as_str()),
                 None => {
                     let resolved_name =
                         authored_name_at(env.source_indices.clone(), binding.resolved.clone());
@@ -1385,18 +1371,6 @@ pub fn direct_call_transparent_alias_to(
                         }
                         None => binding.name.clone(),
                     };
-                    if target_name == "Node" || binding.name == "ParseTree" {
-                        eprintln!(
-                            "DBG alias None binding={} alias_node={} bid={:?} resolved_name={} resolved_conn={:?} alias_decl={} target={}",
-                            binding.name,
-                            authored_name_at(env.source_indices.clone(), alias_node.clone()),
-                            alias_node.binding_id,
-                            resolved_name,
-                            binding.resolved.connective,
-                            alias_decl_name,
-                            target_name
-                        );
-                    }
                     ((alias_decl_name.clone().as_str() != target_name.as_str())
                         && (resolved_name.clone().as_str() == target_name.as_str()))
                 }
@@ -1857,31 +1831,6 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
-                                                if node_type_shape(
-                                                    formal.clone(),
-                                                    source_indices.clone(),
-                                                ) == "Product(Node)"
-                                                    && node_type_shape(
-                                                        actual.clone(),
-                                                        source_indices.clone(),
-                                                    ) == "Product(Node)"
-                                                {
-                                                    eprintln!(
-                                                        "DBG type_mismatch formal={} bid={:?} actual={} bid={:?} formal_id={} fid={:?} actual_id={} aid={:?} transparent_id={} transparent_stamped={} decl_mismatch={} type_mismatch={}",
-                                                        authored_name_at(source_indices.clone(), formal.clone()),
-                                                        formal.binding_id,
-                                                        authored_name_at(source_indices.clone(), actual.clone()),
-                                                        actual.binding_id,
-                                                        authored_name_at(source_indices.clone(), formal_identity.clone()),
-                                                        formal_identity.binding_id,
-                                                        authored_name_at(source_indices.clone(), actual_identity.clone()),
-                                                        actual_identity.binding_id,
-                                                        direct_call_transparent_alias_pair(type_env.clone(), formal_identity.clone(), actual_identity.clone(), source_indices.clone()),
-                                                        direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
-                                                        direct_call_decl_identity_mismatch(formal_identity.clone(), actual_identity.clone(), formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
-                                                        direct_call_arg_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone())
-                                                    );
-                                                }
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
@@ -12069,6 +12018,40 @@ pub fn add_node_dependency_closure(
     }
 }
 
+pub fn carrier_closure_with_decl_rows(
+    state: Rc<CarrierClosureState>,
+    env: Rc<TypeEnv>,
+) -> Rc<CarrierClosureState> {
+    Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            state,
+            |acc: Rc<CarrierClosureState>, decl: Rc<TypeDeclBinding>| {
+                if (v2_rt::map_contains_key(&acc.seen_names.clone(), decl.name.clone())
+                    && !v2_rt::map_contains_key(
+                        &acc.carrier_bindings.clone(),
+                        decl.binding_id.clone(),
+                    ))
+                {
+                    match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                        Some(binding) => Rc::new(CarrierClosureState {
+                            carrier_bindings: v2_rt::rc_map_insert(
+                                acc.carrier_bindings.clone(),
+                                decl.binding_id.clone(),
+                                binding.clone(),
+                            ),
+                            seen_names: acc.seen_names.clone(),
+                        }),
+                        None => acc.clone(),
+                    }
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+}
+
 pub fn collect_import_carrier_bindings_for_import(
     acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
     imp: Rc<ResolvedImport>,
@@ -12102,7 +12085,9 @@ pub fn collect_import_carrier_bindings_for_import(
                     }
                 },
             );
-        closure_state.carrier_bindings.clone()
+        carrier_closure_with_decl_rows(closure_state, env.clone())
+            .carrier_bindings
+            .clone()
     }
 }
 
@@ -12149,7 +12134,9 @@ pub fn collect_import_carrier_bindings_for_imported_funcs(
                 }
             },
         );
-        closure_state.carrier_bindings.clone()
+        carrier_closure_with_decl_rows(closure_state, env.clone())
+            .carrier_bindings
+            .clone()
     }
 }
 
