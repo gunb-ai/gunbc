@@ -53,6 +53,15 @@ import v4.std.runtime {
   Suspend,
   ControlTransfer,
   RuntimeValue,
+  EffectHandler,
+  EffectHandlerBinding,
+  EffectReceipt,
+  EffectReceiptLog,
+  EffectRequest,
+  EffectRequestKind,
+  ReadResource,
+  WriteResource,
+  effect_handler_for_kind,
   interpretation_behavior_dispatch,
   runtime_value_node_projection,
   runtime_value_resolved_type
@@ -141,6 +150,17 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.languages.dag { dag_round_trip_wave1_authorities_ready }
+import v4.extdeps.runtimes.v4_effect_io_pure {
+  EffectIoFixtureStore,
+  EffectIoResourceBackend,
+  effect_io_pure_append_receipt,
+  effect_io_pure_apply_write,
+  effect_io_pure_handler_binding,
+  effect_io_pure_invoke_handler,
+  effect_io_pure_locator_from_args,
+  effect_io_pure_read_request,
+  effect_io_pure_write_request
+}
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
   v4_eval_wave1_allocate_literal,
@@ -200,8 +220,33 @@ fn inputs_for_emit_host(
 }
 
 // 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
+// Wave-2 effect-IO: declare-per-claim bundle + inject-per-run handler binding (design-v4-runtime-architecture.md §4.3, §7 Q-R3).
+type EffectIoEvalBundle {
+  backend: EffectIoResourceBackend
+  store: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+  receipt_log: EffectReceiptLog
+}
+
+type EffectIoYieldOutcome {
+  bundle: EffectIoEvalBundle
+  value: RuntimeValue
+}
+
+// 🟡 gated — feature:eval-with-context-only — consumer-internal run bundle selector; Absent is the
+// default for legacy eval(tree, interpretation, inputs) callers. dissolve-on-arrival: eval() removed
+// in favor of eval_with_context() as the sole entry (EffectIoEvalAbsent arm deleted with it).
+type EffectIoEvalContext
+  = EffectIoEvalAbsent
+  | EffectIoEvalPresent { bundle: EffectIoEvalBundle }
+
 type EvalContext {
   cache_authority: InterpretationCacheAuthority
+  effect_io: EffectIoEvalContext
+}
+
+fn eval_context_effect_io(context: EvalContext) -> EffectIoEvalContext {
+  context.effect_io
 }
 
 // P2/P3: semantics_digest is registry-only; structure_witness Symbols name each interpreter fn ref (co-located with algebra literals).
@@ -220,6 +265,38 @@ fn eval_context_with_semantics(
         structure_witness: structure_witness
       ),
       structure_witness: structure_witness
+    },
+    effect_io: EffectIoEvalAbsent
+  }
+}
+
+// Declare-per-claim + inject-per-run: fixture store and handler binding co-constructed at run start.
+fn eval_context_with_effect_io(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness,
+  backend: EffectIoResourceBackend,
+  store: EffectIoFixtureStore
+) -> EvalContext {
+  let handler_bundle = effect_io_pure_handler_binding(store: store)
+  EvalContext {
+    cache_authority: InterpretationCacheAuthority {
+      runtime_identity: runtime_identity,
+      interpretation: interpretation,
+      semantics_digest: interpretation_registry_semantics_digest(
+        runtime_identity: runtime_identity,
+        interpretation: interpretation,
+        structure_witness: structure_witness
+      ),
+      structure_witness: structure_witness
+    },
+    effect_io: EffectIoEvalPresent {
+      bundle: EffectIoEvalBundle {
+        backend: backend,
+        store: store,
+        handlers: handler_bundle.handlers,
+        receipt_log: EffectReceiptLog { entries: Empty }
+      }
     }
   }
 }
@@ -955,6 +1032,10 @@ data eval_rejected_unsupported_callee: Symbol = eval_rejected_unsupported_callee
 // Fail-closed (P3/P5): a fixed-arity wave-1 callee invoked with MORE actuals than the
 // callee's declared signature admits. The extras must refuse, never be silently dropped.
 data eval_rejected_argument_arity_excess: Symbol = eval_rejected_argument_arity_excess
+data eval_rejected_effect_io_unbound: Symbol = eval_rejected_effect_io_unbound
+data eval_rejected_effect_io_roundtrip_arity: Symbol = eval_rejected_effect_io_roundtrip_arity
+data eval_rejected_effect_io_write_payload_mismatch: Symbol = eval_rejected_effect_io_write_payload_mismatch
+data effect_io_roundtrip_marker: Symbol = effect_io_roundtrip_marker
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -1386,6 +1467,157 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
+// Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate pairs
+// this callee-free 2-argument Transform with EffectIoEvalPresent — never with EffectIoEvalAbsent).
+fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: locator },
+      Edge { label: Positional, target: payload }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm (E-10) —
+// dissolve-on-arrival: EffectIoRoundtrip behavior variant or declared roundtrip carrier replaces
+// callee-free 2-arg Transform shape match; forbidden: permanent untagged Bool roundtrip predicates in 05_eval.
+fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
+  match effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } =>
+      match node.kind {
+        ComputationNode { behavior: Transform } =>
+          !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
+        _ => false
+      }
+  }
+}
+
+fn eval_invoke_effect_handler(
+  bundle: EffectIoEvalBundle,
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
+  effect_io_pure_invoke_handler(handler: handler, request: request)
+}
+
+fn eval_bundle_with_receipt_appended(
+  bundle: EffectIoEvalBundle,
+  request: EffectRequest,
+  result: Outcome<RuntimeValue>
+) -> EffectIoEvalBundle {
+  EffectIoEvalBundle {
+    backend: bundle.backend,
+    store: bundle.store,
+    handlers: bundle.handlers,
+    receipt_log: effect_io_pure_append_receipt(
+      log: bundle.receipt_log,
+      request: request,
+      result: result
+    )
+  }
+}
+
+// Eval yields a typed EffectRequest to the inject-per-run handler binding; handler-returns-value resumes the fold (Q-R2).
+// Appends each yield to receipt_log (design §4.4 replay surface).
+fn eval_yield_effect_request(
+  bundle: EffectIoEvalBundle,
+  request: EffectRequest
+) -> Outcome<EffectIoYieldOutcome> {
+  let result = eval_invoke_effect_handler(bundle: bundle, request: request)
+  let logged_bundle = eval_bundle_with_receipt_appended(
+    bundle: bundle,
+    request: request,
+    result: result
+  )
+  match result {
+    Accepted { value: v, diagnostics: None } =>
+      Accepted {
+        value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
+        diagnostics: None
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
+  eval_actual_present(args: args, wanted: 0, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
+    && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
+}
+
+// ReadResource→WriteResource round-trip observed by eval: yield write, apply store, rebind handlers, yield read, resume with value.
+// Exported for E-10 direct-orchestration witnesses (bypasses fold when isolating handler resume).
+fn eval_effect_io_roundtrip(
+  bundle: EffectIoEvalBundle,
+  args: List<RuntimeValue>,
+  node: Node
+) -> Outcome<RuntimeValue> {
+  if eval_effect_io_roundtrip_args_present(args: args) {
+    bind_outcome(
+      o: eval_first_runtime_argument(args: args, node: node),
+      f: fn(locator_arg) {
+        bind_outcome(
+          o: eval_bind_value_argument(args: args, node: node),
+          f: fn(payload) {
+            let write_args = Cons {
+              head: locator_arg,
+              tail: Cons { head: payload, tail: Empty }
+            }
+            let write_request = effect_io_pure_write_request(args: write_args)
+            bind_outcome(
+              o: eval_yield_effect_request(bundle: bundle, request: write_request),
+              f: fn(write_yield) {
+                let written = write_yield.value
+                if written == payload {
+                  match effect_io_pure_locator_from_args(
+                    backend: bundle.backend,
+                    args: write_args
+                  ) {
+                    Holds { value: locator } =>
+                      let store1 = effect_io_pure_apply_write(
+                        store: bundle.store,
+                        locator: locator,
+                        payload: written
+                      )
+                      let rebound = effect_io_pure_handler_binding(store: store1)
+                      let read_bundle = EffectIoEvalBundle {
+                        backend: bundle.backend,
+                        store: store1,
+                        handlers: rebound.handlers,
+                        receipt_log: write_yield.bundle.receipt_log
+                      }
+                      let read_args = Cons { head: locator_arg, tail: Empty }
+                      let read_request = effect_io_pure_read_request(args: read_args)
+                      bind_outcome(
+                        o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
+                        f: fn(read_yield) {
+                          Accepted { value: read_yield.value, diagnostics: None }
+                        }
+                      )
+                    Violates { diagnostic: d } =>
+                      Rejected { diagnostics: diagnostics_singleton(d: d) }
+                  }
+                } else {
+                  outcome_rejected(
+                    d: eval_diagnostic(reason: eval_rejected_effect_io_write_payload_mismatch, node: node)
+                  )
+                }
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_effect_io_roundtrip_arity, node: node)
+    )
+  }
+}
+
 fn eval_value_node(
   node: Node,
   _args: List<RuntimeValue>,
@@ -1410,11 +1642,22 @@ fn eval_transform_node(
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
     TransformRuntimeInterpreter { interpreter: transform } =>
-      if eval_transform_has_callee_reference(node: node) {
+      if eval_node_is_effect_io_roundtrip(node: node, effect_io: effect_io) {
+        match effect_io {
+          EffectIoEvalPresent { bundle: b } =>
+            eval_effect_io_roundtrip(bundle: b, args: args, node: node)
+          // Totality arm only: eval_node_is_effect_io_roundtrip is false when Absent (defensive).
+          EffectIoEvalAbsent =>
+            outcome_rejected(
+              d: eval_diagnostic(reason: eval_rejected_effect_io_unbound, node: node)
+            )
+        }
+      } else if eval_transform_has_callee_reference(node: node) {
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
@@ -1436,7 +1679,8 @@ fn eval_transform_node(
                         tree: tree,
                         interpretation: interpretation,
                         environment: call_environment,
-                        runtime: runtime
+                        runtime: runtime,
+                        effect_io: effect_io
                       )
                     }
                   )
@@ -1471,7 +1715,8 @@ fn eval_branch_node(
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } =>
@@ -1486,7 +1731,8 @@ fn eval_branch_node(
                 tree: tree,
                 interpretation: interpretation,
                 environment: environment,
-                runtime: runtime
+                runtime: runtime,
+                effect_io: effect_io
               )
             }
           )
@@ -1530,7 +1776,8 @@ fn eval_bind_node(
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
     BindRuntimeInterpreter { interpreter: bind } =>
@@ -1551,7 +1798,8 @@ fn eval_bind_node(
                         tree: tree,
                         interpretation: interpretation,
                         environment: bound_environment,
-                        runtime: runtime
+                        runtime: runtime,
+                        effect_io: effect_io
                       )
                     }
                   )
@@ -1573,7 +1821,8 @@ fn eval_computation_node(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   let dispatch = interpretation_behavior_dispatch(
     interpretation: interpretation,
@@ -1600,7 +1849,8 @@ fn eval_computation_node(
           interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
-          runtime: runtime
+          runtime: runtime,
+          effect_io: effect_io
         )
       BranchRuntimeInterpreter { interpreter: _ } =>
         eval_branch_node(
@@ -1611,7 +1861,8 @@ fn eval_computation_node(
           interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
-          runtime: runtime
+          runtime: runtime,
+          effect_io: effect_io
         )
       LoopRuntimeInterpreter { interpreter: _ } =>
         eval_loop_node(
@@ -1632,7 +1883,8 @@ fn eval_computation_node(
           interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
-          runtime: runtime
+          runtime: runtime,
+          effect_io: effect_io
         )
     },
     f: fn(value) {
@@ -1647,7 +1899,8 @@ fn eval_interpret_node(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
@@ -1662,7 +1915,8 @@ fn eval_interpret_node(
             tree: tree,
             interpretation: interpretation,
             environment: environment,
-            runtime: runtime
+            runtime: runtime,
+            effect_io: effect_io
           )
         TypeNode { connective: _ } =>
           match eval_runtime_binding_lookup(node: node, environment: environment) {
@@ -1723,7 +1977,8 @@ fn eval_fold_init(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren { processed: 0 } }
   EvalFoldState {
@@ -1738,7 +1993,8 @@ fn eval_fold_init(
         tree: tree,
         interpretation: interpretation,
         environment: environment,
-        runtime: runtime
+        runtime: runtime,
+        effect_io: effect_io
       )
     } else {
       outcome_rejected(
@@ -1756,6 +2012,7 @@ fn eval_maybe_complete_node(
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext,
   pending: Outcome<RuntimeValue>
 ) -> Outcome<RuntimeValue> {
   match progress {
@@ -1766,7 +2023,8 @@ fn eval_maybe_complete_node(
         tree: tree,
         interpretation: interpretation,
         environment: environment,
-        runtime: runtime
+        runtime: runtime,
+        effect_io: effect_io
       )
     Interpreted => pending
     AwaitingChildren { processed: _ } => pending
@@ -1791,7 +2049,8 @@ fn eval_fold_step(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
   let next_args = if eval_edge_is_runtime_argument(parent: acc.node, progress: acc.progress, edge: edge) {
@@ -1819,6 +2078,7 @@ fn eval_fold_step(
               interpretation: interpretation,
               environment: environment,
               runtime: runtime,
+              effect_io: effect_io,
               pending: acc.value
             )
           }
@@ -1833,7 +2093,8 @@ fn eval_runtime_node(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   let folded = fold_node(
     n: node,
@@ -1844,7 +2105,8 @@ fn eval_runtime_node(
           tree: tree,
           interpretation: interpretation,
           environment: environment,
-          runtime: runtime
+          runtime: runtime,
+          effect_io: effect_io
         )
       },
       step: fn(acc, e, child) {
@@ -1855,12 +2117,36 @@ fn eval_runtime_node(
           tree: tree,
           interpretation: interpretation,
           environment: environment,
-          runtime: runtime
+          runtime: runtime,
+          effect_io: effect_io
         )
       }
     }
   )
   eval_fold_state_value(state: folded)
+}
+
+fn eval_with_context(
+  tree: InferredTree,
+  context: EvalContext,
+  inputs: Inputs
+) -> Outcome<RuntimeValue> {
+  if well_formed(n: tree.root) {
+    if well_formed(n: inputs.root) {
+      eval_runtime_node(
+        node: inputs.root,
+        tree: tree,
+        interpretation: eval_context_interpretation(context: context),
+        environment: empty_evaluation_environment(),
+        runtime: eval_runtime(),
+        effect_io: eval_context_effect_io(context: context)
+      )
+    } else {
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
+  }
 }
 
 fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
@@ -1871,7 +2157,8 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         tree: tree,
         interpretation: interpretation,
         environment: empty_evaluation_environment(),
-        runtime: eval_runtime()
+        runtime: eval_runtime(),
+        effect_io: EffectIoEvalAbsent
       )
     } else {
       Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
@@ -2161,9 +2448,9 @@ fn run_test_claim(
         )
       }
     _ => {
-      let actual = eval(
+      let actual = eval_with_context(
         tree: subject.tree,
-        interpretation: eval_context_interpretation(context: subject.context),
+        context: subject.context,
         inputs: inputs_root_only(root: subject.input.evaluator_input)
       )
       TestClaimRun {
