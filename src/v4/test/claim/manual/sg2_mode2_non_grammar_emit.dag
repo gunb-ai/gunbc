@@ -51,7 +51,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   content_hash,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.target_model {
   OwnershipAtFunctionReturn,
@@ -86,7 +86,7 @@ fn sg2_mode2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_mode2_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -94,7 +94,7 @@ fn sg2_mode2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_mode2_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -232,7 +232,7 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       },
       Edge {
@@ -240,11 +240,11 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_node } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

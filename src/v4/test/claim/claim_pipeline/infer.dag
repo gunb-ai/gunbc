@@ -10,7 +10,7 @@ module v4.test.claim.claim_pipeline.infer
 import v4.compiler.infer { infer }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
@@ -25,7 +25,7 @@ import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 data spine_infer_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_infer_module } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates infer Outcome<InferredTree> directly without Bool projection.
@@ -43,13 +43,13 @@ fn spine_infer_bool_atom(b: Bool) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_infer_pass } },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_infer_fail } },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
   }
 }

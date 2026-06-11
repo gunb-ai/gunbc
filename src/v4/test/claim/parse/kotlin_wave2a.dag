@@ -10,7 +10,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.compiler.parse { parse }
 import v4.extdeps.languages.kotlin { kotlin_wave1_lex, kotlin_wave1_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 import v4.std.verification {
@@ -27,10 +27,10 @@ data kotlin_wave2a_non_mvp_source: String = "fun choose(x: Int): Int { val y: In
 fn kotlin_wave2a_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_wave2a_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_wave2a_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

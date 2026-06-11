@@ -6,7 +6,7 @@ module v4.test.claim.manual.python_mvp1_grammar_claim
 
 import v4.compiler.parse {
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_stage_locus_port
 }
 import v4.compiler.tokenize { tokenize }
@@ -17,7 +17,7 @@ import v4.extdeps.languages.python {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.grammar { ParseTree }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.verification {
   EqualsClaim,
@@ -31,10 +31,10 @@ import v4.std.verification {
 fn python_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_claim_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^python_claim_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -70,7 +70,7 @@ fn python_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
       match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
-          parse_production(
+          parse_production_tree(
             tokens: stream.tokens,
             validated: validated,
             production_name: ^python_production_mvp1_fn_add

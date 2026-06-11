@@ -17,13 +17,13 @@ import v4.std.constraints {
   CanonicalGroundingWitness
 }
 import v4.std.diagnostic { Outcome, Rejected }
-import v4.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value, Unanchored }
+import v4.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value, SyntheticOccurrence }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -31,7 +31,7 @@ fn anchor_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -39,7 +39,7 @@ fn anchor_computation_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

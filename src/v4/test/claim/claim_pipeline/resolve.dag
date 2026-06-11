@@ -11,7 +11,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
@@ -25,7 +25,7 @@ import v4.std.verification {
 data spine_resolve_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_resolve_module } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 fn spine_resolve_service_parse_tree() -> Node {
   Node {
@@ -38,11 +38,11 @@ fn spine_resolve_service_parse_tree() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -65,13 +65,13 @@ fn spine_resolve_bool_atom(b: Bool) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_resolve_pass } },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_resolve_fail } },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
   }
 }

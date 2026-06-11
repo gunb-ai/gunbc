@@ -29,7 +29,7 @@ import v4.std.logic {
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -167,7 +167,7 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -239,7 +239,7 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
         target: model_core_wave1_atom(id: discriminant(v: key))
       },
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
