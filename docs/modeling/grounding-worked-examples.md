@@ -37,7 +37,8 @@ A coercion is *derived* by
 comparing two groundings, not hand-authored. The deriver is a **mechanical
 zip-fold** (a catamorphism): it walks both groundings in parallel — `List`
 against `List` recurses, `Conj` against `Conj` compares field-wise, leaves
-compare directly. It is not an *engine* — per `DECISIONS.md` U1 it makes
+compare directly. It is not an *engine* — per decision U1 (recorded in the retired
+`DECISIONS.md` ledger; the decision stands, the ledger is gone) it makes
 no decisions and runs no search.
 
 **Coincidence is mechanical structural equality.** Two groundings
@@ -61,7 +62,8 @@ what makes the fold both mechanical *and* complete.
 **Design status — specified, not yet realized.** The hard half is
 *designed and ratified*, not *built*: `node.dag`'s B1-CANON ratifies the
 canonical-form + content-hash **contract** (`content_hash = merkle_fold ∘
-canonical`), and `DECISIONS.md` T-9/C1 specifies the comparison as
+canonical`), and the T-9/C1 decisions (retired `DECISIONS.md` ledger)
+specify the comparison as
 *decidable by construction* (structural recursion over the closed declared
 candidate set). But neither the canonical fold nor the coercion zip-fold
 is a realized `.dag` function body yet — `node.dag` carries the contract,
@@ -362,13 +364,15 @@ a consumer-less target-spec decl that **sits behind a named scaffold
 marker with a dissolution trigger**: each `data <lang>_bool_grounding`
 carries the inline marker `🟡 feature:canonical-b-grounding-consumer`
 that dissolves when the B1-CANON fold + coercion zip-fold
-(`DECISIONS.md` B1 · T-9/C1) consume it for coincidence-checking. So the
+(decisions B1 · T-9/C1, retired `DECISIONS.md` ledger) consume it for
+coincidence-checking. So the
 *shape* is the ratified canonical-B decl-ref and parse-verified; the
 *authority state* is **staging behind the E-6-named scaffold** —
 consumer-gated, not landed, **not** speculative metadata — claimed no
-further. (Aside: the frozen v3 interim parse-ratchets reject decl-ref
+further. (Aside: the frozen v3 interim parse-ratchets rejected decl-ref
 `data` bodies — a v3-only artifact, v3 is *not* in the bootstrap chain;
-they are **dissolved in this PR** under operator authorization, with the
+they were dissolved, operator-authorized, in the PR that originally
+landed this example (pre-restoration history), with the
 v2 `v4:` job as the replacement parse gate.)
 
 **The level spectrum — bool vs int (the lesson).** Same discipline,
