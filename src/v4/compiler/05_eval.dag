@@ -85,7 +85,7 @@ import v4.std.node {
   fold_node,
   is_positional,
   well_formed,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.node_query { find_arrow_body_child }
 import v4.std.diagnostic {
@@ -183,7 +183,7 @@ fn symbol_atom_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -548,7 +548,7 @@ fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: tag } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1300,9 +1300,8 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
 // (executed by comprep_eval_by_execution keystone) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
 // node_query dispatch surface (Node-projectable connective dispatch) instead of inline
-// Node.kind/TypeNode shape matches; owner/lane: Mgr-RUNTIME (valiant-cat-890) —
-// trigger: the source-driven callee-dispatch wave lands; forbidden:
-// permanent untagged Bool substrate-shape predicates in 05_eval (mirrors the L306 clause).
+// Node.kind/TypeNode shape matches; owner/lane: Mgr-RUNTIME — trigger: the source-driven
+// callee-dispatch wave lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
