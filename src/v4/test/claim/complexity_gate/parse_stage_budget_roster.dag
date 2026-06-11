@@ -18,7 +18,8 @@ import v4.lens.complexity {
 }
 import v4.lens.cost { PolynomialDegree, SizeVariable }
 import v4.std.cardinality { NonZeroNat }
-import v4.std.collection { List, length }
+import v4.std.algebra { length }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Succ, Zero }
 import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -94,449 +95,385 @@ fn parse_stage_budget_bilinear_tokens_grammar() -> ComplexityBound {
   )
 }
 
-data parse_stage_budget_row_build_parse_table: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_build_parse_table: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^build_parse_table,
     budget: parse_stage_budget_bilinear_tokens_grammar()
   }
 
-data parse_stage_budget_row_compute_left_corner_closure: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_compute_left_corner_closure: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^compute_left_corner_closure,
     budget: parse_stage_budget_cubic_grammar()
   }
 
-data parse_stage_budget_row_compute_nullable_set: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_compute_nullable_set: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^compute_nullable_set,
     budget: parse_stage_budget_quadratic_grammar()
   }
 
-data parse_stage_budget_row_compute_nullable_step: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_compute_nullable_step: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^compute_nullable_step,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_expr_corner_fold_choice: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_choice: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_choice,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_fold_nonterminal: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_nonterminal: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_nonterminal,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_fold_optional: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_optional: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_optional,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_fold_repeat: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_repeat: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_repeat,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_fold_sequence: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_sequence: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_sequence,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_fold_terminal: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_fold_terminal: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_fold_terminal,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_expr_corner_nullable_fold: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_corner_nullable_fold: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_corner_nullable_fold,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_expr_direct_left_corner_list: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_direct_left_corner_list: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_direct_left_corner_list,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_expr_has_undefined_nonterminal: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_has_undefined_nonterminal: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_has_undefined_nonterminal,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_expr_is_nullable_given_set: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_expr_is_nullable_given_set: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^expr_is_nullable_given_set,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_grammar_empty_corner_list: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_empty_corner_list: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_empty_corner_list,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_grammar_has_duplicate_productions: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_has_duplicate_productions: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_has_duplicate_productions,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_grammar_has_left_recursion: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_has_left_recursion: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_has_left_recursion,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_grammar_has_undefined_nonterminals: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_has_undefined_nonterminals: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_has_undefined_nonterminals,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_grammar_lookup_production: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_lookup_production: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_lookup_production,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_grammar_validate_for_parse: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_grammar_validate_for_parse: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^grammar_validate_for_parse,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_parse: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse,
     budget: parse_stage_budget_bilinear_tokens_grammar()
   }
 
-data parse_stage_budget_row_parse_current_position: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_current_position: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_current_position,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_diag_cons: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_diag_cons: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_diag_cons,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_diags_to_diagnostics: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_diags_to_diagnostics: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_diags_to_diagnostics,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_diags_to_non_empty: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_diags_to_non_empty: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_diags_to_non_empty,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_e1_syntax_error_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_e1_syntax_error_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_e1_syntax_error_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_expr: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr,
     budget: parse_stage_budget_bilinear_tokens_grammar()
   }
 
-data parse_stage_budget_row_parse_expr_fold_choice: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr_fold_choice: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr_fold_choice,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_expr_fold_optional: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr_fold_optional: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr_fold_optional,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_expr_fold_repeat: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr_fold_repeat: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr_fold_repeat,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_expr_fold_sequence: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr_fold_sequence: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr_fold_sequence,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_expr_run_walk: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_expr_run_walk: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_expr_run_walk,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_parse_g0_tokens_remain_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_g0_tokens_remain_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_g0_tokens_remain_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_grammar_duplicate_production_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_grammar_duplicate_production_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_grammar_duplicate_production_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_grammar_left_recursive_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_grammar_left_recursive_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_grammar_left_recursive_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_grammar_not_well_formed_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_grammar_not_well_formed_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_grammar_not_well_formed_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_grammar_undefined_nonterminal_diagnostic: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_grammar_undefined_nonterminal_diagnostic: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_grammar_undefined_nonterminal_diagnostic,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_minted_id_from_node: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_minted_id_from_node: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_minted_id_from_node,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_minted_id_list: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_minted_id_list: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_minted_id_list,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_mint_from_source: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_mint_from_source: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_mint_from_source,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_module: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_module: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_module,
     budget: parse_stage_budget_bilinear_tokens_grammar()
   }
 
-data parse_stage_budget_row_parse_non_empty_diagnostics_to_list: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_non_empty_diagnostics_to_list: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_non_empty_diagnostics_to_list,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_nonterminal_from_table: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_nonterminal_from_table: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_nonterminal_from_table,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_parse_production: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_production: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_production,
     budget: parse_stage_budget_linear_grammar()
   }
 
-data parse_stage_budget_row_parse_production_tree: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_production_tree: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_production_tree,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_prov_initial: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_prov_initial: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_prov_initial,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_prov_merge: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_prov_merge: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_prov_merge,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_repeat_captured_node: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_repeat_captured_node: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_repeat_captured_node,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_skip_to_sync: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_skip_to_sync: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_skip_to_sync,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_stamp_atom_terminal: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_stamp_atom_terminal: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_stamp_atom_terminal,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_stamp_derived_conj: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_stamp_derived_conj: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_stamp_derived_conj,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_stamp_derived_repeat: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_stamp_derived_repeat: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_stamp_derived_repeat,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_sync_step: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_sync_step: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_sync_step,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_table_empty: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_empty: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_empty,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_table_fill_position: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_fill_position: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_fill_position,
     budget: parse_stage_budget_bilinear_tokens_grammar()
   }
 
-data parse_stage_budget_row_parse_table_fill_position_pass: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_fill_position_pass: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_fill_position_pass,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_parse_table_fill_production_step: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_fill_production_step: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_fill_production_step,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_table_insert: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_insert: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_insert,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_table_lookup: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_table_lookup: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_table_lookup,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_token_first: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_token_first: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_token_first,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_parse_wrap_production_captured: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_parse_wrap_production_captured: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^parse_wrap_production_captured,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_set_symbol_insert: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_set_symbol_insert: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^set_symbol_insert,
     budget: parse_stage_budget_constant()
   }
 
-data parse_stage_budget_row_token_position_indices: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_token_position_indices: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^token_position_indices,
     budget: parse_stage_budget_linear_tokens()
   }
 
-data parse_stage_budget_row_tokens_at_position: ParseStageFunctionComplexityBudgetRow =
-  ParseStageFunctionComplexityBudgetRow {
+data parse_stage_budget_row_tokens_at_position: ParseStageFunctionComplexityBudgetRow = ParseStageFunctionComplexityBudgetRow {
     stage_module: parse_stage_budget_stage_module,
     function_name: ^tokens_at_position,
     budget: parse_stage_budget_linear_tokens()
