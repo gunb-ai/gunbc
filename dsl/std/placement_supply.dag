@@ -1,0 +1,27 @@
+// std/placement_supply.dag — v2-safe placement projection carrier.
+//
+// First-fit placement consumers (ctrl plans.capacity, shadow reconciler)
+// project physical compute supply into PlacementSupplyRow. Cordoning is
+// absence: only schedulable hosts appear in the supply list — no stored
+// healthy: Bool flag.
+//
+// Authority for ComputeHost / CpuFacts remains std.compute_fabric; this
+// module is the thin projection surface importable without pulling the
+// full fabric graph (float cost models, GPU facts, etc.).
+
+module std.placement_supply
+
+import std.types { NonEmptyStr, Int }
+
+type HostIdentity = NonEmptyStr where brand("HostIdentity")
+
+type PlacementSupplyRow {
+  identity: HostIdentity
+  hardware_threads: Int
+  clock_hz: Int
+  ram_bytes: Int
+}
+
+fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Int {
+  row.hardware_threads * row.clock_hz
+}
