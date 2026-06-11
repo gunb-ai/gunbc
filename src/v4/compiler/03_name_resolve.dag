@@ -81,6 +81,10 @@ type AdmittedSubject {
   subject_root: NormalizedTree
 }
 
+fn normalized_tree_to_node(tree: NormalizedTree) -> Node {
+  tree
+}
+
 
 // 🟡 gated — feature:T-28-B-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
 type AdmissionState
@@ -557,7 +561,7 @@ fn resolve_with_admission(
   ) {
     Accepted { value: admitted, diagnostics: namespace_diag } =>
       match resolve_with_namespace(
-        tree: admitted.subject_root,
+        tree: normalized_tree_to_node(tree: admitted.subject_root),
         namespace: admitted.namespace
       ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>

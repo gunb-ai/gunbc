@@ -23,9 +23,12 @@ import v4.extdeps.languages.typescript {
   ts_sg2_instantiation_source_type_node,
   ts_sg2_type_expr_target_model,
   ts_std_text_string_type_node,
-  ts_target_atom_realization_catalog,
+  ts_target_atom_realization_bool,
+  ts_target_atom_realization_string,
+  ts_target_atom_realization_symbol,
   ts_type_expression_projection
 }
+import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.grounding {
   GroundingEvidenceSchema,
@@ -37,6 +40,7 @@ import v4.std.logic { Bool, bool_node }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue }
 import v4.std.target_model {
+  TargetAtomRealization,
   symbol_kernel_type_node,
   target_atom_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
@@ -164,12 +168,20 @@ fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
   }
 }
 
+fn ts_target_atom_realization_catalog_for_claim() -> List<TargetAtomRealization> {
+  [
+    ts_target_atom_realization_symbol,
+    ts_target_atom_realization_bool,
+    ts_target_atom_realization_string
+  ]
+}
+
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 /
 // G.2 grounding_typescript run_test_claim roster — dissolve-on: T-22 claim runner evaluates
 // Outcome and lookup results directly without Accepted=>true / Rejected=>false Bool projection.
 fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
   match target_atom_realization_lookup_in_catalog(
-    catalog: ts_target_atom_realization_catalog,
+    catalog: ts_target_atom_realization_catalog_for_claim(),
     source_carrier: source_carrier
   ) {
     Accepted { value: _, diagnostics: _ } => true

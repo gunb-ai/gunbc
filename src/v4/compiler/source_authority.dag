@@ -32,7 +32,7 @@ import v4.std.diagnostic {
 import v4.std.grammar { ParseTree }
 import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v4.std.provenance { SpanIndex }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModel, TargetModelBundle }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
 import v4.std.text { String }
@@ -43,6 +43,22 @@ type DagSource = String
 
 fn target_source_to_string(source: TargetSource) -> String {
   source
+}
+
+fn target_model_to_bundle(target: TargetModel) -> TargetModelBundle {
+  target
+}
+
+fn parse_tree_to_node(tree: ParseTree) -> Node {
+  tree
+}
+
+fn normalized_tree_to_node(tree: NormalizedTree) -> Node {
+  tree
+}
+
+fn resolved_tree_to_node(tree: ResolvedTree) -> Node {
+  tree
 }
 
 type DagSourceAst {
@@ -154,7 +170,7 @@ fn parse_dag_source_ast(source: String) -> Outcome<DagSourceAst> {
 
 fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst> {
   bind_outcome(
-    o: normalize(parse_tree: ast.tree),
+    o: normalize(parse_tree: parse_tree_to_node(tree: ast.tree)),
     f: fn(normalized) {
       outcome_accepted(value: NormalizedDagSourceAst { tree: normalized })
     }
@@ -164,7 +180,7 @@ fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst
 
 fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
   bind_outcome(
-    o: normalize(parse_tree: ast.tree),
+    o: normalize(parse_tree: parse_tree_to_node(tree: ast.tree)),
     f: fn(normalized) {
       bind_outcome(
         o: resolve(tree: normalized, lm: lm),
@@ -282,7 +298,7 @@ fn source_ast_equal_witness(
   original: DagSourceAst,
   reparsed: DagSourceAst
 ) -> Witness<SourceAstEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: parse_tree_to_node(tree: original.tree), right: parse_tree_to_node(tree: reparsed.tree)) {
     Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -296,7 +312,7 @@ fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
 ) -> Witness<NormalizedSourceAstEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: normalized_tree_to_node(tree: original.tree), right: normalized_tree_to_node(tree: reparsed.tree)) {
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -310,7 +326,7 @@ fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
 ) -> Witness<SemanticIrEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: resolved_tree_to_node(tree: original.tree), right: resolved_tree_to_node(tree: reparsed.tree)) {
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -432,14 +448,14 @@ fn source_authority_round_trip_with_model(
         f: fn(original_ir) {
           bind_outcome(
             o: target_serialize_source_from_model(
-              target: canonical_source_target,
-              emitted: original_ir.tree
+              target: target_model_to_bundle(target: canonical_source_target),
+              emitted: resolved_tree_to_node(tree: original_ir.tree)
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
-                  target: canonical_source_target,
-                  emitted: original_ir.tree
+                  target: target_model_to_bundle(target: canonical_source_target),
+                  emitted: resolved_tree_to_node(tree: original_ir.tree)
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
@@ -505,14 +521,14 @@ fn canonical_dag_source_parse_print_law(
         f: fn(original_ir) {
           bind_outcome(
             o: target_serialize_source_from_model(
-              target: canonical_source_target,
-              emitted: original_ir.tree
+              target: target_model_to_bundle(target: canonical_source_target),
+              emitted: resolved_tree_to_node(tree: original_ir.tree)
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
-                  target: canonical_source_target,
-                  emitted: original_ir.tree
+                  target: target_model_to_bundle(target: canonical_source_target),
+                  emitted: resolved_tree_to_node(tree: original_ir.tree)
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(

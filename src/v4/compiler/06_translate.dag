@@ -13,7 +13,7 @@ module v4.compiler.translate
 
 
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModelBundle }
+import v4.std.target_model { TargetModel, TargetModelBundle }
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -252,6 +252,15 @@ import v4.std.text { String }
 
 fn empty_target_source() -> TargetSource {
   ""
+}
+
+fn target_model_bundle_as_model(target: TargetModelBundle) -> TargetModel {
+  TargetModel {
+    bundle: target.bundle,
+    lex: target.lex,
+    binding_spellings: target.binding_spellings,
+    authority_source_text: target.authority_source_text
+  }
 }
 
 // 🟢 coproduct dissolution
@@ -2338,7 +2347,7 @@ fn project_type_expression_connective_bounded(
 ) -> Outcome<Node> {
   bind_outcome(
     o: type_expr_projection_row_closedness_from_target(
-      target: target,
+      target: target_model_bundle_as_model(target: target),
       projection: projection,
       connective: connective
     ),
@@ -3811,7 +3820,7 @@ fn translate_target_function_signature_realization_for_boundary(
                 catalog: catalog,
                 source_carrier: translate_boundary_source_carrier_node(binding: binding),
                 boundary_site: boundary_site,
-                host_target_model: target
+                host_target_model: target_model_bundle_as_model(target: target)
               ) {
                 Accepted { value: row, diagnostics: _ } =>
                   outcome_accepted(optional_present(row))
@@ -4046,7 +4055,7 @@ fn translate_target_atom_realization_for_carrier(
       target_atom_realization_lookup_in_catalog_node(
         catalog: catalog,
         source_carrier: source_carrier,
-        host_target_model: target
+        host_target_model: target_model_bundle_as_model(target: target)
       )
     }
   )
