@@ -227,6 +227,9 @@ type EffectIoEvalBundle {
   receipt_log: EffectReceiptLog
 }
 
+// 🟡 gated — feature:eval-with-context-only — consumer-internal run bundle selector; Absent is the
+// default for legacy eval(tree, interpretation, inputs) callers. dissolve-on-arrival: eval() removed
+// in favor of eval_with_context() as the sole entry (EffectIoEvalAbsent arm deleted with it).
 type EffectIoEvalContext
   = EffectIoEvalAbsent
   | EffectIoEvalPresent { bundle: EffectIoEvalBundle }
@@ -1592,6 +1595,7 @@ fn eval_transform_node(
         match effect_io {
           EffectIoEvalPresent { bundle: b } =>
             eval_effect_io_roundtrip(bundle: b, args: args, node: node)
+          // Totality arm only: eval_node_is_effect_io_roundtrip is false when Absent (defensive).
           EffectIoEvalAbsent =>
             outcome_rejected(
               d: eval_diagnostic(reason: eval_rejected_effect_io_unbound, node: node)
