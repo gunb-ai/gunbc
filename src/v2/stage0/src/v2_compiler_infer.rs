@@ -1373,12 +1373,58 @@ pub fn direct_call_transparent_alias_to(
                         }
                         None => binding.name.clone(),
                     };
+                    if alias_node.binding_id != binding.resolved.binding_id {
+                        eprintln!(
+                            "DBG present_alias target={} binding={} resolved={} alias_decl={} alias_bid={:?} resolved_bid={:?}",
+                            target_name,
+                            binding.name,
+                            resolved_name,
+                            alias_decl_name,
+                            alias_node.binding_id,
+                            binding.resolved.binding_id,
+                        );
+                    }
                     ((alias_decl_name.clone().as_str() != target_name.as_str())
                         && (resolved_name.clone().as_str() == target_name.as_str()))
                 }
             }
         }
-        None => false,
+        None => match alias_node.binding_id.clone() {
+            Some(binding_id) => {
+                match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+                    Some(decl) => {
+                        match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                            Some(raw_binding) => {
+                                let raw_resolved_name = authored_name_at(
+                                    env.source_indices.clone(),
+                                    raw_binding.resolved.clone(),
+                                );
+                                eprintln!(
+                                    "DBG absent_alias target={} decl={} raw_binding={} raw_resolved={} alias_authored={}",
+                                    target_name,
+                                    decl.name,
+                                    raw_binding.name,
+                                    raw_resolved_name,
+                                    authored_name_at(env.source_indices.clone(), alias_node.clone()),
+                                );
+                                (((decl.name.clone().as_str() != target_name.as_str())
+                                    && (raw_resolved_name.clone().as_str()
+                                        == target_name.as_str()))
+                                    && (authored_name_at(
+                                        env.source_indices.clone(),
+                                        alias_node.clone(),
+                                    )
+                                    .as_str()
+                                        == target_name.as_str()))
+                            }
+                            None => false,
+                        }
+                    }
+                    None => false,
+                }
+            }
+            None => false,
+        },
     }
 }
 
@@ -1391,6 +1437,15 @@ pub fn direct_call_transparent_alias_pair(
     {
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
+        if left_name.as_str() == "Node"
+            && right_name.as_str() == "Node"
+            && left.binding_id != right.binding_id
+        {
+            eprintln!(
+                "DBG alias_pair left_bid={:?} right_bid={:?}",
+                left.binding_id, right.binding_id,
+            );
+        }
         (direct_call_transparent_alias_to(env.clone(), left.clone(), right_name)
             || direct_call_transparent_alias_to(env.clone(), right.clone(), left_name))
     }
@@ -1770,17 +1825,6 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
-                                                eprintln!(
-                                                    "DBG mismatch formal_bid={:?} actual_bid={:?} formal_bind={:?} actual_bind={:?} formal_carrier={:?} actual_carrier={:?} formal_decl={:?} actual_decl={:?}",
-                                                    formal.binding_id,
-                                                    actual.binding_id,
-                                                    direct_call_node_binding(type_env.clone(), formal.clone()).as_ref().map(|b| b.name.clone()),
-                                                    direct_call_node_binding(type_env.clone(), actual.clone()).as_ref().map(|b| b.name.clone()),
-                                                    formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.carrier_bindings.clone(), id).map(|b| b.name.clone())),
-                                                    actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.carrier_bindings.clone(), id).map(|b| b.name.clone())),
-                                                    formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
-                                                    actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
-                                                );
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
