@@ -15,6 +15,7 @@ import v4.extdeps.runtimes.v4_effect_io_pure {
   HttpResourceBackend,
   StorageResourceBackend,
   effect_io_pure_empty_fixture_store,
+  effect_io_pure_invoke_handler,
   effect_io_pure_locator_from_args,
   effect_io_pure_operation_node,
   effect_io_pure_write_payload_from_args
@@ -59,10 +60,19 @@ type EffectIoHostBackendContext
   | HostHttpContext { context: EffectIoHostHttpContext }
   | HostStorageContext { context: EffectIoHostStorageContext }
 
+// Co-located inject-per-run authority: backend, context, fixture, and handlers wire together.
+type EffectIoHostHandlerBundle {
+  declared_backend: EffectIoResourceBackend
+  backend_context: EffectIoHostBackendContext
+  fixture: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+}
+
 type V4EffectIoHostRuntime {
   bundle_identity: Symbol
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
+  fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
 
@@ -121,8 +131,6 @@ fn effect_io_host_storage_write(
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_write_deferred))
 }
 
-data effect_io_host_declared_backend: EffectIoResourceBackend = FileResourceBackend
-
 fn effect_io_host_dispatch_read(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
@@ -165,30 +173,36 @@ fn effect_io_host_dispatch_write(
   }
 }
 
-fn effect_io_host_read_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
-  effect_io_host_dispatch_read(
-    backend: effect_io_host_declared_backend,
-    host_ctx: effect_io_host_declared_context,
-    request: request
-  )
-}
-
-fn effect_io_host_write_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
-  effect_io_host_dispatch_write(
-    backend: effect_io_host_declared_backend,
-    host_ctx: effect_io_host_declared_context,
-    request: request
-  )
-}
-
+// Inject-per-run: handlers close over backend + context declared at binding construction.
 fn effect_io_host_handler_binding(
-  _backend: EffectIoResourceBackend,
-  _host_ctx: EffectIoHostBackendContext,
-  _fixture: EffectIoFixtureStore
-) -> EffectHandlerBinding {
-  EffectHandlerBinding {
-    read_resource: EffectHandler { handle: effect_io_host_read_handler },
-    write_resource: EffectHandler { handle: effect_io_host_write_handler }
+  backend: EffectIoResourceBackend,
+  host_ctx: EffectIoHostBackendContext,
+  fixture: EffectIoFixtureStore
+) -> EffectIoHostHandlerBundle {
+  EffectIoHostHandlerBundle {
+    declared_backend: backend,
+    backend_context: host_ctx,
+    fixture: fixture,
+    handlers: EffectHandlerBinding {
+      read_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_host_dispatch_read(
+            backend: backend,
+            host_ctx: host_ctx,
+            request: request
+          )
+        }
+      },
+      write_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_host_dispatch_write(
+            backend: backend,
+            host_ctx: host_ctx,
+            request: request
+          )
+        }
+      }
+    }
   }
 }
 
@@ -206,10 +220,6 @@ data effect_io_host_placeholder_file_effects: ModeledFileEffects = ModeledFileEf
 data effect_io_host_file_context: EffectIoHostFileContext = EffectIoHostFileContext {
   filesystem: effect_io_host_placeholder_filesystem,
   effects: effect_io_host_placeholder_file_effects
-}
-
-data effect_io_host_declared_context: EffectIoHostBackendContext = HostFileContext {
-  context: effect_io_host_file_context
 }
 
 data effect_io_host_http_context: EffectIoHostHttpContext = EffectIoHostHttpContext {
@@ -239,14 +249,18 @@ fn effect_io_host_backend_context(backend: EffectIoResourceBackend) -> EffectIoH
 }
 
 fn effect_io_host_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoHostRuntime {
+  let host_ctx = effect_io_host_backend_context(backend: backend)
+  let fixture = effect_io_pure_empty_fixture_store(backend: backend)
+  let bundle = effect_io_host_handler_binding(
+    backend: backend,
+    host_ctx: host_ctx,
+    fixture: fixture
+  )
   V4EffectIoHostRuntime {
     bundle_identity: ^v4_effect_io_host_runtime_id,
-    declared_backend: backend,
-    backend_context: effect_io_host_backend_context(backend: backend),
-    handlers: effect_io_host_handler_binding(
-      backend: backend,
-      host_ctx: effect_io_host_backend_context(backend: backend),
-      fixture: effect_io_pure_empty_fixture_store(backend: backend)
-    )
+    declared_backend: bundle.declared_backend,
+    backend_context: bundle.backend_context,
+    fixture_store: bundle.fixture,
+    handlers: bundle.handlers
   }
 }
