@@ -6,8 +6,8 @@
 // healthy: Bool flag.
 //
 // Authority for ComputeHost remains std.compute_fabric; CpuFacts / CpuIdentity
-// taxonomy is std.cpu. This module is the thin projection surface importable
-// without pulling the full fabric graph (float cost models, GPU facts, etc.).
+// is std.cpu; DIMM populations std.memory.operator_fleet. Thin projection
+// surface importable without pulling the full fabric graph.
 
 module std.placement_supply
 

@@ -5,7 +5,7 @@
 module std.cpu
 
 import std.cpu.types { AmpereCpuModel, CpuArchitecture, CpuDeploymentFacts, CpuFacts, CpuIdentity, CpuModelCatalogRow, CpuVendor }
-import std.cpu.ampere { altra_catalog, altra_max_catalog }
+import std.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
 
 fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
   match identity {
@@ -16,8 +16,8 @@ fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
 fn cpu_catalog_row(identity: CpuIdentity) -> CpuModelCatalogRow {
   match identity {
     AmpereCpu { model: m } => match m {
-      AltraMax => altra_max_catalog
-      Altra => altra_catalog
+      AltraMaxM12830 => altra_max_m12830_catalog
+      AltraQ6430 => altra_q6430_catalog
     }
   }
 }

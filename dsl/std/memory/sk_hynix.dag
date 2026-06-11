@@ -1,0 +1,41 @@
+// std/memory/sk_hynix.dag — SK hynix DDR4 module catalog (data authority).
+//
+// Operator DIMMs: HMA82GR7AFR4N-VK 16GB PC4-21300 @ 2666 MT/s.
+
+module std.memory.sk_hynix
+
+import std.memory.types { DramManufacturer, DramModuleCatalogRow, SkHynixDdr4Module }
+
+// 16 GiB per stick (1×16GB).
+data stick_capacity_bytes: Int = 17179869184
+
+// Marketplace listing: "SK Hynix 16GB PC4-21300 (1x16GB) DDR4 Server RAM".
+data hma82gr7afr4n_vk_server_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7AFR4N-VK",
+  manufacturer: SkHynix,
+  capacity_bytes: stick_capacity_bytes,
+  ddr4_pc4_class: "PC4-21300",
+  data_rate_mts: 2666,
+  ecc: true,
+  registered: true,
+  rank_label: "server",
+}
+
+// Marketplace listing: "SK hynix 16GB PC4-21300 DDR4-2666MHz ECC REG Single Rank".
+data hma82gr7afr4n_vk_ecc_reg_single_rank_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7AFR4N-VK",
+  manufacturer: SkHynix,
+  capacity_bytes: stick_capacity_bytes,
+  ddr4_pc4_class: "PC4-21300",
+  data_rate_mts: 2666,
+  ecc: true,
+  registered: true,
+  rank_label: "ecc_reg_single_rank",
+}
+
+fn sk_hynix_catalog_row(dimm: SkHynixDdr4Module) -> DramModuleCatalogRow {
+  match dimm {
+    Hma82gr7afr4nVkServer => hma82gr7afr4n_vk_server_catalog
+    Hma82gr7afr4nVkEccRegSingleRank => hma82gr7afr4n_vk_ecc_reg_single_rank_catalog
+  }
+}
