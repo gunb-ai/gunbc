@@ -942,6 +942,9 @@ data eval_rejected_bind_body_absent: Symbol = eval_rejected_bind_body_absent
 data eval_rejected_callee_absent: Symbol = eval_rejected_callee_absent
 data eval_rejected_argument_bind_absent: Symbol = eval_rejected_argument_bind_absent
 data eval_rejected_unsupported_callee: Symbol = eval_rejected_unsupported_callee
+// Fail-closed (P3/P5): a fixed-arity wave-1 callee invoked with MORE actuals than the
+// callee's declared signature admits. The extras must refuse, never be silently dropped.
+data eval_rejected_argument_arity_excess: Symbol = eval_rejected_argument_arity_excess
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -1258,11 +1261,63 @@ fn eval_bind_arrow_params(
             node: node
           )
         }
+<<<<<<< HEAD
       ) {
         EvalParamBindAcc { idx: _, acc: result } => result
       }
     }
   )
+=======
+      )
+    }
+  )
+}
+
+// True iff `args` has an actual at index `wanted`. Used to fail closed on excess actuals.
+fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
+  match list_nth(
+    xs: args,
+    wanted: wanted,
+    absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn eval_bind_wave1_arguments(
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  // Exact arity (P3/P5): the wave-1 add callee takes exactly two actuals. A third actual
+  // must refuse — binding only [0],[1] and ignoring the rest would silently drop arguments.
+  if eval_actual_present(args: args, wanted: 2, node: node) {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
+    )
+  } else {
+    bind_outcome(
+      o: eval_bind_wave1_argument(
+        args: args,
+        wanted: 0,
+        environment: environment,
+        bind: bind,
+        node: node
+      ),
+      f: fn(env1) {
+        eval_bind_wave1_argument(
+          args: args,
+          wanted: 1,
+          environment: env1,
+          bind: bind,
+          node: node
+        )
+      }
+    )
+  }
+>>>>>>> origin/main
 }
 
 fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
@@ -1296,6 +1351,92 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   }
 }
 
+<<<<<<< HEAD
+=======
+fn eval_positional_child_atom_is(node: Node, wanted: Int, sym: Symbol) -> Bool {
+  match eval_nth_child(
+    node: node,
+    wanted: wanted,
+    absent_reason: eval_rejected_unsupported_callee
+  ) {
+    Accepted { value: e, diagnostics: _ } =>
+      match e.label {
+        Positional => eval_node_is_atom(node: e.target, sym: sym)
+        Named { name: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Exact-arity gate (P3/P5): true iff `node` has NO child at index `wanted`. The wave-1
+// shape predicates are fixed-arity, so they must assert the absence of the first
+// beyond-shape child — prefix matching alone admits oversized inputs and silently drops
+// the extras (Facts Flow Forward). Pairs with the eval_positional_child_atom_is reads.
+fn eval_child_absent(node: Node, wanted: Int) -> Bool {
+  match eval_nth_child(
+    node: node,
+    wanted: wanted,
+    absent_reason: eval_rejected_unsupported_callee
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// 🟡 gated — COMPREP wave-1 hard-coded callee-shape gate (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node
+// (executed by comprep_eval_by_execution keystone; fail-closed on any non-matching arrow via
+// eval_rejected_unsupported_callee) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: callee
+// admission/dispatch derives from the resolved Arrow's declared signature+body carriers
+// (real callee dispatch) rather than recognizing the fixed Int,Int->Int add shape by literal
+// token/param symbols; owner/lane: Mgr-RUNTIME (valiant-cat-890), routed to still-raven-546 —
+// trigger: the resolve->body_producer bridge lands; forbidden: adding a second hard-coded
+// callee shape here (a third would mean building the dispatch surface, not another literal).
+fn eval_wave1_add_signature(arrow: Node) -> Bool {
+  eval_node_is_arrow(node: arrow)
+    && eval_positional_child_atom_is(node: arrow, wanted: 0, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 1, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 2, sym: ^dag_binding_type_int)
+    // Exact arity: the add Arrow is [Int, Int, Int, body] — exactly four children. Reject
+    // any extra signature fact (index 4+) rather than admitting it as Int,Int->Int and
+    // dropping it across dispatch (Facts Flow Forward/P5).
+    && eval_child_absent(node: arrow, wanted: 4)
+}
+
+fn eval_wave1_add_body_operand_set(body: Node) -> Bool {
+  (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_x)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_y)
+  ) || (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_y)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_x)
+  )
+}
+
+fn eval_wave1_add_body(body: Node) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      eval_positional_child_atom_is(node: body, wanted: 0, sym: ^dag_token_plus)
+        && eval_wave1_add_body_operand_set(body: body)
+        // Exact arity: the body is [+, x, y] — exactly three children. Reject any extra
+        // operand (index 3+) rather than dropping it (Facts Flow Forward/P5).
+        && eval_child_absent(node: body, wanted: 3)
+    _ => false
+  }
+}
+
+fn eval_wave1_add_callee(arrow: Node) -> Bool {
+  if eval_wave1_add_signature(arrow: arrow) {
+    match find_arrow_body_child(root: arrow) {
+      Accepted { value: body, diagnostics: _ } => eval_wave1_add_body(body: body)
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+>>>>>>> origin/main
 fn eval_transform_has_callee_reference(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>

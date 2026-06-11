@@ -1,6 +1,7 @@
 // src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag
 // Scope: Consolidation #4553 glob-discovery substrate equivalence (design §6.3 C9).
-// Status: runtime law — modality discrimination + glob discovery authority (replaces roster).
+// Status: runtime law — modality discrimination + sample-marker field preservation.
+// C9 post-delete standing gates: nonempty-by-execution + perturb (no committed oracle).
 // Host transport: scripts/v4-substrate-equivalence-gate.sh (--perturb-check).
 
 module v4.test.claim.workflow.unified_test_claim_substrate_equivalence
@@ -25,11 +26,10 @@ import v4.test.claim.lens_affected_set.edit_locus_resolver {
 }
 import v4.std.text { String }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
-import v4.test.claim.workflow.glob_discovery {
-  glob_discovered_smoke_marker_count,
-  glob_discovery_smoke_marker_count_is_positive
+import v4.test.claim.workflow.host_discovered_owned_data_manifest {
+  host_owned_data_discovery_receipt
 }
-// Independent transport authority for the sample marker (not read back from extraction).
+// Sample-marker transport authority only — full discovered-set C9 equality is host-gated.
 data substrate_equivalence_sample_bool_witness_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
 
 
@@ -92,14 +92,13 @@ fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
 }
 
 
-fn substrate_equivalence_discovery_count_pin_is_positive() -> Bool {
-  glob_discovery_smoke_marker_count_is_positive()
-    && (glob_discovered_smoke_marker_count != "")
+fn substrate_equivalence_discovery_set_is_nonempty_by_execution() -> Bool {
+  host_owned_data_discovery_receipt.unified_claim_arm_count > 0
 }
 
 
 fn substrate_equivalence_holds() -> Bool {
-  substrate_equivalence_discovery_count_pin_is_positive()
+  substrate_equivalence_discovery_set_is_nonempty_by_execution()
     && substrate_equivalence_glob_discovery_marker_preserves_entry_function()
     && substrate_equivalence_bool_modality_discriminates()
     && substrate_equivalence_node_corpus_modality_discriminates()
