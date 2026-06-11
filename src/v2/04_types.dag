@@ -823,6 +823,13 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         }
       }
     }
+    else if free_monoid_coproduct_element(n: left, source_indices: source_indices) != none
+      && free_monoid_coproduct_element(n: right, source_indices: source_indices) != none {
+      let left_el = free_monoid_coproduct_element(n: left, source_indices: source_indices).value
+      let right_el = free_monoid_coproduct_element(n: right, source_indices: source_indices).value
+      if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+      else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+    }
     else if left_is_container && free_monoid_coproduct_element(n: right, source_indices: source_indices) != none {
       match left.children |> first {
         Present { value: left_ch } =>

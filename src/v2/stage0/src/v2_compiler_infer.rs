@@ -4760,11 +4760,12 @@ match bare_s {
                                 unified_raw
                             }
                         };
-                        let branch_diags = if node_type_compatible(
-                            then_compare,
-                            else_compare,
+                        let branch_compatible = node_type_compatible(
+                            then_compare.clone(),
+                            else_compare.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) {
+                        );
+                        let branch_diags = if branch_compatible {
                             Rc::new(vec![])
                         } else {
                             Rc::new(vec![inference_error(
@@ -13750,17 +13751,6 @@ let same_parent_binding = match binding.resolved.clone().binding_id.clone() {
 };
 let same_parent_binding = (same_parent_binding.clone() || same_canonical_container_variant_parent(binding.resolved.clone(), prev.resolved.clone(), env.source_indices.clone()));
 if (((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (same_parent_binding.clone() == false)) && (is_bootstrap_duplicate_variant_name(child_name.clone()) == false)) && (curr_parent_imported.clone() == false)) && (prev_parent_imported.clone() == false)) && curr_is_imported.clone()) && prev_is_imported.clone()) {
-                                eprintln!(
-                                    "DBG variant collision child={} curr_parent={} prev_parent={} curr_bid={:?} prev_bid={:?} same_canon={} curr_conn={:?} prev_conn={:?}",
-                                    child_name,
-                                    curr_parent_name,
-                                    prev_parent_name,
-                                    binding.resolved.binding_id,
-                                    prev.resolved.binding_id,
-                                    same_canonical_container_variant_parent(binding.resolved.clone(), prev.resolved.clone(), env.source_indices.clone()),
-                                    binding.resolved.connective,
-                                    prev.resolved.connective,
-                                );
                                 Rc::new(VariantFoldState {
     locals: vacc.locals.clone(),
     collisions: v2_rt::rc_map_insert(vacc.collisions.clone(), child_name.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
