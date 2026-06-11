@@ -1,7 +1,10 @@
 // src/v4/std/provenance.dag
 // Scope: source-text provenance substrate (T-8 / PROV A-pivot).
 // Status: Phase 1+2 landed — on-tree Node.span dissolved (#4604 revert); off-tree SpanIndex
-//   (OccurrenceId → OriginEvent) is the surviving authority (design-provenance-span.md §4.5).
+//   (OccurrenceId → OriginEvent) carrier + record/lookup substrate (design-provenance-span.md
+//   §4.5). Wave-1: per-site span_index_record at parse mint. Wave-2 (🟡 feature:T-8-source-
+//   provenance-wave-2, owner SOUNDNESS, #4643): span_index_merge + globally coherent composed
+//   index across memoized parse cells.
 
 module v4.std.provenance
 

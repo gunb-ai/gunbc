@@ -193,6 +193,9 @@ fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   }
 }
 
+// Wave-1 interim: on-tree provenance.node.span dissolved by A-pivot; this claim checks only
+// well_formed until wave-2 restores an off-tree SpanIndex anchored-extent by-execution witness
+// (feature:T-8-source-provenance-wave-2, owner SOUNDNESS, #4643).
 fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_node_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read

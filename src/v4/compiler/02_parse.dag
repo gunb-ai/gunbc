@@ -86,7 +86,10 @@ import v4.std.grammar {
 }
 
 
-// PROV A-pivot wave-1: per-compile occurrence mint + off-tree SpanIndex built at parse boundary.
+// PROV A-pivot wave-1 (honest scope): stamping machinery at parse walk sites — terminal
+// FromSource mint, DerivedBy on conj/repeat/wrap, per-memo-cell prov via parse_prov_initial,
+// ParseArtifact carries the root cell's SpanIndex. Does NOT establish global SpanIndex
+// coherence across memoized table composition (wave-2 — see 🟡 below).
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: SpanIndex
@@ -482,6 +485,11 @@ fn parse_wrap_production_captured(
   }
 }
 
+// Wave-1: on table hit, wrap uses the memo cell's inner_prov only (incoming prov discarded).
+// 🟡 gated — feature:T-8-source-provenance-wave-2 — owner: SOUNDNESS — bind #4643 —
+// dissolve-on-arrival: parse_prov_merge + span_index_merge across memo cells; thread global
+// alloc/index through parse_table_fill; forbidden: claiming composed-parse SpanIndex
+// coherence on wave-1 heads.
 fn parse_nonterminal_from_table(
   table: ParseTable,
   all_tokens: List<Token>,
@@ -1104,6 +1112,8 @@ fn parse_expr(
 }
 
 
+// Wave-1: each memo cell restarts occurrence_id_allocator_initial() — ids may collide
+// across cells until wave-2 global/relabeled allocation lands (🟡 above).
 fn parse_table_fill_production_step(
   table: ParseTable,
   production: GrammarProduction,

@@ -55,8 +55,9 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: DagSource
   artifact: Artifact
-  // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
-  // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
+  // R3 gate #31: compilation-unit authority is the Textual locus in OriginEvent::FromSource
+  // at parse-mint (02_parse.dag parse_mint_from_source). Wave-1: stamping machinery only;
+  // no executing consumer reads SpanIndex end-to-end yet (wave-2 — #4643).
   compilation_unit: Symbol
 }
 
