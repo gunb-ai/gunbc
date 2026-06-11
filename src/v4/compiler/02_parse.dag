@@ -984,7 +984,7 @@ fn parse_expr(
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
-  table: ParseTable
+  table: Map<ParsePositionKey, ParseExprResult>
 ) -> ParseExprResult {
   parse_expr_run_walk(
     walk: fold_grammar_expr(
