@@ -1,0 +1,86 @@
+// src/v4/std/value_carrier.dag
+// Scope: declared structural-persistence and sharing facts for the runtime
+//   collection carriers — ctrl#1533 M-A, placed at the v4.std authority per
+//   the ctrl#1534 placement amendment (§3–4). The v2 host interpreter
+//   IMPLEMENTS these facts (ctrl#1533 phase 2); emitted Rust implements the
+//   same facts by ownership analysis (move + copy-on-write). Neither layer is
+//   the authority; this module is.
+// Status: model-first. Phase-0 receipts (gunbc PR #4653): v4 workloads make
+//   zero native mutation-primitive calls — v4 collections are closure-chain
+//   maps and FreeMonoid trees, so the host copy cost rides the
+//   free_monoid_to_vec flatten chokepoint. The carrier facts below are the
+//   "unified runtime representation" the B-LIST-FREEMONOID-1 and
+//   B-MAP-LOOKUP-OPTION-C-1 interims (v4.std.collection) dissolve against.
+// Anchors: Driscoll–Sarnak–Sleator–Tarjan, "Making Data Structures
+//   Persistent" (JCSS 1989); Okasaki, "Purely Functional Data Structures"
+//   (1998); Bagwell, "Ideal Hash Trees" (2001); Bagwell & Rompf, "RRB-Trees"
+//   (2011). Production consensus: Clojure/Scala collections; Rust im/rpds.
+
+module v4.std.value_carrier
+
+import v4.std.node { Symbol }
+
+// Structural persistence of a value carrier under update: a Persistent
+// carrier leaves every prior version valid (the new version structurally
+// shares unchanged substructure with its predecessor); an Ephemeral carrier
+// invalidates the prior version, so an immutable-value host must copy it in
+// full before updating — the quadratic-allocation term ctrl#1533 measured.
+// Distinct concept from std.compute_fabric.PersistenceKind (storage
+// durability across restarts): same word, different DAG-ancestor — this one
+// hangs off value-update semantics, not infrastructure lifecycle.
+type PersistenceKind = Ephemeral | Persistent
+
+// Symbolic work bounds in the std.primitives PrimitiveContract `work`
+// convention (n = collection size). Declared per carrier so per-primitive
+// cost facts (ctrl#1533 M-B) derive from the carrier instead of floating.
+type CarrierCost {
+  update_work: String
+  lookup_work: String
+}
+
+// A carrier declaration binds an abstract collection to the host structure
+// implementing it, its persistence kind, and the cost facts that persistence
+// kind grounds. The interpreter and emitted code are both implementations of
+// these declarations; disagreement about update cost resolves by reading the
+// data values below, not by reading host source.
+type CarrierDeclaration {
+  collection: Symbol
+  carrier: Symbol
+  persistence: PersistenceKind
+  cost: CarrierCost
+}
+
+// Map<K,V> carrier: hash array mapped trie (Bagwell 2001), persistent per
+// Driscoll–Sarnak–Sleator–Tarjan 1989.
+data map_carrier: CarrierDeclaration = {
+  collection: ^map_collection,
+  carrier: ^hash_array_mapped_trie,
+  persistence: Persistent,
+  cost: { update_work: "log32 n", lookup_work: "log32 n" }
+}
+
+// List<T> carrier: relaxed radix balanced tree (Bagwell & Rompf 2011) or a
+// catenable structure consistent with FreeMonoid<T> (Okasaki 1998) — the
+// carrier must realize the FreeMonoid algebra without per-site flattening
+// (the free_monoid_to_vec chokepoint the phase-0 receipts identified as the
+// actual copy path on v4 workloads).
+data list_carrier: CarrierDeclaration = {
+  collection: ^list_collection,
+  carrier: ^relaxed_radix_balanced_tree,
+  persistence: Persistent,
+  cost: { update_work: "log n", lookup_work: "log n" }
+}
+
+// The sharing law: structural sharing between values is UNOBSERVABLE at the
+// language level. A value denotes its structure alone; whether two
+// structurally equal values occupy one allocation or two changes cost, never
+// meaning. This law is what makes a carrier swap behavior-preserving by
+// construction, and it is the claim the ctrl#1533 phase-2 verification must
+// keep green (witnesses: v4.test.claim.std_grounding.value_carrier_laws).
+// Host values are thread-confined (Rc-discipline): sharing never introduces
+// concurrent observation, so the law has no hidden synchronization premise.
+type SharingEvidence {
+  left: Symbol
+  right: Symbol
+  observation_is_structural: Bool
+}

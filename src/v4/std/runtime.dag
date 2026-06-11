@@ -80,6 +80,28 @@ type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }
   | RuntimeValueNodeUnrepresentable
 
+// ctrl#1533 M-C at the v4.std authority (placement per ctrl#1534 §3.3):
+// identity-of-values laws the hosts implementing RuntimeValue must obey.
+// Grounded in referential transparency of the total λ-fragment (INVARIANTS
+// P1 kernel-calculus worked example): a value denotes its structure, so two
+// references to one allocation cannot disagree — identity-of-values is a
+// theorem there, not a choice.
+//
+// Law 1 (soundness, one-way): reference-identical ⇒ structurally equal.
+//   Reference-distinct implies NOTHING. This is what licenses a host to
+//   short-circuit deep equality on shared subtrees (and what the v2 pure-call
+//   memo and CanonKey address-keying already rely on implicitly).
+// Law 2 (order-independence): equality and hashing of keyed aggregates are
+//   functions of the entry SET — the same entries yield equal values and
+//   equal hashes regardless of insertion or iteration order
+//   (hash_fields_commutative in the v2 host implements this).
+// Executable witnesses: v4.test.claim.std_grounding.value_carrier_laws —
+// these must stay green across any carrier swap (ctrl#1533 phase-2 gate).
+type IdentityEvidence
+  = ReferenceIdentical
+  | StructurallyEqual
+  | StructurallyDistinct
+
 fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   match value {
     RuntimePrimitive { value: p } => p.primitive_type
