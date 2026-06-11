@@ -55,6 +55,18 @@ type GitRemote {
 // exactly one checked-out HEAD; a branch may be checked out in at
 // most one worktree at a time.
 
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). Git's worktree HEAD is exactly one of two
+// irreducible states — checked out on a branch, or detached at a commit —
+// and `git worktree list` reports precisely this distinction. The
+// variants carry structurally distinct payloads (a branch ref vs a bare
+// sha). Ledger (Patterns 1–5): (1) fact-placement rejected — both states
+// feed the same consumer (a worktree's checkout), no per-consumer split.
+// (2) variant-is-data rejected — GitBranch and CommitSha are different
+// shapes, not a label over one payload. (3) no std algebraic source.
+// (4) not dimensional — on-branch/detached is a single binary state, not
+// a factoring of orthogonal axes. (5) not a parameterized family. Git's
+// own HEAD-state dichotomy is the source.
 type GitWorktreeHead
   = WorktreeOnBranch { branch: GitBranch }
   | WorktreeDetached { sha: CommitSha }
