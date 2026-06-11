@@ -5,7 +5,6 @@
 
 module v4.compiler.eval
 
-import v4.compiler.body_producer { arrow_has_body_edge }
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
@@ -1197,57 +1196,81 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
   )
 }
 
-// 🟡 gated — COMPREP wave-1 hard-coded binding accessor (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:arrow-domain-named-param-binding-accessor
-// (eval_wave1_argument_binding_key; executed by comprep_eval_by_execution keystone) —
-// bind:node://adhoc-5edb46b5-841 — dissolve-on: node_query arrow_domain_named_param_bindings
-// lands (#4627 rebase); owner: Mgr-RUNTIME — forbidden: extending hard-coded
-// ^dag_binding_param_x/^dag_binding_param_y positions past wave-1 MVP add or adding a parallel
-// FunctionRef carrier in 05_eval.
-fn eval_wave1_argument_binding_key(wanted: Int, node: Node) -> Outcome<EnvironmentBindingKey> {
-  if wanted == 0 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_x)
-      },
-      diagnostics: None
-    }
-  } else if wanted == 1 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_y)
-      },
-      diagnostics: None
-    }
-  } else {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
-    )
+type EvalParamBindAcc {
+  idx: Int
+  acc: Outcome<EvaluationEnvironment>
+}
+
+fn eval_bind_param_edge_step(
+  state: EvalParamBindAcc,
+  param_edge: Edge,
+  args: List<RuntimeValue>,
+  bind: BindInterpreter,
+  node: Node
+) -> EvalParamBindAcc {
+  match state.acc {
+    Rejected { diagnostics: r } =>
+      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
+    Accepted { value: env, diagnostics: _ } =>
+      match param_edge.label {
+        Named { name: binding_id } =>
+          EvalParamBindAcc {
+            idx: state.idx + 1,
+            acc: bind_outcome(
+              o: eval_witness_outcome(
+                witness: list_nth(
+                  xs: args,
+                  wanted: state.idx,
+                  absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+                )
+              ),
+              f: fn(value) {
+                bind.bind_value(
+                  EnvironmentBindingKey { declaration: eval_binding_key_node(sym: binding_id) },
+                  value,
+                  env
+                )
+              }
+            )
+          }
+        Positional =>
+          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
+      }
   }
 }
 
-fn eval_bind_wave1_argument(
+fn eval_bind_arrow_params(
+  arrow: Node,
   args: List<RuntimeValue>,
-  wanted: Int,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
   node: Node
 ) -> Outcome<EvaluationEnvironment> {
   bind_outcome(
-    o: eval_witness_outcome(
-      witness: list_nth(
-        xs: args,
-        wanted: wanted,
-        absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
-      )
-    ),
-    f: fn(value) {
-      bind_outcome(
-        o: eval_wave1_argument_binding_key(wanted: wanted, node: node),
-        f: fn(key) {
-          bind.bind_value(key, value, environment)
+    o: eval_nth_child(node: arrow, wanted: 0, absent_reason: eval_rejected_callee_absent),
+    f: fn(domain_edge) {
+      match fold_list(
+        xs: domain_edge.target.children,
+        empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
+        cons: fn(state, param_edge) {
+          eval_bind_param_edge_step(
+            state: state,
+            param_edge: param_edge,
+            args: args,
+            bind: bind,
+            node: node
+          )
         }
-      )
+      ) {
+        EvalParamBindAcc { idx: param_count, acc: bound } =>
+          if eval_actual_present(args: args, wanted: param_count, node: node) {
+            outcome_rejected(
+              d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
+            )
+          } else {
+            bound
+          }
+      }
     }
   )
 }
@@ -1264,40 +1287,6 @@ fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Boo
   }
 }
 
-fn eval_bind_wave1_arguments(
-  args: List<RuntimeValue>,
-  environment: EvaluationEnvironment,
-  bind: BindInterpreter,
-  node: Node
-) -> Outcome<EvaluationEnvironment> {
-  // Exact arity (P3/P5): the wave-1 add callee takes exactly two actuals. A third actual
-  // must refuse — binding only [0],[1] and ignoring the rest would silently drop arguments.
-  if eval_actual_present(args: args, wanted: 2, node: node) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
-    )
-  } else {
-    bind_outcome(
-      o: eval_bind_wave1_argument(
-        args: args,
-        wanted: 0,
-        environment: environment,
-        bind: bind,
-        node: node
-      ),
-      f: fn(env1) {
-        eval_bind_wave1_argument(
-          args: args,
-          wanted: 1,
-          environment: env1,
-          bind: bind,
-          node: node
-        )
-      }
-    )
-  }
-}
-
 fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
   eval_nth_child(
     node: node,
@@ -1307,12 +1296,12 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node fail-closed
-// unsupported-callee arm (executed by comprep_eval_by_execution keystone) —
+// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_has_callee_reference
+// (executed by comprep_eval_by_execution keystone) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
-// node_query connective dispatch surface instead of inline Node.kind/TypeNode shape matches;
-// owner/lane: Mgr-RUNTIME (neat-bat-593) — trigger: the source-driven callee-dispatch wave
-// lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
+// node_query dispatch surface (Node-projectable connective dispatch) instead of inline
+// Node.kind/TypeNode shape matches; owner/lane: Mgr-RUNTIME — trigger: the source-driven
+// callee-dispatch wave lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -1341,26 +1330,30 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
 }
 
 // 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node (executed by
-// comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's
-// callee path consumes the canonical node_query dispatch surface (Arrow.body + declared arity)
-// instead of hand-rolled child-index absence checks; owner/lane: Mgr-RUNTIME (neat-bat-593) —
-// trigger: the resolve→body_producer bridge lands; forbidden: permanent untagged Bool
-// callee-admission predicates in 05_eval.
-fn eval_callee_admits_body_dispatch(arrow: Node) -> Bool {
-  if arrow_has_body_edge(arrow: arrow) {
-    match find_arrow_body_child(root: arrow) {
-      Accepted { value: body, diagnostics: _ } =>
-        eval_child_absent(node: arrow, wanted: 4)
-          && match body.kind {
-            ComputationNode { behavior: Transform } =>
-              eval_child_absent(node: body, wanted: 3)
-            _ => false
-          }
-      Rejected { diagnostics: _ } => false
-    }
-  } else {
-    false
+// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Arrow
+// exact-arity arm (executed by comprep_eval_by_execution keystone excess-signature red) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
+// node_query dispatch surface (Arrow.body + declared arity) instead of hand-rolled child-index
+// absence checks; owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands;
+// forbidden: permanent untagged Bool callee-admission predicates in 05_eval.
+fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
+  // Wave-1 Arrow is [domain, codomain, body] — reject any positional-3+ on the Arrow.
+  eval_child_absent(node: arrow, wanted: 3)
+}
+
+// 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Transform-body
+// exact-arity arm (executed by comprep_eval_by_execution keystone excess-body red) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
+// node_query dispatch surface instead of hand-rolled child-index absence checks;
+// owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands; forbidden:
+// permanent untagged Bool callee-admission predicates in 05_eval.
+fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      // Wave-1 Transform body is [operator, operand, operand] — reject operand index 3+.
+      eval_child_absent(node: body, wanted: 3)
+    _ => false
   }
 }
 
@@ -1415,12 +1408,13 @@ fn eval_transform_node(
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
-            if eval_callee_admits_body_dispatch(arrow: callee_edge.target) {
-              bind_outcome(
-                o: find_arrow_body_child(root: callee_edge.target),
-                f: fn(body) {
+            match find_arrow_body_child(root: callee_edge.target) {
+              Accepted { value: body, diagnostics: _ } =>
+                if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
+                  && eval_transform_body_admits_dispatch(body: body) {
                   bind_outcome(
-                    o: eval_bind_wave1_arguments(
+                    o: eval_bind_arrow_params(
+                      arrow: callee_edge.target,
                       args: args,
                       environment: environment,
                       bind: interpretation.bind,
@@ -1436,14 +1430,19 @@ fn eval_transform_node(
                       )
                     }
                   )
+                } else {
+                  outcome_rejected(
+                    d: eval_diagnostic(reason: eval_rejected_unsupported_callee, node: callee_edge.target)
+                  )
                 }
-              )
-            } else if eval_node_is_arrow(node: callee_edge.target) {
-              outcome_rejected(
-                d: eval_diagnostic(reason: eval_rejected_unsupported_callee, node: callee_edge.target)
-              )
-            } else {
-              transform.call_primitive(node, args, environment)
+              Rejected { diagnostics: _ } =>
+                if eval_node_is_arrow(node: callee_edge.target) {
+                  outcome_rejected(
+                    d: eval_diagnostic(reason: eval_rejected_unsupported_callee, node: callee_edge.target)
+                  )
+                } else {
+                  transform.call_primitive(node, args, environment)
+                }
             }
           }
         )

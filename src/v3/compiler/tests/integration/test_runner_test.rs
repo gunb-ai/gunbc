@@ -2,23 +2,22 @@
 
 use std::path::PathBuf;
 
+use crate::common::{cached_compile_outcome, CachedCompileOutcome};
 use v3_compiler::dag::{FieldValue, LiteralBits, ValueBody};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
-use v3_compiler::{compile_to_dag, CompileError};
 
 const MOCK_BACKED_INVARIANT_FIXTURE: &str =
     include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
 
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
-    match compile_to_dag(source, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => panic!(
+    match cached_compile_outcome(source, file) {
+        CachedCompileOutcome::Clean(dag) => dag,
+        CachedCompileOutcome::Semantic(dag) => panic!(
             "{file} should compile cleanly, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
         ),
-        Err(err) => panic!("{file} should compile cleanly, got {err:?}"),
     }
 }
 
@@ -136,8 +135,8 @@ data claim_empty_requires: TestClaim = {
   requires: empty()
 }
 "#;
-    match compile_to_dag(source, "test_runner_empty_requires.dag") {
-        Err(CompileError::Semantic(dag)) => {
+    match cached_compile_outcome(source, "test_runner_empty_requires.dag") {
+        CachedCompileOutcome::Semantic(dag) => {
             // Variant-level check: the class-5 gap surfaces as a `ResolveError`
             // on the `requires` field of `claim_empty_requires`. Binding to the
             // variant + `name` payload is sturdier than a raw message-substring
@@ -1453,8 +1452,8 @@ data suite_bad: TestSuite = {
   claims: [Quantified(bad_claim)]
 }
 "#;
-    match compile_to_dag(source, "quantified_generator_list_ref_typefail.dag") {
-        Err(CompileError::Semantic(dag)) => {
+    match cached_compile_outcome(source, "quantified_generator_list_ref_typefail.dag") {
+        CachedCompileOutcome::Semantic(dag) => {
             let found_type_mismatch = dag
                 .diagnostics()
                 .iter()
@@ -1465,8 +1464,9 @@ data suite_bad: TestSuite = {
                 dag.diagnostics().iter().collect::<Vec<_>>()
             );
         }
-        Ok(_) => panic!("QuantifiedTestClaim.generator: shapes should not type-check"),
-        Err(err) => panic!("unexpected compile error: {err:?}"),
+        CachedCompileOutcome::Clean(_) => {
+            panic!("QuantifiedTestClaim.generator: shapes should not type-check")
+        }
     }
 }
 
@@ -1486,8 +1486,8 @@ data suite_quantified_bad: TestSuite = {
   claims: [Quantified(not_quantified)]
 }
 "#;
-    match compile_to_dag(source, "test_runner_quantified_bad_shape.dag") {
-        Err(CompileError::Semantic(dag)) => {
+    match cached_compile_outcome(source, "test_runner_quantified_bad_shape.dag") {
+        CachedCompileOutcome::Semantic(dag) => {
             let found_type_mismatch = dag
                 .diagnostics()
                 .iter()
@@ -1498,7 +1498,8 @@ data suite_quantified_bad: TestSuite = {
                 dag.diagnostics().iter().collect::<Vec<_>>()
             );
         }
-        Ok(_) => panic!("Quantified(Int) should not compile cleanly — TypeMismatch expected"),
-        Err(err) => panic!("expected Semantic diagnostic, got {err:?}"),
+        CachedCompileOutcome::Clean(_) => {
+            panic!("Quantified(Int) should not compile cleanly — TypeMismatch expected")
+        }
     }
 }
