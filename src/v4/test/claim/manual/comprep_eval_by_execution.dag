@@ -7,7 +7,6 @@ module v4.test.claim.manual.comprep_eval_by_execution
 import v4.compiler.body_producer { produce_mvp1_add_arrow_with_body }
 import v4.test.claim.complexity_gate.comprep_wave1_add_subject_producer {
   comprep_source_bridged_add_arrow_with_body,
-  comprep_source_resolved_add_arrow,
   comprep_wave1_add_parse_tokens
 }
 import v4.compiler.eval {
