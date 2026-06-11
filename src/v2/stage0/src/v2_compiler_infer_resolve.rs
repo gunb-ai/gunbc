@@ -102,7 +102,9 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                             env.clone(),
                             module_name.clone(),
                             0,
-                        ),
+                        )
+                        .resolved
+                        .clone(),
                         _ => resolve_node_bounded(
                             resolved.clone(),
                             env.clone(),
@@ -139,15 +141,14 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         && (resolved.inferred.clone() != None))
                     {
                         match resolved.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => {
-                                let target_resolved = resolve_alias_target(
-                                    target.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                    0,
-                                );
-                                target_resolved
-                            }
+                            Some(InferredNode::Resolved { node: target, .. }) => resolve_alias_target(
+                                target.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                                0,
+                            )
+                            .resolved
+                            .clone(),
                             _ => resolved.clone(),
                         }
                     } else {
@@ -406,15 +407,28 @@ pub fn resolve_alias_target(
     env: Rc<TypeEnv>,
     module_name: String,
     depth: i64,
-) -> Rc<Node> {
+) -> Rc<NodeResolveResult> {
     if (depth > 100) {
-        return target.clone();
+        return Rc::new(NodeResolveResult {
+            resolved: target.clone(),
+            diagnostics: Rc::new(vec![make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: v2_rt::concat(
+                        v2_rt::concat(
+                            "internal: alias resolution exceeded depth 100 for '".to_string(),
+                            authored_name(env.clone(), target.clone()),
+                        ),
+                        "'".to_string(),
+                    ),
+                    span: target.span.clone(),
+                }),
+                module_name.clone(),
+            )]),
+        });
     }
     match classify_alias(target.clone()) {
         AliasKind::AliasParameterized => {
             resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1))
-                .resolved
-                .clone()
         }
         AliasKind::AliasLeaf => match lookup_type_for(env.clone(), target.clone()) {
             Some(env_target) => {
@@ -431,15 +445,27 @@ pub fn resolve_alias_target(
                             module_name,
                             (depth + 1),
                         ),
-                        _ => env_target.clone(),
+                        _ => Rc::new(NodeResolveResult {
+                            resolved: env_target.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        }),
                     }
                 } else {
-                    env_target.clone()
+                    Rc::new(NodeResolveResult {
+                        resolved: env_target.clone(),
+                        diagnostics: Rc::new(vec![]),
+                    })
                 }
             }
-            None => target.clone(),
+            None => Rc::new(NodeResolveResult {
+                resolved: target.clone(),
+                diagnostics: Rc::new(vec![]),
+            }),
         },
-        AliasKind::AliasPassthrough => target.clone(),
+        AliasKind::AliasPassthrough => Rc::new(NodeResolveResult {
+            resolved: target.clone(),
+            diagnostics: Rc::new(vec![]),
+        }),
     }
 }
 
