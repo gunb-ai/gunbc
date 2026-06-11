@@ -1,12 +1,17 @@
 // src/v4/test/claim/complexity_gate/budget_roster_completeness.dag
 // Scope: complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows.
-//        For each roster row: subject_producer → extract body → complexity_lens → dominance.
+//        For each roster row: declared budget must be rated (not UnknownComplexity) →
+//        subject_producer → extract body → complexity_lens → dominance.
+//        Declared UnknownComplexity is an ERROR (operator 2026-06-11 — eliminate ClassUnknown):
+//        unrated producers must be rated before the row lands, never pass via lattice top.
 //        Empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent).
 // Status: executable --claim-run witness (lens_ci_gate row).
 
 module v4.test.claim.complexity_gate.budget_roster_completeness
 
 import v4.lens.complexity {
+  ComplexityBound,
+  UnknownComplexity,
   complexity_bound_dominates,
   complexity_lens
 }
@@ -24,7 +29,18 @@ import v4.test.claim.complexity_gate.subject_complexity_budget_roster {
   complexity_subject_budget_rows
 }
 
+fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
+  match budget {
+    UnknownComplexity { diagnostic: _ } => false
+    _ => true
+  }
+}
+
 fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool {
+  let declared = complexity_declared_budget_for_row(row: row)
+  if !complexity_declared_budget_is_rated(budget: declared) {
+    false
+  } else {
   match lens_subject_arrow_body_for_budget_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
       match complexity_lens(n: body) {
@@ -36,6 +52,7 @@ fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool 
         _ => false
       }
     Rejected { diagnostics: _ } => false
+  }
   }
 }
 
