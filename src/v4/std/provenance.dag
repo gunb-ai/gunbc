@@ -7,7 +7,7 @@
 module v4.std.provenance
 
 import v4.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   ByteRange,
@@ -33,13 +33,13 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
 }
 
 type SpanIndexEntry {
-  id: OccurrenceId
+  occurrence: OccurrenceId
   event: OriginEvent
 }
 
 // List-backed index — linear lookup/merge (design-provenance-span.md §4.4 wave-1 scale).
 type SpanIndex {
-  entries: List<SpanIndexEntry>
+  entries: FreeMonoid<SpanIndexEntry>
 }
 
 fn span_index_empty() -> SpanIndex {
@@ -50,7 +50,7 @@ fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> 
   SpanIndex {
     entries: list_snoc_item(
       xs: index.entries,
-      item: SpanIndexEntry { id: id, event: event }
+      item: SpanIndexEntry { occurrence: id, event: event }
     )
   }
 }
@@ -66,13 +66,13 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
 }
 
 fn span_index_lookup_entries(
-  entries: List<SpanIndexEntry>,
+  entries: FreeMonoid<SpanIndexEntry>,
   id: OccurrenceId
 ) -> Witness<OriginEvent> {
   match entries {
     Empty => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
     Cons { head: head, tail: rest } =>
-      if occurrence_id_eq(left: head.id, right: id) {
+      if occurrence_id_eq(left: head.occurrence, right: id) {
         Holds { value: head.event }
       } else {
         span_index_lookup_entries(entries: rest, id: id)
@@ -84,7 +84,7 @@ fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent>
   span_index_lookup_entries(entries: index.entries, id: id)
 }
 
-fn span_index_entries_has_id(entries: List<SpanIndexEntry>, id: OccurrenceId) -> Bool {
+fn span_index_entries_has_id(entries: FreeMonoid<SpanIndexEntry>, id: OccurrenceId) -> Bool {
   fold_list(
     xs: entries,
     empty: false,
@@ -92,21 +92,21 @@ fn span_index_entries_has_id(entries: List<SpanIndexEntry>, id: OccurrenceId) ->
       if found {
         true
       } else {
-        occurrence_id_eq(left: entry.id, right: id)
+        occurrence_id_eq(left: entry.occurrence, right: id)
       }
     }
   )
 }
 
 fn span_index_merge_entries(
-  base: List<SpanIndexEntry>,
-  incoming: List<SpanIndexEntry>
-) -> List<SpanIndexEntry> {
+  base: FreeMonoid<SpanIndexEntry>,
+  incoming: FreeMonoid<SpanIndexEntry>
+) -> FreeMonoid<SpanIndexEntry> {
   fold_list(
     xs: incoming,
     empty: base,
     cons: fn(acc, entry) {
-      if span_index_entries_has_id(entries: acc, id: entry.id) {
+      if span_index_entries_has_id(entries: acc, id: entry.occurrence) {
         acc
       } else {
         list_snoc_item(xs: acc, item: entry)
