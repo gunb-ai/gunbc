@@ -45,9 +45,8 @@ import v4.std.node {
   Node,
   Positional,
   TypeNode,
-  Unanchored,
   content_hash,
-  node_unanchored
+  node_synthetic
 }
 import v4.std.target_model {
   BoundToken,
@@ -93,7 +92,7 @@ fn comprep_fold_operator_catalog_empty() -> Node {
 }
 
 fn comprep_fold_target_model_bundle(operator_catalog: Node) -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       comprep_fold_named_edge(

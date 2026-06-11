@@ -84,8 +84,7 @@ import v4.std.node {
   content_hash,
   fold_node,
   name_occurrences,
-  SyntheticOccurrence,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.type_expr_projection_row_schema {
@@ -357,7 +356,7 @@ fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -365,7 +364,7 @@ fn target_model_type_conj_node(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -417,7 +416,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
             target: target_model_type_atom_node(identity: f)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
   }
 }
@@ -485,7 +484,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: t)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
     PrefixToken { token: t } =>
       Node {
@@ -496,7 +495,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: t)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
     CallIdent { ident: i } =>
       Node {
@@ -507,7 +506,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: i)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
     MethodIdent { ident: i } =>
       Node {
@@ -518,7 +517,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: i)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
   }
 }
@@ -1453,7 +1452,7 @@ fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression
           target: target_model_type_atom_node(identity: binding)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
     }
   }
 }
@@ -1679,7 +1678,7 @@ fn target_value_expression_primitive_apply(
         ],
         right: target_value_expr_primitive_apply_operand_edges(operands: operands)
       ),
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
     }
   }
 }

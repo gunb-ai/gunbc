@@ -8,7 +8,7 @@ module v4.test.claim.manual.target_model_operator_lookup_dissolution
 import v4.extdeps.languages.typescript { ts_add_operator_realization_row }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
 import v4.std.target_model {
   canonical_operation_op_add,
   target_operator_realization_catalog_lookup,
@@ -29,7 +29,7 @@ fn operator_lookup_dissolution_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_probe } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -37,7 +37,7 @@ fn operator_lookup_dissolution_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_pass } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -45,7 +45,7 @@ fn operator_lookup_dissolution_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_fail } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -70,7 +70,7 @@ fn operator_catalog_with_malformed_and_valid_rows() -> Node {
         target: ts_add_operator_realization_row()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -89,7 +89,7 @@ fn operator_lookup_empty_catalog_rejects_miss() -> Bool {
     catalog: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
     },
     canonical_op: canonical_operation_op_add()
   ) {

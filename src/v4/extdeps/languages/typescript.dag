@@ -195,7 +195,6 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored,
   arrow_body_edge,
   SyntheticOccurrence
 }
@@ -584,7 +583,7 @@ fn ts_mvp1_add_binary_body_node() -> Node {
         target: ts_inhabitant_atom(id: ^dag_binding_param_y)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -600,7 +599,7 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
         target: ts_mvp1_add_binary_body_node()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 

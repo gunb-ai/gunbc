@@ -89,7 +89,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
 }
 
 // MVP add body: Transform(+) with positional param references (body-scope resolve follows).
-data mvp1_add_binary_body_node: Node = node_unanchored(
+data mvp1_add_binary_body_node: Node = node_synthetic(
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge {
@@ -112,7 +112,7 @@ fn produce_mvp1_add_binary_body() -> Node {
 }
 
 // COMPREP discriminating-red variant — operand order flipped (y then x) for emit-source falsification.
-data mvp1_add_binary_body_swapped_operands_node: Node = node_unanchored(
+data mvp1_add_binary_body_swapped_operands_node: Node = node_synthetic(
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge {
@@ -136,7 +136,7 @@ fn produce_mvp1_add_binary_body_swapped_operands() -> Node {
 
 // Positional-0 domain: Conj of Named binding_id edges (authority for node_query
 // arrow_domain_named_param_bindings). Remaining positional slots carry codomain wires.
-data mvp1_add_arrow_domain_conj_node: Node = node_unanchored(
+data mvp1_add_arrow_domain_conj_node: Node = node_synthetic(
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
@@ -150,7 +150,7 @@ data mvp1_add_arrow_domain_conj_node: Node = node_unanchored(
   ]
 )
 
-data mvp1_add_arrow_signature_node: Node = node_unanchored(
+data mvp1_add_arrow_signature_node: Node = node_synthetic(
   kind: TypeNode { connective: Arrow },
   children: [
     Edge {
@@ -172,7 +172,7 @@ fn produce_mvp1_add_arrow_signature() -> Node {
   mvp1_add_arrow_signature_node
 }
 
-data mvp1_add_arrow_with_body_node: Node = node_unanchored(
+data mvp1_add_arrow_with_body_node: Node = node_synthetic(
   kind: TypeNode { connective: Arrow },
   children: [
     Edge {
@@ -484,7 +484,7 @@ fn produce_mvp1_add_arrow_with_body() -> Outcome<Node> {
   )
 }
 
-data mvp1_add_arrow_with_body_swapped_operands_node: Node = node_unanchored(
+data mvp1_add_arrow_with_body_swapped_operands_node: Node = node_synthetic(
   kind: TypeNode { connective: Arrow },
   children: [
     Edge {
