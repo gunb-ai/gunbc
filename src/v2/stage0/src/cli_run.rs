@@ -267,7 +267,25 @@ fn resolve_entry_graph_with_index(
     ),
     String,
 > {
+    let _ = source_roots;
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
+    resolved_graph_from_sources(sources)
+}
+
+/// Compile an already-assembled source closure to a resolved graph, or return
+/// formatted blocking diagnostics. Shared by the per-entry path
+/// (`resolve_entry_graph_with_index`) and the batched discovery path
+/// (`discover_owned_data_decls`), which merges many entry closures into one
+/// compile.
+fn resolved_graph_from_sources(
+    sources: Vec<Rc<v2_compiler_compile::SourceFile>>,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
     let result = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
 
     let has_errors = result
