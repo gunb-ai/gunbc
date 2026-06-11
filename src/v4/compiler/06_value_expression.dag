@@ -85,7 +85,7 @@ fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 
 // 🟡 gated — STRUCTURAL dissolve-on (INVARIANTS P1 / modeling-discipline Practice 4) —
 // feature:value_expression-projection-dissolution — consumer:06_value_expression
-// project_transform_primitive_apply — bind: PR-T-FINISH / translate_algebra §1.5 fold —
+// project_transform_primitive_apply_in_arrow_scope — bind: PR-T-FINISH / translate_algebra §1.5 fold —
 // owner: valiant-heron-163 (translate) — lane: compiler 06_value_expression + 06_translate —
 // dissolve-on: translate_algebra §1.5 fold deletes surface_op_atom_to_canonical (last consumer:
 // value_expression projection); authority is canonical_operation_from_wire_node @ std/target_model:439;
