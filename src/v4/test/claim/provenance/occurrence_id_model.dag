@@ -5,7 +5,7 @@
 module v4.test.claim.provenance.occurrence_id_model
 
 import v4.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
-import v4.std.node { Symbol }
+import v4.std.node { OccurrenceId, Symbol }
 import v4.std.occurrence_id {
   alloc_occurrence_id,
   occurrence_id_allocator_initial,

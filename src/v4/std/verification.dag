@@ -8,7 +8,7 @@ module v4.std.verification
 import v4.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Node, NodeFold, Symbol, fold_node }
+import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.target_model { TargetModel }
 import v4.std.diagnostic {
   Accepted,
