@@ -88,7 +88,13 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   }
 }
 
-// MVP add body: Transform(+) with positional param references (body-scope resolve follows).
+// 🟡 gated — COMPREP wave-1 fixed-arity interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:arrow-domain-named-param-binding-accessor
+// (produce_mvp1_add_binary_body ^dag_binding_param_x/^dag_binding_param_y; executed by
+// comprep_eval_by_execution keystone) — bind:node://adhoc-5edb46b5-841 — dissolve-on:
+// node_query arrow_domain_named_param_bindings lands (#4627 rebase); owner: Mgr-RUNTIME —
+// forbidden: permanent hard-coded ^dag_binding_param_x/^dag_binding_param_y literals in
+// body_producer param-ref construction.
 fn produce_mvp1_add_binary_body() -> Node {
   node_unanchored(
     kind: ComputationNode { behavior: Transform },
@@ -295,6 +301,13 @@ fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcom
   )
 }
 
+// 🟡 gated — COMPREP wave-1 fixed-arity interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:arrow-domain-named-param-binding-accessor
+// (produce_mvp1_add_binary_body_from_resolved ^dag_binding_param_x/^dag_binding_param_y; executed
+// by comprep_eval_by_execution keystone) — bind:node://adhoc-5edb46b5-841 — dissolve-on:
+// node_query arrow_domain_named_param_bindings lands (#4627 rebase); owner: Mgr-RUNTIME —
+// forbidden: permanent hard-coded ^dag_binding_param_x/^dag_binding_param_y literals in
+// body_producer param-ref construction.
 fn produce_mvp1_add_binary_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
