@@ -3899,6 +3899,11 @@ fn translate_node_mvp1(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
+  if arrow_has_transform_body(arrow: node) {
+    // E-9 bodied Arrow on MVP-1 ProjectionAbsent path: serialize derives body via
+    // value-expression projection + grammar scaffold — preserve producer IR.
+    outcome_accepted(node)
+  } else {
   fold_node(
     n: node,
     algebra: NodeFold {
@@ -3906,6 +3911,7 @@ fn translate_node_mvp1(
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )
+  }
 }
 fn translate_node(
   node: Node,

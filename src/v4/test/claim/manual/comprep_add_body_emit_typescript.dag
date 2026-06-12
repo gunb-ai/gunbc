@@ -18,7 +18,9 @@ import v4.extdeps.languages.dag {
   dag_mvp1_add_binary_body_fixture,
   dag_mvp1_add_binary_body_swapped_operands_fixture
 }
+import v4.compiler.value_expression { arrow_has_transform_body }
 import v4.compiler.emit { emit }
+import v4.compiler.translate { translate }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.extdeps.languages.typescript {
@@ -441,6 +443,46 @@ fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<Ta
       emit(tree: tree, target: target)
     }
   )
+}
+
+fn comprep_ts_debug_producer_has_transform_body() -> Bool {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => arrow_has_transform_body(arrow: arrow)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_tree_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_translate_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_emit_accepts() -> Bool {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_emit_source_matches() -> Bool {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source == ts_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
