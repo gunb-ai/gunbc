@@ -129,7 +129,7 @@ pub fn rust_struct_derives() -> String {
 pub fn rust_struct_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
