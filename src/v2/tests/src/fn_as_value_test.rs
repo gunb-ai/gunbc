@@ -176,9 +176,9 @@ fn field_access() -> Int {
     }
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "field_access") {
         Ok(Value::Int(3)) => {}
-        other => panic!(
-            "expected Int(3) (T=Rec from xs, cons r: Rec, r.v field access), got {other:?}"
-        ),
+        other => {
+            panic!("expected Int(3) (T=Rec from xs, cons r: Rec, r.v field access), got {other:?}")
+        }
     }
 }
 
@@ -207,8 +207,8 @@ fn field_access() -> Int {
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "field_access") {
         Ok(Value::Int(9)) => {}
-        other => panic!(
-            "expected Int(9) (T=Rec from xs, snoc r: Rec, r.v field access), got {other:?}"
-        ),
+        other => {
+            panic!("expected Int(9) (T=Rec from xs, snoc r: Rec, r.v field access), got {other:?}")
+        }
     }
 }

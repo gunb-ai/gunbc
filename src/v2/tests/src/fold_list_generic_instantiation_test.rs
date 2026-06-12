@@ -82,11 +82,8 @@ fn v4_name_resolve_compiles_with_fold_list_dissolution() {
     const ENTRY: &str = "src/v4/compiler/03_name_resolve.dag";
     let entry_content = std::fs::read_to_string(workspace_root().join(ENTRY))
         .unwrap_or_else(|e| panic!("read {ENTRY}: {e}"));
-    let sources = resolve_imports_transitively_with_source_roots(
-        ENTRY,
-        &entry_content,
-        &v4_source_roots(),
-    );
+    let sources =
+        resolve_imports_transitively_with_source_roots(ENTRY, &entry_content, &v4_source_roots());
     let resolved = compile_to_resolved(Rc::new(sources));
     assert_resolved_ok(&resolved);
 }
