@@ -126,9 +126,9 @@ fn use_id() -> Int { id_rec(x: Rec { v: 9 }).v }
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_id") {
         Ok(Value::Int(9)) => {}
-        other => panic!(
-            "expected Int(9) (T bound to Rec, return substituted, .v on Rec), got {other:?}"
-        ),
+        other => {
+            panic!("expected Int(9) (T bound to Rec, return substituted, .v on Rec), got {other:?}")
+        }
     }
 }
 
@@ -143,6 +143,16 @@ fn use_get() -> Int { get(w: Wrap { value: Rec { v: 9 } }).v }
     let sources = resolve_imports_transitively("test.dag", src);
     let resolved = compile_to_resolved(Rc::new(sources));
     assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
+        Ok(Value::Int(9)) => {}
+        other => panic!(
+            "expected Int(9) from one-level wrap generic call return .v, got {other:?}"
+        ),
+    }
 }
 
 #[test]
@@ -163,9 +173,7 @@ fn use_get() -> Int { get(o: Outer { inner: Inner { value: Rec { v: 9 } } }).v }
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
         Ok(Value::Int(9)) => {}
-        other => panic!(
-            "expected Int(9) from nested generic record call return .v, got {other:?}"
-        ),
+        other => panic!("expected Int(9) from nested generic record call return .v, got {other:?}"),
     }
 }
 
