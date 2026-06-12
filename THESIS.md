@@ -10,7 +10,7 @@ Read this file for the thesis itself and the complete claims list. Extended argu
 
 ## What gunbc is
 
-gunbc is a causal engine: it validates that a program’s declared causes, dependencies, and drains are structurally coherent before emission becomes a mechanical translation.
+gunbc is a causal workflow: it validates that a program’s declared causes, dependencies, and drains are structurally coherent before emission becomes a mechanical translation.
 
 If it compiles, the declared intent is sound inside the modeled system; what remains unverifiable is only external reality not carried in the program graph.
 
