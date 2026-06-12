@@ -204,17 +204,31 @@ fn value_expr_atom_to_symbol_identity_token(atom: Symbol) -> Outcome<Symbol> {
   outcome_accepted(atom)
 }
 
+fn value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+  if id == ^dag_mvp1_pick_lit_one {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_one)
+    )
+  } else if id == ^dag_mvp1_pick_lit_two {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_two)
+    )
+  } else {
+    bind_outcome(
+      o: value_expr_atom_to_symbol_identity_token(atom: id),
+      f: fn(token_class) {
+        outcome_accepted(
+          target_value_expression_symbol_identity(identity: token_class)
+        )
+      }
+    )
+  }
+}
+
 fn value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      bind_outcome(
-        o: value_expr_atom_to_symbol_identity_token(atom: id),
-        f: fn(token_class) {
-          outcome_accepted(
-            target_value_expression_symbol_identity(identity: token_class)
-          )
-        }
-      )
+      value_expr_project_pick_literal_atom(id: id)
     _ =>
       outcome_rejected(
         value_expr_diagnostic(
