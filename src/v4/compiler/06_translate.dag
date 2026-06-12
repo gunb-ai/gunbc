@@ -1585,7 +1585,7 @@ fn collection_realization_from_target_carrier(
   )
 }
 
-fn project_set_collection_type_node_impl(
+fn project_set_collection_type_node(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -1602,12 +1602,7 @@ fn project_set_collection_type_node_impl(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: node_subtree_count(n: elem),
-                  node: elem,
-                  target: target,
-                  projection: projection
-                ),
+                o: project_type_expression_node(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   Accepted {
                     value: target_type_expr_instantiation_emitted(
@@ -1631,18 +1626,6 @@ fn project_set_collection_type_node_impl(
   }
 }
 
-fn project_set_collection_type_node(
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  project_set_collection_type_node_impl(
-    node: node,
-    target: target,
-    projection: projection
-  )
-}
-
 fn project_free_monoid_collection_type_node(
   node: Node,
   target: TargetModel,
@@ -1660,12 +1643,7 @@ fn project_free_monoid_collection_type_node(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: node_subtree_count(n: elem),
-                  node: elem,
-                  target: target,
-                  projection: projection
-                ),
+                o: project_type_expression_node(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   bind_outcome(
                     o: translate_apply_use_site_ownership_to_projected_type(
@@ -1701,23 +1679,6 @@ fn project_free_monoid_collection_type_node(
 type TypeExprHeadTail {
   head: Node
   tail: List<Node>
-}
-type EdgeHeadTail {
-  head: Edge
-  tail: List<Edge>
-}
-fn edge_list_head_and_tail(edges: List<Edge>, node: Node) -> Outcome<EdgeHeadTail> {
-  match list_at_optional(xs: edges, index: 0) {
-    Present { value: head } =>
-      match list_tail(xs: edges) {
-        TailAbsent =>
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        TailFound { tail: t } =>
-          Accepted { value: EdgeHeadTail { head: head, tail: t }, diagnostics: None }
-      }
-    Absent =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  }
 }
 type TypeExprArrowSplit {
   inputs: List<Node>
@@ -1928,13 +1889,15 @@ fn project_type_expression_disj_variants(
     }
   )
 }
-fn project_type_expression_connective_bounded(
-  remaining: Int,
+fn project_type_expression_node(
   node: Node,
-  connective: Connective,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
+  match node.kind {
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+    TypeNode { connective: connective } =>
   bind_outcome(
     o: type_expr_projection_row_closedness_from_target(
       target: target,
@@ -1954,8 +1917,6 @@ fn project_type_expression_connective_bounded(
           } else {
             bind_outcome(
               o: project_type_expression_children(
-                remaining: remaining - 1,
-                anchor: node,
                 children: node_positional_child_targets(node: node),
                 target: target,
                 projection: projection
@@ -1983,8 +1944,6 @@ fn project_type_expression_connective_bounded(
           } else {
             bind_outcome(
               o: project_type_expression_children(
-                remaining: remaining - 1,
-                anchor: node,
                 children: node_positional_child_targets(node: node),
                 target: target,
                 projection: projection
@@ -2016,7 +1975,6 @@ fn project_type_expression_connective_bounded(
         Disj =>
           bind_outcome(
             o: project_type_expression_disj_variants(
-              remaining: remaining - 1,
               node: node,
               target: target,
               projection: projection
@@ -2080,40 +2038,6 @@ fn project_type_expression_connective_bounded(
       }
     }
   )
-}
-fn project_type_expression_node(
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  project_type_expression_node_bounded(
-    remaining: node_subtree_count(n: node),
-    node: node,
-    target: target,
-    projection: projection
-  )
-}
-fn project_type_expression_node_bounded(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
-  match node.kind {
-    TypeNode { connective: c } =>
-      project_type_expression_connective_bounded(
-        remaining: remaining,
-        node: node,
-        connective: c,
-        target: target,
-        projection: projection
-      )
-    ComputationNode { behavior: _ } =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  }
   }
 }
 fn type_expr_atom_binding_from_positional(
@@ -2238,68 +2162,6 @@ fn serialize_type_expr_generic_apply_bounded(
     )
   }
 }
-fn serialize_type_expr_args_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetGenericApply,
-  args: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
-  if remaining <= 0 {
-    outcome_rejected(
-      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
-    )
-  } else if is_empty(xs: args) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: args, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: serialize_type_expr_emitted_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            emitted: split.head
-          ),
-          f: fn(arg_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_args_go(
-                remaining: remaining - 1,
-                target: target,
-                projection: projection,
-                form: form,
-                args: split.tail,
-                anchor: anchor,
-                acc: arg_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.separator),
-                f: fn(sep_source) {
-                  serialize_type_expr_args_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    args: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: sep_source),
-                      right: arg_source
-                    )
-                  )
-                }
-              )
-            }
-          }
-        )
-      }
-    )
-  }
-}
 fn serialize_type_expr_args_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2308,72 +2170,43 @@ fn serialize_type_expr_args_bounded(
   args: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_args_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    form: form,
-    args: args,
-    anchor: anchor,
-    acc: Empty
-  )
-}
-fn serialize_type_expr_separated_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
-  items: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: items) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: items, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: args,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, arg) {
         bind_outcome(
-          o: serialize_type_expr_emitted_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            emitted: split.head
-          ),
-          f: fn(item_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_separated_go(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_emitted_bounded(
                 remaining: remaining - 1,
                 target: target,
                 projection: projection,
-                separator: separator,
-                items: split.tail,
-                anchor: anchor,
-                acc: item_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: separator),
-                f: fn(sep_source) {
-                  serialize_type_expr_separated_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    separator: separator,
-                    items: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: sep_source),
-                      right: item_source
-                    )
+                emitted: arg
+              ),
+              f: fn(arg_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(arg_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.separator),
+                    f: fn(sep_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: sep_source),
+                          right: arg_source
+                        )
+                      )
+                    }
                   )
                 }
-              )
-            }
+              }
+            )
           }
         )
       }
@@ -2388,88 +2221,41 @@ fn serialize_type_expr_separated_bounded(
   items: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_separated_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    separator: separator,
-    items: items,
-    anchor: anchor,
-    acc: Empty
-  )
-}
-
-fn serialize_type_expr_record_fields_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
-  field_label_separator: Symbol,
-  fields: List<Edge>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: fields) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: fields, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: items,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, item) {
         bind_outcome(
-          o: serialize_type_expr_record_field_label(target: target, edge: split.head),
-          f: fn(label_source) {
+          o: acc,
+          f: fn(source) {
             bind_outcome(
-              o: lex_rules_literal(target: target, token_class: field_label_separator),
-              f: fn(label_sep_source) {
-                bind_outcome(
-                  o: serialize_type_expr_emitted_bounded(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    emitted: split.head.target
-                  ),
-                  f: fn(field_type_source) {
-                    let field_source = list_append(
-                      left: list_append(left: label_source, right: label_sep_source),
-                      right: field_type_source
-                    )
-                    if is_empty(xs: acc) {
-                      serialize_type_expr_record_fields_go(
-                        remaining: remaining - 1,
-                        target: target,
-                        projection: projection,
-                        separator: separator,
-                        field_label_separator: field_label_separator,
-                        fields: split.tail,
-                        anchor: anchor,
-                        acc: field_source
-                      )
-                    } else {
-                      bind_outcome(
-                        o: lex_rules_literal(target: target, token_class: separator),
-                        f: fn(sep_source) {
-                          serialize_type_expr_record_fields_go(
-                            remaining: remaining - 1,
-                            target: target,
-                            projection: projection,
-                            separator: separator,
-                            field_label_separator: field_label_separator,
-                            fields: split.tail,
-                            anchor: anchor,
-                            acc: list_append(
-                              left: list_append(left: acc, right: sep_source),
-                              right: field_source
-                            )
-                          )
-                        }
+              o: serialize_type_expr_emitted_bounded(
+                remaining: remaining - 1,
+                target: target,
+                projection: projection,
+                emitted: item
+              ),
+              f: fn(item_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(item_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: separator),
+                    f: fn(sep_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: sep_source),
+                          right: item_source
+                        )
                       )
                     }
-                  }
-                )
+                  )
+                }
               }
             )
           }
@@ -2488,16 +2274,62 @@ fn serialize_type_expr_record_fields_bounded(
   fields: List<Edge>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_record_fields_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    separator: separator,
-    field_label_separator: field_label_separator,
-    fields: fields,
-    anchor: anchor,
-    acc: Empty
-  )
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else {
+    fold_list(
+      xs: fields,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, field) {
+        bind_outcome(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_record_field_label(target: target, edge: field),
+              f: fn(label_source) {
+                bind_outcome(
+                  o: lex_rules_literal(target: target, token_class: field_label_separator),
+                  f: fn(label_sep_source) {
+                    bind_outcome(
+                      o: serialize_type_expr_emitted_bounded(
+                        remaining: remaining - 1,
+                        target: target,
+                        projection: projection,
+                        emitted: field.target
+                      ),
+                      f: fn(field_type_source) {
+                        let field_source = list_append(
+                          left: list_append(left: label_source, right: label_sep_source),
+                          right: field_type_source
+                        )
+                        if is_empty(xs: source) {
+                          outcome_accepted(field_source)
+                        } else {
+                          bind_outcome(
+                            o: lex_rules_literal(target: target, token_class: separator),
+                            f: fn(sep_source) {
+                              outcome_accepted(
+                                list_append(
+                                  left: list_append(left: source, right: sep_source),
+                                  right: field_source
+                                )
+                              )
+                            }
+                          )
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 
 fn serialize_type_expr_record_bounded(
@@ -2608,63 +2440,52 @@ fn serialize_type_expr_arrow_param_bounded(
   )
 }
 
-fn serialize_type_expr_arrow_params_go(
+fn serialize_type_expr_arrow_params_bounded(
   remaining: Int,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
-  anchor: Node,
-  acc: TargetSource
+  anchor: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: params) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: params, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: params,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, slot) {
         bind_outcome(
-          o: serialize_type_expr_arrow_param_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: form,
-            slot: split.head
-          ),
-          f: fn(param_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_arrow_params_go(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_arrow_param_bounded(
                 remaining: remaining - 1,
                 target: target,
                 projection: projection,
                 form: form,
-                params: split.tail,
-                anchor: anchor,
-                acc: param_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.param_list_separator),
-                f: fn(separator_source) {
-                  serialize_type_expr_arrow_params_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    params: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: separator_source),
-                      right: param_source
-                    )
+                slot: slot
+              ),
+              f: fn(param_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(param_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.param_list_separator),
+                    f: fn(separator_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: separator_source),
+                          right: param_source
+                        )
+                      )
+                    }
                   )
                 }
-              )
-            }
+              }
+            )
           }
         )
       }
@@ -2689,14 +2510,13 @@ fn serialize_type_expr_arrow_named_bounded(
             o: lex_rules_literal(target: target, token_class: form.open),
             f: fn(open_source) {
               bind_outcome(
-                o: serialize_type_expr_arrow_params_go(
+                o: serialize_type_expr_arrow_params_bounded(
                   remaining: remaining - 1,
                   target: target,
                   projection: projection,
                   form: form,
                   params: params,
-                  anchor: node,
-                  acc: Empty
+                  anchor: node
                 ),
                 f: fn(params_source) {
                   bind_outcome(
@@ -2779,69 +2599,6 @@ fn serialize_type_expr_arrow_input_wrapped(
     }
   )
 }
-fn serialize_type_expr_arrow_inputs_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
-  inputs: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
-  if remaining <= 0 {
-    outcome_rejected(
-      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
-    )
-  } else if is_empty(xs: inputs) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: inputs, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: serialize_type_expr_arrow_input_wrapped(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: form,
-            input_node: split.head
-          ),
-          f: fn(input_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_arrow_inputs_go(
-                remaining: remaining - 1,
-                target: target,
-                projection: projection,
-                form: form,
-                inputs: split.tail,
-                anchor: anchor,
-                acc: input_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.arrow),
-                f: fn(arrow_source) {
-                  serialize_type_expr_arrow_inputs_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    inputs: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: arrow_source),
-                      right: input_source
-                    )
-                  )
-                }
-              )
-            }
-          }
-        )
-      }
-    )
-  }
-}
 fn serialize_type_expr_arrow_inputs_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2850,15 +2607,49 @@ fn serialize_type_expr_arrow_inputs_bounded(
   inputs: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_arrow_inputs_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    form: form,
-    inputs: inputs,
-    anchor: anchor,
-    acc: Empty
-  )
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else {
+    fold_list(
+      xs: inputs,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, input_node) {
+        bind_outcome(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_arrow_input_wrapped(
+                remaining: remaining - 1,
+                target: target,
+                projection: projection,
+                form: form,
+                input_node: input_node
+              ),
+              f: fn(input_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(input_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.arrow),
+                    f: fn(arrow_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: arrow_source),
+                          right: input_source
+                        )
+                      )
+                    }
+                  )
+                }
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 fn serialize_type_expr_arrow_bounded(
   remaining: Int,
@@ -3171,54 +2962,39 @@ fn project_type_expression_arrow_emitted_from_original_split(
   )
 }
 
-fn translate_project_arrow_input_types_go(
-  remaining: Int,
-  anchor: Node,
+fn translate_project_arrow_input_types(
   original_inputs: List<Node>,
   target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  acc: List<Node>
+  projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Node>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
-  } else if is_empty(xs: original_inputs) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: original_inputs, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: project_type_expression_node_bounded(
-            remaining: node_subtree_count(n: split.head),
-            node: split.head,
-            target: target,
-            projection: projection
-          ),
-          f: fn(projected) {
-            bind_outcome(
-              o: translate_apply_use_site_ownership_to_projected_boundary(
-                projected: projected,
-                source_for_binding: split.head,
-                target: target,
-                projection: projection,
-                use_site: OwnershipAtFunctionParameter
-              ),
-              f: fn(wrapped) {
-                translate_project_arrow_input_types_go(
-                  remaining: remaining - 1,
-                  anchor: anchor,
-                  original_inputs: split.tail,
+  fold_list(
+    xs: original_inputs,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, original_input) {
+      bind_outcome(
+        o: acc,
+        f: fn(items) {
+          bind_outcome(
+            o: project_type_expression_node(node: original_input, target: target, projection: projection),
+            f: fn(projected) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_boundary(
+                  projected: projected,
+                  source_for_binding: original_input,
                   target: target,
                   projection: projection,
-                  acc: list_snoc_item(xs: acc, item: wrapped)
-                )
-              }
-            )
-          }
-        )
-      }
-    )
-  }
+                  use_site: OwnershipAtFunctionParameter
+                ),
+                f: fn(wrapped) {
+                  outcome_accepted(list_snoc_item(xs: items, item: wrapped))
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 fn translate_project_arrow_split_types(
@@ -3228,18 +3004,14 @@ fn translate_project_arrow_split_types(
   anchor: Node
 ) -> Outcome<TypeExprArrowSplit> {
   bind_outcome(
-    o: translate_project_arrow_input_types_go(
-      remaining: node_subtree_count(n: anchor),
-      anchor: anchor,
+    o: translate_project_arrow_input_types(
       original_inputs: original_split.inputs,
       target: target,
-      projection: projection,
-      acc: Empty
+      projection: projection
     ),
     f: fn(wrapped_inputs) {
       bind_outcome(
-        o: project_type_expression_node_bounded(
-          remaining: node_subtree_count(n: original_split.output),
+        o: project_type_expression_node(
           node: original_split.output,
           target: target,
           projection: projection
@@ -3335,7 +3107,7 @@ fn translate_outcome_is_signature_realization_miss(
 }
 
 // Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
-// domain/codomain atoms are projected (06_translate project_type_expression_node_bounded) with
+// domain/codomain atoms are projected (06_translate project_type_expression_node) with
 // the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
 // symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
@@ -3986,7 +3758,6 @@ fn translate_node_with_projection(
             f: fn(translated) {
               bind_outcome(
                 o: project_type_expression_subtree(
-                  remaining: node_subtree_count(n: translated),
                   node: translated,
                   target: target,
                   projection: projection
@@ -4000,94 +3771,48 @@ fn translate_node_with_projection(
   )
 }
 fn project_type_expression_subtree(
-  remaining: Int,
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
-    match node.kind {
-      TypeNode { connective: _ } =>
-        project_type_expression_node_bounded(
-          remaining: remaining - 1,
-          node: node,
-          target: target,
-          projection: projection
-        )
-      ComputationNode { behavior: b } =>
-        bind_outcome(
-          o: project_type_expression_children_in_node(
-            remaining: remaining - 1,
-            node: node,
-            target: target,
-            projection: projection
-          ),
-          f: fn(children) {
-            Accepted {
-              value: node_rebuild(n: node, children: children),
-              diagnostics: None
-            }
+  match node.kind {
+    TypeNode { connective: _ } =>
+      project_type_expression_node(node: node, target: target, projection: projection)
+    ComputationNode { behavior: b } =>
+      bind_outcome(
+        o: project_type_expression_children_in_node(node: node, target: target, projection: projection),
+        f: fn(children) {
+          Accepted {
+            value: node_rebuild(n: node, children: children),
+            diagnostics: None
           }
-        )
-    }
-  }
-}
-fn project_type_expression_children_in_node_go(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  edges: List<Edge>,
-  acc: List<Edge>
-) -> Outcome<List<Edge>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else if is_empty(xs: edges) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: edges, node: node),
-      f: fn(split) {
-        bind_outcome(
-          o: project_type_expression_subtree(
-            remaining: node_subtree_count(n: split.head.target),
-            node: split.head.target,
-            target: target,
-            projection: projection
-          ),
-          f: fn(projected) {
-            project_type_expression_children_in_node_go(
-              remaining: remaining - 1,
-              node: node,
-              target: target,
-              projection: projection,
-              edges: split.tail,
-              acc: list_snoc_item(
-                xs: acc,
-                item: Edge { label: split.head.label, target: projected }
-              )
-            )
-          }
-        )
-      }
-    )
+        }
+      )
   }
 }
 fn project_type_expression_children_in_node(
-  remaining: Int,
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Edge>> {
-  project_type_expression_children_in_node_go(
-    remaining: remaining,
-    node: node,
-    target: target,
-    projection: projection,
-    edges: node.children,
-    acc: Empty
+  fold(
+    node.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      bind_outcome(
+        o: acc,
+        f: fn(edges) {
+          bind_outcome(
+            o: project_type_expression_subtree(node: e.target, target: target, projection: projection),
+            f: fn(projected) {
+              outcome_accepted(
+                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+              )
+            }
+          )
+        }
+      )
+    }
   )
 }
 fn translate_node_computation(
