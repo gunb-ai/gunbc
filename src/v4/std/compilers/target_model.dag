@@ -2653,13 +2653,15 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
           bind_outcome(
             o: target_value_expr_effect_apply_operand_bindings(wire: expr.node),
             f: fn(bindings) {
+              // Host-call order: `callee ( args )` — callee precedes the open paren so the
+              // emitted text is a valid target-language call expression (not Lisp-prefix).
               outcome_accepted(
                 list_append(
                   left: list_append(
                     left: Cons {
-                      head: FixedToken { token_class: projection.effect_apply_form.open },
+                      head: FixedToken { token_class: callee },
                       tail: Cons {
-                        head: FixedToken { token_class: callee },
+                        head: FixedToken { token_class: projection.effect_apply_form.open },
                         tail: Empty
                       }
                     },
