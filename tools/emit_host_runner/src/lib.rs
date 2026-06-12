@@ -260,7 +260,8 @@ process.stdout.write(__gunbc_b);
 
 // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
 // hand-rolled discriminator-over-Symbol with default-reject arm) — feature: T-22 host-emission
-// TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row
+// TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) —
+// dissolve-on-arrival: promote a typed runtime_row
 // onto TargetModel and replace this per-target match (its mirror run_host_process below + the
 // emit_host.dag if-chains + the python hand-reification at emit_host_eval.rs:1022-1061) with a
 // generic row-lookup; point host-tool/descriptor identities at extdeps/languages/*::*_mvp1_source_text.
@@ -280,7 +281,8 @@ fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
 /// Single generic host-process primitive — dispatches on modeled descriptor identity.
 // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
 // match on descriptor_identity against a single hard-coded TS identity with default-reject arm,
-// cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 —
+// cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750
+// (supersedes #4674; step 1 landed via #4718) —
 // dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target
 // match (its mirror resolve_host_tool above + the emit_host.dag if-chains + the python
 // hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup.
