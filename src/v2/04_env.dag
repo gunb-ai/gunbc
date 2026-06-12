@@ -26,8 +26,8 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // payload-owning parallel maps or spelling fallback for BindingId-stamped nodes.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
-  carrier_bindings: Map<BindingId, TypeBinding>
-  decl_registry: Map<BindingId, TypeDeclBinding>
+  carrier_bindings: Map<Int, TypeBinding>
+  decl_registry: Map<Int, TypeDeclBinding>
   duplicate_decl_ids: List<BindingId>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
@@ -78,27 +78,27 @@ fn alloc_binding_id(allocator: BindingIdAllocator) -> BindingIdAllocResult {
 }
 
 type DeclRegistryMergeState {
-  decl_registry: Map<BindingId, TypeDeclBinding>
+  decl_registry: Map<Int, TypeDeclBinding>
   duplicate_decl_ids: List<BindingId>
 }
 
-fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<BindingId, TypeDeclBinding>) -> DeclRegistryMergeState {
-  fold(map_keys(incoming), init: state, f: (acc, binding_id) =>
-    match map_get(incoming, binding_id) {
+fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Int, TypeDeclBinding>) -> DeclRegistryMergeState {
+  fold(map_keys(incoming), init: state, f: (acc, key) =>
+    match map_get(incoming, key) {
       Present { value: binding } =>
-        match map_get(acc.decl_registry, binding_id) {
+        match map_get(acc.decl_registry, key) {
           Present { value: existing } =>
             if existing.authority == binding.authority {
               acc
             } else {
               DeclRegistryMergeState {
                 decl_registry: acc.decl_registry,
-                duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
+                duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding.binding_id)
               }
             }
           Absent =>
             DeclRegistryMergeState {
-              decl_registry: map_insert(acc.decl_registry, binding_id, binding),
+              decl_registry: map_insert(acc.decl_registry, key, binding),
               duplicate_decl_ids: acc.duplicate_decl_ids
             }
         }
@@ -142,7 +142,7 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 fn lookup_decl_arity_for(env: TypeEnv, node: Node) -> Int? {
   match node.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } => Present { value: decl.decl_arity }
         Absent => none
       }
@@ -174,7 +174,7 @@ fn lookup_decl_arity_for(env: TypeEnv, node: Node) -> Int? {
 fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.carrier_bindings, binding_id) {
+      match map_get(env.carrier_bindings, binding_id.value) {
         Present { value: binding } => Present { value: binding.resolved }
         Absent => none
       }
@@ -192,7 +192,7 @@ fn node_has_binding_id(n: Node, binding_id: BindingId) -> Bool {
 fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } =>
           match lookup_type(env: env, ident: decl.binding_key) {
             Present { value: resolved } =>

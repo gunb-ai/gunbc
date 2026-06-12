@@ -322,6 +322,10 @@ type BindingId {
   value: Int
 }
 
+fn binding_id_key(binding_id: BindingId) -> Int {
+  binding_id.value
+}
+
 type Node {
   name: String
   ident: Int?

@@ -791,18 +791,18 @@ fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
 fn direct_call_node_binding(env: TypeEnv, n: Node) -> TypeBinding? {
   match n.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } =>
           match map_get(env.bindings, decl.binding_key) {
             Present { value: binding } =>
               if node_has_binding_id(n: binding.resolved, binding_id: binding_id) {
                 Present { value: binding }
               } else {
-                map_get(env.carrier_bindings, binding_id)
+                map_get(env.carrier_bindings, binding_id.value)
               }
-            Absent => map_get(env.carrier_bindings, binding_id)
+            Absent => map_get(env.carrier_bindings, binding_id.value)
           }
-        Absent => map_get(env.carrier_bindings, binding_id)
+        Absent => map_get(env.carrier_bindings, binding_id.value)
       }
     Absent => none
   }
@@ -830,7 +830,7 @@ fn direct_call_bare_alias_target_node(binding: TypeBinding) -> Node? {
 fn direct_call_target_matches_alias_target(env: TypeEnv, target_node: Node, alias_target: String) -> Bool {
   match target_node.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } => decl.name == alias_target
         Absent => authored_name_at(source_indices: env.source_indices, node: target_node) == alias_target
       }
@@ -854,7 +854,7 @@ fn direct_call_target_matches_alias_target_node(env: TypeEnv, target_node: Node,
 fn direct_call_carrier_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node: Node) -> Bool {
   match alias_node.binding_id {
     Present { value: alias_binding_id } =>
-      match map_get(env.carrier_bindings, alias_binding_id) {
+      match map_get(env.carrier_bindings, alias_binding_id.value) {
         Present { value: carrier } =>
           let carrier_target = match direct_call_bare_alias_target_node(binding: carrier) {
             Present { value: target } => target
@@ -903,7 +903,7 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node:
             let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
             let alias_decl_name = match alias_node.binding_id {
               Present { value: binding_id } =>
-                match map_get(env.decl_registry, binding_id) {
+                match map_get(env.decl_registry, binding_id.value) {
                   Present { value: decl } => decl.name
                   Absent => binding.name
                 }
@@ -920,7 +920,7 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node:
         // plus the raw binding row; do not fall back to arbitrary same-shape nodes.
         match alias_node.binding_id {
           Present { value: binding_id } =>
-            match map_get(env.decl_registry, binding_id) {
+            match map_get(env.decl_registry, binding_id.value) {
               Present { value: decl } =>
                 match map_get(env.bindings, decl.binding_key) {
                   Present { value: raw_binding } =>
@@ -943,7 +943,7 @@ fn direct_call_decl_registry_transparent_alias_to(env: TypeEnv, alias_node: Node
   let target_name = authored_name_at(source_indices: env.source_indices, node: target_node)
   match alias_node.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } =>
           match map_get(env.bindings, decl.binding_key) {
             Present { value: raw_binding } =>
@@ -5745,7 +5745,7 @@ fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding
   )
 }
 
-fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<BindingId, TypeBinding> {
+fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<Int, TypeBinding> {
   fold(envs, init: empty_map(), f: (acc, env) =>
     let with_existing = map_merge(acc, env.carrier_bindings)
     fold(env.bindings |> map_values, init: with_existing, f: (bacc, binding) =>
@@ -5816,9 +5816,9 @@ fn stamp_type_binding_dependency_refs(binding: TypeBinding, dep_env: TypeEnv, so
 }
 
 type CarrierClosureState {
-  carrier_bindings: Map<BindingId, TypeBinding>
+  carrier_bindings: Map<Int, TypeBinding>
   seen_names: Map<String, Bool>
-  seen_binding_ids: Map<BindingId, Bool>
+  seen_binding_ids: Map<Int, Bool>
 }
 
 type CarrierClosureDepsContext {
@@ -5838,9 +5838,9 @@ fn lookup_decl_type_binding_by_name_excluding_binding_id(env: TypeEnv, name: Str
               if node_has_binding_id(n: binding.resolved, binding_id: decl.binding_id) {
                 Present { value: binding }
               } else {
-                map_get(env.carrier_bindings, decl.binding_id)
+                map_get(env.carrier_bindings, decl.binding_id.value)
               }
-            Absent => map_get(env.carrier_bindings, decl.binding_id)
+            Absent => map_get(env.carrier_bindings, decl.binding_id.value)
           }
         } else { none }
     }
@@ -5888,7 +5888,7 @@ fn carrier_authority_binding(binding: TypeBinding, dep_env: TypeEnv, source_indi
 fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId? {
   match binding.resolved.binding_id {
     Present { value: binding_id } =>
-      match map_get(env.decl_registry, binding_id) {
+      match map_get(env.decl_registry, binding_id.value) {
         Present { value: decl } =>
           if decl.name == binding.name { Present { value: binding_id } } else { none }
         Absent => none
@@ -5912,7 +5912,7 @@ fn carrier_closure_direct_type_deps(n: Node, dep_env: TypeEnv, source_indices: M
   } else { [] }
   let decl_ref = match n.binding_id {
     Present { value: binding_id } =>
-      match map_get(dep_env.decl_registry, binding_id) {
+      match map_get(dep_env.decl_registry, binding_id.value) {
         Present { value: decl } =>
           if decl.name != "" && decl.name != n_name && is_kernel_type(name: decl.name) == false {
             [decl.name]
@@ -5956,7 +5956,7 @@ fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map
 
 fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: TypeBinding, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> CarrierClosureState {
   let already_seen = match binding.resolved.binding_id {
-    Present { value: binding_id } => map_contains_key(state.seen_binding_ids, binding_id)
+    Present { value: binding_id } => map_contains_key(state.seen_binding_ids, binding_id.value)
     Absent => map_contains_key(state.seen_names, binding.name)
   }
   if already_seen {
@@ -5966,9 +5966,9 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
     let with_binding = match stamped.resolved.binding_id {
       Present { value: binding_id } =>
         CarrierClosureState {
-          carrier_bindings: map_insert(state.carrier_bindings, binding_id, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
+          carrier_bindings: map_insert(state.carrier_bindings, binding_id.value, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
           seen_names: map_insert(state.seen_names, stamped.name, true),
-          seen_binding_ids: map_insert(state.seen_binding_ids, binding_id, true)
+          seen_binding_ids: map_insert(state.seen_binding_ids, binding_id.value, true)
         }
       Absent =>
         CarrierClosureState {
@@ -5980,9 +5980,9 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
     let with_decl_binding = match type_binding_decl_binding_id(env: dep_env, binding: binding) {
       Present { value: decl_binding_id } =>
         CarrierClosureState {
-          carrier_bindings: map_insert(with_binding.carrier_bindings, decl_binding_id, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
+          carrier_bindings: map_insert(with_binding.carrier_bindings, decl_binding_id.value, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
           seen_names: with_binding.seen_names,
-          seen_binding_ids: map_insert(with_binding.seen_binding_ids, decl_binding_id, true)
+          seen_binding_ids: map_insert(with_binding.seen_binding_ids, decl_binding_id.value, true)
         }
       Absent => with_binding
     }
@@ -6022,7 +6022,7 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
 
 fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> CarrierClosureState {
   fold(env.decl_registry |> map_values, init: state, f: (acc, decl) =>
-    if map_contains_key(acc.seen_names, decl.name) && !map_contains_key(acc.carrier_bindings, decl.binding_id) {
+    if map_contains_key(acc.seen_names, decl.name) && !map_contains_key(acc.carrier_bindings, decl.binding_id.value) {
       let binding_for_decl = match map_get(env.bindings, decl.binding_key) {
         Present { value: binding } => Present { value: binding }
         Absent => env.bindings |> map_values |> filter(binding => binding.name == decl.name) |> first
@@ -6030,9 +6030,9 @@ fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> C
       match binding_for_decl {
         Present { value: binding } =>
           CarrierClosureState {
-            carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id, carrier_authority_binding(binding: binding, dep_env: env, source_indices: env.source_indices)),
+            carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id.value, carrier_authority_binding(binding: binding, dep_env: env, source_indices: env.source_indices)),
             seen_names: acc.seen_names,
-            seen_binding_ids: map_insert(acc.seen_binding_ids, decl.binding_id, true)
+            seen_binding_ids: map_insert(acc.seen_binding_ids, decl.binding_id.value, true)
           }
         Absent => acc
       }
@@ -6040,7 +6040,7 @@ fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> C
   )
 }
 
-fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<BindingId, TypeBinding> {
+fn collect_import_carrier_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<Int, TypeBinding> {
   let closure_state = fold(env.bindings |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map(), seen_binding_ids: empty_map() }, f: (state, binding) =>
     if imp.module_path == "std.types" && is_type_variable_name(name: binding.name) {
       state
@@ -6053,7 +6053,7 @@ fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, 
   carrier_closure_with_decl_rows(state: closure_state, env: env).carrier_bindings
 }
 
-fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, typed_parent: TypedModule) -> Map<BindingId, TypeBinding> {
+fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<Int, TypeBinding>, imp: ResolvedImport, typed_parent: TypedModule) -> Map<Int, TypeBinding> {
   let env = typed_parent.type_env
   let closure_state = fold(typed_parent.func_env.signatures |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map(), seen_binding_ids: empty_map() }, f: (state, sig) =>
     if import_allows_binding_name(imp: imp, name: sig.name) {
@@ -6103,7 +6103,7 @@ fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedI
 
 type TypeDeclRegistrationAccum {
   bindings: Map<Int, TypeBinding>
-  decl_registry: Map<BindingId, TypeDeclBinding>
+  decl_registry: Map<Int, TypeDeclBinding>
   allocator: BindingIdAllocator
 }
 
@@ -6120,7 +6120,7 @@ fn register_type_decl_binding(
   let stamped = node_with_binding_id(n: resolved, binding_id: binding_alloc.binding_id)
   TypeDeclRegistrationAccum {
     bindings: map_insert(acc.bindings, item_ident, TypeBinding { name: name, resolved: stamped, provenance: provenance }),
-    decl_registry: map_insert(acc.decl_registry, binding_alloc.binding_id, TypeDeclBinding {
+    decl_registry: map_insert(acc.decl_registry, binding_alloc.binding_id.value, TypeDeclBinding {
       binding_id: binding_alloc.binding_id,
       authority: TypeDeclAuthority { module_name: module_name, decl_name: name, decl_span: decl_span },
       binding_key: item_ident,
@@ -6608,9 +6608,9 @@ fn build_module_context(contributions: List<ItemContribution>,
                     match prev.resolved.binding_id {
                       Present { value: prev_binding_id } =>
                         curr_binding_id == prev_binding_id ||
-                          match map_get(env.decl_registry, curr_binding_id) {
+                          match map_get(env.decl_registry, curr_binding_id.value) {
                             Present { value: curr_decl } =>
-                              match map_get(env.decl_registry, prev_binding_id) {
+                              match map_get(env.decl_registry, prev_binding_id.value) {
                                 Present { value: prev_decl } => curr_decl.authority == prev_decl.authority
                                 Absent => false
                           }
