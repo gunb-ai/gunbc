@@ -5,21 +5,11 @@
 
 module v4.compiler.infer
 
-import v4.std.algebra {
-  BoundedLatticeInstanceCompleteness,
-  BoundedLatticeMissingWitness,
-  BoundedLatticeComplete,
-  BoundedLatticePartial,
-  NotBoundedLatticeInstance,
-  algebra_edge,
-  any,
-  boolean_algebra_field_bounded_lattice,
-  inhabitant_edge,
-  lattice_field_join,
-  lattice_field_meet,
-  list_snoc_item
+import v4.std.algebra { list_snoc_item }
+import v4.std.bounded_lattice_completeness {
+  infer_bounded_lattice_consumer_gate,
+  partial_bounded_lattice_instances_in_tree
 }
-import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
@@ -112,7 +102,11 @@ data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 // 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
-data infer_bounded_lattice_consumer_partial: Symbol = infer_bounded_lattice_consumer_partial
+
+// §1-tail A4 disposition (post-#4692): Practice-12 `_bounded` fuel residue = 0 in this stage.
+// SG-6 BoundedLattice gather/gate → fuel-delete: rows in v4.std.bounded_lattice_completeness
+// (fold_node owns traversal; fold_init/fold_step are algebra rows, not fuel).
+// Constraint solve → kernel-mark: solve_constraints in v4.std.constraints (fixpoint; call-graph ≠ data-graph).
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
@@ -135,146 +129,6 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
-}
-
-fn infer_bounded_lattice_partial_instance_diagnostic(
-  at: Locus,
-  missing: BoundedLatticeMissingWitness,
-) -> Diagnostic {
-  Diagnostic {
-    reason: discriminant(v: missing),
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn infer_bounded_lattice_consumer_partial_diagnostic(
-  consumer: Node,
-  instance: Node,
-) -> Diagnostic {
-  Diagnostic {
-    reason: infer_bounded_lattice_consumer_partial,
-    at: node_locus(node: consumer),
-    correction: Suggested { node: instance }
-  }
-}
-
-fn infer_bounded_lattice_completeness_rejects(
-  instance: Node,
-  completeness: BoundedLatticeInstanceCompleteness,
-) -> Outcome<Node> {
-  match completeness {
-    NotBoundedLatticeInstance =>
-      Accepted { value: instance, diagnostics: None }
-    BoundedLatticeComplete =>
-      Accepted { value: instance, diagnostics: None }
-    BoundedLatticePartial { missing: m } =>
-      outcome_rejected(
-        infer_bounded_lattice_partial_instance_diagnostic(
-          at: node_locus(node: instance),
-          missing: m
-        )
-      )
-  }
-}
-
-// SG-6: consumer-site gate only — partial declarations are tagged, not rejected here.
-// infer_bounded_lattice_instance_gate is exported for anchor/unit probes, not infer_node_facts.
-fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
-  infer_bounded_lattice_completeness_rejects(
-    instance: instance,
-    completeness: bounded_lattice_instance_completeness(instance: instance)
-  )
-}
-
-// Algebra-use edges only — module/containment declaration siblings are not consumption.
-fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
-  if any(xs: partials, predicate: fn(p) { edge.target == p }) {
-    match edge.label {
-      Named { name: sym } =>
-        sym == algebra_edge
-          || sym == inhabitant_edge
-          || sym == lattice_field_meet
-          || sym == lattice_field_join
-          || sym == boolean_algebra_field_bounded_lattice
-      Positional => false
-    }
-  } else {
-    false
-  }
-}
-
-fn infer_bounded_lattice_consumer_gate(
-  consumer: Node,
-  partials: List<Node>,
-) -> Outcome<Node> {
-  match fold(consumer.children, init: outcome_accepted(value: consumer), f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
-          Rejected {
-            diagnostics: non_empty_diagnostics_append(
-              a: r,
-              b: diagnostics_singleton(
-                d: infer_bounded_lattice_consumer_partial_diagnostic(
-                  consumer: consumer,
-                  instance: e.target
-                )
-              )
-            )
-          }
-        } else {
-          Rejected { diagnostics: r }
-        }
-      Accepted { value: _, diagnostics: d } =>
-        if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
-          outcome_rejected(
-            infer_bounded_lattice_consumer_partial_diagnostic(
-              consumer: consumer,
-              instance: e.target
-            )
-          )
-        } else {
-          Accepted { value: consumer, diagnostics: d }
-        }
-    }
-  }) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: d } =>
-      Accepted { value: consumer, diagnostics: d }
-  }
-}
-
-fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
-  match bounded_lattice_instance_completeness(instance: n) {
-    BoundedLatticePartial { missing: _ } => [n]
-    NotBoundedLatticeInstance => []
-    BoundedLatticeComplete => []
-  }
-}
-
-fn infer_partial_bounded_lattice_instances_fold_step(
-  acc: List<Node>,
-  e: Edge,
-  child: List<Node>,
-) -> List<Node> {
-  fold(child, init: acc, f: fn(a, p) {
-    list_snoc_item(xs: a, item: p)
-  })
-}
-
-fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
-  fold_node(
-    n: tree,
-    algebra: NodeFold {
-      init: fn(n0) {
-        infer_partial_bounded_lattice_instances_fold_init(n: n0)
-      },
-      step: fn(acc, e, child) {
-        infer_partial_bounded_lattice_instances_fold_step(acc: acc, e: e, child: child)
-      }
-    }
-  )
 }
 
 // 🟡 gated — feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded — dissolve-on-arrival: std/node.dag or std/model_core.dag exports the canonical grounded-algebra query.
