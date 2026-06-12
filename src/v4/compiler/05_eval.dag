@@ -1443,6 +1443,16 @@ fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
         Present { value: _ } => false
         Absent => true
       }
+    ComputationNode { behavior: Branch } =>
+      // COMPREP wave-2 M0-B1 if-then-else: [cond, then, else] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
     _ => false
   }
 }
@@ -1462,6 +1472,40 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
           }
         Rejected { diagnostics: _ } => false
       }
+    _ => false
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; unchosen arms
+// do not execute); current shape is channel suppression only — arm bodies still execute
+// during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
+// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
+fn eval_node_is_branch(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Branch } => true
+    _ => false
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_loop_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; loop body folds
+// zero times per iteration); current shape is channel suppression only — loop children still
+// execute during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
+// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
+fn eval_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
     _ => false
   }
 }
@@ -1940,6 +1984,15 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
       ReadyToInterpret => is_positional(e: edge)
       Interpreted => is_positional(e: edge)
     }
+  } else if eval_node_is_branch(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } =>
+        if p == 0 { is_positional(e: edge) } else { false }
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else if eval_node_is_loop(node: parent) {
+    false
   } else {
     is_positional(e: edge)
   }
