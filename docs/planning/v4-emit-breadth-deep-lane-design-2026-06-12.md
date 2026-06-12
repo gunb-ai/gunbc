@@ -56,8 +56,14 @@ Witnesses run 2026-06-12 on `target/release/gunbc run --source-root src/v4 --ent
 | `comprep_branch_eval_by_execution_keystone_holds` | `comprep_branch_eval_by_execution.dag` | **true** | Branch body **eval** |
 
 **Honest summary:** **signature-tier** TS emit is green by execution; **body-tier** add eval and
-body-tier TS emit are **red** in this environment. Fail-closed operator-catalog refusal is green.
-Branch eval is green; Branch emit and round-trip have **no** claim-run witness yet (§2 lane).
+body-tier TS emit are **red-baseline** (not green) in this environment. Fail-closed
+operator-catalog refusal is green. Branch eval is green; Branch emit and round-trip tracked on
+§2 lane (#4741 sign stage).
+
+**Triage (snappy-crab, 2026-06-12):** `comprep_eval_by_execution_keystone_holds` false on main
+`b7411556ef` **and** at `bcff2ef95d` (pre-#4738) — **not** a regression from eval-dispatch
+(#4738). Pre-wave baseline (`f382a169b2`) classification pending; producer-rooted bodied path
+(operand_swap rides same path) treated as **red-baseline** until classification finalizes.
 
 ### 2.2 Which source forms emit today (execution truth)
 
@@ -85,7 +91,7 @@ new kinds (`design-comprep-m0-branch-mapping.md` §12.1 tripwire).
 
 | Order | Source form (`dag.dag`) | One algebra row | Producer gate | Eval fan-in | Emit fan-in | Round-trip |
 |-------|-------------------------|---------------|---------------|-------------|-------------|------------|
-| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ red | ❌ red | — |
+| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ **red-baseline** | ❌ **red-baseline** | not green until producer path greens |
 | L1 | `dag_production_if_then_form` | `TargetValueExprConditional` | ✅ M0-B1 | ✅ green | sharp-fox (ii) | sharp-fox (iii) → **§3 GO** |
 | L2 | cond = param ref (B1a) | same `Conditional` | B1a | follow-on | same row | — |
 | L3 | `dag_production_if_block_form` | same `Conditional` + stmt scaffold | Bind producer | §2 | same row | — |
