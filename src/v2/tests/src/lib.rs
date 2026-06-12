@@ -64,6 +64,8 @@ mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
+mod target_model_runtime_import_repro;
+#[cfg(test)]
 mod v2_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
