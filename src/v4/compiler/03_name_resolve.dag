@@ -370,6 +370,7 @@ fn admit_named_export_edge(
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:node-fold-topdown-generic-field-access — net +LOC is not §0 graft: inline NodeFoldTopDown { init/step/child_context } struct literals cannot field-access generic A/R when A/R are user-defined product types (8 ci_floor_emit errors: no field 'origin'/'state'/'at_conj' on type A/R, incompatible if-branches, .state on fold result); named_exports_topdown_{init,child_context,step} extracted as top-level fns with concrete AdmitExportsFold types and fold result match-destructured; dissolve-on: inline lambdas back into named_exports_topdown_algebra() struct literal once bootstrap monomorphizes algebra A/R field access (net LOC should shrink); if named algebra fns are the permanent CODING.md data+free-functions idiom here, retag 🟢 and drop shrink expectation.
 fn named_exports_topdown_init(n: Node, fold: AdmitExportsFold) -> AdmitExportsFold {
   AdmitExportsFold {
     origin: fold.origin,
