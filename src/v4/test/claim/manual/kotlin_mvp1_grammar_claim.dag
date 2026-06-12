@@ -40,7 +40,7 @@ fn kotlin_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 (re-anchor of deleted TASKS.md T-22) —
 // dissolve-on: T-22 claim runner evaluates Outcome fixtures directly without Bool projection.
 fn kotlin_mvp1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: parse_stage_locus_port)
@@ -50,7 +50,7 @@ fn kotlin_mvp1_grammar_validates_fixture() -> Bool {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 (re-anchor of deleted TASKS.md T-22) —
 // dissolve-on: T-22 claim runner evaluates Outcome<ParseTree> directly without Bool projection.
 fn kotlin_mvp1_grammar_parse_accepted() -> Bool {
   match kotlin_mvp1_grammar_parse_fixture() {

@@ -13,7 +13,7 @@
 //! this file is **staging** until a **generated** `.dag` consumer reads it — it is **not**
 //! a landed substrate primitive; this Rust module is the **interim authority** for the
 //! Practice-8 hollow predicate. **Dissolution / richer `Node` payload:** same **T-30** bundle as
-//! `INVARIANTS.md` §P5(b) on this path — **`src/v4/TASKS.md`** (T-30 interim mirror paragraph) +
+//! `INVARIANTS.md` §P5(b) on this path — former `src/v4/TASKS.md` T-30 interim mirror paragraph (ledger deleted) +
 //! **`src/v4/DECISIONS.md`** T-30 `fact_density.dag` encoding note (generated `.dag` gate / bootstrap
 //! bridge), not a separate prose-only trigger.
 //! M1(2.8) rejects block-bodied `.dag` functions that walk `Node` with `match` in the

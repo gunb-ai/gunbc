@@ -498,7 +498,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     //
     // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (re-anchor of deleted TASKS.md T-22/T-38; Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r1-verify.sh`).
     // Dissolution: delete when modeled runner exercises
     // `src/v4/test/claim/language_model/rust_r1.dag` without this hand-Rust bridge.
@@ -512,7 +512,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     //
     // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (re-anchor of deleted TASKS.md T-22/T-38; Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r3-internal-verify.sh`).
     // Dissolution: delete when modeled runner exercises
     // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.

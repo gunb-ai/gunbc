@@ -181,7 +181,7 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
             && TESTGEN_WISHLIST_DAG
                 .contains("feature:t19-generator-oracle-basis-carrier")
             && TESTGEN_WISHLIST_DAG.contains(
-                "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+                "bound task: gunbc#4762 (re-anchor of deleted TASKS.md T-19)",
             )
             && TESTGEN_WISHLIST_DAG.contains("dissolve-on-arrival: delete TestgenOracleBasis")
             && TESTGEN_WISHLIST_DAG.contains("StructuralConstructionWitness")

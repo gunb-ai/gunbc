@@ -27,7 +27,7 @@ data spine_infer_module_subject: Node = Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 (re-anchor of deleted TASKS.md T-22) / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates infer Outcome<InferredTree> directly without Bool projection.
 fn spine_infer_accepts_mvp_resolved_tree() -> Bool {
   match infer(tree: fixture_add_resolved_tree()) {

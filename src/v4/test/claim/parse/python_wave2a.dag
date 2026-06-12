@@ -34,7 +34,7 @@ fn python_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 (re-anchor of deleted TASKS.md T-22) —
 // dissolve-on: T-22 claim runner evaluates Outcome<ParseTree> directly without Bool projection.
 fn python_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
