@@ -60,6 +60,7 @@ import v4.std.machine { Byte }
 import v4.std.node {
   Atom,
   Arrow,
+  Branch,
   ComputationNode,
   Conj,
   Edge,
@@ -69,8 +70,10 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
+  SyntheticOccurrence,
+  arrow_body_edge
 }
+import v4.std.node_query { find_arrow_body_child }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -499,6 +502,66 @@ fn comprep_branch_swapped_arms_red_holds() -> Bool {
           condition: true
         )
       ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_produced_body_is_branch_holds() -> Bool {
+  match comprep_source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Branch } => count(body.children) == 3
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_body_only_rejects_quickly_holds() -> Bool {
+  match produce_mvp1_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match eval(
+            tree: comprep_branch_admitted_tree(root: body),
+            interpretation: comprep_branch_interpretation(),
+            inputs: inputs_root_only(root: body)
+          ) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_direct_eval_true_holds() -> Bool {
+  match produce_mvp1_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => {
+      let input = comprep_branch_pick_call(callee: arrow, condition: true)
+      match comprep_branch_inferred_run_tree(
+        callee: arrow,
+        expected: comprep_branch_literal_one_node(),
+        condition: true
+      ) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match eval(
+            tree: tree,
+            interpretation: comprep_branch_interpretation(),
+            inputs: inputs_root_only(root: input)
+          ) {
+            Accepted { value: actual, diagnostics: None } =>
+              comprep_branch_runtime_int_is_one(value: actual)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    }
     Rejected { diagnostics: _ } => false
   }
 }

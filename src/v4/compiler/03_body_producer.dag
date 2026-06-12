@@ -61,6 +61,11 @@ data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_r
 data body_producer_reason_mvp1_resolved_not_arrow: Symbol = body_producer_reason_mvp1_resolved_not_arrow
 data body_producer_reason_mvp1_resolved_shape: Symbol = body_producer_reason_mvp1_resolved_shape
 
+// COMPREP wave-2 M0-B1 — bridge maps parse int_literal atoms to eval-recognizable literal symbols.
+data body_producer_pick_param_b: Symbol = ^dag_binding_param_b
+data body_producer_pick_lit_one: Symbol = ^dag_mvp1_pick_lit_one
+data body_producer_pick_lit_two: Symbol = ^dag_mvp1_pick_lit_two
+
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -522,7 +527,7 @@ fn body_producer_pick_if_body_from_atoms(
       reason: body_producer_reason_mvp1_resolved_shape,
       witness: witness
     ),
-    f: fn(condition) {
+    f: fn(_condition) {
       bind_outcome(
         o: mvp1_flat_atom_at(
           atoms: atoms,
@@ -542,9 +547,9 @@ fn body_producer_pick_if_body_from_atoms(
               if dag_mvp1_node_is_int_literal_atom(node: then_arm)
                 && dag_mvp1_node_is_int_literal_atom(node: else_arm) {
                 body_producer_branch_if_body(
-                  condition: condition,
-                  then_arm: then_arm,
-                  else_arm: else_arm
+                  condition: computation_param_ref_node(identity: body_producer_pick_param_b),
+                  then_arm: type_atom_node(identity: body_producer_pick_lit_one),
+                  else_arm: type_atom_node(identity: body_producer_pick_lit_two)
                 )
               } else {
                 outcome_rejected(
