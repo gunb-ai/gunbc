@@ -51,7 +51,7 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality,
-  BindingId, node_with_binding_id, node_with_preserved_binding_id,
+  BindingId, node_with_binding_id, node_with_preserved_binding_id, map_node_subtrees,
   no_span, make_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -5786,22 +5786,10 @@ fn lookup_coproduct_parent_binding_by_variant(env: TypeEnv, variant_name: String
 }
 
 fn stamp_hidden_dependency_refs(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Node {
-  let stamped_children = n.children |> map(child => stamp_hidden_dependency_refs(n: child, dep_env: dep_env, source_indices: source_indices))
-  let stamped_params = n.params |> map(param => stamp_hidden_dependency_refs(n: param, dep_env: dep_env, source_indices: source_indices))
-  let stamped_inferred = match n.inferred {
-    Present { value: Resolved { node: rt } } => Present { value: Resolved { node: stamp_hidden_dependency_refs(n: rt, dep_env: dep_env, source_indices: source_indices) } }
-    _ => n.inferred
-  }
-  let rebuilt = Node {
-    name: n.name, ident: n.ident, binding_id: n.binding_id,
-    span: n.span, ident_span: n.ident_span,
-    children: stamped_children, connective: n.connective,
-    params: stamped_params, inferred: stamped_inferred,
-    return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
-    properties: n.properties, type_annotation: n.type_annotation,
-    is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-    match_pattern: n.match_pattern, expr_data: n.expr_data
-  }
+  let rebuilt = map_node_subtrees(
+    n: n,
+    transform: child => stamp_hidden_dependency_refs(n: child, dep_env: dep_env, source_indices: source_indices)
+  )
   let name = authored_name_at(source_indices: source_indices, node: rebuilt)
   let bare_unbranded_ref = rebuilt.binding_id == none
     && rebuilt.connective == NoConnective
