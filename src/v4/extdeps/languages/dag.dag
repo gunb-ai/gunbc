@@ -3082,6 +3082,31 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+data dag_inhabitant_field_mvp1_pick_fn: Symbol = dag_inhabitant_field_mvp1_pick_fn
+
+fn dag_mvp1_pick_zip_fold_closure_edges() -> List<Edge> {
+  [
+    dag_named_edge(
+      name: dag_inhabitant_field_mvp1_pick_fn,
+      target: dag_mvp1_fixture_emitted_pick_fn
+    )
+  ]
+}
+
+fn dag_mvp1_pick_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: list_append(
+        left: dag_declared_inhabitants_core().children,
+        right: dag_mvp1_zip_fold_closure_edges()
+      ),
+      right: dag_mvp1_pick_zip_fold_closure_edges()
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
   [
     dag_named_edge(
