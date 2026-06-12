@@ -55,6 +55,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.compilers.lexing { Token }
+import v4.std.logic { Bool }
 import v4.std.machine { Byte }
 import v4.std.node {
   Atom,
@@ -68,7 +69,8 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
+  SyntheticOccurrence,
+  EdgeLabel
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -227,7 +229,11 @@ fn comprep_branch_call_primitive(
 
 fn comprep_branch_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   match list_at_optional(xs: node.children, index: wanted) {
-    Present { value: edge } => outcome_accepted(value: edge.target)
+    Present { value: child } =>
+      match child {
+        Edge { label: EdgeLabel { _ }, target: arm } =>
+          outcome_accepted(value: arm)
+      }
     Absent =>
       outcome_rejected(d: comprep_branch_runtime_diagnostic(n: node))
   }
