@@ -581,16 +581,22 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          match exp.inferred {
-            Present { value: Resolved { node: expanded } } =>
-              if authored_name_at(source_indices: scope.type_env.source_indices, node: expanded) == tn {
-                Present { value: expanded }
-              } else { none }
-            _ =>
-              let rt = resolved_type(n: exp)
-              if authored_name_at(source_indices: scope.type_env.source_indices, node: rt) == tn {
-                Present { value: rt }
-              } else { none }
+          if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == tn
+            && exp.connective == Conj
+            && exp.children |> count > 0 {
+            Present { value: exp }
+          } else {
+            match exp.inferred {
+              Present { value: Resolved { node: expanded } } =>
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: expanded) == tn {
+                  Present { value: expanded }
+                } else { none }
+              _ =>
+                let rt = resolved_type(n: exp)
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: rt) == tn {
+                  Present { value: rt }
+                } else { none }
+            }
           }
         Absent => none
       }
@@ -604,6 +610,54 @@ fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: I
       if expanded.connective == Conj && expanded.children |> count > 0 {
         Present { value: expanded.children }
       } else { none }
+    Absent => none
+  }
+}
+
+// Build instantiated struct fields by substituting type-arg slots from an applied
+// generic expected type (NodeFoldTopDown<MyFold, MyFold>) into the template fields.
+fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+  match type_name {
+    Present { value: tn } =>
+      match expected {
+        Present { value: exp } =>
+          if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) != tn {
+            none
+          } else if exp.children |> count == 0 {
+            none
+          } else {
+            match lookup_type_for(env: scope.type_env, node: exp) {
+              Present { value: decl } =>
+                if (decl.params |> count) != (exp.children |> count) {
+                  none
+                } else {
+                  let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+                    let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
+                    match exp.children |> skip(pair.first) |> first {
+                      Present { value: arg } => map_insert(acc, slot, resolved_type(n: arg))
+                      Absent => acc
+                    }
+                  )
+                  let template_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+                  Present { value: template_fields |> map(sf =>
+                    let field_ty = child_type_node(ch: sf)
+                    Node {
+                      name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                      children: sf.children, connective: sf.connective, params: sf.params,
+                      inferred: Present { value: Resolved { node: substitute_generics(n: field_ty, subst: subst, source_indices: scope.type_env.source_indices) } },
+                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                      transport: sf.transport, properties: sf.properties,
+                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                      expr_data: sf.expr_data
+                    }
+                  ) }
+                }
+              Absent => none
+            }
+          }
+        Absent => none
+      }
     Absent => none
   }
 }
@@ -2603,14 +2657,18 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
     Present { value: fields } => fields
-    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+    Absent =>
+      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+        Present { value: fields } => fields
+        Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+      }
   }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
-        let ft = resolved_type(n: sf)
-        if ft.ident_span != none || type_node_is_callable(n: ft) { Present { value: ft } } else { none }
+        let ft = child_type_node(ch: sf)
+        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.connective == Arrow { Present { value: ft } } else { none }
       Absent => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
