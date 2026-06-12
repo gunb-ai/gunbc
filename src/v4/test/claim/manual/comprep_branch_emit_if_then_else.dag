@@ -12,12 +12,6 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.extdeps.languages.dag {
-  dag_inhabitant_atom,
-  dag_mvp1_fixture_emitted_pick_fn,
-  dag_mvp1_pick_arrow_with_body_fixture,
-  dag_mvp1_pick_arrow_with_body_swapped_arms_fixture,
-  dag_mvp1_pick_if_body_fixture,
-  dag_mvp1_pick_if_body_swapped_arms_fixture,
   dag_mvp1_pick_source_text,
   dag_mvp1_pick_target_model
 }
