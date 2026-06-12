@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/fidelity.dag
 // Scope: C5 ingest/emit fidelity disposition carrier (target-realization-side).
 // Status: shared extdeps-language carrier for llvm_ir / lean / machine_code.
-// Anchor: src/v4/TASKS.md C5-fidelity (Modeled | Declared-normalized | Fail-closed).
+// Fidelity taxonomy: Modeled | Declared-normalized | Fail-closed.
 
 module v4.extdeps.languages.fidelity
 

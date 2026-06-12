@@ -1418,7 +1418,7 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md.
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — bind gunbc#4760 (former tracker src/v4/TASKS.md — deleted).
 // Go complex values are unordered and backed by finite-precision float components;
 // std.algebra currently has no complex-specific approximate algebra constructor,
 // so Wave 2b keeps their primitive fact-bundles but does not advertise a stronger
@@ -1481,7 +1481,7 @@ fn go_declared_inhabitants_root() -> Node {
 }
 
 // Zip-fold support nodes derived from go_facts_int constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 (re-anchor of deleted TASKS.md T-10) — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     go_named_edge(
@@ -1612,7 +1612,7 @@ fn go_wave1_formal_productions() -> List<FormalProduction> {
   [go_formal_production_mvp1_fn_add()]
 }
 
-// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: src/v4/TASKS.md §T-7.1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
+// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: gunbc#4761 (re-anchor of deleted TASKS.md §T-7).1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: GrammarExpr }
@@ -1822,7 +1822,7 @@ fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
-  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: src/v4/TASKS.md §T-11 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
+  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: gunbc#4761 (re-anchor of deleted TASKS.md §T-11) Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
   // semicolons after line-final identifiers, literals, break/continue/fallthrough/
   // return, and selected delimiters. Wave 2a accepts only the horizontal-space
   // MVP subset; newline layout fails closed until std.lexing carries Go layout.

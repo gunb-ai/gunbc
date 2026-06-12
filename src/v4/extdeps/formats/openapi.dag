@@ -1,5 +1,5 @@
 // src/v4/extdeps/formats/openapi.dag
-// Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
+// Scope: OpenAPI 3.1.0 document slice; format slice (former TASKS.md T-4.6 — ledger deleted).
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.

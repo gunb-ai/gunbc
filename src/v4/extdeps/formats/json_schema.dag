@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/json_schema.dag
 // Scope: JSON Schema Draft 2020-12 instance shell + default-dialect keyword bundle (Lane C T-4.6); typed slots favor Core-shaped surface; additional_keywords enumerates keywords authorized by the meta-schema anchor.
-// Status: scaffold — TASKS.md T-4.6
+// Status: scaffold (former TASKS.md T-4.6 — ledger deleted)
 // Anchor: https://json-schema.org/draft/2020-12/schema
 
 module v4.extdeps.formats.json_schema

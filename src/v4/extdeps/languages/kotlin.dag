@@ -1154,7 +1154,7 @@ fn kotlin_concrete_tokens_list(
   Cons { head: head, tail: tail }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold with a std list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind gunbc#4761 (re-anchor of deleted TASKS.md T-11) — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold with a std list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
 fn kotlin_grammar_sequence_from_nonempty(
   head: ConcreteSyntaxToken,
   tail: List<ConcreteSyntaxToken>
