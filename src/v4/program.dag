@@ -1,8 +1,10 @@
 // src/v4/program.dag
 // Scope: §4 first runnable v4 program — pick_if Branch body composed with effect_io handlers.
-// Status: minimal runnable entry + Bool witness for `dag run --entry src/v4/program.dag --claim-run`.
+// Status: end-to-end IO witness routed through runtime_run (§4c) + Bool witness for
+//   `dag run --entry src/v4/program.dag --claim-run`.
 //   Branch then-arm yields ReadResource→WriteResource through inject-per-run handler binding;
 //   §2 pick_if arrow body executes in the same program context (handlers bound at run start).
+//   Execution path: scheduler RunnableFrontier → runtime_run → eval_with_context (not direct eval).
 
 module v4.program
 
@@ -11,9 +13,7 @@ import v4.compiler.eval {
   EvalContext,
   effect_io_roundtrip_transform,
   eval_context_with_effect_io,
-  eval_diagnostic,
-  eval_with_context,
-  inputs_root_only
+  eval_diagnostic
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.extdeps.languages.dag {
@@ -33,6 +33,7 @@ import v4.std.collection {
   Present,
   list_at_optional
 }
+import v4.std.dependency { DependencyView }
 import v4.std.diagnostic {
   Accepted,
   Outcome,
@@ -73,6 +74,11 @@ import v4.std.runtime {
 }
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v4.std.witness { Holds, Violates, Witness }
+import v4.workflow.runtime_run {
+  RuntimeRunBlocked,
+  RuntimeRunComplete,
+  runtime_run
+}
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
 fn program_atom(s: Symbol) -> Node {
@@ -360,17 +366,40 @@ fn program_tree(root: Node) -> InferredTree {
   }
 }
 
-fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
-  eval_with_context(
-    tree: program_tree(root: root),
-    context: program_context_with_effect_io(),
-    inputs: inputs_root_only(root: root)
-  )
+data program_run_dependencies: List<DependencyView> = []
+
+fn program_runtime_run_single(root: Node, tree: InferredTree) -> Outcome<RuntimeValue> {
+  match runtime_run(
+    nodes: [root],
+    dependencies: program_run_dependencies,
+    tree: tree,
+    context: program_context_with_effect_io()
+  ) {
+    RuntimeRunComplete { log: log, scheduled: _ } =>
+      match list_at_optional(xs: log.entries, index: 0) {
+        Present { value: receipt } => receipt.result
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: eval_diagnostic(reason: ^program_runtime_run_empty_log, node: root)
+            )
+          }
+      }
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: ^program_runtime_run_blocked, node: root)
+        )
+      }
+  }
 }
 
-// Runnable entry: evaluate the pick_if Branch with effect_io in the then-arm.
+// Runnable entry: evaluate the pick_if Branch with effect_io in the then-arm via runtime_run.
 fn program_branch_effect_io_holds() -> Bool {
-  match program_eval_root(root: program_pick_if_branch_with_effect_io) {
+  match program_runtime_run_single(
+    root: program_pick_if_branch_with_effect_io,
+    tree: program_tree(root: program_pick_if_branch_with_effect_io)
+  ) {
     Accepted { value: v, diagnostics: None } => v == program_unit_value()
     _ => false
   }
@@ -406,10 +435,9 @@ fn program_pick_if_arrow_holds() -> Bool {
   match produce_mvp1_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
-      match eval_with_context(
-        tree: program_pick_if_arrow_tree(callee: arrow),
-        context: program_context_with_effect_io(),
-        inputs: inputs_root_only(root: call)
+      match program_runtime_run_single(
+        root: call,
+        tree: program_pick_if_arrow_tree(callee: arrow)
       ) {
         Accepted { value: v, diagnostics: None } => v == program_int_one_value()
         _ => false
