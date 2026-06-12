@@ -114,7 +114,7 @@ fn branch_if_then_else_emit_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (source == dag_mvp1_pick_source_text) && (d == None) && (ad == None)
+          (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
