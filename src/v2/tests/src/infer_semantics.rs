@@ -772,7 +772,10 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         0,
     );
     assert!(
-        matches!(absent_lookup.status.as_ref(), NodeLookupStatus::LookupResolved { .. }),
+        matches!(
+            absent_lookup.status.as_ref(),
+            NodeLookupStatus::LookupResolved { .. }
+        ),
         "expected applied Optional<Bool> Absent lookup to resolve, got {:?}",
         absent_lookup.status
     );
