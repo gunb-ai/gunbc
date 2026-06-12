@@ -612,6 +612,8 @@ type TargetEffectApplyShape {
   open: Symbol
   close: Symbol
   separator: Symbol
+}
+
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
