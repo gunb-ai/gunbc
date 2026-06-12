@@ -169,18 +169,25 @@ parallel `if` matcher outside the algebra.
 
 ## 10. Implementation sequencing (post-#4699)
 
-**§8 cadence — one fan-in per PR:**
+**PR model (LOCKED 2026-06-12 — FINAL, coordinator authoritative):** gunbc#4730 =
+**fan-in (i) standalone-merge** at 2 api-review approvals (literal-Bool keystone row is stable;
+no `06_translate`; no load-bearing design-sign). **(ii) emit** + **(iii) round-trip** are
+**separate follow-on carrier PRs**. pick(b) / Q-B3 lazy-arm is **(ii)/B1a downstream work** —
+not a gate on #4730.
 
 | Fan-in | PR | Status |
 |--------|-----|--------|
-| **(i) eval-by-execution** | gunbc#4730 | GREEN — `comprep_branch_eval_by_execution_keystone_holds`; merges at 2 api-review approvals (no `06_translate`; no load-bearing design-sign) |
-| **(ii) emit** | follow-on carrier PR | `TargetValueExprConditional` ONE algebra row + `06_translate` edit |
-| **(iii) round-trip** | follow-on carrier PR | emit row → ingest → byte-identical; gates §3-deep spawn |
+| **(i) eval-by-execution** | gunbc#4730 | **GREEN** — merge at 2 approvals |
+| **B1a + Q-B3** | follow-on (before/with ii) | pick(b) repro; lazy-arm fix if eager-both-arms |
+| **(ii) emit** | follow-on carrier PR | ONE `TargetValueExprConditional` row + `06_translate` |
+| **(iii) round-trip** | follow-on carrier PR | byte-identical; gates §3-deep spawn |
 
-1. ~~Land `choose_branch_bool_if_else` + M0-B1 eval claim.~~ **Done (fan-in i / #4730).**
-2. ~~Land body_producer row + source-bridged parse fixture.~~ **Done (fan-in i / #4730).**
-3. Land substrate kinds + wire validators (`target_model.dag`) with template twin **(fan-in ii).**
-4. Land value_expression projection row **(fan-in ii, coupled to step 3).**
+1. ~~Land `choose_branch_bool_if_else` + M0-B1 eval claim.~~ **Done (#4730).**
+2. ~~Land body_producer row + source-bridged parse fixture.~~ **Done (#4730).**
+3. Repro `pick(b)`; resolve Q-B3 before (ii) emit depends on it.
+4. Land substrate kinds + wire validators (`target_model.dag`) **(fan-in ii PR).**
+5. Land value_expression projection row **(fan-in ii PR).**
+6. Round-trip keystone **(fan-in iii PR).**
 
 ## 11. Fan-in (ii) emit — design-sign routing (LOCKED 2026-06-12)
 
