@@ -8,7 +8,8 @@ module v4.std.lexing
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Symbol }
+import v4.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v4.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v4.std.text { Char, String }
 
 type Lexeme = String
@@ -90,4 +91,91 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
       acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
     }
   )
+}
+
+
+// LexPatternFold<R>: algebra for fold_lex_pattern<R>. One handler per LexPattern variant.
+// Leaf handlers receive the raw payload; recursive handlers receive already-reduced R values
+// (EAGER catamorphism — children are reduced before the handler fires, same as fold_grammar_expr).
+// empty is a direct R value (not fn) because EmptyPattern has no payload.
+type LexPatternFold<R> {
+  empty:       R
+  literal:     fn(String) -> R
+  keyword:     fn(String) -> R
+  char:        fn(Char) -> R
+  char_class:  fn(LexCharClass) -> R
+  sequence:    fn(R, R) -> R
+  choice:      fn(R, R) -> R
+  optional:    fn(R) -> R
+  repeat:      fn(R) -> R
+  one_or_more: fn(R) -> R
+  delimited:   fn(R, R, R) -> R
+}
+
+
+// fold_lex_pattern<R>: EAGER catamorphism over LexPattern. Subterms are reduced to R before
+// the handler fires. Terminates by structural descent on the finite LexPattern tree.
+// Concept home: std/lexing (fold lives with the type it folds — same as fold_grammar_expr/std/grammar).
+fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
+  match pattern {
+    EmptyPattern =>
+      algebra.empty
+    LiteralPattern { text: text } =>
+      algebra.literal(text)
+    KeywordPattern { text: text } =>
+      algebra.keyword(text)
+    CharPattern { char: c } =>
+      algebra.char(c)
+    CharClassPattern { class: class } =>
+      algebra.char_class(class)
+    SequencePattern { left: left, right: right } =>
+      algebra.sequence(
+        fold_lex_pattern(pattern: left, algebra: algebra),
+        fold_lex_pattern(pattern: right, algebra: algebra)
+      )
+    ChoicePattern { left: left, right: right } =>
+      algebra.choice(
+        fold_lex_pattern(pattern: left, algebra: algebra),
+        fold_lex_pattern(pattern: right, algebra: algebra)
+      )
+    OptionalPattern { element: element } =>
+      algebra.optional(fold_lex_pattern(pattern: element, algebra: algebra))
+    RepeatPattern { element: element } =>
+      algebra.repeat(fold_lex_pattern(pattern: element, algebra: algebra))
+    OneOrMorePattern { element: element } =>
+      algebra.one_or_more(fold_lex_pattern(pattern: element, algebra: algebra))
+    DelimitedPattern { open: open, body: body, close: close } =>
+      algebra.delimited(
+        fold_lex_pattern(pattern: open, algebra: algebra),
+        fold_lex_pattern(pattern: body, algebra: algebra),
+        fold_lex_pattern(pattern: close, algebra: algebra)
+      )
+  }
+}
+
+
+fn lex_empty_node() -> Node {
+  stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
+}
+
+
+data lex_void_lex_rules_evidence: Symbol = lex_void_lex_rules_evidence
+
+
+fn lex_void_lex_rules_evidence_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: lex_void_lex_rules_evidence } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+
+// 🟡 gated — feature:t6-lex-rules-node-projection — consumer:v4.std.language_model.language_model_to_node —
+// dissolve-on: ModeledLexRules projects LexRuleSet fold to named Conj edges; VoidLexRules maps to void evidence node.
+fn lex_rules_to_node(rules: LexRules) -> Node {
+  match rules {
+    VoidLexRules => lex_void_lex_rules_evidence_node()
+    ModeledLexRules { root: _ } => lex_empty_node()
+  }
 }

@@ -88,7 +88,7 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
+data mvp1_cpp_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 data mvp1_cpp_target_profile: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^mvp1_cpp_target_profile_atom } },
@@ -120,7 +120,7 @@ data mvp1_cpp_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: cpp_mvp1_target_model_node(target_profile: cpp_mvp1_target_profile),
   lex: cpp_wave1_lex(),
   binding_spellings: cpp_mvp1_binding_spellings(),
-  authority_source_text: mvp1_forbidden_authority_source_text
+  authority_source_text: mvp1_cpp_forbidden_authority_source_text
 }
 
 data mvp1_cpp_empty_translation_rules_bundle: Node = Node {
