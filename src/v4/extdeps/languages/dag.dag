@@ -115,12 +115,10 @@ import v4.std.logic { Bool }
 import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
 import v4.std.diagnostic {
   Accepted,
-  ByteRange,
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
   Rejected,
-  Textual,
   Unavailable,
   node_locus,
   outcome_accepted,
@@ -3287,10 +3285,7 @@ data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_a
 fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagnostic {
   Diagnostic {
     reason: dag_mvp1_captured_flat_atom_binding_miss,
-    at: Textual {
-      file: ^dag_mvp1_captured_flat_atom_binding_port,
-      extent: ByteRange { start: flat_index, end: flat_index }
-    },
+    at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -3312,7 +3307,9 @@ fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
 // flat-index table (indices 5/9/12); owner/lane: Mgr-RUNTIME (neat-bat-593) —
 // trigger: structured fn-body normalize output lands; forbidden: permanent untagged
-// flat-index binding lookup in extdeps.
+// flat-index binding lookup in extdeps. diagnostic-at: port_locus only — flat_index is a
+// token-table index, not a byte offset (ByteRange elsewhere is byte positions); distinct
+// locus variant deferred until scaffold dissolves.
 fn dag_mvp1_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
