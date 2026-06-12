@@ -1603,7 +1603,7 @@ fn project_set_collection_type_node(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node(node: elem, target: target, projection: projection),
+                o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   Accepted {
                     value: target_type_expr_instantiation_emitted(
@@ -1644,7 +1644,7 @@ fn project_free_monoid_collection_type_node(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node(node: elem, target: target, projection: projection),
+                o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   bind_outcome(
                     o: translate_apply_use_site_ownership_to_projected_type(
@@ -3007,31 +3007,6 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
   )
 }
 
-fn project_type_expression_arrow_emitted_from_original_split(
-  original_split: TypeExprArrowSplit,
-  anchor: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  bind_outcome(
-    o: translate_project_arrow_split_types(
-      original_split: original_split,
-      target: target,
-      projection: projection,
-      anchor: anchor
-    ),
-    f: fn(split) {
-      outcome_accepted(
-        target_type_expr_arrow_emitted(
-          form: projection.arrow_form,
-          inputs: split.inputs,
-          output: split.output
-        )
-      )
-    }
-  )
-}
-
 fn translate_project_arrow_input_types(
   original_inputs: List<Node>,
   target: TargetModel,
@@ -3045,7 +3020,7 @@ fn translate_project_arrow_input_types(
         o: acc,
         f: fn(items) {
           bind_outcome(
-            o: project_type_expression_node(node: original_input, target: target, projection: projection),
+            o: translate_type_expression_project(node: original_input, target: target, projection: projection),
             f: fn(projected) {
               bind_outcome(
                 o: translate_apply_use_site_ownership_to_projected_boundary(
@@ -3081,7 +3056,7 @@ fn translate_project_arrow_split_types(
     ),
     f: fn(wrapped_inputs) {
       bind_outcome(
-        o: project_type_expression_node(
+        o: translate_type_expression_project(
           node: original_split.output,
           target: target,
           projection: projection
@@ -3177,7 +3152,7 @@ fn translate_outcome_is_signature_realization_miss(
 }
 
 // Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
-// domain/codomain atoms are projected (06_translate project_type_expression_node) with
+// domain/codomain atoms are projected (06_translate translate_type_expression_project) with
 // the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
 // symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
@@ -3398,7 +3373,7 @@ fn translate_coerced_type_shell_from_source(
       bind_outcome(
         o: type_expression_projection_from_target(target: target),
         f: fn(projection) {
-          project_type_expression_node(
+          translate_type_expression_project(
             node: source_carrier,
             target: target,
             projection: projection
@@ -3800,7 +3775,7 @@ fn translate_type_expression_tree(
         match translate_grammar_relation_row_match(target: target, emitted: n) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
           Rejected { diagnostics: _ } =>
-            project_type_expression_node(node: n, target: target, projection: projection)
+            translate_type_expression_project(node: n, target: target, projection: projection)
         }
       }
     )
@@ -3827,7 +3802,7 @@ fn translate_node_with_projection(
             o: translate_node_computation(node: node, tree: tree, target: target),
             f: fn(translated) {
               bind_outcome(
-                o: project_type_expression_subtree(
+                o: translate_type_expression_subtree(
                   node: translated,
                   target: target,
                   projection: projection
@@ -3840,17 +3815,17 @@ fn translate_node_with_projection(
     }
   )
 }
-fn project_type_expression_subtree(
+fn translate_type_expression_subtree(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } =>
-      project_type_expression_node(node: node, target: target, projection: projection)
+      translate_type_expression_project(node: node, target: target, projection: projection)
     ComputationNode { behavior: b } =>
       bind_outcome(
-        o: project_type_expression_children_in_node(node: node, target: target, projection: projection),
+        o: translate_type_expression_children_in_node(node: node, target: target, projection: projection),
         f: fn(children) {
           Accepted {
             value: node_rebuild(n: node, children: children),
@@ -3860,7 +3835,7 @@ fn project_type_expression_subtree(
       )
   }
 }
-fn project_type_expression_children_in_node(
+fn translate_type_expression_children_in_node(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -3873,7 +3848,7 @@ fn project_type_expression_children_in_node(
         o: acc,
         f: fn(edges) {
           bind_outcome(
-            o: project_type_expression_subtree(node: e.target, target: target, projection: projection),
+            o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
             f: fn(projected) {
               outcome_accepted(
                 list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })

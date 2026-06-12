@@ -5,7 +5,7 @@
 module v4.test.claim.manual.sg2_typescript_type_expression_projection
 
 import v4.compiler.translate {
-  project_type_expression_node,
+  translate_type_expression_project,
   target_serialize_source_from_model
 }
 import v4.extdeps.languages.typescript {
@@ -78,7 +78,7 @@ fn ts_sg2_claim_input(ok: Bool) -> Node {
 }
 
 fn ts_sg2_project_instantiation_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_instantiation_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()
@@ -94,7 +94,7 @@ fn ts_sg2_projection_matches_golden() -> Bool {
 }
 
 fn ts_sg2_project_arrow_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_arrow_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()
@@ -105,7 +105,7 @@ fn ts_sg2_project_arrow_emitted() -> Node {
 }
 
 fn ts_sg2_project_conj_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_conj_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()
@@ -116,7 +116,7 @@ fn ts_sg2_project_conj_emitted() -> Node {
 }
 
 fn ts_sg2_project_disj_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_disj_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()
@@ -127,7 +127,7 @@ fn ts_sg2_project_disj_emitted() -> Node {
 }
 
 fn ts_sg2_binary_fn_projection_accepts() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_binary_fn_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()
@@ -138,7 +138,7 @@ fn ts_sg2_binary_fn_projection_accepts() -> Bool {
 }
 
 fn ts_sg2_arrow_malformed_projection_rejects() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: ts_sg2_arrow_malformed_source_type_node(),
     target: ts_sg2_type_expr_target_model(),
     projection: ts_type_expression_projection()

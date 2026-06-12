@@ -10,7 +10,7 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetModel }
 import v4.compiler.translate {
   grammar_relation_row_for_emitted,
-  project_type_expression_node,
+  translate_type_expression_project,
   target_bundle_child,
   target_serialize_source_from_model,
   translate,
@@ -256,7 +256,7 @@ fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {
 }
 
 fn sg2_mode2_outcome_return_shell() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: sg2_mode2_outcome_node_source_type(),
     target: sg2_mode2_target(),
     projection: rust_type_expression_projection()
