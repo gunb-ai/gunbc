@@ -486,15 +486,13 @@ fn infer_gather_step(
                 }
               }
           }
-    InferGatherBranch { node: node, partials: partials, child_results: child_results } =>
-      match infer_gather_acc_to_outcome(acc: child) {
+    InferGatherBranch { node: node, partials: partials, child_results: child_results } => {
+      let child_outcome = infer_gather_acc_to_outcome(acc: child)
+      match child_outcome {
         Rejected { diagnostics: r } =>
           InferGatherLeaf { result: Rejected { diagnostics: r } }
         Accepted { value: _, diagnostics: _ } =>
-          let next_results = list_snoc_item(
-            xs: child_results,
-            item: infer_gather_acc_to_outcome(acc: child)
-          )
+          let next_results = list_snoc_item(xs: child_results, item: child_outcome)
           if length(xs: next_results) == length(xs: node_positional_child_targets(node: node)) {
             InferGatherLeaf {
               result: infer_branch_gather_finalize(
@@ -511,6 +509,7 @@ fn infer_gather_step(
             }
           }
       }
+    }
   }
 }
 
@@ -734,41 +733,18 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
-  fold_node(
-    n: tree,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match infer_node_facts(n: n0, partials: partials) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: facts, diagnostics: d } =>
-            match admitted_inferred_facts_entry(node: n0, facts: facts) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: entry, diagnostics: ed } =>
-                Accepted {
-                  value: [entry],
-                  diagnostics: diagnostics_merge(outer: d, inner: ed)
-                }
-            }
-        }
-      },
-      step: fn(acc, e, child) {
-        match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: acc_entries, diagnostics: ad } =>
-            match child {
-              Rejected { diagnostics: cr } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-                }
-              Accepted { value: child_entries, diagnostics: cd } =>
-                Accepted {
-                  value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
-                  diagnostics: diagnostics_merge(outer: ad, inner: cd)
-                }
-            }
+  infer_gather_acc_to_outcome(
+    acc: fold_node(
+      n: tree,
+      algebra: NodeFold {
+        init: fn(n0) {
+          infer_gather_init(n: n0, partials: partials)
+        },
+        step: fn(acc, e, child) {
+          infer_gather_step(acc: acc, e: e, child: child)
         }
       }
-    }
+    )
   )
 }
 
