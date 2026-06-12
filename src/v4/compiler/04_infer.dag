@@ -105,9 +105,12 @@ type InferredFactsEntry {
 
 // Named fold carrier — avoids nested Outcome<List<InferredFactsEntry>> in gather init (parser).
 type InferGatherFoldAcc {
+  node: Node
   entries: List<InferredFactsEntry>
   failed: Bool
   pending: Diagnostics
+  await_branch_row: Bool
+  children_remaining: Int
 }
 
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
@@ -571,22 +574,36 @@ fn infer_branch_bool_if_else(
   }
 }
 
-fn infer_gather_fold_acc_failed(pending: NonEmptyDiagnostics) -> InferGatherFoldAcc {
+fn infer_gather_fold_acc_failed(
+  node: Node,
+  pending: NonEmptyDiagnostics,
+  await_branch_row: Bool,
+  children_remaining: Int,
+) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
+    node: node,
     entries: empty_inferred_facts_entry_list(),
     failed: true,
-    pending: Some { diagnostics: pending }
+    pending: Some { diagnostics: pending },
+    await_branch_row: await_branch_row,
+    children_remaining: children_remaining
   }
 }
 
 fn infer_gather_fold_acc_ok(
+  node: Node,
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
+  await_branch_row: Bool,
+  children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
+    node: node,
     entries: entries,
     failed: false,
-    pending: pending
+    pending: pending,
+    await_branch_row: await_branch_row,
+    children_remaining: children_remaining
   }
 }
 
@@ -617,71 +634,81 @@ fn infer_gather_fold_failure_node() -> Node {
   }
 }
 
-fn infer_gather_replace_entry_for_node(
-  entries: List<InferredFactsEntry>,
+fn infer_gather_branch_row_on_entries(
   node: Node,
-  replacement: InferredFactsEntry,
-) -> List<InferredFactsEntry> {
-  fold(entries, init: empty_inferred_facts_entry_list(), f: fn(acc, entry) {
-    if entry.node == node {
-      list_snoc_item(xs: acc, item: replacement)
-    } else {
-      list_snoc_item(xs: acc, item: entry)
-    }
-  })
-}
-
-fn infer_gather_apply_branch_row(
-  n: Node,
-  acc: InferGatherFoldAcc,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
-  if acc.failed {
-    acc
-  } else {
-    match n.kind {
-      ComputationNode { behavior: Branch } =>
-        match infer_branch_bool_if_else(node: n, partials: partials, entries: acc.entries) {
-          Rejected { diagnostics: r } =>
-            infer_gather_fold_acc_failed(
-              pending: rejected_with_pending(pending: acc.pending, rejected: r)
-            )
-          Accepted { value: facts, diagnostics: d } =>
-            match admitted_inferred_facts_entry(node: n, facts: facts) {
-              Rejected { diagnostics: r } =>
-                infer_gather_fold_acc_failed(
-                  pending: rejected_with_pending(pending: acc.pending, rejected: r)
-                )
-              Accepted { value: entry, diagnostics: ed } =>
-                infer_gather_fold_acc_ok(
-                  entries: infer_gather_replace_entry_for_node(
-                    entries: acc.entries,
-                    node: n,
-                    replacement: entry
-                  ),
-                  pending: diagnostics_merge(
-                    outer: diagnostics_merge(outer: acc.pending, inner: d),
-                    inner: ed
-                  )
-                )
-            }
-        }
-      _ => acc
-    }
+  match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            children_remaining: 0
+          )
+      }
   }
 }
 
 fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
-  match infer_node_facts(n: n, partials: partials) {
-    Rejected { diagnostics: r } => infer_gather_fold_acc_failed(pending: r)
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } => infer_gather_fold_acc_failed(pending: r)
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            entries: [entry],
-            pending: diagnostics_merge(outer: d, inner: ed)
+  match n.kind {
+    ComputationNode { behavior: Branch } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: true,
+        children_remaining: length(xs: n.children)
+      )
+    _ =>
+      match infer_node_facts(n: n, partials: partials) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: n,
+            pending: r,
+            await_branch_row: false,
+            children_remaining: 0
           )
+        Accepted { value: facts, diagnostics: d } =>
+          match admitted_inferred_facts_entry(node: n, facts: facts) {
+            Rejected { diagnostics: r } =>
+              infer_gather_fold_acc_failed(
+                node: n,
+                pending: r,
+                await_branch_row: false,
+                children_remaining: 0
+              )
+            Accepted { value: entry, diagnostics: ed } =>
+              infer_gather_fold_acc_ok(
+                node: n,
+                entries: [entry],
+                pending: diagnostics_merge(outer: d, inner: ed),
+                await_branch_row: false,
+                children_remaining: 0
+              )
+          }
       }
   }
 }
@@ -700,21 +727,40 @@ fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
   child: InferGatherFoldAcc,
+  partials: List<Node>,
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
   } else if child.failed {
     infer_gather_fold_acc_failed(
+      node: acc.node,
       pending: rejected_with_pending(
         pending: acc.pending,
         rejected: infer_gather_failed_non_empty(acc: child)
-      )
+      ),
+      await_branch_row: acc.await_branch_row,
+      children_remaining: acc.children_remaining
     )
   } else {
-    infer_gather_fold_acc_ok(
-      entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
-      pending: diagnostics_merge(outer: acc.pending, inner: child.pending)
-    )
+    let merged_entries = concat_inferred_facts_entries(a: acc.entries, b: child.entries)
+    let merged_pending = diagnostics_merge(outer: acc.pending, inner: child.pending)
+    let children_remaining = acc.children_remaining - 1
+    if acc.await_branch_row && children_remaining == 0 {
+      infer_gather_branch_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials
+      )
+    } else {
+      infer_gather_fold_acc_ok(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        await_branch_row: acc.await_branch_row,
+        children_remaining: children_remaining
+      )
+    }
   }
 }
 
@@ -724,17 +770,9 @@ fn infer_gather_fold_algebra(partials: List<Node>) -> NodeFold<InferGatherFoldAc
       infer_gather_fold_init(n: n0, partials: partials)
     },
     step: fn(acc, e, child) {
-      infer_gather_fold_step(acc: acc, edge: e, child: child)
+      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials)
     }
   }
-}
-
-fn infer_gather_fold_node(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
-  infer_gather_apply_branch_row(
-    n: n,
-    acc: fold_node(n: n, algebra: infer_gather_fold_algebra(partials: partials)),
-    partials: partials
-  )
 }
 
 fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
@@ -743,7 +781,9 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
 
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
-  infer_gather_acc_to_outcome(acc: infer_gather_fold_node(n: tree, partials: partials))
+  infer_gather_acc_to_outcome(
+    acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials))
+  )
 }
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
