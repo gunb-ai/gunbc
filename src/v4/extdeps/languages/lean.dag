@@ -23,7 +23,7 @@ import v4.std.grammar {
   grammar_formal_nonterminal,
   grammar_formal_terminal
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   DigitChar,
   LexPattern,

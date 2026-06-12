@@ -29,7 +29,7 @@ import v4.std.host_run { HostLogicalRun }
 import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.text { String }
 import v4.test.claim.manual.comprep_add_body_emit_typescript {
   comprep_ts_emit_from_producer_tree,

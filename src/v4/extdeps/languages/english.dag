@@ -27,7 +27,7 @@ import v4.std.grammar {
   grammar_formal_nonterminal_occurrence,
   grammar_formal_terminal
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -129,7 +129,7 @@ fn english_word_pattern() -> LexPattern {
   }
 }
 
-// word first (catch-all); keywords after — later rule wins equal-length tie (std/lexing.dag §46).
+// word first (catch-all); keywords after — later rule wins equal-length tie (std/compilers/lexing.dag §46).
 fn english_wave1_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {

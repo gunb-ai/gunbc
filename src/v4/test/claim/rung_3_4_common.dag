@@ -17,7 +17,7 @@ import v4.compiler.eval {
 import v4.std.runtime { RuntimeValue }
 import v4.compiler.infer { InferredTree }
 import v4.std.collection { empty_map }
-import v4.std.lexing { VoidLexRules }
+import v4.std.compilers.lexing { VoidLexRules }
 import v4.std.node {
   Conj,
   Edge,
@@ -27,7 +27,7 @@ import v4.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.verification { TestClaim }
 import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,

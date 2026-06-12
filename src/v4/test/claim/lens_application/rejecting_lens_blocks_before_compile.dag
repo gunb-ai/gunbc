@@ -14,7 +14,7 @@ import v4.compiler.compile {
   validate_then_compile
 }
 import v4.compiler.infer { InferredTree }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }
