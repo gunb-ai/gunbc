@@ -128,6 +128,19 @@ This applies to **operations as well as types**: before hand-writing a fold, wal
 
 New concepts need real files and models before they get referenced from higher-level variants.
 
+### M11: A finished stage is a fold; non-fold residue measures unmodeled decision
+
+A compiler stage's finished shape is **one fold over its model**: `stage(x) = fold_carrier(x, algebra(model))` — or a thin zero-residue composition of such folds (`serialize_target ∘ translate`), where the only glue is monadic sequencing (`bind_outcome` / `∘`) and the composition adds no control-flow of its own. A pure fold expresses only *intent* — "this maps to this" — because every decision it would otherwise make has already been resolved as **data in the model** (`std/` / `extdeps/` / pure rows), and the fold carrier owns the traversal. No `_go` accumulators (the fold owns recursion), no `_bounded` fuel (a structural fold terminates by construction), no per-case `match` arms in the stage (each case is one algebra row).
+
+The principle is a **litmus, not a ban.** Code that is *not* a pure fold is permitted — but it is a **signal**, and it falls into exactly one of two categories:
+
+- **A named, separated irreducible kernel** — a unification solver, char-class matching, real arithmetic. These cannot be folds (a fixpoint solver is not a catamorphism) and are *meant* to stay as one named function. The rule is **fold the traversal, name the kernel**: the walk becomes a fold, the kernel stays separated and named. This is terminal, not debt.
+- **Un-migrated modeling.** Any other non-fold control-flow — a `match` that derives a property, an `if` that adjusts for one case, an accumulator that re-threads a carrier by hand — is the *code making a decision the model has not yet absorbed*. The decision belongs as a row in the model; its presence in the stage is **measured modeling debt**, not a permanent stage feature.
+
+There is no third category. "Stage logic that is fine to keep as control-flow" is not a disposition — non-fold code is either a named kernel or un-migrated modeling. The amount of non-fold residue in a stage is therefore a *measure* of how much of its decision-making still lives in code instead of the model; reducing it to a fold + named kernels is what "the modeling is sorted" means concretely.
+
+This is the **stage-level** form of M1 / Practice 10 (*don't hand-roll a derived operation*, the per-function form) and P1's *heuristics indicate lost structure* (the per-fact form): a stage that is not a fold is hand-rolling the catamorphism the compiler already derives, one arm at a time. The operationalized review rubric — how to measure residue and tell a kernel from debt — is [docs/modeling-discipline.md](docs/modeling-discipline.md) Practice 12. The frontloaded program that brings each stage to this shape is `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`; `05_emit` (`emit = serialize_target ∘ translate`, i.e. `bind_outcome(translate, serialize_target)`, 43 lines) is the existence proof already on `main` of the **composition** form — zero residue, no hand-walk, both halves fold-backed.
+
 ### Navigating the concept DAG: where to start
 
 The `dsl/std/` tree is the concept DAG; read it from roots to compositions to domain vocabularies.

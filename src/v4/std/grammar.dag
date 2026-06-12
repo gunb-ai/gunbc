@@ -157,6 +157,9 @@ type GrammarExpr
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
 
+fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
 
 // 🟢 substrate catamorphism — feature:grammar-expr-structural-morphism — bind node://adhoc-b696538c-710.
 // GrammarExprFold is the algebra for a structural fold (catamorphism) over the GrammarExpr

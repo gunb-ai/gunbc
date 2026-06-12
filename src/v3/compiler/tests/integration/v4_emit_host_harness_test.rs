@@ -204,6 +204,20 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
     })
 }
 
+fn surface_imports_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path: import_path, names, .. }
+                if import_path == path && names.iter().any(|n| n == name)
+        )
+    })
+}
+
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| {
         matches!(
@@ -890,12 +904,26 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
         "{EMIT_HOST_PATH}: transport_not_wired reason symbol"
     );
     assert!(
-        surface_declares_data(&module, "emit_host_python_authority_pin"),
-        "{EMIT_HOST_PATH}: python authority pin (W3.4)"
+        surface_imports_name(
+            &module,
+            &["v4", "extdeps", "languages", "python"],
+            "python_mvp1_source_text"
+        ),
+        "{EMIT_HOST_PATH}: python authority sourced from extdeps (gunbc#4674 step 1: no local pin copy)"
     );
     assert!(
-        surface_declares_data(&module, "emit_host_go_authority_pin"),
-        "{EMIT_HOST_PATH}: go authority pin (W3.3)"
+        surface_imports_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_mvp1_source_text"
+        ),
+        "{EMIT_HOST_PATH}: go authority sourced from extdeps (gunbc#4674 step 1: no local pin copy)"
+    );
+    assert!(
+        !surface_declares_data(&module, "emit_host_python_authority_pin")
+            && !surface_declares_data(&module, "emit_host_go_authority_pin")
+            && !surface_declares_data(&module, "emit_host_rust_authority_pin"),
+        "{EMIT_HOST_PATH}: local authority-pin copies must stay deleted (one fact, one place)"
     );
 }
 

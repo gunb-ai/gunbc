@@ -15,9 +15,12 @@ import v4.compiler.infer {
 import v4.std.algebra { Cons, Empty, fold_list, length }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
+  Absent,
   List,
   Map,
   Optional,
+  Present,
+  list_at_optional,
   list_nth,
   optional_absent,
   optional_present
@@ -96,7 +99,7 @@ import v4.std.node {
   well_formed,
   SyntheticOccurrence
 }
-import v4.std.node_query { find_arrow_body_child }
+import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
 import v4.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -1418,8 +1421,11 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
 // absence checks; owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands;
 // forbidden: permanent untagged Bool callee-admission predicates in 05_eval.
 fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
-  // Wave-1 Arrow is [domain, codomain, body] — reject any positional-3+ on the Arrow.
-  eval_child_absent(node: arrow, wanted: 3)
+  // Wave-1 Arrow is [domain, codomain, codomain] positional + named body — reject positional-3+.
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 3) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
@@ -1432,8 +1438,11 @@ fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
 fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      // Wave-1 Transform body is [operator, operand, operand] — reject operand index 3+.
-      eval_child_absent(node: body, wanted: 3)
+      // Wave-1 Transform body is [operator, operand, operand] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent => true
+      }
     _ => false
   }
 }
