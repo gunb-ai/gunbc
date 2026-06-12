@@ -18,7 +18,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  BindingId, Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   param_node_name_at, param_node_type_expr, param_node_default_value,
   NewlineIndex, authored_name_at, empty_intern_table,
@@ -63,7 +63,7 @@ import v2.std.core {
   CardOptional
 }
 
-import v2.compiler.infer_env { TypeEnv, TypeBinding, TypeDeclBinding, authored_name }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 import std.types { is_container_type, container_template_algebra }
@@ -303,10 +303,9 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: empty_map(), duplicate_decl_ids: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
-    variant_collisions: empty_map(),
     match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
@@ -320,7 +319,6 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
-    variant_collisions: empty_map(),
     match_bound_names: empty_map(),
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
