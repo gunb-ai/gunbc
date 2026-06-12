@@ -24,10 +24,20 @@ if [[ ! -x "$discover_bin" ]]; then
   exit 2
 fi
 
+# --max-resolves is the discovery latency ratchet: batched discovery merges
+# entry closures into collision-free merged compiles; a new decl-name collision
+# that forces an extra split fails here loudly (the binary prints the colliding
+# decl + files) instead of silently re-inflating CI wall-time. Fix is to rename
+# the colliding decl, never to raise this number for latency headroom.
+# Currently 2, not 1: `type OverflowDisposition` is declared in both
+# src/v4/std/integer.dag and src/v4/extdeps/languages/rust.dag, so entries that
+# pull in rust.dag resolve in their own group; unifying or renaming that pair is
+# a substrate modeling decision (MODELING.md M9), out of scope for the ratchet.
 "$discover_bin" \
   --source-root "$source_root" \
   --scan-dir "$scan_dir" \
   --emit-dag-manifest "$manifest" \
+  --max-resolves 2 \
   --format transport-tsv >"$transport_tsv"
 
 if git ls-files --error-unmatch "$manifest" >/dev/null 2>&1; then
