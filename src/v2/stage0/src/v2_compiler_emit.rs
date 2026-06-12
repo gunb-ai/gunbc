@@ -35,7 +35,7 @@ pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 pub use crate::v2_compiler_infer_env::authored_name;
-pub use crate::v2_compiler_infer_env::{TypeBinding, TypeDeclBinding, TypeEnv};
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -108,9 +108,9 @@ pub use crate::v2_std_core::{
     unaryop_operand, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
-    BindingId, Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
-    TextFile, UnaryOpKind, VarBindingKind,
+    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -568,9 +568,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
-            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -581,7 +578,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             signatures: v2_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
         }),
         locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        variant_collisions: v2_rt::rc_empty_map::<String, Rc<ErrorNode>>(),
         match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
         service_registry: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
@@ -595,7 +591,6 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
         locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        variant_collisions: v2_rt::rc_empty_map::<String, Rc<ErrorNode>>(),
         match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
