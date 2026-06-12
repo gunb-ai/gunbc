@@ -35,7 +35,7 @@ import v4.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -53,8 +53,8 @@ import v4.std.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.grounding {
   PerLanguageFactBundleEntry,
@@ -87,7 +87,7 @@ import v4.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -1295,7 +1295,7 @@ fn python_ident_lex_rule() -> LexRule {
 // 🟡 predicate dissolution — feature:python-wave2a-decimal-int-literal — bind TASKS.md T-6/T-7 —
 // dissolve-on: std LexCharClass carries NonZeroDigitChar (or full integerliteral LexPattern).
 // 🟡 gated — feature:python-wave2a-decimal-int-literal — ASCII 49–57 ladder until
-// `NonZeroDigitChar` lands on v4.std.lexing; consumed only by python_decimal_int_literal_pattern.
+// `NonZeroDigitChar` lands on v4.std.compilers.lexing; consumed only by python_decimal_int_literal_pattern.
 fn python_nonzero_digit_char_pattern() -> LexPattern {
   ChoicePattern {
     left: CharPattern { char: 49 },

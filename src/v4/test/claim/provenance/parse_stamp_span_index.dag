@@ -33,7 +33,7 @@ import v4.std.grammar {
   grammar_atom,
   grammar_empty_sync_tokens
 }
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.logic { Bool }
 import v4.std.node {
   Conj,

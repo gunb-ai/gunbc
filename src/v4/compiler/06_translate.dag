@@ -19,7 +19,7 @@ import v4.compiler.value_expression {
   value_expression_to_concrete_tokens
 }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetModel,
   bodied_arrow_scaffold_from_grammar_relation_row,
@@ -78,7 +78,7 @@ import v4.std.node {
   SyntheticOccurrence
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
@@ -152,7 +152,7 @@ import v4.std.target_model {
   target_collection_fallback_from_node,
   target_collection_shape_malformed_diagnostic
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetAtomRealization,
   source_atom_value_for_realization_row,
   target_atom_realization_lookup_in_catalog_node,

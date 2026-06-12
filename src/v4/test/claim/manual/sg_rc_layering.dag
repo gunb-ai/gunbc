@@ -18,7 +18,7 @@ import v4.extdeps.languages.rust {
   rust_sg2_type_expr_target_model,
   rust_type_expression_projection
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetModel,
   TargetReferenceLayer,
   TargetValueExpression,

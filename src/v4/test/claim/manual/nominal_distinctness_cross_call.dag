@@ -65,7 +65,7 @@ import v4.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,

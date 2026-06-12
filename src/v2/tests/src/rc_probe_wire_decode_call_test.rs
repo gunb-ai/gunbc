@@ -1,6 +1,6 @@
 //! ctrl#1476 B3-Gap2 — SG-RC probe wire-decode call-site arg fix + detection test.
 //!
-//! `target_reference_layer_probe_from_emitted_type` (src/v4/std/target_model.dag) decodes the
+//! `target_reference_layer_probe_from_emitted_type` (src/v4/std/compilers/target_model.dag) decodes the
 //! emitted type wire via `target_type_expr_emitted_wire_decode`, whose signature is
 //! `(node:, projection:)`. The original call passed the wrong named arg (`emitted:`) and omitted
 //! `projection:`, leaving `node` unbound at runtime ("undefined variable: node"). The bug was
@@ -12,7 +12,7 @@
 
 use crate::helpers::read_v2_file;
 
-const TARGET_MODEL_DAG: &str = "src/v4/std/target_model.dag";
+const TARGET_MODEL_DAG: &str = "src/v4/std/compilers/target_model.dag";
 
 /// Drop `//` comment lines so the guard checks live code, not the explanatory mark.
 fn live_source(source: &str) -> String {

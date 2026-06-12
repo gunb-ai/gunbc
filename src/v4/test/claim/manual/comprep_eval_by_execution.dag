@@ -45,7 +45,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.machine { Byte }
 import v4.std.node {
   Arrow,

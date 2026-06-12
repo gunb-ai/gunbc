@@ -65,7 +65,7 @@ import v4.std.integer { Int }
 import v4.std.machine { Byte }
 import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue, RuntimePrimitive }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.text { String }
 import v4.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
 import v4.std.verification {

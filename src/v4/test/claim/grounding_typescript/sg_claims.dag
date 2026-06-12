@@ -36,7 +36,7 @@ import v4.std.grounding {
 import v4.std.logic { Bool, bool_node }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   symbol_kernel_type_node,
   target_atom_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,

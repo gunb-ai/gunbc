@@ -17,7 +17,7 @@ TAG_RE = re.compile(r"^\s*data\s+(\w+)\s*:\s*Symbol\s*=\s*(\w+)\s*$", re.M)
 LOAD_BEARING_STD = {
     "std/node.dag",
     "std/verification.dag",
-    "std/target_model.dag",
+    "std/compilers/target_model.dag",
     "std/grammar.dag",
     "std/algebra.dag",
     "std/cardinality.dag",

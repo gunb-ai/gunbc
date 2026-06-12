@@ -34,7 +34,7 @@ import v4.std.model_core {
   PrimitiveFactBundle
 }
 import v4.std.node { Node, Symbol }
-import v4.std.target_model { FunctionBoundarySite, TargetModel }
+import v4.std.compilers.target_model { FunctionBoundarySite, TargetModel }
 import v4.std.verdict { VerdictTally }
 
 

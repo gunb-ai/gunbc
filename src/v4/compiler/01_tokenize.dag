@@ -16,7 +16,7 @@ import v4.std.algebra { Cons, Empty, ListTailResult, TailAbsent, TailFound, fold
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   BlockCommentTextChar,
   DigitChar,
   HexDigitChar,
