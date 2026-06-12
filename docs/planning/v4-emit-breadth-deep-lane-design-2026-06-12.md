@@ -52,7 +52,7 @@ Witnesses run 2026-06-12 on `target/release/gunbc run --source-root src/v4 --ent
 | `comprep_ts_bodied_emit_operand_swap_discriminates` | same | **false** | body perturbation red |
 | `comprep_ts_bodied_emit_catalog_minus_discriminates` | same | **false** | catalog perturbation red |
 | `comprep_ts_bodied_emit_missing_catalog_rejects` | same | **true** | fail-closed (missing catalog → Rejected) |
-| `comprep_eval_by_execution_keystone_holds` | `comprep_eval_by_execution.dag` | **false** | add body **eval** |
+| `comprep_eval_by_execution_keystone_holds` | `comprep_eval_by_execution.dag` | **false** | add body **eval** — **wave regression** (green at `f382a169b2`) |
 | `comprep_branch_eval_by_execution_keystone_holds` | `comprep_branch_eval_by_execution.dag` | **true** | Branch body **eval** |
 
 **Honest summary:** **signature-tier** TS emit is green by execution; **body-tier** add eval and
@@ -60,10 +60,13 @@ body-tier TS emit are **red-baseline** (not green) in this environment. Fail-clo
 operator-catalog refusal is green. Branch eval is green; Branch emit and round-trip tracked on
 §2 lane (#4741 sign stage).
 
-**Triage (snappy-crab, 2026-06-12):** `comprep_eval_by_execution_keystone_holds` false on main
-`b7411556ef` **and** at `bcff2ef95d` (pre-#4738) — **not** a regression from eval-dispatch
-(#4738). Pre-wave baseline (`f382a169b2`) classification pending; producer-rooted bodied path
-(operand_swap rides same path) treated as **red-baseline** until classification finalizes.
+**Triage (snappy-crab, 2026-06-12 — REVISED):** `comprep_eval_by_execution_keystone_holds` is
+**TRUE** at pre-wave baseline `f382a169b2` and **FALSE** from (at latest) `bcff2ef95d` — a
+**today-wave regression** (one of 8 merge-wave commits), **not** pre-existing baseline red. Do
+**not** ledger as known-false. Label: *wave regression, bisect in progress; prime suspect
+#4737 channel-suppression semantics change (witness may encode superseded eager semantics)*.
+`comprep_ts_bodied_emit_*` classification **unaffected** — red before the wave (standing
+memory).
 
 ### 2.2 Which source forms emit today (execution truth)
 
