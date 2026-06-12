@@ -1423,8 +1423,9 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternResolved { node: resolved_scrut_node } =>
           let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
           let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
+          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
-          if optional_cardinality_subject && (variant_name == "Present" || variant_name == "Absent") {
+          if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }
           } else if witness_container_subject {
             Present { value: "Witness" }
@@ -5750,7 +5751,7 @@ fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<Int, TypeBinding>
     let with_existing = map_merge(acc, env.carrier_bindings)
     fold(env.bindings |> map_values, init: with_existing, f: (bacc, binding) =>
       match binding.resolved.binding_id {
-        Present { value: binding_id } => map_insert(bacc, binding_id, binding)
+        Present { value: binding_id } => map_insert(bacc, binding_id.value, binding)
         Absent => bacc
       }
     )

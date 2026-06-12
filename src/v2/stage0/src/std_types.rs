@@ -366,7 +366,7 @@ pub enum CredentialFlow {
     },
     WorkloadIdentity {
         audience: NonEmptyStr,
-        service_account: Option<ServiceAccountEmail>,
+        service_account: Box<Option<ServiceAccountEmail>>,
         scopes: Rc<Vec<String>>,
     },
     InteractiveAuth {
@@ -517,7 +517,7 @@ pub enum AuthScheme {
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<Timestamp>,
+    pub expires_at: Box<Option<Timestamp>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
