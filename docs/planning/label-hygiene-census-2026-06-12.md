@@ -125,8 +125,8 @@ are semantic, not cosmetic (content hashes / witness expectations may move).
 
 | Anchor | State | Live citers | Verdict |
 |---|---|---|---|
-| `gunbc#4674` (T-22 host-emission TargetModel dissolution) | **CLOSED 2026-06-12, dissolve-on NOT landed** (step 1 landed via #4718) | `emit_host.dag:216,289`; `tools/emit_host_runner/src/lib.rs:263,283` (2 marks); DORMANT notes in `comprep_b3_ts_descriptor_node_run.dag:8` **and `sg0_census_test.rs:347`** (the latter missed by the first census pass) | **Dead bind — repointed by Wave-0 (PR #4752)** to tracking issue **#4750**, which supersedes #4674 and restates the dissolve-on verbatim. |
-| `PR #3971` (merged) | MERGED; its cited `design-rust-dag-leafmodel-instantiation.md` is no longer in the repo; named owner session archived | `test/claim/language_model/rust.dag:154` — `bind PR #3971 §5 …` | Dead bind — dissolve-on confirmed un-landed (no explicit `-C overflow-checks` runner support exists). **Repointed by Wave-0 (PR #4752)** to tracking issue **#4751**. |
+| `gunbc#4674` (T-22 host-emission TargetModel dissolution) | **CLOSED 2026-06-12, dissolve-on NOT landed** (step 1 landed via #4718) | `emit_host.dag:216,289`; `tools/emit_host_runner/src/lib.rs:263,283` (2 marks); DORMANT notes in `comprep_b3_ts_descriptor_node_run.dag:8` **and `sg0_census_test.rs:347`** (the latter missed by the first census pass) | **Dead bind — repoint in flight (PR #4752, not yet merged)** to tracking issue **#4750**, which supersedes #4674 and restates the dissolve-on verbatim. Until #4752 lands, the inline marks still cite #4674 and remain the authority. |
+| `PR #3971` (merged) | MERGED; its cited `design-rust-dag-leafmodel-instantiation.md` is no longer in the repo; named owner session archived | `test/claim/language_model/rust.dag:154` — `bind PR #3971 §5 …` | Dead bind — dissolve-on confirmed un-landed (no explicit `-C overflow-checks` runner support exists). **Repoint in flight (PR #4752, not yet merged)** to tracking issue **#4751**. |
 | `#4553` (×111), `#4543`, `#4540`, `#4252`, `#4046`, `#3961`, `#3468`, `#4410` | all MERGED/CLOSED | various | **Fine as-is** — these are genealogy cites ("Consolidation #4553", "relocated by PR #4543"), recording provenance, not live binds. No action. |
 
 The distinction that matters: `bind:` anchors assert "this mark dissolves when that
@@ -203,7 +203,7 @@ the only things that still wait are the specific *files* open PRs are touching,
 and the few families that need a naming decision first. Everything else
 dispatches now, in parallel (the families are mostly file-disjoint).
 
-**Wave 0 — dead binds: DONE (PR #4752,** issues #4750/#4751).
+**Wave 0 — dead binds: in flight (PR #4752,** awaiting merge; issues #4750/#4751).
 
 **F1 — dispatch immediately, parallel lanes, no inter-conflicts:**
 
