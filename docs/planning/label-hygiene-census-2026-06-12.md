@@ -195,30 +195,62 @@ claims). Two consequences:
    That's a review-convention note to the §2/§4 lanes, not a code change.
 2. **Bulk renames sequence after the §2 wave-2 and §4c merges settle.**
 
-## Proposed cleanup sequence (follow-up PRs, none of it in this one)
+## ASAP cleanup plan (operator round 2 — rename/delete everything, soonest safe order)
 
-1. **Wave 0 — dead binds (small, urgent): EXECUTED as PR #4752.** The four
-   `bind: gunbc#4674` marks (+ two DORMANT notes) repointed to tracking issue
-   #4750; the `bind PR #3971` mark repointed to #4751. Comment-only, no
-   identifier changes, no collisions.
-2. **Wave 1 — TASKS.md cite repointing (comments only):** rewrite
-   `bind TASKS.md T-NN` → bind to dashboard work item / open issue, or where the
-   dissolve-on condition is self-contained, drop the ledger cite and keep the
-   condition (per INVARIANTS.md "ledger is retired" precedent). Includes the two
-   runtime string literals in `v4_test_bootstrap_infra_closeout_test.rs` (those
-   need their comparison sites updated together). Comment-only → low collision
-   risk; can proceed before §2 settles, file-batched to dodge #4741's two extdeps
-   files.
-3. **Wave 2 — file renames** (23 files + `fixtures/v4-mvp1/`), each with its
-   couplings in the same PR (ci-floor probe pins, `ci_affected_components` path
-   prefix, `pipeline.rs` fixture join). After #4741/#4747 merge.
-4. **Wave 3 — identifier/witness/atom renames** (650 + 241 distinct names, incl.
-   `^dag_mvp1_*` atoms and feature tags). Largest and most semantic; needs its own
-   plan per directory, suite-delta=0 discipline, and is the right time to rename
-   feature tags (`T22-EVAL-CACHE-HASHES` → descriptive). Atoms last — they are
-   values, and witness expectations move with them.
+Operator directive 2026-06-12 (round 2): rename/delete **all** catalogued
+patterns ASAP. This supersedes the earlier "park until §2/§4 settle" framing —
+the only things that still wait are the specific *files* open PRs are touching,
+and the few families that need a naming decision first. Everything else
+dispatches now, in parallel (the families are mostly file-disjoint).
 
-Naming direction for waves 2–4: name by **what the artifact is**, not when it was
+**Wave 0 — dead binds: DONE (PR #4752,** issues #4750/#4751).
+
+**F1 — dispatch immediately, parallel lanes, no inter-conflicts:**
+
+- **F1a — comment-only jargon rewrite** (biggest single lane): TASKS.md cite
+  repointing (119 marks: bind → dashboard node / open issue, or self-contained
+  dissolve-on), plus the comment-only families (W1/W2/W3, Tranche-N, Lane/Theme,
+  T6/B3 phase prose). Includes the two runtime string literals in
+  `v4_test_bootstrap_infra_closeout_test.rs` (update assertion sites together).
+  File-batched to dodge #4741's two extdeps files until it merges.
+- **F1b — pilot crate disposition:** decide delete-vs-rename for
+  `src/v3/grounding_pilot/` ("T-Ground-Pilot toy probe" by its own header). If
+  the probe's question (inhabitance-search reproduces table-lookup routing) is
+  answered, retire the crate and its mirror-validation tests; else rename to
+  what it validates. Self-contained, zero collisions.
+- **F1c — phase1 gates:** rename `scripts/v4-phase1-nat-semiring-*` + their
+  `V4_PHASE1_NAT_SEMIRING_*` env vars + consumers in one PR per gate.
+- **F1d — ci-floor probe scripts:** `v4-m{0,1}-*-emit-probe.sh` → descriptive
+  names, with ci.yml wiring in the same PR.
+- **F1e — naming-table sign-off (blocking F3 only):** one short operator/parent
+  review fixing replacement vocabulary for the decision-needing families:
+  `wave[0-9]` tiers (proposal: coverage-descriptive — `_core`, `_literals`, …),
+  `sg[0-9]` (expansion not greppable — needs definition), `rung*` (ladder
+  vocabulary is live in ROADMAP — bless it or rename it everywhere, not just in
+  ids). Without this, F3 renames would mint a second generation of guesses.
+
+**F2 — file renames (the moment #4741/#4747 merge):** 23+ jargon-named claim/
+fixture files + `fixtures/v4-mvp1/` directory, each with its couplings in the
+same PR (ci-floor probe pins, `ci_affected_components:133` path prefix,
+`pipeline.rs:868` fixture join). #4741/#4747 are near bar, so this is days not
+weeks; their five new `comprep_*`/`mvp1_*` files join the rename list.
+
+**F3 — identifier/witness renames (after F1e lands):** ~1,200 distinct names
+across the mvp1/mvp2/comprep/b3/pr3/wave/sg/phase1 families, batched per
+directory/file-cluster, suite-delta=0 per PR, repoint-then-delete in the same
+PR (Jun-11 §0 rule). Feature tags rename here too
+(`feature:T22-EVAL-CACHE-HASHES` → `feature:eval-cache-content-hashes`).
+
+**F4 — atom renames, last:** `^dag_mvp1_*` and friends. Atoms are values —
+content hashes and witness expectations move — so this batch carries the most
+verification weight and goes after the cheap mass is gone.
+
+**Backstop so the family never regrows:** once F2/F3 land, add a tiny
+naming-hygiene check (grep gate over the catalogue's patterns for *new*
+occurrences, ratcheted to current count → 0). Not before — a gate now would
+fight the in-flight PRs.
+
+Naming direction everywhere: name by **what the artifact is**, not when it was
 scheduled — `add_translate_rust.dag` not `mvp1_rust_add_translate.dag`;
 `eval_by_execution_add.dag` not `comprep_eval_by_execution.dag`;
-`feature:eval-cache-content-hashes` not `feature:T22-EVAL-CACHE-HASHES`.
+`runtime_value_five_bytes` not `MVP2_RUNTIME_VALUE_FIVE_BYTES`.
