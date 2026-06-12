@@ -1,8 +1,8 @@
 // src/v4/program.dag
 // Scope: §4 first runnable v4 program — pick_if Branch body composed with effect_io handlers.
-// Status: minimal runnable entry + Bool witness for `dag run --entry src/v4/program.dag --claim-run`.
-//   Branch then-arm yields ReadResource→WriteResource through inject-per-run handler binding;
-//   §2 pick_if arrow body executes in the same program context (handlers bound at run start).
+// Status: runnable entry + Bool witness for `dag run --entry src/v4/program.dag --claim-run`.
+//   Spine: pick_if Branch then-arm yields ReadResource→WriteResource (handlers bound at run start).
+//   Run loop: runtime_run schedules kw_true → effect_io_roundtrip (wave-1 sequential, §4c).
 
 module v4.program
 
@@ -39,7 +39,8 @@ import v4.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v4.std.algebra { Empty }
+import v4.std.algebra { Empty, length }
+import v4.std.dependency { DataDependsOn, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.machine { Byte }
 import v4.std.node {
@@ -74,6 +75,11 @@ import v4.std.runtime {
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v4.workflow.runtime_run {
+  RuntimeRunBlocked,
+  RuntimeRunComplete,
+  runtime_run
+}
 
 fn program_atom(s: Symbol) -> Node {
   Node {
@@ -419,9 +425,42 @@ fn program_pick_if_arrow_holds() -> Bool {
   }
 }
 
-// Main witness: Branch+effect_io composition and §2 pick_if body both run green.
+// §4c: runtime_run loop — scheduler orders kw_true then effect_io_roundtrip; IO step uses handler-bound context.
+data program_run_branch_gate: Node = program_kw_true()
+
+data program_run_io_step: Node = program_effect_io_roundtrip
+
+data program_run_branch_to_io: DependencyView = DependencyView {
+  source: program_run_branch_gate,
+  dependent: program_run_io_step,
+  kind: DataDependsOn,
+  usage_site: program_run_io_step
+}
+
+data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_step]
+
+data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
+
+fn program_runtime_run_holds() -> Bool {
+  match runtime_run(
+    nodes: program_run_nodes,
+    dependencies: program_run_dependencies,
+    tree: program_tree(root: program_effect_io_roundtrip),
+    context: program_context_with_effect_io()
+  ) {
+    RuntimeRunComplete { log: log, scheduled: scheduled } =>
+      length(xs: log.entries) == 2
+        && length(xs: scheduled) == 2
+        && program_branch_effect_io_holds()
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+// Main witness: spine Branch+IO, §2 pick_if body, and runtime_run loop composition.
 fn program_runs_holds() -> Bool {
-  program_branch_effect_io_holds() && program_pick_if_arrow_holds()
+  program_branch_effect_io_holds()
+    && program_pick_if_arrow_holds()
+    && program_runtime_run_holds()
 }
 
 data unified_claim_program_runs: UnifiedTestClaim = BoolWitnessClaim {
