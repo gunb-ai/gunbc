@@ -5,7 +5,7 @@
 //! `nat_semiring_rung34_eval.dag`) + executable boundary `tools/emit_host_runner`.
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
-//! **TASKS.md** T-38 / rung-4 host receipt path.
+//! gunbc#4765 / rung-4 host receipt path.
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` land in the same PR. **This PR (+1 census path):**
@@ -22,16 +22,16 @@
 //! Tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator (rust + python).
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
-//! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
+//! `scripts/v4-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go host
 //! execution for six nat-semiring law-gated fixtures, followed by law-derived five-byte MVP-2
 //! stdout parity via `emit_host_bridge` (not a `.dag` TestClaim until emit pipeline wires law
 //! subjects into host transport).
 //! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
-//! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
+//! claim parse surface + `scripts/v4-nat-semiring-go-compiler-slice-gate.sh` (structured
 //! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
 //! **PR #4285 Go L1 strict setup (+0 SG-0 paths):** same-path assertion-list expansion pins
-//! `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` fail-closed setup behavior when `go` /
+//! `V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT=1` fail-closed setup behavior when `go` /
 //! `gofmt` are absent. Explicit P5 deferral remains ROADMAP T-PB-B /
 //! `pb_rust_tests_outside_residual_zero`; retire this host-process setup probe when `.dag`
 //! `TestClaim` execution or a generated harness owns strict child-gate toolchain setup receipts.
@@ -40,7 +40,7 @@
 //! deferral remains T-PB-B / T-22: retire this host parse-surface probe when `.dag` TestClaim
 //! execution or a generated harness owns the L1 Python runtime fixture coverage roster.
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
-//! **TASKS.md** T-22 T-38; delete these hand-authored per-target snippets when generated
+//! gunbc#4757/gunbc#4765; delete these hand-authored per-target snippets when generated
 //! `TestClaimRun` host transport materializes the six rung-5 law subjects for Rust/Python/Go.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
@@ -696,7 +696,7 @@ fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row(
     );
     assert!(
         NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG.contains(
-            "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+            "scripts/v4-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
         ),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: receipt schema must match host transport"
     );
@@ -756,12 +756,12 @@ fn v4_nat_semiring_l1_go_compiler_slice_strict_missing_go_fails_closed() {
     }
 
     let output = std::process::Command::new("/bin/bash")
-        .arg("scripts/v4-phase1-nat-semiring-rung-gate.sh")
+        .arg("scripts/v4-nat-semiring-rung-gate.sh")
         .current_dir(&repo_root)
         .env("PATH", &fake_bin)
         .env("V2_COMPILER", "/bin/true")
-        .env("V4_PHASE1_NAT_SEMIRING_STRICT", "0")
-        .env("V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT", "1")
+        .env("V4_NAT_SEMIRING_RUNG_GATE_STRICT", "0")
+        .env("V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT", "1")
         .output()
         .expect("run nat_semiring rung gate");
     let stderr = String::from_utf8_lossy(&output.stderr);

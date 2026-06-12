@@ -2,8 +2,8 @@
 // Scope: L1 Go compiler-slice compile receipt for fixture=phase1/nat_semiring (release-minimum).
 // Status: substrate claim labels (correctness-ladder L1 vocabulary; slice_id
 //   ^go_l1_nat_semiring_rung2 per docs/planning/v4-go-l1-compiler-slice-compile-worksheet-2026-06-01.md).
-//   Executable host transport is scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh
-//   (chained from v4-phase1-nat-semiring-rung-gate.sh after R2-go-compile) until T-22 eval
+//   Executable host transport is scripts/v4-nat-semiring-go-compiler-slice-gate.sh
+//   (chained from v4-nat-semiring-rung-gate.sh after R2-go-compile) until T-22 eval
 //   dispatches TestClaimRun host evidence on emitted artifacts.
 //   Authority: Go RCA — bounded emit subset → go build PASS/FAIL JSON receipt (not L2/L3/L4).
 
@@ -26,9 +26,9 @@ import v4.std.verification {
 
 // Single authority for slice_id (worksheet + host JSON + structural subject must agree).
 // Host transport + JSON receipt schema (worksheet §10 item 3); not the rung-gate R2 cell.
-data go_l1_nat_semiring_rung2_l1_host_gate: String = "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh"
+data go_l1_nat_semiring_rung2_l1_host_gate: String = "scripts/v4-nat-semiring-go-compiler-slice-gate.sh"
 
-data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v4-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
 
 // Receipt coordinate edge label on the Conj subject carrier.
 // Ladder predicate id R-L1-go-compiler-slice-compile is label/host-only (hyphenated §2.4

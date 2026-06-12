@@ -1,5 +1,5 @@
 //! **T-15** bin/main.dag execution + self-host fixed-point validation harness
-//! (`src/v4/TASKS.md` §T-15; Lane C / operator-directive 2026-05-29).
+//! (operator-directive 2026-05-29).
 //!
 //! Fixed-point bar: **stage1 emitted == stage2 emitted** (`FixptStage1Stage2` in
 //! `workflow/bootstrap.dag`), **not** stage0==stage1 (stage0 is v2-emission-style).
@@ -187,7 +187,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// TASKS.md §T-15 CI gate name: `cargo test t_15_self_host_fixed_point`.
+/// CI gate name: `cargo test t_15_self_host_fixed_point`.
 #[test]
 fn t_15_self_host_fixed_point() {
     assert_parseable(MAIN_DAG, MAIN_DAG_PATH);

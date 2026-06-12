@@ -715,14 +715,16 @@ fn int_literal_ranges_follow_type_aliases() {
 }
 
 #[test]
-fn rust_pilot_primitives_integer_witnesses_are_unique() {
+fn rust_grounding_primitives_integer_witnesses_are_unique() {
     let dag = v3_compiler::Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
         "bootstrap diagnostics: {:?}",
         dag.diagnostics()
     );
-    let pilot = dag.rust_pilot_primitives().expect("rust_pilot_primitives");
+    let pilot = dag
+        .rust_grounding_primitives()
+        .expect("rust_grounding_primitives");
     let ValueBody::List(elements) = pilot.value_body.as_ref().expect("value body") else {
         panic!("expected ValueBody::List");
     };
@@ -783,7 +785,7 @@ fn int_literal_range_routing_matches_std_type_witness() {
     let dag = cached_compile_to_dag("data x: UInt8 = 5", "int_literal_witness_u8.v3");
     let uint8 = dag.declaration_by_name("UInt8").expect("UInt8").id;
     let std_witness = integer_literal_routing_witness(&dag, uint8).expect("UInt8 routing witness");
-    let pilot = dag.rust_pilot_primitives().expect("pilot");
+    let pilot = dag.rust_grounding_primitives().expect("pilot");
     let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list") else {
         panic!("expected list");
     };

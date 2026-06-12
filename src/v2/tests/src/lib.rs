@@ -12,6 +12,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod a4_opacity;
+#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod bootstrap;
@@ -28,6 +30,8 @@ mod effects;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
+mod fold_list_generic_instantiation_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod infer_semantics;
@@ -39,6 +43,8 @@ mod interp_stats_test;
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
+#[cfg(test)]
+mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
@@ -59,6 +65,10 @@ mod render_repeat_test;
 mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
+#[cfg(test)]
+mod target_model_runtime_import_repro;
+#[cfg(test)]
+mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v2_compiler_lib_test;
 #[cfg(test)]

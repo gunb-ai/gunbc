@@ -2775,7 +2775,16 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
         if is_optional {
             with_required_cardinality(n.clone())
         } else {
-            n.clone()
+            if ((n.name.clone().as_str() == "Optional".to_string().as_str())
+                && ((n.children.clone().len() as i64) == 1))
+            {
+                match n.children.clone().first().cloned() {
+                    Some(inner) => inner.clone(),
+                    None => n.clone(),
+                }
+            } else {
+                n.clone()
+            }
         }
     }
 }

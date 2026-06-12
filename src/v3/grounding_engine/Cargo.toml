@@ -6,8 +6,8 @@ license.workspace = true
 publish = false
 
 # T-Ground-Engine: Phase 1 type-structure validation + Phase 2 enumeration of
-# `rust_pilot_primitives` list bodies via v3-compiler's Dag accessor.
+# `rust_grounding_primitives` list bodies via v3-compiler's Dag accessor.
 
 [dependencies]
 v3-compiler = { path = "../compiler" }
-v3-grounding-pilot = { path = "../grounding_pilot" }
+v3-grounding-inhabitance-mirror = { path = "../grounding_inhabitance_mirror" }

@@ -1,7 +1,7 @@
 //! Hermetic pass/fail fixtures over live `v2-compiler compile` (candidate-B bridge transport).
 //!
 //! Requires `gunbc` on PATH or at `target/{debug,release}/gunbc` relative to workspace root,
-//! or `V2_COMPILER` env override (same contract as `.github/ci-floor/v4-m1-rust-emit-probe.sh`).
+//! or `V2_COMPILER` env override (same contract as `.github/ci-floor/v4-rust-full-tree-emit-probe.sh`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
