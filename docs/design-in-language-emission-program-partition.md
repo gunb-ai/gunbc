@@ -51,6 +51,9 @@ target dispatch to an enum roster. v4's derived-homomorphism form keeps **one** 
 | `ChangedSubgraphFrontier` | `v4/lens/affected_set.dag` | **diff-driven** subgraph (incremental re-exec), orthogonal axis |
 | Eval subgraph MVP | `eval_runtime_mvp.dag` | arbitrary `Node` as eval root — proves runtime can target a subgraph |
 | `ProjectionKind::EmitProjection` | `src/v4/std/projection.dag:15` | projection-as-data names emit; no partition carrier yet |
+| `TargetTypeExpressionProjection` rows | `src/v4/std/compilers/target_model.dag` | per-language type-tier spelling; pattern for static projectability checks |
+| Cross-target coercion fold | `mvp_int_cross_target_coercion.dag` | `find_witness` over declared inhabitants across targets — Wave D seam (§6.4) |
+| Source-as-data pipeline bridge | `comprep_eval_by_execution.dag` | sanctioned compile-time body/subtree acquisition — no runtime reflection (§4.6) |
 
 **Substrate target named (P1):** segment selection lands in new `ProgramSegment` /
 `ProgramPartition` carriers (this PR). **No** new emit stage, **no** per-target `emit_<lang>`
@@ -199,7 +202,91 @@ fn main_emission_receipt() -> Outcome<TargetSource> {
 roster. If operators want the spelling, a **fixture-local** alias in `extdeps/languages/rust.dag`
 is acceptable (one file per target, cost-of-change = 1).
 
-### 4.5 Relationship to other "subgraph" axes
+### 4.5 Typed-projection sugar — `emit<rust>(segment)` (optional static layer)
+
+The value-level primitive (`emit_for_target(program, segment, target, boundary)`) is the
+**substrate authority** (P2). Operator steer (2026-06-12): the ergonomic surface is
+**probably like `emit<rust>` or something like a projection** — a type-parameterized sugar
+layer *over* the value primitive, not a replacement for it.
+
+**Lowering (designed shape):**
+
+```
+emit<TargetTag>(program, segment, boundary)
+  = emit_for_target(
+      program: program,
+      segment: segment,
+      target: target_model_for_tag<TargetTag>(),   // static: resolves to extdeps row
+      boundary: boundary
+    )
+```
+
+`TargetTag` is a **closed type-level index** into the landed `TargetModel` rows
+(`Rust`, `TypeScript`, `Python`, …) — the same closed-set discipline as
+`TargetTypeExpressionProjection` per language (M4). It is **not** a new per-target emitter;
+it is compile-time selection of which `TargetModel` **value** the value primitive receives.
+
+**STATIC PROJECTABILITY — the payoff to design through.** With the target fixed at the type
+parameter, the compiler can check **before emission** whether every connective in the
+segment's subtree is covered by that target's declared rows (grammar-inverse productions,
+value-expression projection arms, operator-realization catalog entries). Failures surface as
+**typed compile-time diagnostics** — "this `Branch` arm has no `TargetValueExpressionProjection`
+row under `Rust`" — rather than only the runtime `partition_facts_miss` / translate rejections
+the value primitive discovers after partition resolution. This mirrors the existing
+projection family:
+
+| Layer | Carrier | Check timing | Example |
+|---|---|---|---|
+| Type tier | `TargetTypeExpressionProjection` | compile / infer boundary | `translate_type_expression_project` row miss |
+| Value tier | `TargetValueExpressionProjection` | compile when segment + target tag known | §4.5 static projectability |
+| Emit partition | `ProgramSegment` + `TargetModel` value | runtime (value primitive) | `partition_facts_miss`, translate `Rejected` |
+
+`ProjectionKind::EmitProjection` (`projection.dag:15`) names the artifact class; the static
+sugar attaches an **`EmitProjection` witness** when `emit<TargetTag>(segment)` is
+well-projected — the segment's connectives ⊆ target rows, analogous to how type-expr
+projection rows gate type-tier emission today.
+
+**Both layers, one engine (Q-EP4 default):** targets-as-**values** (this doc's primitive —
+dynamic `TargetModel` argument, can compute partition at runtime) and targets-as-**types**
+(static sugar — cannot compute partition, but *can* reject ill-projected segments before
+`emit` runs). The static layer does not reopen the v2 per-target function roster; it is
+generic sugar parameterized by a closed `TargetTag` coproduct, lowering to the same
+`emit_for_target`. Escalate to operator if a consumer needs *only* the static layer with
+no value fallback.
+
+### 4.6 Segment denotation for self-referential programs (reflection ban)
+
+§4.4's `dag_tree() -> InferredTree` — "the caller's program value" — is correct for
+**programs over explicit trees** (fixtures, source-as-data bridges, hand-authored
+`InferredTree` data items). It is **insufficient** for the operator's actual sketch: a
+`.dag` module that emits **parts of itself** (self-host slice emit, Wave C). That scenario
+must not smuggle in **runtime reflection**.
+
+**Ban (ratified 2026-06-07; `design-lens-subject-supply.md` R1, THESIS read-axis /
+`programmatic-access-single-roof-2026-06-07`):** dynamic name-keyed lookup over the loaded
+module table, `body_of("fn_name")` at runtime, or any primitive that discovers structure
+by executing over live program state. The read axis is **compile-time sugar only** —
+static expansion the compiler derives from declarations it owns.
+
+**Constraint (design now, mechanism may defer):** a `.dag` module denotes its own subtree
+as a `ProgramSegment` only through **compile-time staging** — never runtime introspection:
+
+| Sanctioned denotation | Shape | Example |
+|---|---|---|
+| **Static path literal** | `SubtreeAtPath { path: Path { steps: [^stage, ^body, ...] } }` authored at compile time; compiler resolves against the module's own lowered `Node` | `program_segment_subtree_at_path(path: self_stage_body_path)` where `self_stage_body_path` is a `data` item fixed when the module is compiled |
+| **Source-as-data recompilation** | Hold module (or slice) source as `String` data; run `tokenize → parse → … → infer` inside `.dag` (COMPREP / `comprep_source_bridged_*` pattern) | Self-host fixed-point compares *staged* source text, not runtime module table |
+| **Quote / staging cell (deferred)** | A compile-time `StagingCell<Node>` (or equivalent) the compiler fills with the module's own lowered subtree before user code runs — **not** a runtime `get_current_module()` | Wave C consumer; substrate extension gated on operator-STOP |
+
+**Forbidden denotation (explicit):** `dag_tree()` implemented as "return the module I'm
+currently executing" via host injection, runtime `Node` enumeration, or reflection over
+eval context. Those shapes invite a reflection-shaped consumer and violate the 2026-06-07
+ruling even if they typecheck.
+
+**Receipt for Wave C:** self-host slice emit must cite *which* sanctioned denotation it uses
+(static path `data` item, or source-as-data recompile of the stage file) in the same PR that
+wires `SubtreeAtPath` against the compiler's own DAG — silence is not an option.
+
+### 4.7 Relationship to other "subgraph" axes
 
 | Mechanism | Question it answers | Orthogonal to partition? |
 |---|---|---|
@@ -242,6 +329,35 @@ The existing `emit` composition (`serialize_target ∘ translate`) is unchanged 
 
 - Emit one compiler stage DAG (`05_emit.dag` root only) inside the fixed-point loop
   (`design-self-host-fixed-point.md`) using `SubtreeAtPath`.
+- **Denotation obligation (§4.6):** cite static path `data` or source-as-data recompile —
+  no runtime `dag_tree()` reflection.
+
+### 6.4 Wave D — multi-target partition (named, deferred)
+
+**Operator demo scenario:** one system with **parts in Rust and parts in TypeScript** —
+not two independent emits, but a single partitioned program where each slice carries its
+own `TargetModel` and the slices **link** at the boundary. Single-target partition (this
+doc's `ProgramPartition`) remains the substrate; Wave D designs the **seams**, not the
+linkage rows themselves.
+
+**Seam 1 — boundary meets cross-target coercion.** When `PartitionBoundaryPolicy` encounters
+a free reference at the segment edge, the resolver must consult the existing cross-target
+coercion machinery (`mvp_int_cross_target_coercion.dag` — `find_witness` over declared
+inhabitants, fail-closed narrowing, faithful widening) rather than inventing a parallel
+boundary adapter. Question (deferred): does `partition_boundary_free_ref` refine into a
+**coercion witness required** diagnostic when the escaping ref targets another target's
+inhabitant class, vs a hard reject?
+
+**Seam 2 — linkage realization rows (named, not designed here).** How the TypeScript slice
+**calls** the Rust slice is target-model data: FFI symbol, subprocess spawn, wasm import,
+etc. — authored in `extdeps/languages/` as `LinkageRealization` rows (name only; schema
+deferred). Wave D consumer lands when a multi-target fixture claim needs it; until then,
+single-target partition + per-slice `emit_for_target` is the honest capability statement.
+
+**Existing half:** cross-target coercion claims (`mvp_int_cross_target_coercion.dag`) prove
+the coercion fold works across `rust` / `python` inhabitant rows. **Missing half:** partition
+selects the slice, linkage rows declare how slices compose, coercion fold bridges types at
+the seam.
 
 **Explicit non-consumer:** CLI / artifact-plan drivers. They may *call* the same API eventually,
 but CLI is not the design center — in-language callability is.
@@ -253,6 +369,9 @@ but CLI is not the design center — in-language callability is.
 | Q-EP1 | Containment evidence for `SubtreeRoot`: syntactic `content_hash` path witness vs nominal declaration identity (#4581)? | Path witness first (reuses `subterm_at` machinery) |
 | Q-EP2 | Should `AmbientContextAvailable` auto-include sibling declarations or only imports? | Only declarations reachable via `DependencyView` from segment root |
 | Q-EP3 | Unify `SectionRef` and `ProgramSegment` into one substrate coproduct? | **No** — lens section carries enforcement config; emit segment is translation-shaped. Adapter stays in compiler. |
+| Q-EP4 | Targets-as-types (`emit<Rust>(segment)` static sugar) vs targets-as-values (`emit_for_target(..., target_model, ...)`) — one layer or both? | **Both** — value primitive is substrate authority; typed sugar lowers to it and adds static projectability (§4.5). Escalate if a consumer needs static-only with no value fallback. |
+| Q-EP5 | Self-referential denotation: static path `data` vs source-as-data recompile vs `StagingCell` quote — which lands first for Wave C? | Static path `data` first (no new substrate); `StagingCell` is operator-STOP until consumer names it. |
+| Q-EP6 | Wave D: does boundary free-ref become "coercion witness required" or hard reject when cross-target? | Defer to Wave D consumer; default hard reject until coercion seam is modeled. |
 
 ## 8. Non-goals
 
@@ -261,6 +380,9 @@ but CLI is not the design center — in-language callability is.
 - No change to `translate` / `serialize_target` internals in this design wave.
 - No host-transport work (`design-omni-emission-transport.md` is orthogonal).
 - No closure implementation in the scaffold PR — types + root resolution + fail-cl symbols only.
+- No `emit<TargetTag>` static sugar implementation in this wave — §4.5 is design only.
+- No `LinkageRealization` rows or multi-target fixture in this wave — Wave D named only (§6.4).
+- No runtime self-referential `dag_tree()` — §4.6 constraint is normative; mechanism deferred.
 
 ## 9. Receipt checklist (this session)
 
