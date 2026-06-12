@@ -253,11 +253,10 @@ pub fn resolve_entry_graph(
     String,
 > {
     let index = build_module_index(source_roots);
-    resolve_entry_graph_with_index(source_roots, &index, entry_file)
+    resolve_entry_graph_with_index(&index, entry_file)
 }
 
 fn resolve_entry_graph_with_index(
-    source_roots: &[String],
     index: &ModuleSourceIndex,
     entry_file: &str,
 ) -> Result<
@@ -267,7 +266,6 @@ fn resolve_entry_graph_with_index(
     ),
     String,
 > {
-    let _ = source_roots;
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
     resolved_graph_from_sources(sources)
 }
