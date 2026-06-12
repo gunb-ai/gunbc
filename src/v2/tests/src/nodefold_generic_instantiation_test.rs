@@ -89,3 +89,32 @@ fn v4_chained_generic_field_access_compiles_and_runs() {
         ),
     }
 }
+
+#[test]
+fn debug_nodefold_expr_errors_in_graph() {
+    use v2_compiler::v2_std_core::{ExprData, Node, authored_name_at};
+    fn walk(n: &Rc<Node>, path: &str, si: &std::collections::HashMap<String, Rc<v2_compiler::v2_std_core::NewlineIndex>>, out: &mut Vec<String>) {
+        if let ExprData::ExprError { message, .. } = &*n.expr_data {
+            out.push(format!("{path}: {message}"));
+        }
+        if let Some(body) = &n.body {
+            walk(body, &format!("{path}.body"), si, out);
+        }
+        for (i, c) in n.children.iter().enumerate() {
+            walk(c, &format!("{path}.children[{i}]"), si, out);
+        }
+    }
+    let resolved = compile_to_resolved(Rc::new(cert_sources(NODEFOLD_CERT)));
+    let graph = resolved.graph.as_ref().expect("graph");
+    let si = &*resolved.source_indices;
+    let mut errors = Vec::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(Rc::new(si.clone()), item.clone());
+            if let Some(body) = &item.body {
+                walk(body, &name, si, &mut errors);
+            }
+        }
+    }
+    assert!(errors.is_empty(), "ExprError nodes in graph: {errors:?}");
+}

@@ -5143,13 +5143,13 @@ pub fn infer_record_lit(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let struct_fields = match record_lit_fields_from_expected(
+        let struct_fields = match record_lit_instantiated_fields(
             type_name.clone(),
             expected.clone(),
             scope.clone(),
         ) {
             Some(fields) => fields.clone(),
-            None => match record_lit_instantiated_fields(
+            None => match record_lit_fields_from_expected(
                 type_name.clone(),
                 expected.clone(),
                 scope.clone(),

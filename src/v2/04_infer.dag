@@ -643,7 +643,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                     Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: child_type_node(ch: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
+                      inferred: Present { value: Resolved { node: substitute_generics(n: field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
                       return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                       transport: sf.transport, properties: sf.properties,
                       type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -2654,10 +2654,10 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 
 
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
-  let struct_fields = match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+  let struct_fields = match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
     Present { value: fields } => fields
     Absent =>
-      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+      match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
         Present { value: fields } => fields
         Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
       }
@@ -2666,7 +2666,10 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
-        let ft = child_type_node(ch: sf)
+        let ft = match sf.inferred {
+          Present { value: Resolved { node: rt } } => rt
+          _ => field_node_type_expr(n: sf)
+        }
         if ft.ident_span != none || type_node_is_callable(n: ft) {
           Present { value: ft }
         } else { none }
