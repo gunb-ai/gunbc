@@ -235,9 +235,9 @@ fn infer_partial_bounded_lattice_instances_fold_step(
   })
 }
 
-fn partial_bounded_lattice_instances_in_tree(root: Node) -> List<Node> {
+fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
   fold_node(
-    n: root,
+    n: tree,
     algebra: NodeFold {
       init: fn(n0) {
         infer_partial_bounded_lattice_instances_fold_init(n: n0)
