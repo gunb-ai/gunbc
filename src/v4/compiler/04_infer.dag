@@ -6,6 +6,7 @@
 module v4.compiler.infer
 
 import v4.std.algebra { list_snoc_item }
+// kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not Practice-12 fuel.
 import v4.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -30,11 +31,9 @@ import v4.std.diagnostic {
   Accepted,
   None,
   Rejected,
-  Suggested,
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
-  non_empty_diagnostics_append,
   outcome_rejected,
   outcome_accepted,
   rejected_with_pending
@@ -43,11 +42,8 @@ import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
   ComputationNode,
-  Edge,
-  Named,
   Node,
   NodeFold,
-  Positional,
   Symbol,
   TypeNode,
   fold_node,
