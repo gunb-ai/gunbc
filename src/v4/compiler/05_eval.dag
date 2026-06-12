@@ -1443,6 +1443,16 @@ fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
         Present { value: _ } => false
         Absent => true
       }
+    ComputationNode { behavior: Branch } =>
+      // COMPREP wave-2 M0-B1 if-then-else: [cond, then, else] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
     _ => false
   }
 }
