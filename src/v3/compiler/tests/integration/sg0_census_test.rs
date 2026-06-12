@@ -344,7 +344,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `emit_host_eval.rs` in-module `b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five`
     // (eval intercept decode). **DORMANT:** `run_host_process` process-spawn (real tsc+node;
     // v3-eval-intercept-only; v2 --claim-run has no hook) — dissolves at T-22 substrate eval /
-    // gunbc#4750 (supersedes #4674). `v4_emit_host_eval_dispatch_test.rs` covers rust rows only; `comprep_b3_ts_descriptor_node_run.dag`
+    // gunbc#4750. `v4_emit_host_eval_dispatch_test.rs` covers rust rows only; `comprep_b3_ts_descriptor_node_run.dag`
     // is wire scaffold (not v2 --claim-run).
     // Census **+0 NON_TEST** (row on main since #4225; #4641 extends eval hook, no new SG-0 path).
     // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.

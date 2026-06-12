@@ -151,7 +151,7 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafMode
   }
 }
 
-// 🟡 gated — feature:leaf-model-r2b-overflow-checks-runner — bind gunbc#4751 (R2b sub-claims 3–4; re-anchor of merged PR #3971 §5 / retired design-rust-dag-leafmodel-instantiation.md) —
+// 🟡 gated — feature:leaf-model-r2b-overflow-checks-runner — bind gunbc#4751 (R2b sub-claims 3–4) —
 // dissolve-on-arrival: fixture runner supports explicit `-C overflow-checks=on|off` independent of debug/release profile; until then runner reports not_checked for these rows.
 // R2b sub-claim 3/4 — checked_arithmetic_overflow_checks_enabled (not_checked stub; action duplicates debug-default).
 data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = LeafModelClaim {
