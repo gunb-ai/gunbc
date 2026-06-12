@@ -3853,54 +3853,10 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               )
             ]
           )
-      ),
-      target_model_named_edge(
-        name: target_value_expr_field_conditional,
-        target: target_model_type_conj_node(
-          // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
-          // followed by the shared open / close / separator framing. Decode inverts this in
-          // `decode_effect_apply_shape_bundle`. Wire symmetry is why `callees` is a `List` and not
-          // an in-memory closure-backed `Map` (which has no enumeration to serialize).
-          children: list_append(
-            left: fold_list(
-              xs: projection.effect_apply_form.callees,
-              empty: Empty,
-              cons: fn(acc, row) {
-                Cons {
-                  head: target_model_named_edge(
-                    name: target_value_expr_effect_callee_row_edge,
-                    target: target_value_expr_effect_callee_row_node(row: row)
-                  ),
-                  tail: acc
-                }
-              }
-            ),
-            right: [
-              target_model_named_edge(
-                name: target_value_expr_field_open,
-                target: target_model_type_atom_node(
-                  identity: projection.effect_apply_form.open
-                )
-              ),
-              target_model_named_edge(
-                name: target_value_expr_field_close,
-                target: target_model_type_atom_node(
-                  identity: projection.effect_apply_form.close
-                )
-              ),
-              target_model_named_edge(
-                name: target_value_expr_field_separator,
-                target: target_model_type_atom_node(
-                  identity: projection.effect_apply_form.separator
-                )
-              )
-            ]
-          )
-        name: target_value_expr_field_conditional,
         )
       ),
       target_model_named_edge(
-name: target_value_expr_field_conditional,
+        name: target_value_expr_field_conditional,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
