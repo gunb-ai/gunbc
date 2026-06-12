@@ -1881,13 +1881,18 @@ pub fn annotate_pattern_parent_enums(
                                 == Cardinality::CardOptional)
                                 && (scrutinee_name.clone().as_str()
                                     != "Optional".to_string().as_str()));
+                        let optional_coproduct_subject = ((scrutinee_name.clone().as_str()
+                            == "Optional".to_string().as_str())
+                            && ((variant_name.clone().as_str() == "Present".to_string().as_str())
+                                || (variant_name.clone().as_str()
+                                    == "Absent".to_string().as_str())));
                         let witness_container_subject =
                             (is_witness_type_name(scrutinee_name.clone())
                                 && ((variant_name.clone().as_str()
                                     == "Holds".to_string().as_str())
                                     || (variant_name.clone().as_str()
                                         == "Violates".to_string().as_str())));
-                        if (optional_cardinality_subject
+                        if ((optional_cardinality_subject || optional_coproduct_subject)
                             && ((variant_name.clone().as_str() == "Present".to_string().as_str())
                                 || (variant_name.clone().as_str()
                                     == "Absent".to_string().as_str())))
