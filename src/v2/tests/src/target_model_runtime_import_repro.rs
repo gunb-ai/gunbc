@@ -1,5 +1,5 @@
 //! Repro for generic-instantiation SCALE failure (adhoc-708ea66d-bb3).
-//! Regression fixture: target_model.dag + v4.std.runtime import must compile clean.
+//! Regression fixture: mvp1 claim closure with target_model + v4.std.runtime import compiles clean.
 
 use std::rc::Rc;
 
@@ -8,26 +8,68 @@ use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 const TARGET_MODEL: &str = "src/v4/std/compilers/target_model.dag";
-const RUNTIME_IMPORT: &str =
-    "import v4.std.runtime { EffectRequestKind, ReadResource, WriteResource }\n";
+const CLAIM_ENTRY: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TargetModelPatch {
+    None,
+    RuntimeImport,
+    MachineByteImport,
+    ModelCoreImport,
+}
+
+fn patch_target_model(content: &str, patch: TargetModelPatch) -> String {
+    let anchor = "module v4.std.compilers.target_model\n";
+    let pos = content
+        .find(anchor)
+        .unwrap_or_else(|| panic!("missing module anchor in {TARGET_MODEL}"));
+    let insert = match patch {
+        TargetModelPatch::None => return content.to_string(),
+        TargetModelPatch::RuntimeImport => {
+            "import v4.std.runtime { EffectRequestKind, ReadResource, WriteResource }\n"
+        }
+        TargetModelPatch::MachineByteImport => "import v4.std.machine { Byte }\n",
+        TargetModelPatch::ModelCoreImport => "import v4.std.model_core { ModelCore }\n",
+    };
+    let mut out = content.to_string();
+    out.insert_str(pos + anchor.len(), insert);
+    out
+}
 
 fn v4_source_roots() -> Vec<std::path::PathBuf> {
     vec![workspace_root().join("src/v4")]
 }
 
-fn compile_target_model_with_optional_runtime_import(with_runtime: bool) -> (usize, Vec<String>) {
-    let mut content = std::fs::read_to_string(workspace_root().join(TARGET_MODEL))
-        .unwrap_or_else(|e| panic!("read {TARGET_MODEL}: {e}"));
-    if with_runtime {
-        if let Some(pos) = content.find('\n') {
-            content.insert_str(pos + 1, RUNTIME_IMPORT);
+fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usize, Vec<String>) {
+    let entry_content = std::fs::read_to_string(workspace_root().join(CLAIM_ENTRY))
+        .unwrap_or_else(|e| panic!("read {CLAIM_ENTRY}: {e}"));
+    let mut pairs: Vec<(String, String)> = resolve_imports_transitively_with_source_roots(
+        CLAIM_ENTRY,
+        &entry_content,
+        &v4_source_roots(),
+    )
+    .iter()
+    .map(|s| (s.path.clone(), s.content.clone()))
+    .collect();
+
+    if patch != TargetModelPatch::None {
+        for (path, content) in &mut pairs {
+            if path == TARGET_MODEL {
+                *content = patch_target_model(content, patch);
+            }
         }
     }
-    let sources = resolve_imports_transitively_with_source_roots(
-        TARGET_MODEL,
-        &content,
-        &v4_source_roots(),
-    );
+
+    let sources: Vec<Rc<SourceFile>> = pairs
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let source_count = sources.len();
     let result = compile_to_resolved(Rc::new(sources));
     let msgs: Vec<String> = result
         .diagnostics
@@ -35,24 +77,43 @@ fn compile_target_model_with_optional_runtime_import(with_runtime: bool) -> (usi
         .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
-    (msgs.len(), msgs)
+    (source_count, msgs.len(), msgs)
 }
 
-#[test]
-fn target_model_baseline_compiles() {
-    let (count, msgs) = compile_target_model_with_optional_runtime_import(false);
+fn assert_claim_patch_compiles(patch: TargetModelPatch, label: &str) {
+    let (sources, count, msgs) = compile_claim_with_target_model_patch(patch);
     assert!(
         count == 0,
-        "baseline target_model should compile clean, got {count} diagnostics: {msgs:?}"
+        "{label}: expected clean compile over {sources} sources, got {count} diagnostics: {:?}",
+        msgs.iter().take(20).collect::<Vec<_>>()
     );
 }
 
 #[test]
-fn target_model_with_runtime_import_compiles() {
-    let (count, msgs) = compile_target_model_with_optional_runtime_import(true);
-    assert!(
-        count == 0,
-        "target_model + v4.std.runtime import should compile clean, got {count} diagnostics: {:?}",
-        msgs.iter().take(15).collect::<Vec<_>>()
+fn claim_baseline_compiles() {
+    assert_claim_patch_compiles(TargetModelPatch::None, "baseline claim");
+}
+
+#[test]
+fn claim_with_target_model_runtime_import_compiles() {
+    assert_claim_patch_compiles(
+        TargetModelPatch::RuntimeImport,
+        "claim + target_model runtime import",
+    );
+}
+
+#[test]
+fn claim_with_target_model_machine_import_compiles() {
+    assert_claim_patch_compiles(
+        TargetModelPatch::MachineByteImport,
+        "claim + target_model machine Byte import",
+    );
+}
+
+#[test]
+fn claim_with_target_model_model_core_import_compiles() {
+    assert_claim_patch_compiles(
+        TargetModelPatch::ModelCoreImport,
+        "claim + target_model model_core import",
     );
 }
