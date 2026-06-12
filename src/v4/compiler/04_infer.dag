@@ -5,7 +5,7 @@
 
 module v4.compiler.infer
 
-import v4.std.algebra { list_snoc_item }
+import v4.std.algebra { length, list_snoc_item }
 // kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not Practice-12 fuel.
 import v4.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -13,7 +13,13 @@ import v4.std.bounded_lattice_completeness {
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection { List, Map }
+import v4.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional
+}
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -35,21 +41,24 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   outcome_rejected,
-  outcome_accepted,
   rejected_with_pending
 }
-import v4.std.logic { Bool }
+import v4.std.logic { Bool, bool_node }
 import v4.std.node {
   Atom,
   ComputationNode,
+  Edge,
   Node,
   NodeFold,
   Symbol,
+  SyntheticOccurrence,
   TypeNode,
+  all_edges_positional,
   fold_node,
   well_formed
 }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.node_query { node_positional_child_targets }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 // AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
@@ -92,24 +101,26 @@ type InferredFactsEntry {
   node: Node
   facts: InferredFacts
 }
+
 type InferredFactsEntryList = List<InferredFactsEntry>
-type InferGatherChildOutcome = Outcome<InferredFactsEntryList>
-type InferGatherChildResults = List<InferGatherChildOutcome>
+type InferFactsEntriesOutcome = Outcome<InferredFactsEntryList>
 
 type InferGatherFoldAcc
-  = InferGatherLeaf { result: InferGatherChildOutcome }
+  = InferGatherLeaf { result: InferFactsEntriesOutcome }
   | InferGatherBranch {
       node: Node,
       partials: List<Node>,
-      child_results: InferGatherChildResults
+      child_results: List<InferFactsEntriesOutcome>
     }
-
 
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 // 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
+data infer_branch_shape_invalid: Symbol = infer_branch_shape_invalid
+data infer_branch_cond_not_bool: Symbol = infer_branch_cond_not_bool
+data infer_branch_arm_type_mismatch: Symbol = infer_branch_arm_type_mismatch
 
 // §1-tail A4 disposition (post-#4692): Practice-12 `_bounded` fuel residue = 0 in this stage.
 // SG-6 BoundedLattice gather/gate → fuel-delete: rows in v4.std.bounded_lattice_completeness
@@ -134,6 +145,30 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
 fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_algebra_ref_ungrounded,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_branch_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_branch_cond_not_bool,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_branch_arm_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -356,6 +391,138 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
   }
 }
 
+fn infer_branch_int_binding_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn infer_branch_is_bool_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
+    _ => false
+  }
+}
+
+fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (id == ^dag_mvp1_pick_lit_one) || (id == ^dag_mvp1_pick_lit_two)
+    _ => false
+  }
+}
+
+// 🟡 gated — COMPREP M0-B1 literal operand typing — feature:COMPREP-WAVE2-BRANCH-INFER-LITERAL-TYPES —
+// bind:docs/design-comprep-m0-branch-mapping.md §12.11 Q-B2 — dissolve-on: T-9 constraint carriers
+// assign literal operand types during infer_node_facts instead of Branch-row semantic projection.
+fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
+  if infer_branch_is_bool_literal_atom(node: node) {
+    bool_node()
+  } else if infer_branch_is_int_literal_atom(node: node) {
+    infer_branch_int_binding_type_node()
+  } else {
+    inferred_facts_resolved_type(facts: facts)
+  }
+}
+
+fn infer_branch_canonical_grounding(node: Node, unified_type: Node) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: unified_type
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn infer_branch_child_facts(
+  child_outcome: InferFactsEntriesOutcome,
+  target: Node,
+) -> Outcome<InferredFacts> {
+  match child_outcome {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: entries, diagnostics: d } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: target) {
+        Holds { value: facts } => Accepted { value: facts, diagnostics: d }
+        Violates { diagnostic: diag } => outcome_rejected(diag)
+      }
+  }
+}
+
+fn infer_unify_branch_arm_types(
+  then_node: Node,
+  then_facts: InferredFacts,
+  else_node: Node,
+  else_facts: InferredFacts,
+) -> Outcome<Node> {
+  let then_type = infer_branch_operand_resolved_type(node: then_node, facts: then_facts)
+  let else_type = infer_branch_operand_resolved_type(node: else_node, facts: else_facts)
+  if then_type == else_type {
+    Accepted { value: then_type, diagnostics: None }
+  } else {
+    outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
+  }
+}
+
+// Q-B2 gather-algebra row: Bool-if-else Branch — cond child typed Bool; arms unify to Branch result type.
+fn infer_branch_bool_if_else(
+  node: Node,
+  partials: List<Node>,
+  cond_target: Node,
+  cond_facts: InferredFacts,
+  then_target: Node,
+  then_facts: InferredFacts,
+  else_target: Node,
+  else_facts: InferredFacts,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      if infer_branch_operand_resolved_type(node: cond_target, facts: cond_facts) != bool_node() {
+        outcome_rejected(infer_branch_cond_not_bool_diagnostic(node: node))
+      } else {
+        match infer_unify_branch_arm_types(
+          then_node: then_target,
+          then_facts: then_facts,
+          else_node: else_target,
+          else_facts: else_facts
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: unified_type, diagnostics: ud } =>
+            match infer_descent_witness_for_node(n: node) {
+              Violates { diagnostic: d } =>
+                Rejected { diagnostics: diagnostics_singleton(d: d) }
+              Holds { value: descent_proof } =>
+                bind_outcome(
+                  o: inferred_facts_from_grounding(
+                    grounding: infer_branch_canonical_grounding(
+                      node: node,
+                      unified_type: unified_type
+                    ),
+                    descent: Holds { value: descent_proof }
+                  ),
+                  f: fn(facts) {
+                    Accepted {
+                      value: facts,
+                      diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                    }
+                  }
+                )
+            }
+        }
+      }
+  }
+}
+
 // Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
@@ -396,7 +563,6 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
     }
   )
 }
-
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
