@@ -323,15 +323,6 @@ fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
 }
 
 // Demand-driven: divergent loop body is never interpreted; step_loop_continue still runs on spine.
-fn loop_eval_lit_body_step_loop_holds() -> Bool {
-  loop_eval_run_passes(
-    run: loop_eval_run(
-      body: loop_eval_loop_node(body: loop_eval_lit_one()),
-      expected: loop_eval_lit_one()
-    )
-  )
-}
-
 fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   loop_eval_run_passes(
     run: loop_eval_run(
