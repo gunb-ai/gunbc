@@ -9,13 +9,16 @@ import v4.compiler.infer {
   infer_branch_operand_resolved_type,
   infer_branch_type_atoms_equal,
   infer_branch_type_is_bool,
+  infer_grounding_admits_infer_facts,
   inferred_facts_resolved_type,
   inferred_facts_witness_for_node,
   InferredTree
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.collection { Absent, List, Present, list_at_optional }
+import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.find_witness { preservation_rule_constraint_satisfaction }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -35,7 +38,7 @@ import v4.std.verification {
   ManualAnchorAbsent,
   UnifiedTestClaim
 }
-import v4.std.witness { Holds, Violates }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
 
 fn branch_infer_atom(s: Symbol) -> Node {
   Node {
@@ -163,9 +166,40 @@ fn branch_infer_keystone_holds() -> Bool {
     && branch_infer_cond_not_bool_red_holds()
 }
 
+// Negative witness: preservation_rule grounding is still rejected by the admission gate
+// outside the infer_node_facts → solve_constraints bridge remapper.
+fn branch_infer_constraint_satisfaction_grounding_rejected() -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_node),
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: preservation_rule_constraint_satisfaction,
+        evidence: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_evidence)
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_node)
+      }
+    }
+  }
+}
+
+fn branch_infer_admission_gate_rejects_constraint_satisfaction_holds() -> Bool {
+  !infer_grounding_admits_infer_facts(
+    grounding: branch_infer_constraint_satisfaction_grounding_rejected()
+  )
+}
+
 data unified_claim_branch_infer: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/branch_infer.dag",
     function: branch_infer_keystone_holds
+  }
+}
+
+data unified_claim_branch_infer_admission_gate: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/branch_infer.dag",
+    function: branch_infer_admission_gate_rejects_constraint_satisfaction_holds
   }
 }
