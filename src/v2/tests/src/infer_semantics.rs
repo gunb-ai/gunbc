@@ -39,11 +39,13 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: kind_name.clone(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: param_name.clone(),
             ident: None,
+            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span(param_name, sp.clone()),
             children: Rc::new(vec![]),
@@ -86,12 +88,14 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "Map".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
                 name: key_name,
                 ident: None,
+                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -112,6 +116,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
             Rc::new(Node {
                 name: val_name,
                 ident: None,
+                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -161,6 +166,9 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -189,6 +197,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
     Rc::new(Node {
         name: name.to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(name.to_string(), sp),
         children: Rc::new(variants),
@@ -606,11 +615,13 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let inner_present = Rc::new(Node {
         name: "Present".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: "inner".to_string(),
             ident: None,
+            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span("inner".to_string(), sp.clone()),
             children: Rc::new(vec![]),
@@ -647,6 +658,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let optional_inner_sum = Rc::new(Node {
         name: "Inner".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Inner".to_string(), sp.clone()),
         children: Rc::new(vec![inner_present]),
@@ -760,6 +772,9 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -783,6 +798,9 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -806,6 +824,9 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -828,6 +849,7 @@ fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
         ident: None,
+        binding_id: None,
         span: zero_span(),
         ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
             file: "".to_string(),
@@ -862,6 +884,9 @@ fn resolve_node_uses_node_name_for_lookup() {
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
