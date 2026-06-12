@@ -193,9 +193,9 @@ fn dag_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^dag_token_kw_if },
     FixedToken { token_class: ^dag_token_kw_true },
     FixedToken { token_class: ^dag_token_kw_then },
-    FixedToken { token_class: ^dag_token_int_literal },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
     FixedToken { token_class: ^dag_token_kw_else },
-    FixedToken { token_class: ^dag_token_int_literal },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_two },
     FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
