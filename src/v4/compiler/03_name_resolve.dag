@@ -46,6 +46,12 @@ import v4.std.node {
   TypeNode,
   well_formed
 }
+import v4.std.passing_candidate_fold {
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate,
+  PassingCandidateFold
+}
 import v4.std.qualified_name {
   QualifiedName,
   qualified_name_eq
@@ -98,18 +104,11 @@ type ModuleRootValidateState
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
 
-// 🟡 coproduct dissolution — dissolve-on-arrival: PassingCandidateFold<T> generalization (T=QualifiedName; blocked by T=Node hardcode in find_witness.dag:61); see [[find_witness]] substrate PR. T-QN-1 Change 2 module-root name-find accumulator.
+// 🟡 coproduct dissolution — dissolve-on-arrival: PassingCandidateFold<T> generalization (T=QualifiedName; blocked by T=Node hardcode in passing_candidate_fold.dag); T-QN-1 Change 2 module-root name-find accumulator.
 type ModuleRootNameFindState
   = ModuleRootNameNotFound
   | ModuleRootNameFoundOnce
   | ModuleRootNameFoundDuplicate
-
-
-// 🟡 coproduct dissolution — dissolve-on-arrival: extract PassingCandidateFold to a lightweight v4.std module (Node-dep-only) so find_witness and name_resolve share one authority; import of find_witness.dag blocked by transitive predicate-module pull into C9 discovery analysis. See [[find_witness]] substrate PR.
-type PassingCandidateFold
-  = NoPassingCandidate
-  | OnePassingCandidate { candidate: Node }
-  | ManyPassingCandidates
 
 
 data resolve_import_not_visible: Symbol = resolve_import_not_visible

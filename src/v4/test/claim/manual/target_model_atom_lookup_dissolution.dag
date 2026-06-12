@@ -13,7 +13,7 @@ import v4.extdeps.languages.typescript {
 }
 import v4.std.algebra { fold_list }
 import v4.std.diagnostic { Accepted, Rejected }
-import v4.std.find_witness {
+import v4.std.passing_candidate_fold {
   ManyPassingCandidates,
   NoPassingCandidate,
   OnePassingCandidate
