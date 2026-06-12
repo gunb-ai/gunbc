@@ -104,7 +104,7 @@ fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
   }
 }
 
-// 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: gunbc#4762 (re-anchor of deleted TASKS.md T-19) — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
+// 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: gunbc#4762 — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness

@@ -1,5 +1,5 @@
 //! **T-15** bin/main.dag execution + self-host fixed-point validation harness
-//! (former TASKS.md §T-15 — ledger deleted; operator-directive 2026-05-29).
+//! (operator-directive 2026-05-29).
 //!
 //! Fixed-point bar: **stage1 emitted == stage2 emitted** (`FixptStage1Stage2` in
 //! `workflow/bootstrap.dag`), **not** stage0==stage1 (stage0 is v2-emission-style).

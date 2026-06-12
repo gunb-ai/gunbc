@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/infer_algebra_ref_grounding_anchor.dag
 // Scope: Option B behavior receipts — algebra_ref_is_grounded guard in canonical_grounding_from_inferred_facts.
 // Status: compile-only anchor; execution deferred to T-22 runner bridge.
-// Anchor: gunbc#4760 (re-anchor of deleted TASKS.md T-4 Wave 2b) — dissolves when constraint solver reads ModelCore.inhabitance.
+// Anchor: gunbc#4760 — dissolves when constraint solver reads ModelCore.inhabitance.
 
 module v4.test.claim.manual.infer_algebra_ref_grounding_anchor
 

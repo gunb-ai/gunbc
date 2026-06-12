@@ -16,7 +16,7 @@
 // Prerequisites (sequencing — NOT parallel to an unfilled verification
 //   scaffold): concrete TestClaim payloads in this file bind
 //   to the closed schema in std/verification.dag. That file is T-3
-//   follow-on work (needs algebra + diagnostic first; former TASKS.md T-3 ordering — ledger deleted).
+//   follow-on work (needs algebra + diagnostic first).
 //   English (T-4.11) is intentionally sequenced *behind* verification.dag
 //   fill — cite verification.dag as schema authority only after T-3 lands
 //   it; do not list it as peer "Consumes" substrate while the scaffold is

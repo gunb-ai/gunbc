@@ -50,7 +50,7 @@ fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: generated corpus replaces this hand-rolled DiagnosticClaim arm check with canonical TestClaim variant reflection; forbidden: permanent hand-enumerated TestClaim arm discriminant in generated corpus.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 — dissolve-on-arrival: generated corpus replaces this hand-rolled DiagnosticClaim arm check with canonical TestClaim variant reflection; forbidden: permanent hand-enumerated TestClaim arm discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
@@ -60,7 +60,7 @@ fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: generated corpus replaces this hand-matched GeneratedClaimAnchor arm check with canonical anchor-type projection; forbidden: permanent hand-rolled anchor-variant discriminant in generated corpus.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 — dissolve-on-arrival: generated corpus replaces this hand-matched GeneratedClaimAnchor arm check with canonical anchor-type projection; forbidden: permanent hand-rolled anchor-variant discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
@@ -89,7 +89,7 @@ fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: generated corpus replaces this four-arm hand-enumerated TestClaimCoproductVariant equality check with canonical variant-key reflection; forbidden: permanent hand-rolled arm-identity match over TestClaimCoproductVariant in generated corpus.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4759 — dissolve-on-arrival: generated corpus replaces this four-arm hand-enumerated TestClaimCoproductVariant equality check with canonical variant-key reflection; forbidden: permanent hand-rolled arm-identity match over TestClaimCoproductVariant in generated corpus.
 fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) -> Bool {
   match testgen_emit_coproduct_exhaustiveness_claim(anchor: anchor) {
     Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
@@ -129,7 +129,7 @@ fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) ->
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4762 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: replace count+emit conjunction with structural variant-set membership check over scheduled generators once M2 fold reflection is available; forbidden: permanent count-only scheduling proof in generated corpus.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: gunbc#4762 — dissolve-on-arrival: replace count+emit conjunction with structural variant-set membership check over scheduled generators once M2 fold reflection is available; forbidden: permanent count-only scheduling proof in generated corpus.
 fn witness_testgen_schedules_all_coproduct_exhaustiveness_generators() -> Bool {
   length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4 &&
     witness_coproduct_exhaustiveness_all_testclaim_variants_emit()

@@ -52,7 +52,7 @@ fn spine_normalize_service_parse_tree() -> Node {
 }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 (re-anchor of deleted TASKS.md T-22) / G.3.5 spine harness —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates normalize Outcome<ParseTree> directly without Bool projection.
 fn spine_normalize_accepts_well_formed_sugar() -> Bool {
   match normalize(parse_tree: spine_normalize_service_parse_tree()) {
