@@ -22,6 +22,7 @@ import v4.std.diagnostic {
 import v4.std.node {
   Arrow,
   Atom,
+  Branch,
   ComputationNode,
   Conj,
   Edge,
@@ -41,8 +42,13 @@ import v4.extdeps.languages.dag {
   dag_mvp1_add_arrow_signature_node,
   dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
   dag_mvp1_add_operator_node,
+  dag_mvp1_bool_type_binding,
   dag_mvp1_captured_flat_atom_binding_for_ident,
-  dag_mvp1_int_type_binding
+  dag_mvp1_int_type_binding,
+  dag_mvp1_node_is_int_literal_atom,
+  dag_mvp1_pick_arrow_with_body_fixture,
+  dag_mvp1_pick_arrow_with_body_swapped_arms_fixture,
+  dag_mvp1_pick_captured_flat_atom_binding_for_ident
 }
 import v4.std.node_query {
   arrow_domain_named_param_bindings,
@@ -471,5 +477,235 @@ fn arrow_has_body_edge(arrow: Node) -> Bool {
         _ => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn body_producer_arrow_domain_conj_single_binding(binding: Symbol, type_binding: Symbol) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: binding },
+          target: type_atom_node(identity: type_binding)
+        }
+      ]
+    )
+  )
+}
+
+fn body_producer_branch_if_body(
+  condition: Node,
+  then_arm: Node,
+  else_arm: Node
+) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: ComputationNode { behavior: Branch },
+      children: [
+        Edge { label: Positional, target: condition },
+        Edge { label: Positional, target: then_arm },
+        Edge { label: Positional, target: else_arm }
+      ]
+    )
+  )
+}
+
+fn body_producer_pick_if_body_from_atoms(
+  atoms: List<Node>,
+  witness: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_flat_atom_at(
+      atoms: atoms,
+      wanted: 11,
+      reason: body_producer_reason_mvp1_resolved_shape,
+      witness: witness
+    ),
+    f: fn(condition) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 13,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: witness
+        ),
+        f: fn(then_arm) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 15,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: witness
+            ),
+            f: fn(else_arm) {
+              if dag_mvp1_node_is_int_literal_atom(node: then_arm)
+                && dag_mvp1_node_is_int_literal_atom(node: else_arm) {
+                body_producer_branch_if_body(
+                  condition: condition,
+                  then_arm: then_arm,
+                  else_arm: else_arm
+                )
+              } else {
+                outcome_rejected(
+                  d: body_producer_diagnostic(
+                    reason: body_producer_reason_mvp1_resolved_shape,
+                    n: witness
+                  )
+                )
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 3,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(domain_b) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 5,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: resolved_root
+            ),
+            f: fn(domain_type) {
+              bind_outcome(
+                o: mvp1_flat_atom_at(
+                  atoms: atoms,
+                  wanted: 8,
+                  reason: body_producer_reason_mvp1_resolved_shape,
+                  witness: resolved_root
+                ),
+                f: fn(codomain) {
+                  bind_outcome(
+                    o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+                      flat_index: 3,
+                      ident_atom: domain_b
+                    ),
+                    f: fn(param_binding) {
+                      bind_outcome(
+                        o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+                          flat_index: 5,
+                          ident_atom: domain_type
+                        ),
+                        f: fn(type_binding) {
+                          bind_outcome(
+                            o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+                              flat_index: 8,
+                              ident_atom: codomain
+                            ),
+                            f: fn(codomain_binding) {
+                              bind_outcome(
+                                o: body_producer_arrow_domain_conj_single_binding(
+                                  binding: param_binding,
+                                  type_binding: type_binding
+                                ),
+                                f: fn(domain) {
+                                  outcome_accepted(
+                                    value: node_synthetic(
+                                      kind: TypeNode { connective: Arrow },
+                                      children: [
+                                        Edge {
+                                          label: Positional,
+                                          target: domain
+                                        },
+                                        Edge {
+                                          label: Positional,
+                                          target: type_atom_node(identity: codomain_binding)
+                                        },
+                                        Edge {
+                                          label: Positional,
+                                          target: type_atom_node(identity: codomain_binding)
+                                        }
+                                      ]
+                                    )
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_pick_if_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+        f: fn(atoms) {
+          bind_outcome(
+            o: body_producer_pick_if_body_from_atoms(atoms: atoms, witness: resolved_root),
+            f: fn(body) {
+              bind_outcome(
+                o: attach_arrow_body(arrow: signature, body: body),
+                f: fn(arrow_with_body) {
+                  if well_formed(n: arrow_with_body) {
+                    outcome_accepted(value: arrow_with_body)
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_post_produce_not_well_formed,
+                        n: arrow_with_body
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_pick_if_arrow_with_body() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_pick_arrow_with_body_fixture) {
+    outcome_accepted(value: dag_mvp1_pick_arrow_with_body_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_pick_arrow_with_body_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_pick_if_arrow_with_body_swapped_arms() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture) {
+    outcome_accepted(value: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture
+      )
+    )
   }
 }

@@ -1,9 +1,9 @@
 # COMPREP M0 Branch Mapping — Design Table (dep-graph-2026-06-12 §2)
 
-> **Status: DESIGN — map, not territory.** PRE-MERGE until gunbc#4699 lands: no compiler-stage
-> edits from this doc. Review artifact for COMPREP wave-2 keystone scoping (Branch first in the
-> §2 sequence Branch → Bind → Loop). Mirrors the add-keystone row shape used for COMPREP
-> wave-1 (`03_body_producer`, `06_value_expression`, `comprep_eval_by_execution`).
+> **Status: DESIGN — map, not territory.** gunbc#4699 merged (main 7e126d1a7c); implementation
+> in progress per dep-graph-2026-06-12 §2. Review artifact for COMPREP wave-2 keystone scoping
+> (Branch first in the §2 sequence Branch → Bind → Loop). Mirrors the add-keystone row shape
+> used for COMPREP wave-1 (`03_body_producer`, `06_value_expression`, `comprep_eval_by_execution`).
 
 ## 1. M0 keystone (what “done” means)
 
