@@ -7,7 +7,8 @@ boundedness—so structural claims are checkable, not conventional.
 
 **If it compiles, the declared intent is sound and will execute as declared.**
 
-See [THESIS.md](THESIS.md) for the full thesis behind that guarantee.
+See [THESIS.md](THESIS.md) for the full thesis behind that guarantee, and
+[ROADMAP.md](ROADMAP.md) for where the project stands and the active wave of work.
 
 ## Language and compiler
 
