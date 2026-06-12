@@ -1,8 +1,8 @@
-// src/v4/test/claim/manual/comprep_branch_infer.dag
+// src/v4/test/claim/manual/branch_infer.dag
 // Scope: Q-B2 — 04_infer Branch row discriminating claims (Bool cond + arm unification).
-// Status: COMPREP fan-in (ii) infer half — docs/design-comprep-m0-branch-mapping.md §12.11.
+// Status: infer half — docs/design-comprep-m0-branch-mapping.md §12.11.
 
-module v4.test.claim.manual.comprep_branch_infer
+module v4.test.claim.manual.branch_infer
 
 import v4.compiler.infer {
   infer,
@@ -50,7 +50,7 @@ fn branch_infer_int_binding_type_node() -> Node {
 }
 
 fn branch_infer_string_type_node() -> Node {
-  branch_infer_atom(s: ^comprep_branch_infer_string_type)
+  branch_infer_atom(s: ^branch_infer_string_type)
 }
 
 fn branch_infer_if_body_from_arms(
@@ -100,7 +100,7 @@ fn branch_infer_resolved_tree(root: Node) -> ResolvedTree {
 fn branch_infer_positional_target(body: Node, index: Int) -> Node {
   match list_at_optional(xs: node_positional_child_targets(node: body), index: index) {
     Present { value: target } => target
-    Absent => branch_infer_atom(s: ^comprep_branch_infer_missing_child)
+    Absent => branch_infer_atom(s: ^branch_infer_missing_child)
   }
 }
 
@@ -130,7 +130,7 @@ fn branch_infer_branch_result_is_int(tree: InferredTree, body: Node) -> Bool {
   }
 }
 
-fn comprep_branch_infer_bool_cond_accepts_holds() -> Bool {
+fn branch_infer_bool_cond_accepts_holds() -> Bool {
   let body = branch_infer_bool_if_else_body_node()
   let tree = branch_infer_resolved_tree(root: body)
   match branch_infer_run(tree: tree) {
@@ -141,7 +141,7 @@ fn comprep_branch_infer_bool_cond_accepts_holds() -> Bool {
   }
 }
 
-fn comprep_branch_infer_arm_mismatch_red_holds() -> Bool {
+fn branch_infer_arm_mismatch_red_holds() -> Bool {
   let body = branch_infer_arm_mismatch_body_node()
   match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
     Accepted { value: _, diagnostics: _ } => false
@@ -149,7 +149,7 @@ fn comprep_branch_infer_arm_mismatch_red_holds() -> Bool {
   }
 }
 
-fn comprep_branch_infer_cond_not_bool_red_holds() -> Bool {
+fn branch_infer_cond_not_bool_red_holds() -> Bool {
   let body = branch_infer_cond_not_bool_body_node()
   match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
     Accepted { value: _, diagnostics: _ } => false
@@ -157,15 +157,15 @@ fn comprep_branch_infer_cond_not_bool_red_holds() -> Bool {
   }
 }
 
-fn comprep_branch_infer_keystone_holds() -> Bool {
-  comprep_branch_infer_bool_cond_accepts_holds()
-    && comprep_branch_infer_arm_mismatch_red_holds()
-    && comprep_branch_infer_cond_not_bool_red_holds()
+fn branch_infer_keystone_holds() -> Bool {
+  branch_infer_bool_cond_accepts_holds()
+    && branch_infer_arm_mismatch_red_holds()
+    && branch_infer_cond_not_bool_red_holds()
 }
 
-data unified_claim_comprep_branch_infer: UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_branch_infer: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/manual/comprep_branch_infer.dag",
-    function: comprep_branch_infer_keystone_holds
+    entry: "src/v4/test/claim/manual/branch_infer.dag",
+    function: branch_infer_keystone_holds
   }
 }

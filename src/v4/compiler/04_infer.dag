@@ -256,7 +256,7 @@ fn infer_constraint_graph(n: Node) -> ConstraintGraph {
   ConstraintGraph { root: n }
 }
 
-// 🟡 gated — feature:COMPREP-WAVE2-BRANCH-INFER-CONSTRAINT-SOLVE-BRIDGE —
+// 🟡 gated — feature:branch-infer-constraint-solve-bridge —
 // bind:docs/design-comprep-m0-branch-mapping.md §12.11 Q-B2 —
 // dissolve-on: T-9 constraint carriers map find_witness preservation_rule to being_canonical at source.
 fn infer_grounding_from_constraint_solve(grounding: CanonicalGrounding) -> CanonicalGrounding {
