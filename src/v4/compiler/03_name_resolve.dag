@@ -111,6 +111,16 @@ type ModuleRootNameFindState
   | ModuleRootNameFoundDuplicate
 
 
+<<<<<<< HEAD
+=======
+// 🟡 coproduct dissolution — dissolve-on-arrival: extract ModuleRootCandidateFold to a lightweight v4.std module (Node-dep-only) so find_witness and name_resolve share one authority; import of find_witness.dag blocked by transitive predicate-module pull into C9 discovery analysis. Renamed from PassingCandidateFold to avoid top-level decl collision with find_witness.dag (C9 --max-resolves ratchet). See [[find_witness]] substrate PR.
+type ModuleRootCandidateFold
+  = ModuleRootNoCandidate
+  | ModuleRootOneCandidate { candidate: Node }
+  | ModuleRootManyCandidates
+
+
+>>>>>>> 809efdf78b (WIP: Mgr-§1: dissolve 06_translate.dag onto fold_node (keystone cleanup, dep-)
 data resolve_import_not_visible: Symbol = resolve_import_not_visible
 data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
 data resolve_module_not_found: Symbol = resolve_module_not_found
@@ -284,8 +294,8 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
 fn module_root_for_name_fold(
   roots: FreeMonoid<Node>,
   name: QualifiedName,
-  acc: PassingCandidateFold
-) -> Outcome<PassingCandidateFold> {
+  acc: ModuleRootCandidateFold
+) -> Outcome<ModuleRootCandidateFold> {
   match roots {
     Empty => Accepted { value: acc, diagnostics: None }
     Cons { head: root, tail: rest } =>
