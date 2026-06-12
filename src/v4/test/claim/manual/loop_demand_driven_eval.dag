@@ -7,14 +7,20 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
+  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v4.std.cardinality { termination_proof_witness_for_node }
+import v4.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  termination_proof_witness_for_node
+}
 import v4.std.collection { List, Map }
 import v4.std.witness { Holds, Witness }
 import v4.std.diagnostic {
@@ -45,8 +51,7 @@ import v4.std.node {
   TypeNode,
   SyntheticOccurrence,
   arrow_body_edge,
-  loop_bound_edge,
-  well_formed
+  loop_bound_edge
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -188,6 +193,40 @@ fn loop_eval_context() -> EvalContext {
   )
 }
 
+fn loop_eval_loop_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: ^loop_eval_measure_sym }
+  }
+}
+
+fn loop_eval_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
+    _ => false
+  }
+}
+
+fn loop_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  if loop_eval_node_is_loop(node: key) {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_eval_i64(),
+        descent: Holds { value: loop_eval_loop_termination_proof() }
+      )
+    }
+  } else {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_eval_i64(),
+        descent: termination_proof_witness_for_node(n: key)
+      )
+    }
+  }
+}
+
 fn loop_eval_loop_node(body: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
@@ -238,16 +277,6 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn loop_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
-      resolved: key,
-      algebra: loop_eval_i64(),
-      descent: termination_proof_witness_for_node(n: key)
-    )
-  }
-}
-
 fn loop_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
@@ -292,10 +321,33 @@ fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-fn loop_eval_loop_node_well_formed_holds() -> Bool {
-  well_formed(
-    n: loop_eval_loop_node(body: loop_eval_divergent())
+fn loop_eval_direct_loop_accepts() -> Bool {
+  let loop_node = loop_eval_loop_node(body: loop_eval_divergent())
+  let tree = loop_eval_admitted_tree(root: loop_node)
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: loop_node)
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_arrow_call_accepts() -> Bool {
+  let arrow = loop_eval_arrow_with_body(
+    body: loop_eval_loop_node(body: loop_eval_divergent())
   )
+  let call = loop_eval_pick_call(callee: arrow)
+  let tree = loop_eval_admitted_tree(root: call)
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: call)
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // Demand-driven: divergent loop body is never interpreted; step_loop_continue still runs on spine.
