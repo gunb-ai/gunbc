@@ -31,7 +31,7 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { GrammarRoot, ParseTree }
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.collection { List, Set }
 import v4.std.logic { Bool }
 import v4.std.node {

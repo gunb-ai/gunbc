@@ -51,7 +51,7 @@ import v4.std.node_query {
   find_named_child,
   node_positional_child_targets
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   CanonicalOperation,
   ConcreteSyntaxToken,
   TargetModel,
@@ -89,7 +89,7 @@ fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 // bind: PR-T-FINISH / translate_algebra §1.5 fold —
 // owner: valiant-heron-163 (translate) — lane: compiler 06_value_expression + 06_translate —
 // dissolve-on: translate_algebra §1.5 fold deletes surface_op_atom_to_canonical @ :93 (last consumer:
-// project_transform_primitive_apply_in_arrow_scope); authority: canonical_operation_from_wire_node @ std/target_model:439;
+// project_transform_primitive_apply_in_arrow_scope); authority: canonical_operation_from_wire_node @ std/compilers/target_model:439;
 // forbidden: deleting this shell before PR-T-FINISH lands (cross-lane coupling, not follow-up graft).
 fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation> {
   match dag_surface_operator_canonicalization_member(surface_token: op_atom) {

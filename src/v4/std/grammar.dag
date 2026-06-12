@@ -22,7 +22,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.lexing { LexRules }
+import v4.std.compilers.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node {
@@ -39,7 +39,7 @@ import v4.std.node {
   fold_node
 }
 import v4.std.node_shape { stamp_node_shape_synthetic, type_shape }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   BoundToken,
   FixedToken,
   concrete_syntax_token_to_node,

@@ -14,8 +14,8 @@ import v4.compiler.compile {
   compile_ingest_staging
 }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
-import v4.std.lexing { VoidLexRules }
+import v4.std.compilers.target_model { TargetModel }
+import v4.std.compilers.lexing { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   InferredFacts,

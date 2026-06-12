@@ -53,7 +53,7 @@ import v4.std.node {
   content_hash,
   SyntheticOccurrence
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   OwnershipAtFunctionReturn,
   TypeExprKindAuthority,
   TypeExprKindNotEmitted,

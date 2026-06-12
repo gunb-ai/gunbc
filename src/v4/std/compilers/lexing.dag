@@ -1,9 +1,9 @@
-// src/v4/std/lexing.dag
+// src/v4/std/compilers/lexing.dag
 // Scope: canonical lexical model shared by compiler stages and target-language specs.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-6.
 // Status: T-6 lexical data carriers; lexer implementation remains in v4.compiler.tokenize.
 
-module v4.std.lexing
+module v4.std.compilers.lexing
 
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -26,7 +26,7 @@ type LexCharClass
   | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v4.compiler.tokenize.lex_match_pattern/v4.compiler.translate.lex_rules_literal_for_class — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on-arrival: LexPattern projects from ConcreteSyntaxSchema alongside grammar projection; forbidden: treating LexPattern as a second concrete-syntax authority or adding parallel lexical and grammar production algebras without explicit structural justification.
+// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v4.compiler.tokenize.lex_match_pattern/v4.std.compilers.target_model.lex_rules_literal_for_class — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on-arrival: LexPattern projects from ConcreteSyntaxSchema alongside grammar projection; forbidden: treating LexPattern as a second concrete-syntax authority or adding parallel lexical and grammar production algebras without explicit structural justification.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -115,7 +115,7 @@ type LexPatternFold<R> {
 
 // fold_lex_pattern<R>: EAGER catamorphism over LexPattern. Subterms are reduced to R before
 // the handler fires. Terminates by structural descent on the finite LexPattern tree.
-// Concept home: std/lexing (fold lives with the type it folds — same as fold_grammar_expr/std/grammar).
+// Concept home: std/compilers/lexing (fold lives with the type it folds — same as fold_grammar_expr/std/grammar).
 fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
   match pattern {
     EmptyPattern =>

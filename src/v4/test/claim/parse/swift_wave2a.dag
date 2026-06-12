@@ -5,7 +5,7 @@
 
 module v4.test.claim.parse.swift_wave2a
 
-import v4.std.lexing { TokenStream }
+import v4.std.compilers.lexing { TokenStream }
 import v4.std.grammar { ParseTree }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.parse { parse }
