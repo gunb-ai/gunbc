@@ -321,8 +321,6 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
-      dag_literal_lex_rule(token_class: ^dag_mvp1_pick_lit_one, text: "1"),
-      dag_literal_lex_rule(token_class: ^dag_mvp1_pick_lit_two, text: "2"),
       dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_module, text: "module"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_import, text: "import"),
@@ -3364,7 +3362,9 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m1 = map_insert(m0, ^dag_binding_param_x, "x")
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   let m3 = map_insert(m2, ^dag_binding_type_int, "Int")
-  map_insert(m3, ^dag_binding_fn_one_or_two, "one_or_two")
+  let m4 = map_insert(m3, ^dag_binding_fn_one_or_two, "one_or_two")
+  let m5 = map_insert(m4, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m5, ^dag_binding_mvp1_pick_lit_two, "2")
 }
 
 fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
