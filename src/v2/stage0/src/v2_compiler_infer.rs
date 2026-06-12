@@ -2670,6 +2670,13 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     }
 }
 
+pub fn is_record_lit_expr(e: Rc<Node>) -> bool {
+    match (*e.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+        _ => false,
+    }
+}
+
 pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
     Rc::new(vec!["".to_string()]).iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -3157,13 +3164,26 @@ pub fn infer_expr(
                                 {
                                     st.subst.clone()
                                 } else {
-                                    unify_generics(
-                                        formal_raw.clone(),
-                                        resolved_type(ar.typed.clone()),
-                                        generic_names.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                        st.subst.clone(),
-                                    )
+                                    if ((is_record_lit_expr(arg_value(a.clone()))
+                                        && ((formal_raw.children.clone().len() as i64) > 0))
+                                        && ((generic_names.clone().len() as i64) > 0))
+                                    {
+                                        unify_record_lit_generics(
+                                            formal_raw.clone(),
+                                            ar.typed.clone(),
+                                            generic_names.clone(),
+                                            scope.clone(),
+                                            st.subst.clone(),
+                                        )
+                                    } else {
+                                        unify_generics(
+                                            formal_raw.clone(),
+                                            resolved_type(ar.typed.clone()),
+                                            generic_names.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                            st.subst.clone(),
+                                        )
+                                    }
                                 };
                                 Rc::new(ArgGenericFoldState {
                                     results: v2_rt::concat(
@@ -10821,6 +10841,88 @@ pub fn unify_generics(
             }
         }
     }
+}
+
+pub fn unify_record_lit_generics(
+    formal: Rc<Node>,
+    record: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    scope: Rc<InferScope>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((formal.children.clone().len() as i64) == 0) {
+            acc
+        } else {
+            {
+                let type_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    formal.clone(),
+                );
+                match record_lit_instantiated_fields(
+                    Some(type_name),
+                    Some(formal.clone()),
+                    scope.clone(),
+                ) {
+                    Some(struct_fields) => struct_fields.clone().iter().cloned().fold(
+                        acc,
+                        |st: Rc<HashMap<String, Rc<Node>>>, sf: Rc<Node>| {
+                            let field_name = authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                sf.clone(),
+                            );
+                            match Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in record.children.clone().iter().cloned() {
+                                    if (field_init_node_name_at(
+                                        fi.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    )
+                                    .as_str()
+                                        == field_name.clone().as_str())
+                                    {
+                                        __result.push(fi);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned()
+                            {
+                                Some(fi) => {
+                                    let actual_value = field_init_node_value(fi.clone());
+                                    let field_formal = match sf.inferred.clone().as_deref().cloned()
+                                    {
+                                        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                                        _ => field_node_type_expr(sf.clone()),
+                                    };
+                                    if is_record_lit_expr(actual_value.clone()) {
+                                        unify_record_lit_generics(
+                                            field_formal.clone(),
+                                            actual_value.clone(),
+                                            generic_names.clone(),
+                                            scope.clone(),
+                                            st.clone(),
+                                        )
+                                    } else {
+                                        unify_generics(
+                                            field_formal.clone(),
+                                            resolved_type(actual_value.clone()),
+                                            generic_names.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                            st.clone(),
+                                        )
+                                    }
+                                }
+                                None => st.clone(),
+                            }
+                        },
+                    ),
+                    None => acc,
+                }
+            }
+        }
+    })
 }
 
 pub fn substitute_generics(
