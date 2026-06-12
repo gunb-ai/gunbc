@@ -28,6 +28,8 @@ mod effects;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
+mod fold_list_generic_instantiation_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod infer_semantics;

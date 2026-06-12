@@ -139,3 +139,76 @@ fn use_bad() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.nope }) }
         "r.nope on instantiated Rec (T=Rec) must fail closed (diagnostic or eval error), not silently succeed"
     );
 }
+
+// ── Generic FreeMonoid fold callback instantiation (R2 §4a) ─────────────
+// fold_list/fold_list_right cons|snoc callbacks must bind T from xs: FreeMonoid<T>
+// so the second lambda param is concrete (field access / arithmetic type-checks).
+
+#[test]
+fn fold_list_generic_cons_callback_binds_element_type() {
+    let src = r#"module test.fold_gi
+type Rec { v: Int }
+type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }
+fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty: empty, h: h), cons: cons)
+  }
+}
+fn sum_ints() -> Int {
+  fold_list(xs: [1, 2, 3], empty: 0, cons: fn(acc, h) { acc + h })
+}
+fn field_access() -> Int {
+  let xs = [Rec { v: 1 }, Rec { v: 2 }]
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { acc + r.v })
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "sum_ints") {
+        Ok(Value::Int(6)) => {}
+        other => panic!("expected Int(6) from fold_list sum, got {other:?}"),
+    }
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "field_access") {
+        Ok(Value::Int(3)) => {}
+        other => {
+            panic!("expected Int(3) (T=Rec from xs, cons r: Rec, r.v field access), got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn fold_list_right_generic_snoc_callback_binds_element_type() {
+    let src = r#"module test.fold_right_gi
+type Rec { v: Int }
+type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+fn field_access() -> Int {
+  let xs = [Rec { v: 4 }, Rec { v: 5 }]
+  fold_list_right(xs: xs, empty: 0, snoc: fn(acc, r) { acc + r.v })
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "field_access") {
+        Ok(Value::Int(9)) => {}
+        other => {
+            panic!("expected Int(9) (T=Rec from xs, snoc r: Rec, r.v field access), got {other:?}")
+        }
+    }
+}
