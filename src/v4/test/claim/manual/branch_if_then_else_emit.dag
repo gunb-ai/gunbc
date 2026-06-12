@@ -11,9 +11,11 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_pick_fn,
   dag_mvp1_pick_source_text,
   dag_mvp1_pick_target_model
 }
+import v4.compiler.translate { target_serialize_source_from_model }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.std.collection { Map }
@@ -105,17 +107,28 @@ fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcom
 }
 
 fn branch_if_then_else_emit_holds() -> Bool {
-  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source == dag_mvp1_pick_source_text) && (d == None)
+  match target_serialize_source_from_model(
+    target: dag_mvp1_pick_target_model(),
+    emitted: dag_mvp1_fixture_emitted_pick_fn
+  ) {
+    Accepted { value: authority, diagnostics: ad } =>
+      match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+        Accepted { value: source, diagnostics: d } =>
+          (source == authority) && (source == dag_mvp1_pick_source_text) && (d == None) && (ad == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool {
-  match branch_if_then_else_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source != dag_mvp1_pick_source_text) && (d == None)
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match branch_if_then_else_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
+        Accepted { value: swapped, diagnostics: ds } =>
+          (swapped != canonical) && (dc == None) && (ds == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
