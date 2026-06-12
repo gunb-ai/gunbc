@@ -421,7 +421,7 @@ fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — COMPREP M0-B1 literal operand typing — feature:COMPREP-WAVE2-BRANCH-INFER-LITERAL-TYPES —
+// 🟡 gated — branch infer M0 literal operand typing — feature:branch-infer-literal-types —
 // bind:docs/design-comprep-m0-branch-mapping.md §12.11 Q-B2 — dissolve-on: T-9 constraint carriers
 // assign literal operand types during infer_node_facts instead of Branch-row semantic projection.
 fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
