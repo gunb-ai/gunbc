@@ -536,7 +536,6 @@ type TargetValueTemplateKind
   | ValuePrimitiveApply
   | ValueEffectApply
   | ValueConditional
-  | ValueConditional
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -620,18 +619,11 @@ type TargetConditionalShape {
   else_token: Symbol
 }
 
-type TargetConditionalShape {
-  if_token: Symbol
-  then_token: Symbol
-  else_token: Symbol
-}
-
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
   effect_apply_form: TargetEffectApplyShape
-  conditional_form: TargetConditionalShape
   conditional_form: TargetConditionalShape
 }
 
@@ -2192,7 +2184,7 @@ fn source_atom_value_for_value_template(
     ValuePrimitiveApply =>
       optional_absent()
     ValueEffectApply =>
-    ValueConditional =>
+      optional_absent()
     ValueConditional =>
       optional_absent()
   }
@@ -3571,13 +3563,6 @@ fn target_value_expression_to_concrete_tokens(
         projection: projection,
         catalog: catalog
       )
-    TargetValueExprSymbolIdentity =>
-      target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
-    TargetValueExprConditional =>
-      target_value_expression_conditional_to_concrete_tokens(
-        expr: expr,
-        projection: projection
-      )
     _ =>
       outcome_rejected(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
@@ -3943,7 +3928,9 @@ fn target_value_template_apply(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
     ValueEffectApply =>
-    ValueConditional =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
     ValueConditional =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
