@@ -1,0 +1,39 @@
+// std/cpu.dag — CPU catalog dispatch and deployment projections.
+//
+// Types: std.cpu.types. Per-vendor catalog data: std.cpu.<vendor>.
+
+module std.cpu
+
+import std.cpu.types { AmpereCpuModel, CpuArchitecture, CpuDeploymentFacts, CpuFacts, CpuIdentity, CpuModelCatalogRow, CpuVendor }
+import std.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
+
+fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
+  match identity {
+    AmpereCpu { model: _ } => Ampere
+  }
+}
+
+fn cpu_catalog_row(identity: CpuIdentity) -> CpuModelCatalogRow {
+  match identity {
+    AmpereCpu { model: m } => match m {
+      AltraMaxM12830 => altra_max_m12830_catalog
+      AltraQ6430 => altra_q6430_catalog
+    }
+  }
+}
+
+fn cpu_facts_cores(cpu: CpuFacts) -> Int {
+  cpu_catalog_row(cpu.identity).cores
+}
+
+fn cpu_facts_threads(cpu: CpuFacts) -> Int {
+  cpu_catalog_row(cpu.identity).threads
+}
+
+fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
+  cpu_catalog_row(cpu.identity).architecture
+}
+
+fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
+  cpu.deployment.sustained_per_thread_hz
+}
