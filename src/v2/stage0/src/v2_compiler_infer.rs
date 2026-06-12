@@ -3164,10 +3164,12 @@ pub fn infer_expr(
                                 {
                                     st.subst.clone()
                                 } else {
-                                    if ((is_record_lit_expr(arg_value(a.clone()))
-                                        && ((formal_raw.children.clone().len() as i64) > 0))
-                                        && ((generic_names.clone().len() as i64) > 0))
-                                    {
+                                    if should_unify_record_lit_generics(
+                                        formal_raw.clone(),
+                                        arg_value(a.clone()),
+                                        generic_names.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
                                         unify_record_lit_generics(
                                             formal_raw.clone(),
                                             ar.typed.clone(),
@@ -10794,28 +10796,25 @@ pub fn unify_generics(
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
-        let fname = authored_name_at(source_indices.clone(), formal.clone());
+        let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
-        let tv_id = match formal.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: id, .. }) => id.clone(),
-            _ => "".to_string(),
-        };
-        let bind_name = if (tv_id.clone().as_str() != "".to_string().as_str()) {
-            tv_id.clone()
-        } else {
-            fname
-        };
-        if ((f_bare || (tv_id.clone().as_str() != "".to_string().as_str())) && {
-            let mut __found = false;
-            for g in generic_names.clone().iter().cloned() {
-                if (g.clone().as_str() == bind_name.clone().as_str()) {
-                    __found = true;
-                    break;
+        if ((f_bare
+            || match formal.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            })
+            && {
+                let mut __found = false;
+                for g in generic_names.clone().iter().cloned() {
+                    if (g.clone().as_str() == bind_name.clone().as_str()) {
+                        __found = true;
+                        break;
+                    }
                 }
-            }
-            __found
-        }) {
+                __found
+            })
+        {
             match v2_rt::map_get(&acc, bind_name.clone()) {
                 None => {
                     break v2_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
@@ -10847,6 +10846,46 @@ pub fn unify_generics(
                 }
             } else {
                 break acc.clone();
+            }
+        }
+    }
+}
+
+pub fn type_node_label(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let authored = authored_name_at(source_indices, n.clone());
+        if (authored.clone().as_str() != "".to_string().as_str()) {
+            authored.clone()
+        } else {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => tv_id.clone(),
+                _ => n.name.clone(),
+            }
+        }
+    }
+}
+
+pub fn should_unify_record_lit_generics(
+    formal: Rc<Node>,
+    arg_expr: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (!is_record_lit_expr(arg_expr.clone()) || ((generic_names.len() as i64) == 0)) {
+        false
+    } else {
+        if ((formal.children.clone().len() as i64) > 0) {
+            true
+        } else {
+            {
+                let formal_name = type_node_label(formal.clone(), source_indices.clone());
+                let record_name = type_node_label(arg_expr.clone(), source_indices.clone());
+                (((formal_name.clone().as_str() != "".to_string().as_str())
+                    && (record_name.clone().as_str() != "".to_string().as_str()))
+                    && (formal_name.clone().as_str() == record_name.clone().as_str()))
             }
         }
     }
@@ -10921,11 +10960,11 @@ pub fn unify_record_lit_generics(
 ) -> Rc<HashMap<String, Rc<Node>>> {
     if ((formal.children.clone().len() as i64) == 0) {
         {
-            let formal_name = authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
+            let formal_name = type_node_label(
                 formal.clone(),
+                scope.type_env.clone().source_indices.clone(),
             );
-            let is_generic_slot = ({
+            let is_generic_slot = {
                 let mut __found = false;
                 for g in generic_names.clone().iter().cloned() {
                     if (g.clone().as_str() == formal_name.clone().as_str()) {
@@ -10934,19 +10973,7 @@ pub fn unify_record_lit_generics(
                     }
                 }
                 __found
-            } || match formal.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                    let mut __found = false;
-                    for g in generic_names.clone().iter().cloned() {
-                        if (g.clone().as_str() == tv_id.clone().as_str()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                _ => false,
-            });
+            };
             if is_generic_slot {
                 unify_generics(
                     formal.clone(),
@@ -10958,9 +10985,9 @@ pub fn unify_record_lit_generics(
             } else {
                 if is_record_lit_expr(record.clone()) {
                     {
-                        let record_type_name = authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
+                        let record_type_name = type_node_label(
                             record.clone(),
+                            scope.type_env.clone().source_indices.clone(),
                         );
                         if ((record_type_name.clone().as_str() != "".to_string().as_str())
                             && (formal_name.clone().as_str() == record_type_name.clone().as_str()))
@@ -10998,9 +11025,9 @@ pub fn unify_record_lit_generics(
         }
     } else {
         {
-            let type_name = authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
+            let type_name = type_node_label(
                 formal.clone(),
+                scope.type_env.clone().source_indices.clone(),
             );
             match record_lit_instantiated_fields(
                 Some(type_name.clone()),
@@ -11017,9 +11044,9 @@ pub fn unify_record_lit_generics(
                 None => {
                     if is_record_lit_expr(record.clone()) {
                         {
-                            let record_type_name = authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
+                            let record_type_name = type_node_label(
                                 record.clone(),
+                                scope.type_env.clone().source_indices.clone(),
                             );
                             if ((record_type_name.clone().as_str() != "".to_string().as_str())
                                 && (record_type_name.clone().as_str()
@@ -11065,7 +11092,7 @@ pub fn substitute_generics(
                     }
                 }
                 _ => {
-                    let nm = authored_name_at(source_indices.clone(), n.clone());
+                    let nm = type_node_label(n.clone(), source_indices.clone());
                     let is_bare = ((((n.children.clone().len() as i64) == 0)
                         && (n.connective.clone() == Connective::NoConnective))
                         && ((n.params.clone().len() as i64) == 0));

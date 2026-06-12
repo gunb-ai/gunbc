@@ -1609,7 +1609,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
         let generic_names = sig_params
           |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
+          |> map(p => param_node_name_at(n: p, source_indices: scope.type_env.source_indices))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -5176,18 +5176,34 @@ fn is_type_variable_name(name: String) -> Bool {
 // order while threading the generic substitution built from concrete args.
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
 
+fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  if authored != "" {
+    authored
+  } else {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv_id } } => tv_id
+      _ => n.name
+    }
+  }
+}
+
 fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let pt = param_node_type_expr(n: p)
   let pname = param_node_name_at(n: p, source_indices: source_indices)
-  let tname = authored_name_at(source_indices: source_indices, node: pt)
+  let tname = type_node_label(n: pt, source_indices: source_indices)
+  let type_expr_is_var = match pt.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
+  }
   // Bare-leaf type AND self-named: a generic declaration is spelled `T: T` /
   // `U: U` (value-name == type-name), which distinguishes it from a value param
   // whose type happens to be a generic (`x: T` — names differ) or a concrete
-  // type (`node: Node`). Do NOT fall back to is_type_variable_name(tname): that
-  // would misclassify a value param of a USER type named T/K/V (e.g. `x: T`
-  // where `type T { ... }`) as a generic, corrupting value-param indexing.
+  // type (`node: Node`). After resolve, type params may carry TypeVariable
+  // inferred nodes whose authored_name is empty — fall back to param/type names.
   (pt.children |> count == 0 && pt.connective == NoConnective)
-    && ((pname != "") && (pname == tname))
+    && pname != ""
+    && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
 // Bind generic names by unifying a value-formal against the actual arg type.
@@ -5196,14 +5212,10 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // into its one type-arg. Multi-generic / nested / arrow unification is the
 // deferred roadmap (A) — added only when a witness forces it.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let fname = authored_name_at(source_indices: source_indices, node: formal)
+  let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  let tv_id = match formal.inferred {
-    Present { value: TypeVariable { id: id } } => id
-    _ => ""
-  }
-  let bind_name = if tv_id != "" { tv_id } else { fname }
-  if (f_bare || tv_id != "") && (generic_names |> any(g => g == bind_name)) {
+  if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
+    && (generic_names |> any(g => g == bind_name)) {
     // Fail-closed on conflict: bind a generic ONCE (first occurrence wins); never
     // silently overwrite. A later occurrence that disagrees is not papered over by
     // a fresh binding here — it is caught when that arg is inferred against the
@@ -5231,8 +5243,8 @@ fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names:
   } else if formal.children |> count > 0 {
     true
   } else {
-    let formal_name = authored_name_at(source_indices: source_indices, node: formal)
-    let record_name = authored_name_at(source_indices: source_indices, node: arg_expr)
+    let formal_name = type_node_label(n: formal, source_indices: source_indices)
+    let record_name = type_node_label(n: arg_expr, source_indices: source_indices)
     formal_name != "" && record_name != "" && formal_name == record_name
   }
 }
@@ -5259,16 +5271,12 @@ fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_
 
 fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
   if formal.children |> count == 0 {
-    let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+    let formal_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
     let is_generic_slot = generic_names |> any(g => g == formal_name)
-      || match formal.inferred {
-        Present { value: TypeVariable { id: tv_id } } => generic_names |> any(g => g == tv_id)
-        _ => false
-      }
     if is_generic_slot {
       unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
     } else if is_record_lit_expr(e: record) {
-      let record_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: record)
+      let record_type_name = type_node_label(n: record, source_indices: scope.type_env.source_indices)
       if record_type_name != "" && formal_name == record_type_name {
         unify_record_lit_field_walk(
           struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
@@ -5284,13 +5292,13 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
       unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
     }
   } else {
-    let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+    let type_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
     match record_lit_instantiated_fields(type_name: Present { value: type_name }, expected: Present { value: formal }, scope: scope) {
       Present { value: struct_fields } =>
         unify_record_lit_field_walk(struct_fields: struct_fields, record: record, generic_names: generic_names, scope: scope, acc: acc)
       Absent =>
         if is_record_lit_expr(e: record) {
-          let record_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: record)
+          let record_type_name = type_node_label(n: record, source_indices: scope.type_env.source_indices)
           if record_type_name != "" && record_type_name == type_name {
             unify_record_lit_field_walk(
               struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
@@ -5323,7 +5331,7 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
         Absent => n
       }
     _ =>
-  let nm = authored_name_at(source_indices: source_indices, node: n)
+  let nm = type_node_label(n: n, source_indices: source_indices)
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
     match map_get(subst, nm) {
