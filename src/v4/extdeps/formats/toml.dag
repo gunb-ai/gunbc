@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Status: scaffold — parse/emit, numeric/datetime, table-syntax axes (former TASKS.md T-4.6 — ledger deleted).
+// Status: scaffold — parse/emit, numeric/datetime, table-syntax axes.
 // Anchor: https://toml.io/en/v1.0.0
 
 module v4.extdeps.formats.toml

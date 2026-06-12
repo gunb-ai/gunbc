@@ -1066,7 +1066,7 @@ fn rust_mvp1_i32_scalar_node() -> Node {
 }
 
 // Zip-fold support nodes derived from rust_facts_i32 constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 (re-anchor of deleted TASKS.md T-10) (Tracked scaffolds) — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges; forbidden: duplicate i32 fact-bundle data nodes as parallel coercion authority.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 (Tracked scaffolds) — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges; forbidden: duplicate i32 fact-bundle data nodes as parallel coercion authority.
 fn rust_mvp1_i32_zip_fold_closure_edges() -> List<Edge> {
   [
     rust_named_edge(
