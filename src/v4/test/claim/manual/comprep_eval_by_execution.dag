@@ -29,7 +29,11 @@ import v4.extdeps.languages.dag {
   dag_mvp1_source_text
 }
 import v4.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
-import v4.std.cardinality { termination_proof_witness_for_node }
+import v4.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  termination_proof_witness_for_node
+}
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.diagnostic {
   Accepted,
@@ -785,6 +789,35 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
   }
 }
 
+fn comprep_eval_loop_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(key) {
+        match key.kind {
+          ComputationNode { behavior: Loop } =>
+            Holds {
+              value: claim_inferred_facts_from_nodes(
+                resolved: key,
+                algebra: comprep_eval_i64_node(),
+                descent: Holds {
+                  value: TerminationProof {
+                    non_increasing: [],
+                    strict: RankingDimension {
+                      measured: ^comprep_eval_loop_measure_literal
+                    }
+                  }
+                }
+              )
+            }
+          _ =>
+            comprep_eval_facts_lookup(key: key)
+        }
+      }
+    }
+  }
+}
+
 // Loop channel-suppression discriminating test (node://adhoc-edb982e2-4a4):
 // Loop with a failing body evaluates to five_value via step_loop_continue.
 // Without eval_edge_is_runtime_argument Loop suppression, the body's Rejected short-circuits
@@ -793,7 +826,7 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
 // dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
 fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
   let loop_node = comprep_eval_lazy_arm_loop_node()
-  let tree = comprep_eval_admitted_tree(root: loop_node)
+  let tree = comprep_eval_loop_admitted_tree(root: loop_node)
   match eval(
     tree: tree,
     interpretation: comprep_eval_lazy_arm_loop_interpretation(),
