@@ -34,6 +34,12 @@ import v4.std.type_expr_projection_discipline_zip_fold_predicate {
   type_expr_projection_discipline_zip_fold_preservation_holds
 }
 import v4.std.node { Node, Symbol, well_formed }
+import v4.std.passing_candidate_fold {
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate,
+  PassingCandidateFold
+}
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -57,11 +63,6 @@ type FindWitnessResult {
   witness: StructuralPropertyWitness
   closedness: StructuralPropertyWitness
 }
-// 🟢 coproduct dissolution — local fold state for fail-closed unique candidate selection.
-type PassingCandidateFold
-  = NoPassingCandidate
-  | OnePassingCandidate { candidate: Node }
-  | ManyPassingCandidates
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TargetSelectionPolicy
   = TargetDeclaredPriority { priority: Node }

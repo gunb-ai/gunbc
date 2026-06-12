@@ -1,17 +1,18 @@
 // src/v4/compiler/03_normalize.dag
 //
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
-// Status: T-8 modeled — C3 sugar dissolution (ServiceSugar / FnSugar / TypeSugar / OperationSugar).
+// Status: T-8 modeled — traversal on normalize_fold init/step; model in std/compilers/sugar.dag.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 
 module v4.compiler.normalize
 
 import v4.std.algebra { list_snoc_item }
-import v4.std.collection { Absent, Present, optional_absent, optional_present }
+import v4.std.collection { Absent, Present }
 import v4.std.grammar { ParseTree }
 
 import v4.std.diagnostic {
   Diagnostic,
+  Diagnostics,
   node_locus,
   Outcome,
   UserInputBoundary,
@@ -22,72 +23,20 @@ import v4.std.diagnostic {
   rejected_with_pending
 }
 import v4.std.node {
-  Connective,
   Edge,
   Node,
-  OccurrenceId,
   Symbol,
-  TypeNode,
-  is_positional,
-  all_edges_named,
-  all_edges_positional,
-  node_with_occurrence_id,
+  node_rebuild,
   well_formed
+}
+import v4.std.compilers.sugar {
+  apply_sugar,
+  classify_sugar
 }
 
 type NormalizedTree = Node
 
-data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
-
-// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 / LanguageModel — dissolve-on: surface-to-kernel sugar mapping owned by language-model substrate facts, not compiler-local Atom identity comparison in classify_sugar; forbidden: persistent local SurfaceSugarKind taxonomy without structural LanguageModel carrier.
-type SurfaceSugarKind
-  = ServiceSugar
-  | FnSugar
-  | TypeSugar
-  | OperationSugar
-
-fn some_surface_sugar_kind(kind: SurfaceSugarKind) -> SurfaceSugarKind? {
-  optional_present(value: kind)
-}
-
-fn no_surface_sugar_kind() -> SurfaceSugarKind? {
-  optional_absent()
-}
-
-// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 — dissolve-on: classify_sugar reads modeled LanguageModel sugar facts; forbidden: Atom identity string/symbol comparison as permanent authority.
-fn classify_sugar(n: Node) -> SurfaceSugarKind? {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_c3_surface_sugar_service {
-        some_surface_sugar_kind(kind: ServiceSugar)
-      } else {
-        if id == ^dag_c3_surface_sugar_fn {
-          some_surface_sugar_kind(kind: FnSugar)
-        } else {
-          if id == ^dag_c3_surface_sugar_type {
-            some_surface_sugar_kind(kind: TypeSugar)
-          } else {
-            if id == ^dag_c3_surface_sugar_operation {
-              some_surface_sugar_kind(kind: OperationSugar)
-            } else {
-              no_surface_sugar_kind()
-            }
-          }
-        }
-      }
-    TypeNode { connective: _ } => no_surface_sugar_kind()
-    ComputationNode { behavior: _ } => no_surface_sugar_kind()
-  }
-}
-
-fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: normalize_reason_malformed_sugar,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -97,115 +46,61 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn exactly_one_child(children: List<Edge>) -> Bool {
-  count(children) == 1
+fn normalize_fold_init(n: Node) -> Outcome<Node> {
+  Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
 }
 
-fn normalize_edge(e: Edge) -> Outcome<Edge> {
-  match normalize_node(n: e.target) {
-    Accepted { value: normalized_target, diagnostics: d } =>
-      Accepted { value: Edge {
-          label: e.label,
-          target: normalized_target
-        }, diagnostics: d }
+fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> Outcome<Node> {
+  match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn empty_normalized_children() -> Outcome<List<Edge>> {
-  Accepted { value: Empty, diagnostics: None }
-}
-
-fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
-  fold(children, init: empty_normalized_children(), f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
-        match normalize_edge(e: e) {
-          Accepted { value: normalized_edge, diagnostics: ed } =>
-            Accepted {
-              value: list_snoc_item(xs: done, item: normalized_edge),
-              diagnostics: diagnostics_merge(outer: ad, inner: ed)
-            }
-          Rejected { diagnostics: r } =>
-            Rejected {
-              diagnostics: rejected_with_pending(pending: ad, rejected: r)
-            }
-        }
-    }
-  })
-}
-
-fn type_node(connective: Connective, children: List<Edge>, occurrence_id: NodeOccurrenceId) -> Node {
-  node_with_occurrence_id(
-    kind: TypeNode { connective: connective },
-    children: children,
-    occurrence_id: occurrence_id
-  )
-}
-
-fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
-  match kind {
-    ServiceSugar =>
-      if all_edges_named(children: children) {
-        Accepted { value: type_node(connective: Conj, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-      }
-    FnSugar =>
-      if all_edges_positional(children: children) {
-        Accepted { value: type_node(connective: Arrow, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-      }
-    TypeSugar =>
-      if exactly_one_child(children: children) {
-        match children |> first {
-          Present { value: e0 } =>
-            if is_positional(e: e0) {
-              Accepted { value: e0.target, diagnostics: None }
-            } else {
-              Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-            }
-          Absent =>
-            Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-        }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-      }
-    OperationSugar =>
-      if all_edges_positional(children: children) {
-        Accepted { value: type_node(connective: Arrow, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
-      }
-  }
-}
-
-fn normalize_node(n: Node) -> Outcome<Node> {
-  match normalize_children(children: n.children) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: normalized_children, diagnostics: cd } =>
-      match classify_sugar(n: n) {
-        Present { value: kind } =>
-          match normalize_sugar(kind: kind, n: n, children: normalized_children) {
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(pending: cd, rejected: r)
-              }
-            Accepted { value: v, diagnostics: d } =>
-              Accepted {
-                value: v,
-                diagnostics: diagnostics_merge(outer: cd, inner: d)
-              }
+    Accepted { value: shell, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
           }
-        Absent =>
+        Accepted { value: child_node, diagnostics: cd } =>
           Accepted {
-            value: node_with_occurrence_id(kind: n.kind, children: normalized_children, occurrence_id: n.occurrence_id),
-            diagnostics: cd
+            value: node_rebuild(
+              n: shell,
+              children: list_snoc_item(
+                xs: shell.children,
+                item: Edge { label: edge.label, target: child_node }
+              )
+            ),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
       }
+  }
+}
+
+fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  match classify_sugar(n: n) {
+    Present { value: rule } =>
+      match apply_sugar(rule: rule, n: n, children: folded.children) {
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: cd, rejected: r)
+          }
+        Accepted { value: v, diagnostics: d } =>
+          Accepted {
+            value: v,
+            diagnostics: diagnostics_merge(outer: cd, inner: d)
+          }
+      }
+    Absent =>
+      Accepted { value: folded, diagnostics: cd }
+  }
+}
+
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 4/10) — feature:traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: Outcome-bearing fold_node algebra carries sugar-finish per node natively, replacing manual child-slot normalize_node re-entry; forbidden: bare fold_node(n, normalize_fold_algebra) here — fold_node's child slot only recurses fold_node (structural shells), so per-depth sugar finish requires normalize_node in the step child slot until Q4 lands.
+fn normalize_node(n: Node) -> Outcome<Node> {
+  match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
+    normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: cd } =>
+      normalize_sugar_finish(n: n, folded: folded, cd: cd)
   }
 }
 
