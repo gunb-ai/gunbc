@@ -12,6 +12,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod a4_opacity;
+#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod bootstrap;
