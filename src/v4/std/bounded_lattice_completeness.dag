@@ -23,6 +23,7 @@ import v4.std.algebra {
   inhabitant_edge,
   lattice_field_join,
   lattice_field_meet,
+  fold_list_right,
   list_snoc_item
 }
 import v4.std.collection { List }
@@ -217,34 +218,25 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
-// 🟡 bootstrap-limitation interim — bind node://adhoc-f581ce40-042 — dissolve-on: v2 generic lambda-param instantiation from call-site type (named fold_init/fold_step until struct-literal field lambdas and List<Node> from [] in anonymous bodies type-check inline).
-fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
-  match bounded_lattice_instance_completeness(instance: n) {
-    BoundedLatticePartial { missing: _ } => [n]
-    NotBoundedLatticeInstance => []
-    BoundedLatticeComplete => []
-  }
-}
-
-fn infer_partial_bounded_lattice_instances_fold_step(
-  acc: List<Node>,
-  e: Edge,
-  child: List<Node>,
-) -> List<Node> {
-  fold(child, init: acc, f: fn(a, p) {
-    list_snoc_item(xs: a, item: p)
-  })
-}
-
 fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
   fold_node(
     n: tree,
     algebra: NodeFold {
       init: fn(n0) {
-        infer_partial_bounded_lattice_instances_fold_init(n: n0)
+        match bounded_lattice_instance_completeness(instance: n0) {
+          BoundedLatticePartial { missing: _ } => [n0]
+          NotBoundedLatticeInstance => []
+          BoundedLatticeComplete => []
+        }
       },
       step: fn(acc, e, child) {
-        infer_partial_bounded_lattice_instances_fold_step(acc: acc, e: e, child: child)
+        fold_list_right(
+          xs: child,
+          empty: acc,
+          snoc: fn(a, p) {
+            list_snoc_item(xs: a, item: p)
+          }
+        )
       }
     }
   )
