@@ -11,6 +11,9 @@
 > **Implementation GO:** sharp-fox-370 **owns announcing GO** when fan-in **(iii) round-trip**
 > greens (downstream of fan-in **(ii) emit**, in flight: `valiant-swift-466` PR #4741).
 > Until GO: **NO** compiler-stage `.dag` edits, **NO** emit-surface code.
+>
+> **Operator pivot (2026-06-12):** ctrl tooling goes 100% TS and will depend on gunbc TS
+> emission at build time — §3 is the **program spine**, not breadth-only work.
 
 ## 1. North star — one row per form, rows not arms
 
@@ -93,9 +96,52 @@ Each rung = **exactly one** `TargetValueExpressionKind` + **one** projection fol
 serialize arm. Nested/block variants (B2/B3) use **recursive projection on the same kind**, not
 new kinds (`design-comprep-m0-branch-mapping.md` §12.1 tripwire).
 
+### 3.0 Early deliverable — stable emit CLI façade (ctrl build contract)
+
+**Problem:** v4 TS emit is invocable only in-language today (`gunbc run --source-root …
+--entry … --function …` on the v2 interpreter). ctrl's TS build needs a **stable external
+contract** that does not bind to internal `.dag` fn names.
+
+**Contract (target shape):**
+
+```text
+gunbc emit --target <lang> --source-root <dir> --entry <program.dag> [--output <path>]
+```
+
+- **Thin façade only** — wraps the existing v4 `emit(tree, target)` path (parse → infer →
+  `emit`); **no new emission logic**, no duplicate translate/serialize.
+- **Useful from L0 onward** — slot as first implementation worker after GO (parallel to L0
+  body-emit greens); ctrl can consume as soon as signature+bodied paths emit for TS.
+- **Layer separation (do not conflate):**
+  - `gunbc compile` — **v2 bootstrap pipeline** (`compile_sources` /
+    `emit_resolved_for_target` in `main.rs`); emits v2 stage0 / multi-file bootstrap output.
+  - `gunbc run` — v2 interpreter + scoped `--claim-run` witnesses.
+  - `gunbc emit` — **v4 translate-path emission** to target source text/files; new surface.
+- **Façade home (design ruling):** stage0 CLI — new `Emit` subcommand alongside `Compile` /
+  `Run` (`src/v2/stage0/src/main.rs` generated shell + hand-maintained handler module, same
+  pattern as `cli_run.rs` for `Run`). Handler calls into v4 emit authority; does not grow
+  compiler-stage `.dag` logic.
+
+**Acceptance:** emit TS for `mvp1` / producer-rooted add program writes authority source text
+to `--output`; discriminating receipt = same strings as existing `claim-run` emit witnesses.
+
+### 3.1 North-star fixture — `ctrl` `plans/models/plan_checks.dag`
+
+**Role:** breadth **driver** once operator delivers form-census — **not** the first acceptance
+fixture (too many forms at once). First acceptance stays **per-rung witnesses** as designed.
+
+| Aspect | Rule |
+|--------|------|
+| **Prioritization** | Ladder rung **order** follows `plan_checks` **blocking forms** (form census pending from operator) |
+| **Acceptance growth** | Largest `plan_checks` **subset** emittable with landed forms at each milestone |
+| **Ladder structure** | L0→L1→BindLet→Loop→CallableApply **unchanged**; records/lists/fold rungs likely **pulled earlier** than current draft once census lands (`plan_checks` is plan/record-heavy) |
+| **Status** | 🟡 pending form-census from operator; placeholder until census lands |
+
+### 3.2 Ordered source forms (default rung table — reprioritize when census lands)
+
 | Order | Source form (`dag.dag`) | One algebra row | Producer gate | Eval fan-in | Emit fan-in | Round-trip |
 |-------|-------------------------|---------------|---------------|-------------|-------------|------------|
-| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ wave regression (eval); emit red pre-wave | ❌ **red-baseline** (emit) | eval bisect in progress (#4737 suspect) |
+| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ stale witness (#4737 culprit; #4738 semantics) | ❌ red pre-wave (emit) | witness fix or ctrl gate |
 | L1 | `dag_production_if_then_form` | `TargetValueExprConditional` | ✅ M0-B1 | ✅ green | sharp-fox (ii) | sharp-fox (iii) → **§3 GO** |
 | L2 | cond = param ref (B1a) | same `Conditional` | B1a | follow-on | same row | — |
 | L3 | `dag_production_if_block_form` | same `Conditional` + stmt scaffold | Bind producer | §2 | same row | — |
@@ -190,6 +236,7 @@ templates or cementing per-target logic to satisfy a ratchet.
 | # | When | Owner hint |
 |---|------|------------|
 | W0 | Branch round-trip green | sharp-fox `adhoc-fdd9ccb8-b54`; (ii) emit: valiant-swift-466 #4741 |
+| W_emit | **Emit CLI façade** (`gunbc emit --target ts`) | stage0 handler + v4 emit hook; early, parallel L0 |
 | W1 | Rust descriptor + claims | extdeps worker; P2 sweep all compiler stages |
 | W2 | TS body emit red → green | producer→emit path; no hand token list |
 | W3 | T-22 runtime_row | model PR; dissolves emit_host if-chains |
