@@ -10797,19 +10797,28 @@ pub fn unify_generics(
         let fname = authored_name_at(source_indices.clone(), formal.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
-        if (f_bare && {
+        let tv_id = match formal.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: id, .. }) => id.clone(),
+            _ => "".to_string(),
+        };
+        let bind_name = if (tv_id.clone().as_str() != "".to_string().as_str()) {
+            tv_id.clone()
+        } else {
+            fname
+        };
+        if ((f_bare || (tv_id.clone().as_str() != "".to_string().as_str())) && {
             let mut __found = false;
             for g in generic_names.clone().iter().cloned() {
-                if (g.clone().as_str() == fname.clone().as_str()) {
+                if (g.clone().as_str() == bind_name.clone().as_str()) {
                     __found = true;
                     break;
                 }
             }
             __found
         }) {
-            match v2_rt::map_get(&acc, fname.clone()) {
+            match v2_rt::map_get(&acc, bind_name.clone()) {
                 None => {
-                    break v2_rt::rc_map_insert(acc.clone(), fname.clone(), actual.clone());
+                    break v2_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
                 Some(_) => {
                     break acc.clone();
@@ -10843,6 +10852,66 @@ pub fn unify_generics(
     }
 }
 
+pub fn unify_record_lit_field_walk(
+    struct_fields: Rc<Vec<Rc<Node>>>,
+    record: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    scope: Rc<InferScope>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    struct_fields
+        .iter()
+        .cloned()
+        .fold(acc, |st: Rc<HashMap<String, Rc<Node>>>, sf: Rc<Node>| {
+            let field_name =
+                authored_name_at(scope.type_env.clone().source_indices.clone(), sf.clone());
+            match Rc::new({
+                let mut __result = Vec::new();
+                for fi in record.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(
+                        fi.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                    .as_str()
+                        == field_name.clone().as_str())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(fi) => {
+                    let actual_value = field_init_node_value(fi.clone());
+                    let field_formal = match sf.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                        _ => field_node_type_expr(sf.clone()),
+                    };
+                    if is_record_lit_expr(actual_value.clone()) {
+                        unify_record_lit_generics(
+                            field_formal.clone(),
+                            actual_value.clone(),
+                            generic_names.clone(),
+                            scope.clone(),
+                            st.clone(),
+                        )
+                    } else {
+                        unify_generics(
+                            field_formal.clone(),
+                            resolved_type(actual_value.clone()),
+                            generic_names.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            st.clone(),
+                        )
+                    }
+                }
+                None => st.clone(),
+            }
+        })
+}
+
 pub fn unify_record_lit_generics(
     formal: Rc<Node>,
     record: Rc<Node>,
@@ -10850,85 +10919,133 @@ pub fn unify_record_lit_generics(
     scope: Rc<InferScope>,
     acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if ((formal.children.clone().len() as i64) == 0) {
-            unify_generics(
-                formal.clone(),
-                resolved_type(record.clone()),
-                generic_names.clone(),
+    if ((formal.children.clone().len() as i64) == 0) {
+        {
+            let formal_name = authored_name_at(
                 scope.type_env.clone().source_indices.clone(),
-                acc,
-            )
-        } else {
-            {
-                let type_name = authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
+                formal.clone(),
+            );
+            let is_generic_slot = ({
+                let mut __found = false;
+                for g in generic_names.clone().iter().cloned() {
+                    if (g.clone().as_str() == formal_name.clone().as_str()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } || match formal.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    let mut __found = false;
+                    for g in generic_names.clone().iter().cloned() {
+                        if (g.clone().as_str() == tv_id.clone().as_str()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+                _ => false,
+            });
+            if is_generic_slot {
+                unify_generics(
                     formal.clone(),
-                );
-                match record_lit_instantiated_fields(
-                    Some(type_name),
-                    Some(formal.clone()),
-                    scope.clone(),
-                ) {
-                    Some(struct_fields) => struct_fields.clone().iter().cloned().fold(
-                        acc,
-                        |st: Rc<HashMap<String, Rc<Node>>>, sf: Rc<Node>| {
-                            let field_name = authored_name_at(
+                    resolved_type(record.clone()),
+                    generic_names.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    acc,
+                )
+            } else {
+                if is_record_lit_expr(record.clone()) {
+                    {
+                        let record_type_name = authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            record.clone(),
+                        );
+                        if ((record_type_name.clone().as_str() != "".to_string().as_str())
+                            && (formal_name.clone().as_str() == record_type_name.clone().as_str()))
+                        {
+                            unify_record_lit_field_walk(
+                                record_lit_expected_fields(
+                                    Some(record_type_name.clone()),
+                                    scope.clone(),
+                                ),
+                                record.clone(),
+                                generic_names.clone(),
+                                scope.clone(),
+                                acc,
+                            )
+                        } else {
+                            unify_generics(
+                                formal.clone(),
+                                resolved_type(record.clone()),
+                                generic_names.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                                sf.clone(),
-                            );
-                            match Rc::new({
-                                let mut __result = Vec::new();
-                                for fi in record.children.clone().iter().cloned() {
-                                    if (field_init_node_name_at(
-                                        fi.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    )
-                                    .as_str()
-                                        == field_name.clone().as_str())
-                                    {
-                                        __result.push(fi);
-                                    }
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned()
-                            {
-                                Some(fi) => {
-                                    let actual_value = field_init_node_value(fi.clone());
-                                    let field_formal = match sf.inferred.clone().as_deref().cloned()
-                                    {
-                                        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-                                        _ => field_node_type_expr(sf.clone()),
-                                    };
-                                    if is_record_lit_expr(actual_value.clone()) {
-                                        unify_record_lit_generics(
-                                            field_formal.clone(),
-                                            actual_value.clone(),
-                                            generic_names.clone(),
-                                            scope.clone(),
-                                            st.clone(),
-                                        )
-                                    } else {
-                                        unify_generics(
-                                            field_formal.clone(),
-                                            resolved_type(actual_value.clone()),
-                                            generic_names.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                            st.clone(),
-                                        )
-                                    }
-                                }
-                                None => st.clone(),
-                            }
-                        },
-                    ),
-                    None => acc,
+                                acc,
+                            )
+                        }
+                    }
+                } else {
+                    unify_generics(
+                        formal.clone(),
+                        resolved_type(record.clone()),
+                        generic_names.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        acc,
+                    )
                 }
             }
         }
-    })
+    } else {
+        {
+            let type_name = authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                formal.clone(),
+            );
+            match record_lit_instantiated_fields(
+                Some(type_name.clone()),
+                Some(formal.clone()),
+                scope.clone(),
+            ) {
+                Some(struct_fields) => unify_record_lit_field_walk(
+                    struct_fields.clone(),
+                    record.clone(),
+                    generic_names.clone(),
+                    scope.clone(),
+                    acc,
+                ),
+                None => {
+                    if is_record_lit_expr(record.clone()) {
+                        {
+                            let record_type_name = authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                record.clone(),
+                            );
+                            if ((record_type_name.clone().as_str() != "".to_string().as_str())
+                                && (record_type_name.clone().as_str()
+                                    == type_name.clone().as_str()))
+                            {
+                                unify_record_lit_field_walk(
+                                    record_lit_expected_fields(
+                                        Some(record_type_name.clone()),
+                                        scope.clone(),
+                                    ),
+                                    record.clone(),
+                                    generic_names.clone(),
+                                    scope.clone(),
+                                    acc,
+                                )
+                            } else {
+                                acc
+                            }
+                        }
+                    } else {
+                        acc
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn substitute_generics(
@@ -10940,68 +11057,76 @@ pub fn substitute_generics(
         if ((Rc::new(v2_rt::map_keys(&subst)).len() as i64) == 0) {
             n.clone()
         } else {
-            {
-                let nm = authored_name_at(source_indices.clone(), n.clone());
-                let is_bare = ((((n.children.clone().len() as i64) == 0)
-                    && (n.connective.clone() == Connective::NoConnective))
-                    && ((n.params.clone().len() as i64) == 0));
-                if is_bare {
-                    match v2_rt::map_get(&subst, nm) {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    match v2_rt::map_get(&subst, tv_id.clone()) {
                         Some(c) => c.clone(),
                         None => n.clone(),
                     }
-                } else {
-                    Rc::new(Node {
-                        name: n.name.clone(),
-                        span: n.span.clone(),
-                        ident_span: n.ident_span.clone(),
-                        children: Rc::new({
-                            let mut __result = Vec::new();
-                            for c in n.children.clone().iter().cloned() {
-                                __result.push(substitute_generics(
-                                    c.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        connective: n.connective.clone(),
-                        params: Rc::new({
-                            let mut __result = Vec::new();
-                            for p in n.params.clone().iter().cloned() {
-                                __result.push(substitute_generics(
-                                    p.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        inferred: match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                Some(Rc::new(InferredNode::Resolved {
-                                    node: substitute_generics(
-                                        rt.clone(),
+                }
+                _ => {
+                    let nm = authored_name_at(source_indices.clone(), n.clone());
+                    let is_bare = ((((n.children.clone().len() as i64) == 0)
+                        && (n.connective.clone() == Connective::NoConnective))
+                        && ((n.params.clone().len() as i64) == 0));
+                    if is_bare {
+                        match v2_rt::map_get(&subst, nm) {
+                            Some(c) => c.clone(),
+                            None => n.clone(),
+                        }
+                    } else {
+                        Rc::new(Node {
+                            name: n.name.clone(),
+                            span: n.span.clone(),
+                            ident_span: n.ident_span.clone(),
+                            children: Rc::new({
+                                let mut __result = Vec::new();
+                                for c in n.children.clone().iter().cloned() {
+                                    __result.push(substitute_generics(
+                                        c.clone(),
                                         subst.clone(),
                                         source_indices.clone(),
-                                    ),
-                                }))
-                            }
-                            _ => n.inferred.clone(),
-                        },
-                        return_cardinality: n.return_cardinality.clone(),
-                        uses: n.uses.clone(),
-                        body: n.body.clone(),
-                        transport: n.transport.clone(),
-                        properties: n.properties.clone(),
-                        type_annotation: n.type_annotation.clone(),
-                        is_self_recursive: n.is_self_recursive.clone(),
-                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                        match_pattern: n.match_pattern.clone(),
-                        expr_data: n.expr_data.clone(),
-                        ident: None,
-                    })
+                                    ));
+                                }
+                                __result
+                            }),
+                            connective: n.connective.clone(),
+                            params: Rc::new({
+                                let mut __result = Vec::new();
+                                for p in n.params.clone().iter().cloned() {
+                                    __result.push(substitute_generics(
+                                        p.clone(),
+                                        subst.clone(),
+                                        source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            }),
+                            inferred: match n.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: substitute_generics(
+                                            rt.clone(),
+                                            subst.clone(),
+                                            source_indices.clone(),
+                                        ),
+                                    }))
+                                }
+                                _ => n.inferred.clone(),
+                            },
+                            return_cardinality: n.return_cardinality.clone(),
+                            uses: n.uses.clone(),
+                            body: n.body.clone(),
+                            transport: n.transport.clone(),
+                            properties: n.properties.clone(),
+                            type_annotation: n.type_annotation.clone(),
+                            is_self_recursive: n.is_self_recursive.clone(),
+                            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                            match_pattern: n.match_pattern.clone(),
+                            expr_data: n.expr_data.clone(),
+                            ident: None,
+                        })
+                    }
                 }
             }
         }
