@@ -258,6 +258,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
     }
   )
 }
+// 🟡 gated — feature:sg-2-type-expr-projection-row-data — consumer:translate_serialize_measure/target_serialize_*_bounded/serialize_type_expr_*_bounded — bind node://adhoc-3bb63121-471 (W2-proper / plan G1) — dissolve-on: TargetModel acyclicity witness (grammar-relation row mutual refs + boundary-atom→signature row trees) replaces rules_budget+subtree serialize fuel and the *_bounded cycle-guard ladder; PR-T-FINISH deletes projection _go only — forbidden: mechanical zeroing of serialize-side _bounded without an occurs-check or model-acyclicity carrier.
 fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
