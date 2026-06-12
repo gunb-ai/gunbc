@@ -390,6 +390,17 @@ pub fn lookup_variant_in_type(
                                     ))
                                 } else {
                                     {
+                                        let scrut_name = authored_name_at(
+                                            source_indices.clone(),
+                                            scrut_node.clone(),
+                                        );
+                                        let optional_coproduct_subject =
+                                            ((scrut_name.clone().as_str()
+                                                == "Optional".to_string().as_str())
+                                                && ((variant_name.clone().as_str()
+                                                    == "Present".to_string().as_str())
+                                                    || (variant_name.clone().as_str()
+                                                        == "Absent".to_string().as_str())));
                                         let direct_match = find_child_named(
                                             scrut_node.clone(),
                                             variant_name.clone(),
@@ -398,21 +409,35 @@ pub fn lookup_variant_in_type(
                                         let record_destructure = (((field_binding_count > 0)
                                             && (scrut_node.connective.clone()
                                                 == Connective::Conj))
-                                            && (authored_name_at(
-                                                source_indices.clone(),
-                                                scrut_node.clone(),
-                                            )
-                                            .as_str()
+                                            && (scrut_name.clone().as_str()
                                                 == variant_name.clone().as_str()));
                                         let fallback = if record_destructure {
                                             node_lookup_resolved(scrut_node.clone())
                                         } else {
-                                            variant_not_found_result(
-                                                scrut_node.clone(),
-                                                variant_name.clone(),
-                                                module_name,
-                                                source_indices.clone(),
-                                            )
+                                            if (optional_coproduct_subject.clone()
+                                                && (variant_name.clone().as_str()
+                                                    == "Present".to_string().as_str()))
+                                            {
+                                                node_lookup_resolved(
+                                                    synthesize_optional_present_variant(
+                                                        scrut_node.clone(),
+                                                    ),
+                                                )
+                                            } else {
+                                                if (optional_coproduct_subject.clone()
+                                                    && (variant_name.clone().as_str()
+                                                        == "Absent".to_string().as_str()))
+                                                {
+                                                    node_lookup_resolved(none_type())
+                                                } else {
+                                                    variant_not_found_result(
+                                                        scrut_node.clone(),
+                                                        variant_name.clone(),
+                                                        module_name,
+                                                        source_indices.clone(),
+                                                    )
+                                                }
+                                            }
                                         };
                                         match direct_match {
                                             Some(v) => node_lookup_resolved(v.clone()),

@@ -167,15 +167,25 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         } else if witness_subject && variant_name == "Violates" {
           node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
+          let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
+          // Optional<T> coproduct: after generic instantiation the applied type may be a
+          // bare `Optional` node carrying only the type arg (no Disj children). Synthesize
+          // Present/Absent the same way cardinality-optionals do once direct child lookup fails.
+          let optional_coproduct_subject = scrut_name == "Optional"
+            && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
           // Record / generic-record destructuring: `LocusAnchor { at: x }` against
           // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
           // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
-            && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
+            && scrut_name == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
+          } else if optional_coproduct_subject && variant_name == "Present" {
+            node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
+          } else if optional_coproduct_subject && variant_name == "Absent" {
+            node_lookup_resolved(node: none_type)
           } else {
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
           }
