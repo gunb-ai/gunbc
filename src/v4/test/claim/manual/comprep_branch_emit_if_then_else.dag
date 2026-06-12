@@ -105,6 +105,20 @@ fn comprep_branch_emit_swapped_from_producer(target: TargetModel) -> Outcome<Tar
   )
 }
 
+fn comprep_branch_emit_producer_accepts_holds() -> Bool {
+  match produce_mvp1_pick_if_arrow_with_body() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_emit_emit_accepts_holds() -> Bool {
+  match comprep_branch_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn comprep_branch_emit_if_then_else_holds() -> Bool {
   match comprep_branch_emit_from_producer(target: dag_mvp1_pick_target_model()) {
     Accepted { value: source, diagnostics: d } =>
