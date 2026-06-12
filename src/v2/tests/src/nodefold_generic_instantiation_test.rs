@@ -92,8 +92,13 @@ fn v4_chained_generic_field_access_compiles_and_runs() {
 
 #[test]
 fn debug_nodefold_expr_errors_in_graph() {
-    use v2_compiler::v2_std_core::{ExprData, Node, authored_name_at};
-    fn walk(n: &Rc<Node>, path: &str, si: &std::collections::HashMap<String, Rc<v2_compiler::v2_std_core::NewlineIndex>>, out: &mut Vec<String>) {
+    use v2_compiler::v2_std_core::{authored_name_at, ExprData, Node};
+    fn walk(
+        n: &Rc<Node>,
+        path: &str,
+        si: &std::collections::HashMap<String, Rc<v2_compiler::v2_std_core::NewlineIndex>>,
+        out: &mut Vec<String>,
+    ) {
         if let ExprData::ExprError { message, .. } = &*n.expr_data {
             out.push(format!("{path}: {message}"));
         }

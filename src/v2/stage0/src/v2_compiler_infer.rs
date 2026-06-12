@@ -1054,7 +1054,7 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
                                                     inferred: Some(Rc::new(
                                                         InferredNode::Resolved {
                                                             node: substitute_generics(
-                                                                child_type_node(sf.clone()),
+                                                                field_node_type_expr(sf.clone()),
                                                                 subst.clone(),
                                                                 scope
                                                                     .type_env
@@ -5185,7 +5185,10 @@ pub fn infer_record_lit(
                     .cloned()
                     {
                         Some(sf) => {
-                            let ft = child_type_node(sf.clone());
+                            let ft = match sf.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                                _ => field_node_type_expr(sf.clone()),
+                            };
                             if ((ft.ident_span.clone() != None)
                                 || type_node_is_callable(ft.clone()))
                             {
