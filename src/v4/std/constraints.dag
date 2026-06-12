@@ -1,6 +1,6 @@
 // src/v4/std/constraints.dag
 // Scope: canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper).
-// Anchor: design-v4-compiler-homomorphism.md; TASKS.md T-9; docs/modeling-discipline.md Practice 11.
+// Anchor: design-v4-compiler-homomorphism.md; gunbc#4760 (re-anchor of deleted TASKS.md T-9); docs/modeling-discipline.md Practice 11.
 // Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
 
 
@@ -98,7 +98,7 @@ fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropert
     evidence: root
   }
 }
-// 🟡 coproduct dissolution — scaffold:T-9-candidate-singleton-mvp · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node (ledger: scaffold:T-9-ground · TASKS.md T-9).
+// 🟡 coproduct dissolution — scaffold:T-9-candidate-singleton-mvp · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node (bind gunbc#4760; former ledger TASKS.md T-9 — deleted).
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {

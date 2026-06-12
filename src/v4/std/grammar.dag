@@ -252,7 +252,7 @@ type GrammarSchemaProbeBinding {
 }
 
 
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — canonical grammar-relation
+// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind gunbc#4761 (re-anchor of deleted TASKS.md T-11) — canonical grammar-relation
 // row carrier (FormalProduction + emitted Node); per-language concrete-token lists project to
 // the tokens edge via grammar_relation_row_to_node.
 type GrammarRelationRow {
@@ -1078,7 +1078,7 @@ fn derive_grammar_relation_token_edges_recursive(
 }
 
 
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
+// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind gunbc#4761 (re-anchor of deleted TASKS.md T-11) — derive production+emitted+bindings
 // into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
 // 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion only; non-Conj emitted
 // rejects (no fail-soft terminal-only fallback — PR-1.5 prohibition restored).
@@ -1222,7 +1222,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 
 
 // 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
-// bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
+// bind gunbc#4766 (re-anchor of deleted TASKS.md T-8) — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
 // { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
 // sync_tokens cannot be materialized as a Node child here. ^grammar_root_sync_tokens_node_projection
 // names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership

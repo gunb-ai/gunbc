@@ -191,7 +191,7 @@ fn algebra_empty_conj() -> Node {
 }
 
 
-// 🟡 needs-more-work — feature:T-2-free-monoid-equirecursive-tail — bind node://adhoc-82b64410-d48 — dissolve-on: std/ gains an equi-recursive type carrier or mu-fixpoint connective that can represent FreeMonoid<T>'s self-referential Cons.tail directly without a fixpoint-marker placeholder (ledger: T-2 · TASKS.md §T-2)
+// 🟡 needs-more-work — feature:T-2-free-monoid-equirecursive-tail — bind node://adhoc-82b64410-d48 — dissolve-on: std/ gains an equi-recursive type carrier or mu-fixpoint connective that can represent FreeMonoid<T>'s self-referential Cons.tail directly without a fixpoint-marker placeholder
 fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: Node {

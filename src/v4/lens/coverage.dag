@@ -487,7 +487,7 @@ fn missing_coverage<C>(
   )
 }
 
-// 🟡 gated — feature:l6-k1-dag-language-surface-only — bind task: src/v4/TASKS.md#t-4-extdepslanguagesrustpythongocpptypescriptdag
+// 🟡 gated — feature:l6-k1-dag-language-surface-only — bind gunbc#4762 (re-anchor of deleted TASKS.md T-4)
 // dissolve-on-arrival: bootstrap_l6_language_surfaces projects extdeps/languages scheduled L6 surface Symbol anchors; forbidden: reporting K-1 single-language bootstrap as full L6 completeness.
 fn bootstrap_l6_language_surfaces() -> List<Symbol> {
   [^dag_language_model_surface_id]
@@ -702,9 +702,9 @@ fn expected_refinement_preservation_testgen_keys() -> Outcome<List<TestgenCovera
   )
 }
 
-// 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
-// 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
-// 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
+// 🟡 gated — feature:testgen-lens-applicability-schedule — bind gunbc#4762 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
+// 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind gunbc#4762 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
+// 🟡 gated — feature:testgen-concept-reflection — bind gunbc#4762 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
 fn expected_testgen_coverage_keys() -> Outcome<List<TestgenCoverageKey>> {
   bind_outcome(
     o: expected_refinement_preservation_testgen_keys(),
@@ -749,7 +749,7 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:testgen-scheduled-anchor-absent — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: L6/L7/testgen slice NotApplicable for ManualAnchorAbsent rows reads testgen_concept_for_manual_claim rejection taxonomy from lens/testgen + std/verification; delete claim_is_outside_testgen_scheduled_anchor in that same PR; forbidden: permanent lens-owned ClaimAnchorKey ManualAnchorAbsent predicate drift from std/verification.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:testgen-scheduled-anchor-absent — bind gunbc#4762 (re-anchor of deleted TASKS.md T-19) — dissolve-on-arrival: L6/L7/testgen slice NotApplicable for ManualAnchorAbsent rows reads testgen_concept_for_manual_claim rejection taxonomy from lens/testgen + std/verification; delete claim_is_outside_testgen_scheduled_anchor in that same PR; forbidden: permanent lens-owned ClaimAnchorKey ManualAnchorAbsent predicate drift from std/verification.
 fn claim_is_outside_testgen_scheduled_anchor(c: TestClaim) -> Bool {
   match test_claim_anchor(c: c) {
     ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } => true
@@ -944,7 +944,7 @@ fn testgen_coverage_projection_from_claim(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack — dissolve-on-arrival: impossible-bug slice gate reads canonical DiagnosticClaim reason membership from std/verification impossible_bug_class_from_diagnostic_reason when TestClaim carries ImpossibleBugClass directly; delete diagnostic_reason_is_canonical_impossible_bug and append_if_canonical_impossible_bug_diagnostic / non_empty_diagnostics_targets_impossible_bug_slice Bool wrappers in that same PR; forbidden: permanent lens-owned Outcome→Bool reason classifier outside impossible_bug_coverage_projection_from_claim.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:impossible-bug-reason-projection — bind gunbc#4759 (re-anchor of deleted TASKS.md T-3) — dissolve-on-arrival: impossible-bug slice gate reads canonical DiagnosticClaim reason membership from std/verification impossible_bug_class_from_diagnostic_reason when TestClaim carries ImpossibleBugClass directly; delete diagnostic_reason_is_canonical_impossible_bug and append_if_canonical_impossible_bug_diagnostic / non_empty_diagnostics_targets_impossible_bug_slice Bool wrappers in that same PR; forbidden: permanent lens-owned Outcome→Bool reason classifier outside impossible_bug_coverage_projection_from_claim.
 fn diagnostic_reason_is_canonical_impossible_bug(reason: Symbol) -> Bool {
   match impossible_bug_class_from_diagnostic_reason(reason: reason) {
     Accepted { value: _, diagnostics: None } => true

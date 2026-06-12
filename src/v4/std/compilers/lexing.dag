@@ -1,6 +1,6 @@
 // src/v4/std/compilers/lexing.dag
 // Scope: canonical lexical model shared by compiler stages and target-language specs.
-// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-6.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + THESIS.md "Compiler-std consolidation" + gunbc#4761 (re-anchor of deleted TASKS.md T-6).
 // Status: T-6 lexical data carriers; lexer implementation remains in v4.compiler.tokenize.
 
 module v4.std.compilers.lexing
@@ -14,7 +14,7 @@ import v4.std.text { Char, String }
 
 type Lexeme = String
 
-// 🟡 coproduct dissolution — feature:t6-lex-char-class-morphism — consumer:v4.compiler.tokenize.char_in_class — bind TASKS.md T-6 — dissolve-on-arrival: substrate-derived LexCharClass membership morphism replaces per-arm character-range predicates; forbidden: adding LexCharClass arms without the morphism consumer.
+// 🟡 coproduct dissolution — feature:t6-lex-char-class-morphism — consumer:v4.compiler.tokenize.char_in_class — bind gunbc#4761 (re-anchor of deleted TASKS.md T-6) — dissolve-on-arrival: substrate-derived LexCharClass membership morphism replaces per-arm character-range predicates; forbidden: adding LexCharClass arms without the morphism consumer.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -41,7 +41,7 @@ type LexPattern
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
 
-// 🟡 coproduct dissolution — feature:t6-lex-rule-morphism — consumer:v4.compiler.tokenize.lex_try_rule/std.lexing.lex_rule_token_class_member — bind TASKS.md T-6 — dissolve-on-arrival: substrate-derived LexRule fold/projection covers token/trivia rule consumers; forbidden: duplicating LexRule arm matches outside this std query and tokenizer walk.
+// 🟡 coproduct dissolution — feature:t6-lex-rule-morphism — consumer:v4.compiler.tokenize.lex_try_rule/std.lexing.lex_rule_token_class_member — bind gunbc#4761 (re-anchor of deleted TASKS.md T-6) — dissolve-on-arrival: substrate-derived LexRule fold/projection covers token/trivia rule consumers; forbidden: duplicating LexRule arm matches outside this std query and tokenizer walk.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
@@ -54,7 +54,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — feature:t6-lex-rules-language-projection — consumer:v4.compiler.tokenize.tokenize/v4.compiler.target_carriers.TargetModel.lex — bind TASKS.md T-6/T-11 — dissolve-on-arrival: LanguageModel lexical projection carries explicit non-empty rule-set or void-language evidence, replacing VoidLexRules staging; forbidden: treating VoidLexRules as an unbounded default.
+// 🟡 coproduct dissolution — feature:t6-lex-rules-language-projection — consumer:v4.compiler.tokenize.tokenize/v4.compiler.target_carriers.TargetModel.lex — bind gunbc#4761 (re-anchor of deleted TASKS.md T-6/T-11) — dissolve-on-arrival: LanguageModel lexical projection carries explicit non-empty rule-set or void-language evidence, replacing VoidLexRules staging; forbidden: treating VoidLexRules as an unbounded default.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
@@ -74,7 +74,7 @@ type TokenStream {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:lex-rule-token-class-query — bound task: src/v4/TASKS.md §T-6.1 (owner/lane: T-6 std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:lex-rule-token-class-query — bound task: gunbc#4761 (re-anchor of deleted TASKS.md §T-6).1 (owner/lane: T-6 std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
