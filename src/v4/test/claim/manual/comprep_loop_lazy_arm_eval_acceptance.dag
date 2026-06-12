@@ -1,0 +1,306 @@
+// src/v4/test/claim/manual/comprep_loop_lazy_arm_eval_acceptance.dag
+// Scope: SPINE-REACHED Loop eval witness — demand-driven eval_loop_node (#4738).
+// Assertions: failing loop body child does not prevent step_loop from running on spine.
+
+module v4.test.claim.manual.comprep_loop_lazy_arm_eval_acceptance
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v4.std.cardinality { termination_proof_witness_for_node }
+import v4.std.collection { List, Map }
+import v4.std.witness { Holds, Witness }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.machine { Byte }
+import v4.std.node {
+  Atom,
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_edge
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  Continue,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v4.std.verdict { Pass }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn loop_lazy_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn loop_lazy_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn loop_lazy_i64() -> Node {
+  loop_lazy_atom(s: ^loop_lazy_i64_sym)
+}
+
+fn loop_lazy_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: loop_lazy_i64(),
+      bytes: [loop_lazy_byte()]
+    }
+  }
+}
+
+fn loop_lazy_lit_one() -> Node {
+  loop_lazy_atom(s: ^loop_lazy_lit_one_sym)
+}
+
+fn loop_lazy_divergent() -> Node {
+  loop_lazy_atom(s: ^loop_lazy_divergent_sym)
+}
+
+fn loop_lazy_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^loop_lazy_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_lazy_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == loop_lazy_lit_one() {
+    outcome_accepted(value: loop_lazy_one_value())
+  } else if node == loop_lazy_divergent() {
+    outcome_rejected(d: loop_lazy_diagnostic(n: node))
+  } else {
+    outcome_rejected(d: loop_lazy_diagnostic(n: node))
+  }
+}
+
+fn loop_lazy_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: loop_lazy_diagnostic(n: _node))
+}
+
+fn loop_lazy_choose_branch(
+  _node: Node,
+  _condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(d: loop_lazy_diagnostic(n: _node))
+}
+
+fn loop_lazy_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Continue { value: loop_lazy_one_value() })
+}
+
+fn loop_lazy_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn loop_lazy_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: loop_lazy_allocate_literal },
+    transform: TransformInterpreter { call_primitive: loop_lazy_call_primitive },
+    branch: BranchInterpreter { choose_branch: loop_lazy_choose_branch },
+    loop: LoopInterpreter { step_loop: loop_lazy_step_loop_continue },
+    bind: BindInterpreter { bind_value: loop_lazy_bind_value }
+  }
+}
+
+fn loop_lazy_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^loop_lazy_allocate_literal_sym,
+    call_primitive: ^loop_lazy_call_primitive_sym,
+    choose_branch: ^loop_lazy_choose_branch_sym,
+    step_loop: ^loop_lazy_step_loop_continue_sym,
+    bind_value: ^loop_lazy_bind_value_sym
+  }
+}
+
+fn loop_lazy_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^loop_lazy_runtime_id,
+    interpretation: loop_lazy_interpretation(),
+    structure_witness: loop_lazy_interpretation_structure_witness()
+  )
+}
+
+fn loop_lazy_loop_node(body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: body }]
+  }
+}
+
+fn loop_lazy_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn loop_lazy_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          occurrence_id: SyntheticOccurrence,
+          children: []
+        }
+      },
+      Edge { label: Positional, target: loop_lazy_i64() },
+      Edge { label: Positional, target: loop_lazy_i64() },
+      Edge { label: Named { name: arrow_body_edge }, target: body }
+    ]
+  }
+}
+
+fn loop_lazy_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^loop_lazy_actual }, target: call },
+      Edge { label: Named { name: ^loop_lazy_expected }, target: expected }
+    ]
+  }
+}
+
+fn loop_lazy_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: loop_lazy_i64(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn loop_lazy_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: loop_lazy_facts_lookup }
+  }
+}
+
+fn loop_lazy_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let arrow = loop_lazy_arrow_with_body(body: body)
+  let call = loop_lazy_pick_call(callee: arrow)
+  let root = loop_lazy_tree_root(call: call, expected: expected)
+  let tree = loop_lazy_admitted_tree(root: root)
+  outcome_accepted(
+    value: run_test_claim(
+      subject: TestClaimEvalSubject {
+        claim: CompilesClaim {
+          label: "manual/comprep_loop_lazy_arm: demand-driven Loop eval acceptance",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: call,
+          expected_value: expected,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        context: loop_lazy_context(),
+        tree: tree,
+        input: test_claim_typed_input_node(
+          evaluator_input: call,
+          evaluator_pin: ^loop_lazy_pick_call_pin
+        )
+      }
+    )
+  )
+}
+
+fn loop_lazy_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Loop with divergent body child reaches step_loop_continue on spine despite body rejection.
+fn loop_lazy_divergent_body_step_loop_holds() -> Bool {
+  loop_lazy_run_passes(
+    run: loop_lazy_run(
+      body: loop_lazy_loop_node(body: loop_lazy_divergent()),
+      expected: loop_lazy_lit_one()
+    )
+  )
+}
+
+fn loop_lazy_eval_acceptance_keystone_holds() -> Bool {
+  loop_lazy_divergent_body_step_loop_holds()
+}
+
+data unified_claim_comprep_loop_lazy_arm_eval_acceptance: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_loop_lazy_arm_eval_acceptance.dag",
+    function: loop_lazy_eval_acceptance_keystone_holds
+  }
+}

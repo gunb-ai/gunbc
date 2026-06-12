@@ -172,6 +172,7 @@ import v4.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetEffectCalleeRow,
+  TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -604,13 +605,6 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
     },
-    // Applied-effect projection: the `callees` catalog binds each v4.std.runtime EffectRequestKind
-    // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
-    // shim entrypoint token (`__gunbc_effect_read` / `__gunbc_effect_write`, lexed below). The emit
-    // stage frames operands like a call and resolves the callee by catalog lookup; the shim bodies
-    // (fs.readFileSync / fs.writeFileSync) are supplied by the host workspace preamble, not the
-    // compiler — so effects are descriptor-driven, never hand-listed. A new effect kind is one more
-    // row here, with no compiler-stage edit (Cost-of-Change = 1).
     effect_apply_form: TargetEffectApplyShape {
       callees: [
         TargetEffectCalleeRow {
@@ -625,6 +619,11 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       close: ^ts_token_rparen,
       separator: ^ts_token_comma
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^ts_token_kw_if,
+      then_token: ^ts_token_kw_then,
+      else_token: ^ts_token_kw_else
     }
   }
 }
