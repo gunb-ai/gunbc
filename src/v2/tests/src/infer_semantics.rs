@@ -723,18 +723,13 @@ fn optional_present_absent_patterns_keep_canonical_names() {
     ));
 }
 
-#[test]
-fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children() {
-    // After generic instantiation, Optional<T> may be a bare applied node (name Optional,
-    // one type-arg child, no Disj Present/Absent children). Present/Absent patterns in
-    // optional_present/optional_absent bodies must still resolve (adhoc-708ea66d-bb3).
-    let bool_inner = leaf_node("Bool".to_string());
-    let applied_optional = Rc::new(Node {
-        name: "Optional".to_string(),
+fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: type_name.to_string(),
         ident: None,
         span: make_span(0, 0),
-        ident_span: default_ident_span("Optional".to_string(), make_span(0, 0)),
-        children: Rc::new(vec![bool_inner]),
+        ident_span: default_ident_span(type_name.to_string(), make_span(0, 0)),
+        children: Rc::new(vec![type_arg]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
@@ -748,7 +743,15 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-    });
+    })
+}
+
+#[test]
+fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children() {
+    // After generic instantiation, Optional<T> may be a bare applied node (name Optional,
+    // one type-arg child, no Disj Present/Absent children). Present/Absent patterns in
+    // optional_present/optional_absent bodies must still resolve (adhoc-708ea66d-bb3).
+    let applied_optional = applied_generic_type_node("Optional", leaf_node("Bool".to_string()));
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(applied_optional);
     let present_lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject.clone(),
@@ -778,6 +781,57 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         ),
         "expected applied Optional<Bool> Absent lookup to resolve, got {:?}",
         absent_lookup.status
+    );
+}
+
+#[test]
+fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
+    // optional_coproduct_subject must not widen: legacy Some/None names still fail on
+    // applied Optional<T> (name==Optional gate is load-bearing).
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
+        "Optional",
+        leaf_node("Bool".to_string()),
+    ));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Some".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        0,
+    );
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
+    assert_eq!(
+        lookup.diagnostics.len(),
+        1,
+        "wrong variant on applied Optional must fail closed with VariantNotFound"
+    );
+}
+
+#[test]
+fn non_optional_applied_generic_missing_variant_still_fails() {
+    // Fallback is Optional-only: bare applied Outcome<T> must not synthesize Present.
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
+        "Outcome",
+        leaf_node("Bool".to_string()),
+    ));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Present".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        0,
+    );
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
+    assert_eq!(
+        lookup.diagnostics.len(),
+        1,
+        "non-Optional applied type must not get optional_coproduct synthesis"
     );
 }
 
