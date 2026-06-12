@@ -65,14 +65,9 @@ fn depth_max_algebra() -> NodeFoldTopDown<Int, Int> {
 }
 
 // Witnesses
-data witness_leaf_returns_init: Bool =
-  fold_node_topdown(n: topdown_leaf(), ctx: 0, algebra: depth_max_algebra()) == 0
-
-data witness_one_child_max_depth_is_one: Bool =
-  fold_node_topdown(n: topdown_one_child_tree(), ctx: 0, algebra: depth_max_algebra()) == 1
-
-data witness_two_level_chain_max_depth_is_two: Bool =
-  fold_node_topdown(n: topdown_two_level_chain(), ctx: 0, algebra: depth_max_algebra()) == 2
+data witness_leaf_returns_init: Bool = fold_node_topdown(n: topdown_leaf(), ctx: 0, algebra: depth_max_algebra()) == 0
+data witness_one_child_max_depth_is_one: Bool = fold_node_topdown(n: topdown_one_child_tree(), ctx: 0, algebra: depth_max_algebra()) == 1
+data witness_two_level_chain_max_depth_is_two: Bool = fold_node_topdown(n: topdown_two_level_chain(), ctx: 0, algebra: depth_max_algebra()) == 2
 
 // Edge-dispatch algebra: child_context returns depth+2 for ^topdown_right_child, depth+1 otherwise.
 // Proves child_context receives the edge (not an int index).
@@ -92,19 +87,17 @@ fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
 
 // Root with ^topdown_left_child (leaf → depth 1) and ^topdown_right_child (leaf → depth 2).
 // max = 2 only if edge label is dispatched, not ordinal position.
-data witness_child_context_dispatches_on_edge: Bool =
-  fold_node_topdown(
-    n: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
-        Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    ctx: 0,
-    algebra: depth_edge_dispatch_algebra()
-  ) == 2
+fn topdown_edge_dispatch_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
+      Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+data witness_child_context_dispatches_on_edge: Bool = fold_node_topdown(n: topdown_edge_dispatch_root(), ctx: 0, algebra: depth_edge_dispatch_algebra()) == 2
 
 fn topdown_ok_node(ok: Bool) -> Node {
   if ok { topdown_leaf() } else { topdown_one_child_tree() }
