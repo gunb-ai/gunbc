@@ -115,6 +115,16 @@ import v4.std.node_query { find_named_child, node_labeled_child_edges, node_posi
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
+// NEGATIVE TRIPWIRE — do NOT add `import v4.std.runtime` (or any closure-widening import:
+// machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
+// generic-instantiation bug — Optional<T> variant lookup fails (62 "variant Present/Absent not
+// found in type Optional" across target_model + 06_value_expression). Reuse the runtime effect
+// vocabulary by DISCRIMINANT SYMBOL instead (TargetValueExprEffectApply stores the
+// EffectRequestKind discriminant); do the typed EffectRequestKind/Read|WriteResource decode at
+// the small-closure 06_value_expression projection boundary. Reintroducing this edge is caught
+// by ci_floor_emit + v4_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
+// separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
+
 type TargetModel {
   bundle: Node
   lex: LexRules
@@ -489,6 +499,11 @@ type SourceAtomValue
 
 // 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
 // PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
+// EffectApply is the emit-side projection of an applied v4.std.runtime EffectRequest (M9: it
+// attaches to the existing runtime EffectRequestKind concept — no parallel emit effect vocabulary).
+// The carrier stores the effect kind as its discriminant Symbol; the typed runtime reuse
+// (EffectRequestKind ↔ discriminant, ReadResource|WriteResource) lives at the value-expression
+// projection boundary where effects are lowered, keeping this structural substrate import-free.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -499,6 +514,7 @@ type TargetValueExpressionKind
   | TargetValueExprReferenceBoxNew
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
+  | TargetValueExprEffectApply
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -590,6 +606,7 @@ data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_ca
 data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
 data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
+data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
 data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
@@ -2341,6 +2358,36 @@ fn target_value_expression_primitive_apply(
           target_model_named_edge(
             name: target_value_expr_field_operation,
             target: target_model_canonical_operation_wire_node(operation: operation)
+          )
+        ],
+        right: target_value_expr_primitive_apply_operand_edges(operands: operands)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+// Emit-side constructor for an applied effect. `effect_kind_discriminant` is the discriminant
+// Symbol of a v4.std.runtime EffectRequestKind (e.g. discriminant(v: ReadResource)); the caller
+// at the value-expression projection boundary supplies it, so this structural substrate reuses
+// the runtime effect vocabulary by identity without importing runtime (M9; no parallel vocabulary).
+// Operand edges mirror primitive_apply — the lowered effect application carries its argument
+// value-expressions positionally for the projection arm (PR2) to emit through the host shim.
+fn target_value_expression_effect_apply(
+  effect_kind_discriminant: Symbol,
+  operands: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprEffectApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_effect_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: target_value_expr_field_effect_kind,
+            target: target_model_type_atom_node(identity: effect_kind_discriminant)
           )
         ],
         right: target_value_expr_primitive_apply_operand_edges(operands: operands)
