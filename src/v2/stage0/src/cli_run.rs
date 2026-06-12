@@ -18,9 +18,9 @@ use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
 use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
-    diagnostic_to_span, empty_intern_table, pre_intern_tokens,
-    expr_var_name_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode,
+    diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
+    field_init_node_value, has_child_named, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, pre_intern_tokens, ErrorNode, ExprData, InferredNode,
     InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
@@ -304,10 +304,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         });
 
     // Parse each file once with the global intern table; cache results.
-    let mut parse_cache: HashMap<
-        String,
-        (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>),
-    > = HashMap::new();
+    let mut parse_cache: HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)> =
+        HashMap::new();
     for (path, tokens, nl_index) in &tokenized {
         let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
             let mut m = HashMap::new();
@@ -407,8 +405,7 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    let graph =
-        v2_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    let graph = v2_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
 
     if graph
         .diagnostics
@@ -448,6 +445,18 @@ fn resolve_entry_with_parse_cache(
         return Err(msgs.join("\n"));
     }
 
+    // Ownership validation — same check compile_to_resolved applies after
+    // reconcile (P3 fail-closed parity: claim_batch must not green-light a
+    // graph that gunbc run would block on ownership errors).
+    let ownership = v2_compiler_compile::extract_ownership_proofs(typed.clone());
+    let ownership_diags = v2_compiler_compile::ownership_diagnostics(ownership);
+    if ownership_diags
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&ownership_diags, &source_indices));
+    }
+
     Ok((typed, source_indices))
 }
 
@@ -461,10 +470,17 @@ fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex
     }
 }
 
-fn format_error_node(d: &Rc<ErrorNode>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+fn format_error_node(
+    d: &Rc<ErrorNode>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     let span = diagnostic_to_span(d.diagnostic.clone());
     let loc = format_error_loc(&span.file, span.start, source_indices);
-    format!("{}: error: {}", loc, diagnostic_to_message(d.diagnostic.clone()))
+    format!(
+        "{}: error: {}",
+        loc,
+        diagnostic_to_message(d.diagnostic.clone())
+    )
 }
 
 fn format_error_nodes(
