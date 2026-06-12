@@ -89,7 +89,7 @@ import v4.std.verification {
   UnifiedTestClaim
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
+data mvp1_go_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 data mvp1_go_int_inhabitant: Node = go_int_inhabitant_node()
 
@@ -111,7 +111,7 @@ data mvp1_go_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: go_mvp1_target_model_node(),
   lex: go_wave1_lex(),
   binding_spellings: go_mvp1_binding_spellings(),
-  authority_source_text: mvp1_forbidden_authority_source_text
+  authority_source_text: mvp1_go_forbidden_authority_source_text
 }
 
 data mvp1_go_empty_translation_rules_bundle: Node = Node {

@@ -155,6 +155,19 @@ A function walks a modeled structure, projects a property from a variant shape, 
 
 **Receipt:** Practice 10 in `docs/modeling-discipline.md` names the derived-operations registry and the dissolution findings (`walker`, `traverse`, `predicate`, `carrier`, `emit/template`, `nominalization`, and coproduct dissolution). It is the review rubric for deciding whether a local helper is real logic or a duplicated derivation; PR #4627 (four registry findings landed through an approving review while the rubric was deleted) is the worked example recorded there.
 
+### Problem shape: Stage carries decisions the model should
+
+**A finished compiler stage is one fold over its model — `stage(x) = fold_carrier(x, algebra(model))`.** This is the stage-level reading of *Do not hand-roll a derived operation*: a stage that walks its input with per-case `match` arms, `_go` accumulators, and `_bounded` fuel is hand-rolling the catamorphism the compiler already derives (`fold_node` / `fold_grammar_expr` / the frontend folds), one arm at a time. The decisions those arms make are facts the model should carry as data rows.
+
+The rule is a **litmus, not a ban.** Non-fold code is permitted but is a *signal*, sorting into exactly two categories — there is no third:
+
+- **A named, separated irreducible kernel.** A fixpoint solver (`solve_constraints`), char-class matching, real arithmetic — these are not catamorphisms and are *meant* to stay as one named function. *Fold the traversal, name the kernel.* Terminal, not debt. (Worked instance: the `04_infer` constraint-*gather* folds onto `fold_node` while the fixpoint solver `solve_constraints` stays a named kernel — the gather/solver split in `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md` §1.6 / §4. The kernel is irreducible because its call graph is not its data graph — Practice 12's discriminant.)
+- **Un-migrated modeling.** Any other non-fold control-flow is the code making a decision the model has not absorbed. It is **measured modeling debt**: the decision belongs as a model row, and its residence in the stage is tracked, not permanent.
+
+The volume of non-fold residue in a stage is therefore a *measure* of how much of its decision-making still lives in code rather than the model. This connects to **Heuristics Indicate Lost Structure** (above): a heuristic is a per-fact symptom; a non-fold stage is the same symptom at stage scale. **Home of record:** MODELING.md M11; review rubric: `docs/modeling-discipline.md` Practice 12; the frontloaded collapse program: `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`. `05_emit` (`emit = serialize_target ∘ translate`, i.e. `bind_outcome(translate, serialize_target)`, 43 lines) is the landed existence proof of the **composition** form: a stage may also be a thin zero-residue composition of fold-backed stages, glued only by monadic sequencing (`bind_outcome` / `∘`) — that glue is plumbing, not residue.
+
+**Solution shape:** Move each per-case arm to one row in `algebra(model)`; delete the `_go` accumulator (the fold owns recursion) and the `_bounded` fuel (a structural fold terminates by construction) in the *same* change that repoints the consumer onto the fold. Add the algebra row and delete the arm in one PR — grafting the fold beside the surviving arms is the cementation anti-pattern (the file must shrink).
+
 ### Problem shape: Nickname (type name mismatches concept)
 
 **A type's name must be what the type is — not a convenient label for something else.** A type named `FooBar` is the composition of `Foo` and `Bar`; a type named `NodePath` is `Node` composed with `Path`. If the name does not reflect the actual structure, the type is a nickname — and nicknames are modeling violations.
@@ -193,7 +206,7 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Solution shape:** Treat every landed model as a hypothesis, not a proof. When external grounding reveals a better shape, surface it — even if it requires re-examining previously approved work.
 
-**Receipt (substantial dissolution):** The extdep→compiler coupling is resolved — all `src/v4/extdeps/*.dag` files (including `python.dag`, `rust.dag`, and 43 others) now import zero symbols from `v4.compiler.*` (verified: 0 extdeps→compiler import edges on `main`). `TargetModel` authority has been promoted to `src/v4/std/target_model.dag`; `v4.compiler.target_carriers` is now a hub-route shim that re-exports from `std/`. `std/lexing.dag` and `std/grammar.dag` are landed. **Remaining:** `workflow/bootstrap.dag` still imports `LanguageModel` from `v4.compiler.target_carriers` — `LanguageModel = Node` is a bare alias (see P1 no-bare-alias) annotated 🟡 gated; dissolution requires a typed language-model fact-bundle in `std/`. Multiple PRs approved this pattern before the cross-layer import rule made the violation explicit; prior approval is not proof the model is correct (see above).
+**Receipt (substantial dissolution):** The extdep→compiler coupling is resolved — all `src/v4/extdeps/*.dag` files (including `python.dag`, `rust.dag`, and 43 others) now import zero symbols from `v4.compiler.*` (verified: 0 extdeps→compiler import edges on `main`). `TargetModel` authority has been promoted to `src/v4/std/target_model.dag`; `v4.compiler.target_carriers` is now a hub-route shim that re-exports from `std/`. `std/lexing.dag` and `std/grammar.dag` are landed. **Dissolved:** `LanguageModel` authority is in `src/v4/std/language_model.dag` (typed fact-bundle); `v4.compiler.target_carriers` hub-routes it; `workflow/bootstrap.dag` imports from `std/`. Multiple PRs approved the prior hollow alias before the cross-layer import rule made the violation explicit; prior approval is not proof the model is correct (see above).
 
 ### Problem shape: Pattern presence as grounding
 
@@ -309,7 +322,7 @@ An import edge pointing opposite to this order (`extdeps/ → compiler/`, `std/ 
 
 **Enforcement:** PR review must check: does any `extdeps/` file import from `v4.compiler.*`? If yes, the import is a violation unless the type being imported does not belong in std/ (file a finding and require the move). Same check for `std/` importing from `compiler/` or `extdeps/`.
 
-**Receipt (substantial dissolution — one residual):** All `src/v4/extdeps/*.dag` language/format files now import zero symbols from `v4.compiler.*` (0/45 verified on `main`). `TargetModel` authority is in `src/v4/std/target_model.dag`; `v4.compiler.target_carriers` re-exports it (hub-route only, no local redeclare). `src/v4/std/lexing.dag` and `src/v4/std/grammar.dag` are landed. **Residual:** `workflow/bootstrap.dag` imports `LanguageModel` from `v4.compiler.target_carriers` — `LanguageModel = Node` is a 🟡 gated bare alias pending a typed std/ fact-bundle. **Dissolution target:** promote `LanguageModel` to a typed carrier in `std/` and update `bootstrap.dag` + any other consumers.
+**Receipt (substantial dissolution — one residual):** All `src/v4/extdeps/*.dag` language/format files now import zero symbols from `v4.compiler.*` (0/45 verified on `main`). `TargetModel` authority is in `src/v4/std/target_model.dag`; `v4.compiler.target_carriers` re-exports it (hub-route only, no local redeclare). `src/v4/std/lexing.dag` and `src/v4/std/grammar.dag` are landed. **Dissolved:** `LanguageModel` authority is in `src/v4/std/language_model.dag`; `v4.compiler.target_carriers` hub-routes it; `workflow/bootstrap.dag` imports from `std/`.
 
 ### Problem shape: Target knowledge in compiler code (references, not just imports)
 
