@@ -7,6 +7,9 @@ import v4.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body,
   produce_mvp1_pick_if_arrow_with_body_swapped_arms
 }
+import v4.test.claim.manual.branch_if_then_else_round_trip {
+  branch_if_then_else_inferred_facts_for
+}
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
@@ -16,8 +19,6 @@ import v4.extdeps.languages.dag {
   dag_mvp1_pick_target_model
 }
 import v4.compiler.translate { target_serialize_source_from_model }
-import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
@@ -27,12 +28,7 @@ import v4.std.diagnostic {
   bind_outcome
 }
 import v4.std.logic { Bool }
-import v4.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  SyntheticOccurrence
-}
+import v4.std.node { Node }
 import v4.std.compilers.target_model { TargetModel }
 import v4.std.witness { Holds, Witness }
 import v4.std.verification {
@@ -41,22 +37,8 @@ import v4.std.verification {
   UnifiedTestClaim
 }
 
-fn branch_if_then_else_emit_i64_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^branch_if_then_else_emit_i64 } },
-    occurrence_id: SyntheticOccurrence,
-    children: []
-  }
-}
-
 fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
-      resolved: key,
-      algebra: branch_if_then_else_emit_i64_node(),
-      descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+  branch_if_then_else_inferred_facts_for(node: key)
 }
 
 fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> InferredTree {
