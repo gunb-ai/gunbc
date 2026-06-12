@@ -11,8 +11,7 @@ use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_sigs::ResolvedFuncEnv;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, make_container_type, make_map_type, node_is_keyed_collection,
-    node_type_compatible, resolved_type,
+    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
@@ -40,13 +39,11 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: kind_name.clone(),
         ident: None,
-        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: param_name.clone(),
             ident: None,
-            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span(param_name, sp.clone()),
             children: Rc::new(vec![]),
@@ -89,14 +86,12 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "Map".to_string(),
         ident: None,
-        binding_id: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
                 name: key_name,
                 ident: None,
-                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -117,7 +112,6 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
             Rc::new(Node {
                 name: val_name,
                 ident: None,
-                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -167,9 +161,6 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
-        carrier_bindings: Rc::new(std::collections::HashMap::new()),
-        decl_registry: Rc::new(std::collections::HashMap::new()),
-        duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -185,7 +176,6 @@ fn empty_infer_scope() -> Rc<InferScope> {
             signatures: Rc::new(std::collections::HashMap::new()),
         }),
         locals: Rc::new(std::collections::HashMap::new()),
-        variant_collisions: Rc::new(std::collections::HashMap::new()),
         match_bound_names: Rc::new(std::collections::HashMap::new()),
         module_name: "test".to_string(),
         service_registry: Rc::new(std::collections::HashMap::new()),
@@ -199,7 +189,6 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
     Rc::new(Node {
         name: name.to_string(),
         ident: None,
-        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(name.to_string(), sp),
         children: Rc::new(variants),
@@ -288,35 +277,6 @@ type AccountId = Refined<String>
         .expect("Refined type binding");
     let string = lookup_type_by_name(module.type_env.clone(), "String".to_string())
         .expect("String type binding");
-    let user_binding_id = user_id
-        .binding_id
-        .expect("UserId must carry declaration binding_id");
-    let account_binding_id = account_id
-        .binding_id
-        .expect("AccountId must carry declaration binding_id");
-
-    assert_ne!(
-        user_binding_id, account_binding_id,
-        "brand twins must differ on binding_id, not only spelling or ident_span"
-    );
-    assert_eq!(
-        module
-            .type_env
-            .decl_registry
-            .get(&user_binding_id.value)
-            .expect("UserId binding id must be registered")
-            .name,
-        "UserId"
-    );
-    assert_eq!(
-        module
-            .type_env
-            .decl_registry
-            .get(&account_binding_id.value)
-            .expect("AccountId binding id must be registered")
-            .name,
-        "AccountId"
-    );
 
     assert_eq!(
         user_id, same_user_id,
@@ -398,108 +358,6 @@ type AccountId = Refined<String>
 }
 
 #[test]
-fn pd3_kernel_container_shells_are_structural_and_recurse_to_branded_elements() {
-    let source = r#"
-module pd3.kernel_container_brand_relation
-
-type Refined<T> {
-  base: T
-}
-type UserId = Refined<String>
-type AccountId = Refined<String>
-"#;
-
-    let result = crate::helpers::compile_dag_resolved(source);
-    assert!(
-        result.diagnostics.is_empty(),
-        "kernel container brand probe should resolve cleanly, got: {:?}",
-        result
-            .diagnostics
-            .iter()
-            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
-            .collect::<Vec<_>>()
-    );
-    let graph = result.graph.as_ref().expect("resolved graph");
-    let module = graph
-        .modules
-        .iter()
-        .find(|m| {
-            v2_compiler::v2_std_core::authored_name_at(
-                result.source_indices.clone(),
-                m.module.clone(),
-            ) == "pd3.kernel_container_brand_relation"
-        })
-        .expect("pd3.kernel_container_brand_relation module");
-
-    let user_id =
-        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId binding");
-    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
-        .expect("AccountId binding");
-    assert_ne!(
-        user_id.binding_id, account_id.binding_id,
-        "brand twins must have distinct binding_id before entering kernel containers"
-    );
-
-    let list_user = make_container_type("List".to_string(), user_id.clone())
-        .ty
-        .clone();
-    let list_account = make_container_type("List".to_string(), account_id.clone())
-        .ty
-        .clone();
-    assert_eq!(
-        list_user.binding_id, None,
-        "kernel List shell must stay brand-free; element carries declaration identity"
-    );
-    assert_eq!(
-        list_account.binding_id, None,
-        "kernel List shell must stay brand-free; element carries declaration identity"
-    );
-    assert!(
-        !node_type_compatible(
-            list_user.clone(),
-            list_account,
-            result.source_indices.clone()
-        ),
-        "List<UserId> vs List<AccountId> must reject by recursing to branded elements"
-    );
-    assert!(
-        node_type_compatible(list_user.clone(), list_user, result.source_indices.clone()),
-        "same kernel List shell with same branded element must accept"
-    );
-
-    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string()))
-        .ty
-        .clone();
-    let map_account_key = make_map_type(account_id.clone(), leaf_node("String".to_string()))
-        .ty
-        .clone();
-    assert_eq!(
-        map_user_key.binding_id, None,
-        "kernel Map shell must stay brand-free; key/value children carry declaration identity"
-    );
-    assert_eq!(
-        map_account_key.binding_id, None,
-        "kernel Map shell must stay brand-free; key/value children carry declaration identity"
-    );
-    assert!(
-        !node_type_compatible(
-            map_user_key.clone(),
-            map_account_key,
-            result.source_indices.clone()
-        ),
-        "Map<UserId, String> vs Map<AccountId, String> must reject by recursing to branded keys"
-    );
-    assert!(
-        node_type_compatible(
-            map_user_key.clone(),
-            map_user_key,
-            result.source_indices.clone()
-        ),
-        "same kernel Map shell with same branded key/value must accept"
-    );
-}
-
-#[test]
 fn pd3_direct_call_rejects_brand_twin_mismatch() {
     let source = r#"
 module pd3.brand_call_reject
@@ -527,32 +385,6 @@ fn caller(uid: UserId) -> String {
     assert!(
         has_type_mismatch,
         "PD-3: direct call must reject UserId-for-AccountId, got: {:?}",
-        crate::helpers::diagnostic_messages(&result)
-    );
-}
-
-#[test]
-fn pd3_direct_call_rejects_canonical_kernel_leaf_mismatch() {
-    let source = r#"
-module pd3.kernel_leaf_call_reject
-
-fn take_secret(value: Secret) -> Int {
-  0
-}
-
-fn caller(value: String) -> Int {
-  take_secret(value)
-}
-"#;
-
-    let result = crate::helpers::compile_dag(source);
-    let has_type_mismatch = result
-        .diagnostics
-        .iter()
-        .any(|diag| matches!(&*diag.diagnostic, CompilerDiagnostic::TypeMismatch { .. }));
-    assert!(
-        has_type_mismatch,
-        "PD-3: direct call must reject String-for-Secret via canonical kernel type set, got: {:?}",
         crate::helpers::diagnostic_messages(&result)
     );
 }
@@ -774,13 +606,11 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let inner_present = Rc::new(Node {
         name: "Present".to_string(),
         ident: None,
-        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: "inner".to_string(),
             ident: None,
-            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span("inner".to_string(), sp.clone()),
             children: Rc::new(vec![]),
@@ -817,7 +647,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let optional_inner_sum = Rc::new(Node {
         name: "Inner".to_string(),
         ident: None,
-        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Inner".to_string(), sp.clone()),
         children: Rc::new(vec![inner_present]),
@@ -931,9 +760,6 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
-            carrier_bindings: Rc::new(std::collections::HashMap::new()),
-            decl_registry: Rc::new(std::collections::HashMap::new()),
-            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -957,9 +783,6 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
-            carrier_bindings: Rc::new(std::collections::HashMap::new()),
-            decl_registry: Rc::new(std::collections::HashMap::new()),
-            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -983,9 +806,6 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
-            carrier_bindings: Rc::new(std::collections::HashMap::new()),
-            decl_registry: Rc::new(std::collections::HashMap::new()),
-            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -1008,7 +828,6 @@ fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
         ident: None,
-        binding_id: None,
         span: zero_span(),
         ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
             file: "".to_string(),
@@ -1043,9 +862,6 @@ fn resolve_node_uses_node_name_for_lookup() {
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
-        carrier_bindings: Rc::new(std::collections::HashMap::new()),
-        decl_registry: Rc::new(std::collections::HashMap::new()),
-        duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),

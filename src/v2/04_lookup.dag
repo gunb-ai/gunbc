@@ -184,8 +184,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             let is_optional = normed.return_cardinality == CardOptional
             if is_optional { with_optional_cardinality(n: result) } else { result }
           }
-        Absent =>
-          normed
+        Absent => normed
       }
     }
   } else { normed }
