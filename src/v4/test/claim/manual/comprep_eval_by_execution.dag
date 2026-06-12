@@ -54,6 +54,7 @@ import v4.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Loop,
   Named,
   Node,
   Positional,
@@ -67,6 +68,7 @@ import v4.std.node_query { node_positional_child_targets }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
+  Continue,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -746,6 +748,58 @@ fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
   }
 }
 
+// Loop channel-suppression: step_loop returns Continue { value: five_value } when reached,
+// so the path through eval_loop_node is distinguishable from short-circuit-Rejected.
+// Used only in comprep_eval_lazy_arm_loop_suppression_holds.
+fn comprep_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Continue { value: comprep_eval_five_value() })
+}
+
+fn comprep_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: comprep_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: comprep_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: comprep_eval_choose_first_arm },
+    loop: LoopInterpreter { step_loop: comprep_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: comprep_eval_bind_value }
+  }
+}
+
+// Loop node with a positional body child that rejects in allocate_literal.
+// Discriminating red: without channel suppression the body's Rejected flows into child_values
+// and short-circuits before eval_loop_node is called. With suppression the Rejected is dropped
+// from child_values, eval_loop_node is called, step_loop_continue returns Continue { five_value },
+// and terminal_value converts that to Accepted { five_value }.
+fn comprep_eval_lazy_arm_loop_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
+    ]
+  }
+}
+
+// Loop channel-suppression discriminating test (node://adhoc-edb982e2-4a4):
+// Loop with a failing body evaluates to five_value via step_loop_continue.
+// Without eval_edge_is_runtime_argument Loop suppression, the body's Rejected short-circuits
+// child_values before eval_loop_node is reached. This tests channel suppression ONLY —
+// the body still executes during fold_node's bottom-up catamorphism; its rejection is merely
+// dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
+fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
+  let loop_node = comprep_eval_lazy_arm_loop_node()
+  let tree = comprep_eval_admitted_tree(root: loop_node)
+  match eval(
+    tree: tree,
+    interpretation: comprep_eval_lazy_arm_loop_interpretation(),
+    inputs: inputs_root_only(root: loop_node)
+  ) {
+    Accepted { value: v, diagnostics: _ } =>
+      comprep_eval_runtime_value_is_five(value: v)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // COMPREP wave-1 runtime keystone, single Bool witness:
 //   1. source-driven-executes — resolve→body_producer bridge (#4646) wires source-resolved MVP
 //      add through body_producer; the bridged Arrow.body executes to result == 5 BY EXECUTION;
@@ -766,6 +820,9 @@ fn comprep_eval_by_execution_keystone_holds() -> Bool {
     // Lazy-arm Branch suppression: failing arm body does not short-circuit the fold
     // (node://adhoc-edb982e2-4a4).
     && comprep_eval_lazy_arm_branch_suppression_holds()
+    // Lazy-arm Loop suppression: failing loop body does not short-circuit the fold
+    // (node://adhoc-edb982e2-4a4).
+    && comprep_eval_lazy_arm_loop_suppression_holds()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.

@@ -1486,7 +1486,7 @@ fn eval_node_is_branch(node: Node) -> Bool {
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
 // INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
 // consumer:eval_edge_is_runtime_argument (executed by
-// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
+// comprep_eval_lazy_arm_loop_suppression_holds keystone) —
 // bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
 // (eval_runtime_node dispatches control nodes directly, bypassing fold_node; loop body folds
 // zero times per iteration); current shape is channel suppression only — loop children still
