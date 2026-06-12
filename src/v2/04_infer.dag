@@ -1384,6 +1384,13 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+fn is_record_lit_expr(e: Node) -> Bool {
+  match e.expr_data {
+    ExprRecordLit { parent_enum: _ } => true
+    _ => false
+  }
+}
+
 fn seed_override_map() -> Map<String, Node> {
   fold([""], init: empty_map(), f: (acc, k) => map_insert(acc, k, unit_type))
 }
@@ -1616,6 +1623,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
             st.subst
+          } else if is_record_lit_expr(e: arg_value(n: a)) {
+            unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
           } else {
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
@@ -5209,6 +5218,40 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
       Absent => acc
     }
   } else { acc }
+}
+
+fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
+  let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+  let struct_fields = match record_lit_instantiated_fields(type_name: Present { value: type_name }, expected: Present { value: formal }, scope: scope) {
+    Present { value: fields } => fields
+    Absent =>
+      match formal.inferred {
+        Present { value: Resolved { node: expanded } } =>
+          if expanded.children |> count > 0 { expanded.children } else { [] }
+        _ => []
+      }
+  }
+  if struct_fields |> count == 0 {
+    acc
+  } else {
+    fold(struct_fields, init: acc, f: (st, sf) =>
+      let field_name = authored_name_at(source_indices: scope.type_env.source_indices, node: sf)
+      match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices) == field_name) |> first {
+        Present { value: fi } =>
+          let actual_value = field_init_node_value(n: fi)
+          let field_formal = match sf.inferred {
+            Present { value: Resolved { node: rt } } => rt
+            _ => field_node_type_expr(n: sf)
+          }
+          if is_record_lit_expr(e: actual_value) {
+            unify_record_lit_generics(formal: field_formal, record: actual_value, generic_names: generic_names, scope: scope, acc: st)
+          } else {
+            unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
+          }
+        Absent => st
+      }
+    )
+  }
 }
 
 // Substitute bound generics into a type node. Unlike substitute_type_slots,
