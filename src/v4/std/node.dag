@@ -43,7 +43,7 @@ type Behavior
   | Bind
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
@@ -647,7 +647,7 @@ data byte_offset_cache_digest_max_limbs: Int = 9
 data byte_offset_cache_digest_overflow_limbs: Int = 4
 
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces ByteOffsetCacheDigestAuthority; interim WithinCeiling/OverCeiling/CacheDigestIneligible (exhausted residual fail-closed).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces ByteOffsetCacheDigestAuthority; interim WithinCeiling/OverCeiling/CacheDigestIneligible (exhausted residual fail-closed).
 type ByteOffsetCacheDigestAuthority
   = ByteOffsetWithinCeiling { digest: Hash }
   | ByteOffsetOverCeiling {
@@ -661,7 +661,7 @@ type ByteOffsetCacheDigestAuthority
     }
 
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
 type ByteOffsetCacheKey
   = ByteOffsetCacheEligible { digest: Hash }
   | ByteOffsetCacheIneligible {
@@ -1103,7 +1103,7 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
 fn byte_offset_cache_digest_nonneg_bounded_authority(
   i: Int,
   limbs_remaining: Int
@@ -1419,7 +1419,7 @@ fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind gunbc#4758 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
 fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>

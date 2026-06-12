@@ -4,7 +4,7 @@
 // Surface atom IDENTITY (^dag_c3_surface_sugar_* prelude) is language-specific extdep;
 // this module owns the TRANSFORMATION model only, keyed by-reference to those atoms.
 // Status: T-8 modeled — data-table authority for surface_atom → SugarLowering.
-// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 / LanguageModel — dissolve-on: surface_atom identity lookup owned by LanguageModel carrier; forbidden: parallel Atom identity classifier outside this table + LanguageModel projection.
+// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind gunbc#4766 / LanguageModel — dissolve-on: surface_atom identity lookup owned by LanguageModel carrier; forbidden: parallel Atom identity classifier outside this table + LanguageModel projection.
 
 module v4.std.compilers.sugar
 

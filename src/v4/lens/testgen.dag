@@ -1314,7 +1314,7 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind gunbc#4762
 // dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {

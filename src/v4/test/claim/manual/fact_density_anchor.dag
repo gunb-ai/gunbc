@@ -1,7 +1,6 @@
 // src/v4/test/claim/manual/fact_density_anchor.dag
 // Scope: T-30 v2-bootstrap compile anchor — exercises the fact-density lens read on a hollow alias, a fact-bundle carrier, and a kernel-ambient atom.
 // Status: scaffold — compile-only until T-22; lens read pinned in lens/fact_density.dag.
-// Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
 
 module v4.test.claim.manual.fact_density_anchor
 

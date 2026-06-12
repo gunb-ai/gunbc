@@ -4,7 +4,7 @@
 // (branch_dispatch_rung8_eval.dag) so the CI host transport surfaces a modeled per-row verdict
 // tally instead of an opaque blocked_m1_subset string.
 // Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (authoring-time witness).
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 +
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind gunbc#4765 +
 // docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4. The runner now
 // evaluates each manual subject row through `run_test_claim`; this file gates the resulting
 // CorpusEvalReport with zero Fail and zero Deferred.

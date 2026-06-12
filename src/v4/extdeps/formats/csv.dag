@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
-// Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
+// Scope: RFC 4180 CSV; format slice.
+// Status: scaffold — parse/emit, numeric lexeme, unique-name profile axes.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 
 module v4.extdeps.formats.csv

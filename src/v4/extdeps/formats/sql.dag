@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/sql.dag
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
-// Status: T-4.6 — DDL/relational facts + numeric lexeme (wave-1 bundles) landed; parse/emit axes + identifier/unique-name profile gated (SL-3229-T4-FORMAT-T6T7, SL-3229-SQL-IDENTIFIER-UNIQUENESS). Transport execution config (`SqlStatementKind`, `SqlParameterStyle`, `SqlTransactionMode`, `SqlTransportConfig`) remains sole authority in `dsl/extdeps/transports/sql.dag` until the v4 port retires the v3 split (TASKS.md §T-4.6 / #3224 single-authority ruling).
+// Status: DDL/relational facts + numeric lexeme (wave-1 bundles) landed; parse/emit axes + identifier/unique-name profile gated (SL-3229-T4-FORMAT-T6T7, SL-3229-SQL-IDENTIFIER-UNIQUENESS). Transport execution config (`SqlStatementKind`, `SqlParameterStyle`, `SqlTransactionMode`, `SqlTransportConfig`) remains sole authority in `dsl/extdeps/transports/sql.dag` until the v4 port retires the v3 split (#3224 single-authority ruling).
 // Anchor: https://www.iso.org/standard/76583.html
 
 module v4.extdeps.formats.sql

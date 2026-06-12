@@ -12,6 +12,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod a4_opacity;
+#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod bootstrap;
@@ -64,7 +66,11 @@ mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
+<<<<<<< HEAD
 mod target_model_runtime_import_repro;
+=======
+mod typescript_effect_io_receipt_test;
+>>>>>>> origin/main
 #[cfg(test)]
 mod v2_compiler_lib_test;
 #[cfg(test)]

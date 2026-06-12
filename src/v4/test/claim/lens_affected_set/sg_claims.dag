@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_affected_set/sg_claims.dag
-// Scope: Wave-A W2 — foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
+// Scope: foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
 // Excluded (A-blocked-v2-crash, not in roster): dimension_seed, excluded_propagation, leaf_suite.
 
 module v4.test.claim.lens_affected_set.sg_claims

@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 # T-Ground-CrossTarget-Meta — L6 cross-product walker scaffold. Sibling crate
-# to grounding_pilot / grounding_engine / grounding_lifetime / grounding_coercion_fold;
+# to grounding_inhabitance_mirror / grounding_engine / grounding_lifetime / grounding_coercion_fold;
 # does not touch `src/v3/compiler/` SG-0. Per the lane brief at
 # `docs/briefs/t-ground-cross-target-meta.md` (#1224 + L6 form-axis anchor #1229)
 # and manager dispatch (#1133 inbox 4353412409): walks

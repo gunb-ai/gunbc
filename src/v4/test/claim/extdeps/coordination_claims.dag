@@ -1,5 +1,5 @@
 // src/v4/test/claim/extdeps/coordination_claims.dag
-// Scope: Wave-A W1 — v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
+// Scope: v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
 //
 // These witnesses migrate the EXECUTABLE behavioral content of

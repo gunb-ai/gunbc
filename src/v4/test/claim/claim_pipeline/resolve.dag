@@ -46,7 +46,7 @@ fn spine_resolve_service_parse_tree() -> Node {
 }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates normalize→resolve Outcome chain directly without Bool projection.
 fn spine_resolve_accepts_normalized_tree() -> Bool {
   match normalize(parse_tree: spine_resolve_service_parse_tree()) {
