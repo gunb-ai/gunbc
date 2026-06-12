@@ -94,7 +94,7 @@ new kinds (`design-comprep-m0-branch-mapping.md` §12.1 tripwire).
 
 | Order | Source form (`dag.dag`) | One algebra row | Producer gate | Eval fan-in | Emit fan-in | Round-trip |
 |-------|-------------------------|---------------|---------------|-------------|-------------|------------|
-| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ **red-baseline** | ❌ **red-baseline** | not green until producer path greens |
+| L0 | infix primitive (`+` add keystone) | `TargetValueExprPrimitiveApply` | ✅ wave-1 | ❌ wave regression (eval); emit red pre-wave | ❌ **red-baseline** (emit) | eval bisect in progress (#4737 suspect) |
 | L1 | `dag_production_if_then_form` | `TargetValueExprConditional` | ✅ M0-B1 | ✅ green | sharp-fox (ii) | sharp-fox (iii) → **§3 GO** |
 | L2 | cond = param ref (B1a) | same `Conditional` | B1a | follow-on | same row | — |
 | L3 | `dag_production_if_block_form` | same `Conditional` + stmt scaffold | Bind producer | §2 | same row | — |
