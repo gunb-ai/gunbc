@@ -1602,7 +1602,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
           let expected = if has_formal { Present { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
-          let next_subst = if (is_lambda_expr(e: arg_value(n: a)) || !has_formal) {
+          let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
             st.subst
           } else {
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
