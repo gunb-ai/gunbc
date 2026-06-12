@@ -154,8 +154,8 @@ import v4.extdeps.languages.fidelity {
 data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 // COMPREP wave-2 M0-B1 — Bool if-then-else body keystone (design-comprep-m0-branch-mapping.md).
-data dag_mvp1_pick_source_text: String = "fn one_or_two() -> Int { if true then 1 else 2 }"
-data dag_mvp1_pick_false_source_text: String = "fn one_or_two() -> Int { if false then 1 else 2 }"
+data dag_mvp1_pick_source_text: String = "fnone_or_two()->Int{iftruethen1else2}"
+data dag_mvp1_pick_false_source_text: String = "fnone_or_two()->Int{iffalsethen1else2}"
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
