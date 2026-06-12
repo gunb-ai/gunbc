@@ -584,7 +584,6 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
-<<<<<<< HEAD
 // T6 — per-language applied-effect projection. The emit arm selects the host shim callee by the
 // carrier's stored effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource`
 // by identity (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as
@@ -624,11 +623,8 @@ type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
-<<<<<<< HEAD
   effect_apply_form: TargetEffectApplyShape
-=======
   conditional_form: TargetConditionalShape
->>>>>>> d47da4a49c (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
