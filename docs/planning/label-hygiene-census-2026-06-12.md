@@ -125,8 +125,8 @@ are semantic, not cosmetic (content hashes / witness expectations may move).
 
 | Anchor | State | Live citers | Verdict |
 |---|---|---|---|
-| `gunbc#4674` (T-22 host-emission TargetModel dissolution) | **CLOSED 2026-06-12, dissolve-on NOT landed** | `emit_host.dag:216,289`; `tools/emit_host_runner/src/lib.rs:263,283` (2 marks); DORMANT note in `comprep_b3_ts_descriptor_node_run.dag:8` | **Dead bind — must be repointed** to an open issue or dashboard node carrying the runtime_row dissolution, or the marks are unanchored debt. |
-| `PR #3971` (merged) | MERGED | `test/claim/language_model/rust.dag:154` — `bind PR #3971 §5 …` | Questionable: binds a merged PR's section as if live. Repoint to the design doc it names or a dashboard node. |
+| `gunbc#4674` (T-22 host-emission TargetModel dissolution) | **CLOSED 2026-06-12, dissolve-on NOT landed** (step 1 landed via #4718) | `emit_host.dag:216,289`; `tools/emit_host_runner/src/lib.rs:263,283` (2 marks); DORMANT notes in `comprep_b3_ts_descriptor_node_run.dag:8` **and `sg0_census_test.rs:347`** (the latter missed by the first census pass) | **Dead bind — repointed by Wave-0 (PR #4752)** to tracking issue **#4750**, which supersedes #4674 and restates the dissolve-on verbatim. |
+| `PR #3971` (merged) | MERGED; its cited `design-rust-dag-leafmodel-instantiation.md` is no longer in the repo; named owner session archived | `test/claim/language_model/rust.dag:154` — `bind PR #3971 §5 …` | Dead bind — dissolve-on confirmed un-landed (no explicit `-C overflow-checks` runner support exists). **Repointed by Wave-0 (PR #4752)** to tracking issue **#4751**. |
 | `#4553` (×111), `#4543`, `#4540`, `#4252`, `#4046`, `#3961`, `#3468`, `#4410` | all MERGED/CLOSED | various | **Fine as-is** — these are genealogy cites ("Consolidation #4553", "relocated by PR #4543"), recording provenance, not live binds. No action. |
 
 The distinction that matters: `bind:` anchors assert "this mark dissolves when that
@@ -166,9 +166,10 @@ claims). Two consequences:
 
 ## Proposed cleanup sequence (follow-up PRs, none of it in this one)
 
-1. **Wave 0 — dead binds (small, urgent):** repoint the four `bind: gunbc#4674`
-   marks (+ the DORMANT note) to a live anchor for the runtime_row dissolution;
-   fix the `bind PR #3971` mark. ~6 lines, no identifier changes, no collisions.
+1. **Wave 0 — dead binds (small, urgent): EXECUTED as PR #4752.** The four
+   `bind: gunbc#4674` marks (+ two DORMANT notes) repointed to tracking issue
+   #4750; the `bind PR #3971` mark repointed to #4751. Comment-only, no
+   identifier changes, no collisions.
 2. **Wave 1 — TASKS.md cite repointing (comments only):** rewrite
    `bind TASKS.md T-NN` → bind to dashboard work item / open issue, or where the
    dissolve-on condition is self-contained, drop the ledger cite and keep the
