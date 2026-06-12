@@ -24,9 +24,10 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.node {
-  ComputationNode,
+  Atom,
   Node,
-  Value,
+  Symbol,
+  TypeNode,
   SyntheticOccurrence
 }
 import v4.std.runtime {
@@ -62,15 +63,19 @@ import v4.workflow.scheduler { RunnableFrontier }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.extdeps.runtimes.v4_effect_io_pure { effect_io_pure_unit_type_node }
 
-// Two independent Value nodes — no dependencies, both runnable from the initial frontier.
+data runtime_run_node_a_symbol: Symbol = runtime_run_node_a_symbol
+data runtime_run_node_b_symbol: Symbol = runtime_run_node_b_symbol
+
+// Two independent nodes — structurally distinct symbols, no dependencies, both runnable
+// from the initial frontier (mirrors scheduler_runnable_frontier identity pattern).
 data runtime_run_node_a: Node = Node {
-  kind: ComputationNode { behavior: Value },
+  kind: TypeNode { connective: Atom { identity: runtime_run_node_a_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data runtime_run_node_b: Node = Node {
-  kind: ComputationNode { behavior: Value },
+  kind: TypeNode { connective: Atom { identity: runtime_run_node_b_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
