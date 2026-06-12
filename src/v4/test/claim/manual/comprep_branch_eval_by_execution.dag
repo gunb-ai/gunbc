@@ -9,6 +9,7 @@ import v4.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body_swapped_arms
 }
 import v4.test.claim.complexity_gate.comprep_wave1_branch_subject_producer {
+  comprep_source_bridged_pick_false_if_arrow_with_body,
   comprep_source_bridged_pick_if_arrow_with_body
 }
 import v4.compiler.eval {
@@ -185,6 +186,14 @@ fn comprep_branch_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == comprep_branch_i64_node()) && (count(p.bytes) == 1)
+    _ => false
+  }
+}
+
+fn comprep_branch_runtime_int_is_two(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == comprep_branch_i64_node()) && (count(p.bytes) == 2)
     _ => false
   }
 }
@@ -424,6 +433,32 @@ fn comprep_branch_source_driven_pick_true_executes_holds() -> Bool {
   }
 }
 
+fn comprep_branch_source_driven_pick_false_executes_holds() -> Bool {
+  match comprep_source_bridged_pick_false_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      comprep_branch_run_passes(
+        run: comprep_branch_run(
+          callee: arrow,
+          expected: comprep_branch_literal_two_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_condition_perturbation_red_holds() -> Bool {
+  match comprep_source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      comprep_branch_run_passes(
+        run: comprep_branch_run(
+          callee: arrow,
+          expected: comprep_branch_literal_two_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn comprep_branch_direct_runtime_true_holds() -> Bool {
   match comprep_source_bridged_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
@@ -476,15 +511,19 @@ fn comprep_branch_fixture_producer_holds() -> Bool {
 }
 
 // COMPREP wave-2 M0-B1 runtime keystone:
-//   1. source-driven-executes — bridged one_or_two() if true then 1 else 2 executes to 1;
-//   2. direct-runtime — same bridged callee through eval directly;
-//   3. source-pipeline-admits — source fn tokenizes→parses→normalizes→resolves→body_producer;
-//   4. swapped-arms-red — then/else swap fails the run (discriminating red);
-//   5. fixture-producer — direct fixture path also executes (sanity).
+//   1. source-driven-true — bridged if true then 1 else 2 executes to 1;
+//   2. source-driven-false — bridged if false then 1 else 2 executes to 2 (condition dispatch);
+//   3. direct-runtime — true-source bridged callee through eval directly;
+//   4. source-pipeline-admits — true-source fn tokenizes→parses→normalizes→resolves→body_producer;
+//   5. condition-perturbation-red — true source expecting 2 fails (not arm-order only);
+//   6. swapped-arms-red — then/else swap fails the run;
+//   7. fixture-producer — direct fixture path also executes (sanity).
 fn comprep_branch_eval_by_execution_keystone_holds() -> Bool {
   comprep_branch_source_driven_pick_true_executes_holds()
+    && comprep_branch_source_driven_pick_false_executes_holds()
     && comprep_branch_direct_runtime_true_holds()
     && comprep_branch_source_pipeline_admits_holds()
+    && comprep_branch_condition_perturbation_red_holds()
     && comprep_branch_swapped_arms_red_holds()
     && comprep_branch_fixture_producer_holds()
 }

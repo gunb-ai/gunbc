@@ -19,6 +19,7 @@ import v4.extdeps.languages.dag {
   dag_formal_production_mvp1_fn_pick,
   dag_grammar_production_mvp1_fn_pick,
   dag_language_model_wave1,
+  dag_mvp1_pick_false_source_text,
   dag_mvp1_pick_source_text
 }
 import v4.std.collection { List, Set }
@@ -54,11 +55,11 @@ fn comprep_wave1_branch_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> 
   }
 }
 
-fn comprep_source_resolved_pick_arrow() -> Outcome<Node> {
+fn comprep_source_resolved_pick_arrow_from_text(source_text: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: dag_mvp1_pick_source_text,
+      text: source_text,
       file: comprep_wave1_branch_subject_source_file,
       rules: lm.lex
     ),
@@ -78,11 +79,34 @@ fn comprep_source_resolved_pick_arrow() -> Outcome<Node> {
   )
 }
 
+fn comprep_source_resolved_pick_arrow() -> Outcome<Node> {
+  comprep_source_resolved_pick_arrow_from_text(source_text: dag_mvp1_pick_source_text)
+}
+
+fn comprep_source_resolved_pick_false_arrow() -> Outcome<Node> {
+  comprep_source_resolved_pick_arrow_from_text(source_text: dag_mvp1_pick_false_source_text)
+}
+
+fn comprep_source_bridged_pick_if_arrow_with_body_from_resolved(
+  resolved: Node
+) -> Outcome<Node> {
+  produce_mvp1_pick_if_arrow_with_body_from_resolved(resolved_root: resolved)
+}
+
 fn comprep_source_bridged_pick_if_arrow_with_body() -> Outcome<Node> {
   bind_outcome(
     o: comprep_source_resolved_pick_arrow(),
     f: fn(resolved) {
-      produce_mvp1_pick_if_arrow_with_body_from_resolved(resolved_root: resolved)
+      comprep_source_bridged_pick_if_arrow_with_body_from_resolved(resolved: resolved)
+    }
+  )
+}
+
+fn comprep_source_bridged_pick_false_if_arrow_with_body() -> Outcome<Node> {
+  bind_outcome(
+    o: comprep_source_resolved_pick_false_arrow(),
+    f: fn(resolved) {
+      comprep_source_bridged_pick_if_arrow_with_body_from_resolved(resolved: resolved)
     }
   )
 }
