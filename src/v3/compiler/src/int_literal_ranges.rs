@@ -467,7 +467,8 @@ fn grounding_integer_row(
     } = &payload[1]
     else {
         return Err(malformed_integer_range_fact(
-            "rust_grounding_primitives IntegerPrimitive `algebra` must be a variant value".to_string(),
+            "rust_grounding_primitives IntegerPrimitive `algebra` must be a variant value"
+                .to_string(),
             default_span.clone(),
         ));
     };
@@ -477,7 +478,8 @@ fn grounding_integer_row(
     } = &payload[2]
     else {
         return Err(malformed_integer_range_fact(
-            "rust_grounding_primitives IntegerPrimitive `carrier` must be a variant value".to_string(),
+            "rust_grounding_primitives IntegerPrimitive `carrier` must be a variant value"
+                .to_string(),
             default_span.clone(),
         ));
     };
@@ -1116,7 +1118,8 @@ mod tests {
             .id;
         let witness = integer_routing_witness_for_decl(&dag, int128).expect("Int128 witness");
         let grounding_list = dag.rust_grounding_primitives().expect("grounding list");
-        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body") else {
+        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body")
+        else {
             panic!("expected list");
         };
         let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
@@ -1184,7 +1187,8 @@ mod tests {
             .id;
         let witness = integer_routing_witness_for_decl(&dag, uint8).expect("UInt8 witness");
         let grounding_list = dag.rust_grounding_primitives().expect("grounding list");
-        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body") else {
+        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body")
+        else {
             panic!("expected list");
         };
         let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");

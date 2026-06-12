@@ -183,7 +183,8 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
 /// `rust_grounding_primitives` list matches the multiset carried by
 /// `RUST_INHABITANCE_MIRROR`, with substrate (`.dag`) as authority - fail-closed
 /// if either side introduces or drops a name the other lacks.
-pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror() -> StructureResult<()> {
+pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror(
+) -> StructureResult<()> {
     let dag = Dag::new();
     let grounding_list = dag
         .rust_grounding_primitives()
@@ -969,8 +970,9 @@ mod tests {
 
     #[test]
     fn rust_grounding_primitives_target_name_multiset_matches_inhabitance_mirror() {
-        validate_rust_grounding_primitives_target_name_multiset_matches_mirror()
-            .expect("authority `target_name` multiset matches RUST_INHABITANCE_MIRROR (gunbc#2461)");
+        validate_rust_grounding_primitives_target_name_multiset_matches_mirror().expect(
+            "authority `target_name` multiset matches RUST_INHABITANCE_MIRROR (gunbc#2461)",
+        );
     }
 
     #[test]

@@ -722,7 +722,9 @@ fn rust_grounding_primitives_integer_witnesses_are_unique() {
         "bootstrap diagnostics: {:?}",
         dag.diagnostics()
     );
-    let pilot = dag.rust_grounding_primitives().expect("rust_grounding_primitives");
+    let pilot = dag
+        .rust_grounding_primitives()
+        .expect("rust_grounding_primitives");
     let ValueBody::List(elements) = pilot.value_body.as_ref().expect("value body") else {
         panic!("expected ValueBody::List");
     };
