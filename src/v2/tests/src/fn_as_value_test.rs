@@ -111,6 +111,103 @@ fn use_it() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.v }) }
 }
 
 #[test]
+fn generic_call_return_type_field_access_red() {
+    let src = r#"module test.gi3
+type Rec { v: Int }
+fn id_rec<T>(x: T) -> T { x }
+fn use_id() -> Int { id_rec(x: Rec { v: 9 }).v }
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_id") {
+        Ok(Value::Int(9)) => {}
+        other => {
+            panic!("expected Int(9) (T bound to Rec, return substituted, .v on Rec), got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn generic_one_level_wrap_call_return_field_access_red() {
+    let src = r#"module test.gi5
+type Wrap<S> { value: S }
+type Rec { v: Int }
+fn get<S>(w: Wrap<S>) -> S { w.value }
+fn use_get() -> Int { get(w: Wrap { value: Rec { v: 9 } }).v }
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
+        Ok(Value::Int(9)) => {}
+        other => {
+            panic!("expected Int(9) from one-level wrap generic call return .v, got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn generic_nested_pass_through_call_field_access_red() {
+    let src = r#"module test.gi4c
+type Inner<S> { value: S }
+type Outer<S> { inner: Inner<S> }
+type Rec { v: Int }
+fn pass_through<S>(o: Outer<S>) -> Outer<S> { o }
+fn use_inner() -> Rec { pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner.value }
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_inner") {
+        Ok(Value::Record {
+            type_name: _,
+            fields: _,
+        }) => {}
+        other => panic!("expected Rec from pass-through .inner.value chain, got {other:?}"),
+    }
+}
+
+#[test]
+fn generic_nested_record_body_field_access_red() {
+    let src = r#"module test.gi4b
+type Inner<S> { value: S }
+type Outer<S> { inner: Inner<S> }
+type Rec { v: Int }
+fn use_body() -> Rec {
+  let o = Outer { inner: Inner { value: Rec { v: 9 } } }
+  o.inner.value
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_body") {
+        Ok(Value::Record {
+            type_name: _,
+            fields: _,
+        }) => {}
+        other => panic!("expected Rec from nested body field access, got {other:?}"),
+    }
+}
+
+#[test]
 fn generic_instantiation_field_checks_concrete_type_red() {
     // Red-when-wrong: with T bound to Rec, the lambda param is concrete, so a
     // non-existent field must NOT silently succeed. If instantiation left the

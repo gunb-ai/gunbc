@@ -42,6 +42,8 @@ mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
+mod nodefold_generic_instantiation_test;
+#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod pb_method_template_projection_consumability;
