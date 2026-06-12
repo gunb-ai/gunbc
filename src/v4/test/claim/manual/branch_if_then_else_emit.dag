@@ -1,8 +1,7 @@
-// src/v4/test/claim/manual/comprep_branch_emit_if_then_else.dag
-// Scope: COMPREP wave-2 M0-B1 fan-in (ii) — Branch body emit through value-expression tier (.dag target).
-// Status: emit-only receipt; discriminating red swaps then/else arm literals.
+// src/v4/test/claim/manual/branch_if_then_else_emit.dag
+// Scope: Bool if-then-else Branch body emit through value-expression tier (.dag target).
 
-module v4.test.claim.manual.comprep_branch_emit_if_then_else
+module v4.test.claim.manual.branch_if_then_else_emit
 
 import v4.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body,
@@ -40,95 +39,94 @@ import v4.std.verification {
   UnifiedTestClaim
 }
 
-fn comprep_branch_emit_i64_node() -> Node {
+fn branch_if_then_else_emit_i64_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^comprep_branch_emit_i64 } },
+    kind: TypeNode { connective: Atom { identity: ^branch_if_then_else_emit_i64 } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
 }
 
-fn comprep_branch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Holds {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
-      algebra: comprep_branch_emit_i64_node(),
+      algebra: branch_if_then_else_emit_i64_node(),
       descent: termination_proof_witness_for_node(n: key)
     )
   }
 }
 
-fn comprep_branch_emit_inferred_tree_for(root: Node) -> InferredTree {
+fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: comprep_branch_emit_facts_lookup }
+    facts: Map { lookup: branch_if_then_else_emit_facts_lookup }
   }
 }
 
-fn comprep_branch_emit_producer_tree() -> Outcome<InferredTree> {
+fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
   match produce_mvp1_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
-        value: comprep_branch_emit_inferred_tree_for(root: root),
+        value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-fn comprep_branch_emit_swapped_producer_tree() -> Outcome<InferredTree> {
+fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<InferredTree> {
   match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
-        value: comprep_branch_emit_inferred_tree_for(root: root),
+        value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-fn comprep_branch_emit_from_producer(target: TargetModel) -> Outcome<TargetSource> {
+fn branch_if_then_else_emit_from_producer(target: TargetModel) -> Outcome<TargetSource> {
   bind_outcome(
-    o: comprep_branch_emit_producer_tree(),
+    o: branch_if_then_else_emit_producer_tree(),
     f: fn(tree) {
       emit(tree: tree, target: target)
     }
   )
 }
 
-fn comprep_branch_emit_swapped_from_producer(target: TargetModel) -> Outcome<TargetSource> {
+fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcome<TargetSource> {
   bind_outcome(
-    o: comprep_branch_emit_swapped_producer_tree(),
+    o: branch_if_then_else_emit_swapped_producer_tree(),
     f: fn(tree) {
       emit(tree: tree, target: target)
     }
   )
 }
 
-fn comprep_branch_emit_if_then_else_holds() -> Bool {
-  match comprep_branch_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+fn branch_if_then_else_emit_holds() -> Bool {
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source == dag_mvp1_pick_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_branch_emit_swapped_arms_discriminates() -> Bool {
-  match comprep_branch_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
+fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool {
+  match branch_if_then_else_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source != dag_mvp1_pick_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_branch_emit_keystone_holds() -> Bool {
-  comprep_branch_emit_if_then_else_holds()
-    && comprep_branch_emit_swapped_arms_discriminates()
+fn branch_if_then_else_emit_keystone_holds() -> Bool {
+  branch_if_then_else_emit_holds() && branch_if_then_else_emit_swapped_arms_discriminates()
 }
 
-data unified_claim_comprep_branch_emit_if_then_else: UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_branch_if_then_else_emit: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/manual/comprep_branch_emit_if_then_else.dag",
-    function: comprep_branch_emit_keystone_holds
+    entry: "src/v4/test/claim/manual/branch_if_then_else_emit.dag",
+    function: branch_if_then_else_emit_keystone_holds
   }
 }

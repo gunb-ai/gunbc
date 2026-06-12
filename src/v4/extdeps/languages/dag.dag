@@ -3862,7 +3862,7 @@ fn dag_mvp1_pick_target_model_bundle_node() -> Node {
       ),
       dag_named_edge(
         name: target_model_edge_declared_inhabitants,
-        target: dag_mvp1_declared_inhabitants_root()
+        target: dag_mvp1_pick_declared_inhabitants_root()
       ),
       dag_named_edge(
         name: target_model_edge_translation_rules,
