@@ -2,6 +2,8 @@
 
 Where the project stands and where it is headed. For the intellectual goal, read [THESIS.md](THESIS.md). For rules that protect that goal, read [INVARIANTS.md](INVARIANTS.md). For how to extend the language safely, read [MODELING.md](MODELING.md).
 
+> **Authoritative wave sequencing lives in the `gunb-ai/ctrl` repo, not here.** The dated dependency graph (`gunbc-planning/dependency-graph-<date>.md`) and `goals-by-horizon` own *what's next and in what order* — the §1 stage-fold program → §2 control-flow bodies → §3 emit breadth / §4 runnable IO → §5 self-host. This file describes **state and direction**; ctrl owns the **sequenced plan**. If the two disagree, ctrl's dep graph wins and this file is the stale one.
+
 > **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 is frozen. v2 remains the production self-hosted compiler today.
 
 ## What works today (v2)
