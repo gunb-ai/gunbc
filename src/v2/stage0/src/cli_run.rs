@@ -8,13 +8,20 @@ use std::rc::Rc;
 
 use crate::std_syntax::LiteralValue;
 use crate::v2_compiler_compile;
+use crate::v2_compiler_infer;
 use crate::v2_compiler_infer_env::lookup_type_by_name;
 use crate::v2_compiler_infer_items::{ItemKind, ResolvedGraph, TypedModule};
+use crate::v2_compiler_normalize;
+use crate::v2_compiler_parse;
+use crate::v2_compiler_resolve;
+use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
 use crate::v2_std_core::{
-    authored_name_at, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
+    authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
+    diagnostic_to_span, empty_intern_table, pre_intern_tokens,
     expr_var_name_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    is_interpreter_blocking_diagnostic, ExprData, InferredNode, NewlineIndex, Node,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode,
+    InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -259,16 +266,72 @@ pub fn resolve_entry_graph(
 /// Opaque module source index built from a set of source roots. Pass to
 /// `resolve_entry_with_index` to resolve multiple entries without re-scanning
 /// the filesystem per entry. Used by the `claim_batch` multi-entry green pass.
-pub struct MultiEntryIndex(ModuleSourceIndex);
+pub struct MultiEntryIndex {
+    source_files: ModuleSourceIndex,
+    global_intern_table: Rc<InternTable>,
+    /// file path → (ParseResult, NewlineIndex); populated during index build so
+    /// each entry resolve skips tokenize+parse for shared std/ files.
+    parse_cache: HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+}
 
-/// Scan the given source roots once and return a `MultiEntryIndex`. Subsequent
-/// calls to `resolve_entry_with_index` reuse the pre-built index instead of
-/// re-running the filesystem scan.
+/// Scan the given source roots once and return a `MultiEntryIndex`. Tokenises
+/// and parses every `.dag` file exactly once; subsequent `resolve_entry_with_index`
+/// calls reuse those cached parse trees instead of repeating the front-end work
+/// per entry.
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    MultiEntryIndex(build_module_index(source_roots))
+    let source_files = build_module_index(source_roots);
+
+    // Sort all indexed files by path for deterministic intern-table ordering.
+    // Shared std/ files sort before test/ entry files, so every entry closure
+    // sees the same IDs for shared identifiers.
+    let mut ordered: Vec<&Rc<v2_compiler_compile::SourceFile>> = source_files.values().collect();
+    ordered.sort_by(|a, b| a.path.cmp(&b.path));
+
+    // Tokenise every file; build the global intern table in one pass.
+    let tokenized: Vec<_> = ordered
+        .iter()
+        .map(|sf| {
+            let tokens = v2_compiler_tokenize::tokenize(sf.content.clone(), sf.path.clone());
+            let nl_index = build_newline_index(sf.path.clone(), sf.content.clone());
+            (sf.path.clone(), tokens, nl_index)
+        })
+        .collect();
+
+    let global_intern_table = tokenized
+        .iter()
+        .fold(empty_intern_table(), |acc, (_, toks, _)| {
+            pre_intern_tokens(toks.clone(), acc)
+        });
+
+    // Parse each file once with the global intern table; cache results.
+    let mut parse_cache: HashMap<
+        String,
+        (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+    > = HashMap::new();
+    for (path, tokens, nl_index) in &tokenized {
+        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let mut m = HashMap::new();
+            m.insert(path.clone(), nl_index.clone());
+            m
+        });
+        let parsed = v2_compiler_parse::parse_with_table(
+            tokens.clone(),
+            single_si,
+            global_intern_table.clone(),
+        );
+        parse_cache.insert(path.clone(), (parsed.result.clone(), nl_index.clone()));
+    }
+
+    MultiEntryIndex {
+        source_files,
+        global_intern_table,
+        parse_cache,
+    }
 }
 
 /// Resolve one entry's import closure using a pre-built `MultiEntryIndex`.
+/// Uses cached parse trees for all files in the source root, skipping
+/// tokenize+parse per entry.
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -279,7 +342,7 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_graph_with_index(&index.0, entry_file)
+    resolve_entry_with_parse_cache(index, entry_file)
 }
 
 fn resolve_entry_graph_with_index(
@@ -294,6 +357,126 @@ fn resolve_entry_graph_with_index(
 > {
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
     resolved_graph_from_sources(sources)
+}
+
+/// Resolve one entry's closure using pre-cached parse trees from `MultiEntryIndex`.
+/// Skips tokenize+parse for every file in the source root; runs
+/// resolve_modules → normalize_graph → reconcile per entry using the cached
+/// AST nodes and the pre-built global intern table.
+///
+/// Falls back to `resolved_graph_from_sources` for any closure file not found
+/// in the cache (e.g. an entry file loaded from disk outside the source root).
+fn resolve_entry_with_parse_cache(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
+
+    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+
+    for source in &sources {
+        match index.parse_cache.get(&source.path) {
+            Some((parse_result, nl_index)) => {
+                si_map.insert(nl_index.file.clone(), nl_index.clone());
+                if let Some(err) = &parse_result.error {
+                    let span = diagnostic_to_span(err.diagnostic.clone());
+                    let loc = format_error_loc(&span.file, span.start, &si_map);
+                    return Err(format!(
+                        "{}: error: {}",
+                        loc,
+                        diagnostic_to_message(err.diagnostic.clone())
+                    ));
+                }
+                if let Some(module) = &parse_result.module {
+                    modules.push(module.clone());
+                }
+            }
+            None => {
+                // File not in cache (outside source root or module-less entry
+                // loaded from disk) — fall back to the full compile path.
+                return resolved_graph_from_sources(sources);
+            }
+        }
+    }
+
+    let source_indices = Rc::new(si_map);
+    let graph =
+        v2_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+
+    if graph
+        .diagnostics
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+    }
+
+    let norm = v2_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+
+    if norm
+        .diagnostics
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&norm.diagnostics, &source_indices));
+    }
+
+    let typed = v2_compiler_infer::reconcile(
+        norm.graph.clone(),
+        source_indices.clone(),
+        index.global_intern_table.clone(),
+    );
+
+    let has_type_errors = typed
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+    if has_type_errors {
+        let msgs: Vec<String> = typed
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format_error_node(d, &source_indices))
+            .collect();
+        return Err(msgs.join("\n"));
+    }
+
+    Ok((typed, source_indices))
+}
+
+fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
+    match si.get(file) {
+        Some(idx) => {
+            let lc = byte_to_line_col(idx.clone(), start);
+            format!("{}:{}:{}", file, lc.line, lc.col)
+        }
+        None => file.to_string(),
+    }
+}
+
+fn format_error_node(d: &Rc<ErrorNode>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let loc = format_error_loc(&span.file, span.start, source_indices);
+    format!("{}: error: {}", loc, diagnostic_to_message(d.diagnostic.clone()))
+}
+
+fn format_error_nodes(
+    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    diags
+        .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| format_error_node(d, source_indices))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Compile an already-assembled source closure to a resolved graph, or return
