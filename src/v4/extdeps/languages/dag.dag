@@ -3282,7 +3282,7 @@ fn dag_mvp1_int_type_binding() -> Symbol {
 
 data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_atom_binding_miss
 
-fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagnostic {
+fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
   Diagnostic {
     reason: dag_mvp1_captured_flat_atom_binding_miss,
     at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
@@ -3300,8 +3300,16 @@ fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
   }
 }
 
-// Wave-1 COMPREP bridge: parse projects every identifier as ^dag_token_ident; binding ids
-// live in dag_mvp1_concrete_tokens BoundToken rows keyed by captured flat index.
+// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE —
+// consumer:dag_mvp1_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_add_arrow_signature_from_resolved in 03_body_producer) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
+// flat-index table (indices 5/9/12); owner/lane: Mgr-RUNTIME (neat-bat-593) —
+// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
+// flat-index binding lookup in extdeps. diagnostic-at: port_locus only — flat_index is a
+// token-table index, not a byte offset (ByteRange elsewhere is byte positions); distinct
+// locus variant deferred until scaffold dissolves.
 fn dag_mvp1_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
@@ -3319,32 +3327,6 @@ fn dag_mvp1_captured_flat_atom_binding_for_ident(
   }
 }
 
-fn dag_mvp1_resolved_operator_node_for_eval(atom: Node) -> Outcome<Node> {
-  match atom.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_token_plus {
-        outcome_accepted(value: atom)
-      } else {
-        match canonical_operation_from_wire_node(wire: atom) {
-          Accepted { value: op, diagnostics: pending } =>
-            if canonical_operation_equal(left: op, right: canonical_operation_op_add()) {
-              Accepted {
-                value: dag_mvp1_add_operator_node(),
-                diagnostics: pending
-              }
-            } else {
-              outcome_rejected(
-                d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15)
-              )
-            }
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        }
-      }
-    _ =>
-      outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15))
-  }
-}
-
 fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
@@ -3358,19 +3340,22 @@ fn dag_mvp1_add_operator_node() -> Node {
 }
 
 fn dag_mvp1_arrow_domain_conj_node() -> Node {
-  let bindings = dag_mvp1_add_param_binding_ids()
+  let children = fold_list(
+    xs: dag_mvp1_add_param_binding_ids(),
+    empty: Empty,
+    cons: fn(acc, binding_id) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge {
+          label: Named { name: binding_id },
+          target: dag_mvp1_type_atom_node(identity: dag_mvp1_int_type_binding())
+        }
+      )
+    }
+  )
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_x },
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^dag_binding_param_y },
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      }
-    ],
+    children: children,
     occurrence_id: SyntheticOccurrence
   }
 }
