@@ -3327,32 +3327,6 @@ fn dag_mvp1_captured_flat_atom_binding_for_ident(
   }
 }
 
-fn dag_mvp1_resolved_operator_node_for_eval(atom: Node) -> Outcome<Node> {
-  match atom.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_token_plus {
-        outcome_accepted(value: atom)
-      } else {
-        match canonical_operation_from_wire_node(wire: atom) {
-          Accepted { value: op, diagnostics: pending } =>
-            if canonical_operation_equal(left: op, right: canonical_operation_op_add()) {
-              Accepted {
-                value: dag_mvp1_add_operator_node(),
-                diagnostics: pending
-              }
-            } else {
-              outcome_rejected(
-                d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15)
-              )
-            }
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        }
-      }
-    _ =>
-      outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15))
-  }
-}
-
 fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
