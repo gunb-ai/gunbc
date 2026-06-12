@@ -516,6 +516,7 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  | TargetValueExprConditional
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -534,6 +535,7 @@ type TargetValueTemplateKind
   | ValueBindingRef
   | ValuePrimitiveApply
   | ValueEffectApply
+  | ValueConditional
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -582,6 +584,7 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
+<<<<<<< HEAD
 // T6 — per-language applied-effect projection. The emit arm selects the host shim callee by the
 // carrier's stored effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource`
 // by identity (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as
@@ -611,11 +614,21 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
+type TargetConditionalShape {
+  if_token: Symbol
+  then_token: Symbol
+  else_token: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
+<<<<<<< HEAD
   effect_apply_form: TargetEffectApplyShape
+=======
+  conditional_form: TargetConditionalShape
+>>>>>>> d47da4a49c (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
@@ -644,6 +657,13 @@ data target_value_expr_field_operation: Symbol = target_value_expr_field_operati
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
 data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
 data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
+data target_value_expr_field_conditional: Symbol = target_value_expr_field_conditional
+data target_value_expr_field_branch_condition: Symbol = target_value_expr_field_branch_condition
+data target_value_expr_field_branch_then_arm: Symbol = target_value_expr_field_branch_then_arm
+data target_value_expr_field_branch_else_arm: Symbol = target_value_expr_field_branch_else_arm
+data target_value_expr_field_if_token: Symbol = target_value_expr_field_if_token
+data target_value_expr_field_then_token: Symbol = target_value_expr_field_then_token
+data target_value_expr_field_else_token: Symbol = target_value_expr_field_else_token
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
 data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
