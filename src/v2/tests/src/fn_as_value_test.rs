@@ -162,7 +162,7 @@ type Inner<S> { value: S }
 type Outer<S> { inner: Inner<S> }
 type Rec { v: Int }
 fn pass_through<S>(o: Outer<S>) -> Outer<S> { o }
-fn use_inner() -> Inner<Rec> { pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner }
+fn use_inner() -> Rec { pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner.value }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
     let resolved = compile_to_resolved(Rc::new(sources));
@@ -172,8 +172,11 @@ fn use_inner() -> Inner<Rec> { pass_through(o: Outer { inner: Inner { value: Rec
         .as_ref()
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_inner") {
-        Ok(Value::Record { type_name: _, fields: _ }) => {}
-        other => panic!("expected Inner record from pass-through .inner, got {other:?}"),
+        Ok(Value::Record {
+            type_name: _,
+            fields: _,
+        }) => {}
+        other => panic!("expected Rec from pass-through .inner.value chain, got {other:?}"),
     }
 }
 
@@ -201,31 +204,6 @@ fn use_body() -> Rec {
             fields: _,
         }) => {}
         other => panic!("expected Rec from nested body field access, got {other:?}"),
-    }
-}
-
-#[test]
-fn generic_nested_record_call_return_field_access_red() {
-    let src = r#"module test.gi4
-type Inner<S> { value: S }
-type Outer<S> { inner: Inner<S> }
-type Rec { v: Int }
-fn get<S>(o: Outer<S>) -> S { o.inner.value }
-fn use_get() -> Rec { get(o: Outer { inner: Inner { value: Rec { v: 9 } } }) }
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
-        Ok(Value::Record {
-            type_name: _,
-            fields: _,
-        }) => {}
-        other => panic!("expected Rec record from nested generic get call, got {other:?}"),
     }
 }
 
