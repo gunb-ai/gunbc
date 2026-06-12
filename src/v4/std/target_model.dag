@@ -50,15 +50,17 @@ import v4.std.diagnostic {
 import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.find_witness {
   CandidateSet,
-  ManyPassingCandidates,
-  NoPassingCandidate,
-  OnePassingCandidate,
-  PassingCandidateFold,
   PreservationPredicate,
   UniqueOnly,
   find_witness,
   preservation_rule_exact_structural_equality_zip_fold,
   preservation_rule_type_expr_projection_discipline_zip_fold
+}
+import v4.std.passing_candidate_fold {
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate,
+  PassingCandidateFold
 }
 import v4.std.node {
   Arrow,
