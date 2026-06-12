@@ -581,7 +581,7 @@ fn check_t19_testgen_activation() {
             "ManualLbeDisjDagSurface",
             "ManualLbeTransformDagSurface",
             "type TestClaimCoproductVariant",
-            "feature:testclaim-coproduct-reflection; bound task: gunbc#4759 (re-anchor of deleted TASKS.md T-19)",
+            "feature:testclaim-coproduct-reflection; bound task: gunbc#4759",
             "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
             "GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
             "ManualRefinementNonEmptyListBase",

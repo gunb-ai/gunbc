@@ -69,7 +69,7 @@ fn void_language_model(identity: Symbol) -> LanguageModel {
 }
 
 
-// 🟡 gated — feature:canonical-symbols-set-node-projection — bind gunbc#4766 (re-anchor of deleted TASKS.md T-8) —
+// 🟡 gated — feature:canonical-symbols-set-node-projection — bind gunbc#4766 —
 // Set<Symbol> is a predicate closure; Node substrate has no edge kind for function values.
 // Dissolve-on: reify Set<Symbol> as explicit membership list type (same gate as grammar_root_sync_tokens).
 fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {

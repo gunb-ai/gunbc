@@ -299,7 +299,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
     }
   )
 }
-// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind gunbc#4761 (re-anchor of deleted TASKS.md T-11) —
+// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind gunbc#4761 —
 // dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
 // concrete tokens from emitted nonterminal nodes before serialization; forbidden:
 // dispatching raw List<Node> row items without this fail-closed classifier.

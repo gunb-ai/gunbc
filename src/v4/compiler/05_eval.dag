@@ -222,7 +222,7 @@ fn inputs_for_emit_host(
   }
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
 // Wave-2 effect-IO: declare-per-claim bundle + inject-per-run handler binding (design-v4-runtime-architecture.md §4.3, §7 Q-R3).
 type EffectIoEvalBundle {
   backend: EffectIoResourceBackend
@@ -342,7 +342,7 @@ fn interpretation_structure_witness_digest(
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_slots_digest / test_claim_interpretation_cache_digest_authority — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_executed_digest; forbidden: permanent untagged hand-rolled registry-symbol slot digests in 05_eval.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_slots_digest / test_claim_interpretation_cache_digest_authority — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_executed_digest; forbidden: permanent untagged hand-rolled registry-symbol slot digests in 05_eval.
 fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
   if v.allocate_literal == v4_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v4_eval_wave1_allocate_literal_sym)
@@ -385,7 +385,7 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v4_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v4_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -523,7 +523,7 @@ type TestClaimEvalSubject<T> {
   input: TestClaimTypedInput<T>
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
 }
@@ -642,7 +642,7 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
 fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   match reason {
     UserInputBoundary =>
@@ -885,7 +885,7 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
   )
 }
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 (re-anchor of deleted TASKS.md IRT-4 / T-22) — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
 type InterpretationCacheDigestAuthority
   = InterpretationCacheRegistered {
       runtime_identity: Symbol,
