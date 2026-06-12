@@ -1097,6 +1097,102 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     }
 }
 
+pub fn lookup_applied_field_type_node(
+    base_rt: Rc<Node>,
+    field_name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    if ((base_rt.connective.clone() != Connective::NoConnective)
+        || ((base_rt.children.clone().len() as i64) == 0))
+    {
+        None
+    } else {
+        match lookup_type_for(scope.type_env.clone(), base_rt.clone()) {
+            Some(decl) => {
+                let base_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    base_rt.clone(),
+                );
+                let decl_name =
+                    authored_name_at(scope.type_env.clone().source_indices.clone(), decl.clone());
+                if (((base_name.clone().as_str() != decl_name.as_str())
+                    || ((decl.params.clone().len() as i64) == 0))
+                    || ((decl.params.clone().len() as i64)
+                        != (base_rt.children.clone().len() as i64)))
+                {
+                    None
+                } else {
+                    if is_container_type(base_name.clone()) {
+                        None
+                    } else {
+                        {
+                            let subst = Rc::new(
+                                decl.params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .enumerate()
+                                    .map(|(i, v)| (i as i64, v))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            .fold(
+                                v2_rt::rc_empty_map::<String, Rc<Node>>(),
+                                |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                                    let slot = authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        pair.1.clone(),
+                                    );
+                                    match base_rt
+                                        .children
+                                        .clone()
+                                        .get(pair.0.clone() as usize)
+                                        .cloned()
+                                    {
+                                        Some(arg) => v2_rt::rc_map_insert(
+                                            acc.clone(),
+                                            slot.clone(),
+                                            resolved_type(arg.clone()),
+                                        ),
+                                        None => acc.clone(),
+                                    }
+                                },
+                            );
+                            match Rc::new({
+                                let mut __result = Vec::new();
+                                for sf in decl.children.clone().iter().cloned() {
+                                    if (authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        sf.clone(),
+                                    )
+                                    .as_str()
+                                        == field_name.clone().as_str())
+                                    {
+                                        __result.push(sf);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned()
+                            {
+                                Some(sf) => Some(substitute_generics(
+                                    field_node_type_expr(sf.clone()),
+                                    subst,
+                                    scope.type_env.clone().source_indices.clone(),
+                                )),
+                                None => None,
+                            }
+                        }
+                    }
+                }
+            }
+            None => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
     pub ty: Rc<Node>,
@@ -2748,70 +2844,53 @@ pub fn infer_expr(
                         diagnostics: base_diags,
                     })
                 } else {
-                    match lookup_field_type_node(
-                        resolved_base.clone(),
-                        field_name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
-                        Some(field_type) => {
-                            let field_summary = field_summary_for_type(
-                                base_rt.clone(),
-                                scope.type_env.clone(),
+                    {
+                        let field_type_lookup = match lookup_applied_field_type_node(
+                            base_rt.clone(),
+                            field_name.clone(),
+                            scope.clone(),
+                        ) {
+                            Some(ft) => Some(ft.clone()),
+                            None => lookup_field_type_node(
+                                resolved_base.clone(),
                                 field_name.clone(),
-                            );
-                            let fa_texpr = make_named_expr_node(
-                                field_name.clone(),
-                                Rc::new(ExprData::ExprFieldAccess {
-                                    summary: field_summary,
-                                }),
-                                Rc::new(vec![base_typed.clone()]),
-                                Some(Rc::new(InferredNode::Resolved {
-                                    node: field_type.clone(),
-                                })),
-                                span.clone(),
-                                node_name_span(texpr.clone()),
-                            );
-                            Rc::new(InferResult {
-                                typed: fa_texpr,
-                                diagnostics: base_diags,
-                            })
-                        }
-                        None => {
-                            let base_is_type_var = if (resolved_base.inferred.clone() != None) {
-                                is_type_variable(resolved_base.inferred.clone().clone().unwrap())
-                            } else {
-                                false
-                            };
-                            if base_is_type_var {
-                                {
-                                    let fa_texpr = make_named_expr_node(
-                                        field_name.clone(),
-                                        Rc::new(ExprData::ExprFieldAccess {
-                                            summary: Some(Rc::new(FieldSummary {
-                                                access_style: FieldAccessStyle::StoredField,
-                                                value_shape: FieldValueShape::PlainValue,
-                                            })),
-                                        }),
-                                        Rc::new(vec![base_typed.clone()]),
-                                        Some(Rc::new(InferredNode::TypeVariable {
-                                            id: "field_of_type_var".to_string(),
-                                        })),
-                                        span.clone(),
-                                        node_name_span(texpr.clone()),
-                                    );
-                                    Rc::new(InferResult {
-                                        typed: fa_texpr,
-                                        diagnostics: base_diags,
-                                    })
-                                }
-                            } else {
-                                match check_service_field_access_node(
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        };
+                        match field_type_lookup {
+                            Some(field_type) => {
+                                let field_summary = field_summary_for_type(
                                     base_rt.clone(),
+                                    scope.type_env.clone(),
                                     field_name.clone(),
-                                    scope.service_registry.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    Some(svc_type) => {
+                                );
+                                let fa_texpr = make_named_expr_node(
+                                    field_name.clone(),
+                                    Rc::new(ExprData::ExprFieldAccess {
+                                        summary: field_summary,
+                                    }),
+                                    Rc::new(vec![base_typed.clone()]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: field_type.clone(),
+                                    })),
+                                    span.clone(),
+                                    node_name_span(texpr.clone()),
+                                );
+                                Rc::new(InferResult {
+                                    typed: fa_texpr,
+                                    diagnostics: base_diags,
+                                })
+                            }
+                            None => {
+                                let base_is_type_var = if (resolved_base.inferred.clone() != None) {
+                                    is_type_variable(
+                                        resolved_base.inferred.clone().clone().unwrap(),
+                                    )
+                                } else {
+                                    false
+                                };
+                                if base_is_type_var {
+                                    {
                                         let fa_texpr = make_named_expr_node(
                                             field_name.clone(),
                                             Rc::new(ExprData::ExprFieldAccess {
@@ -2821,8 +2900,8 @@ pub fn infer_expr(
                                                 })),
                                             }),
                                             Rc::new(vec![base_typed.clone()]),
-                                            Some(Rc::new(InferredNode::Resolved {
-                                                node: svc_type.clone(),
+                                            Some(Rc::new(InferredNode::TypeVariable {
+                                                id: "field_of_type_var".to_string(),
                                             })),
                                             span.clone(),
                                             node_name_span(texpr.clone()),
@@ -2832,39 +2911,72 @@ pub fn infer_expr(
                                             diagnostics: base_diags,
                                         })
                                     }
-                                    None => {
-                                        let error_message = v2_rt::concat(
-                                            v2_rt::concat(
+                                } else {
+                                    match check_service_field_access_node(
+                                        base_rt.clone(),
+                                        field_name.clone(),
+                                        scope.service_registry.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        Some(svc_type) => {
+                                            let fa_texpr = make_named_expr_node(
+                                                field_name.clone(),
+                                                Rc::new(ExprData::ExprFieldAccess {
+                                                    summary: Some(Rc::new(FieldSummary {
+                                                        access_style: FieldAccessStyle::StoredField,
+                                                        value_shape: FieldValueShape::PlainValue,
+                                                    })),
+                                                }),
+                                                Rc::new(vec![base_typed.clone()]),
+                                                Some(Rc::new(InferredNode::Resolved {
+                                                    node: svc_type.clone(),
+                                                })),
+                                                span.clone(),
+                                                node_name_span(texpr.clone()),
+                                            );
+                                            Rc::new(InferResult {
+                                                typed: fa_texpr,
+                                                diagnostics: base_diags,
+                                            })
+                                        }
+                                        None => {
+                                            let error_message = v2_rt::concat(
                                                 v2_rt::concat(
                                                     v2_rt::concat(
-                                                        "no field '".to_string(),
-                                                        field_name.clone(),
+                                                        v2_rt::concat(
+                                                            "no field '".to_string(),
+                                                            field_name.clone(),
+                                                        ),
+                                                        "' on type '".to_string(),
                                                     ),
-                                                    "' on type '".to_string(),
+                                                    authored_name_at(
+                                                        scope
+                                                            .type_env
+                                                            .clone()
+                                                            .source_indices
+                                                            .clone(),
+                                                        resolved_base.clone(),
+                                                    ),
                                                 ),
-                                                authored_name_at(
-                                                    scope.type_env.clone().source_indices.clone(),
-                                                    resolved_base.clone(),
+                                                "'".to_string(),
+                                            );
+                                            let fa_texpr = make_expr_error_node(
+                                                ExprErrorKind::SemanticExprError,
+                                                error_message.clone(),
+                                                span.clone(),
+                                            );
+                                            Rc::new(InferResult {
+                                                typed: fa_texpr,
+                                                diagnostics: v2_rt::concat(
+                                                    base_diags,
+                                                    Rc::new(vec![inference_error(
+                                                        error_message.clone(),
+                                                        span.clone(),
+                                                        scope.module_name.clone(),
+                                                    )]),
                                                 ),
-                                            ),
-                                            "'".to_string(),
-                                        );
-                                        let fa_texpr = make_expr_error_node(
-                                            ExprErrorKind::SemanticExprError,
-                                            error_message.clone(),
-                                            span.clone(),
-                                        );
-                                        Rc::new(InferResult {
-                                            typed: fa_texpr,
-                                            diagnostics: v2_rt::concat(
-                                                base_diags,
-                                                Rc::new(vec![inference_error(
-                                                    error_message.clone(),
-                                                    span.clone(),
-                                                    scope.module_name.clone(),
-                                                )]),
-                                            ),
-                                        })
+                                            })
+                                        }
                                     }
                                 }
                             }
