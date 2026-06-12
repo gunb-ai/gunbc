@@ -42,8 +42,8 @@ import v4.extdeps.languages.typescript {
   ts_wave1_lex_rules
 }
 import v4.std.algebra { Cons, Empty, list_append }
-import v4.std.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v4.std.target_model {
+import v4.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v4.std.compilers.target_model {
   InfixToken,
   TargetModel,
   canonical_operation_op_add,

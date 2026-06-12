@@ -12,7 +12,7 @@ module v4.extdeps.languages.ptx
 
 
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,

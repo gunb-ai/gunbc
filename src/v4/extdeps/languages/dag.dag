@@ -46,7 +46,7 @@ import v4.std.grammar {
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
@@ -88,7 +88,7 @@ import v4.std.node {
   arrow_body_edge
 }
 import v4.std.node_query { find_named_child }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   CanonicalOperation,
   ConcreteSyntaxToken,
   FixedToken,
@@ -360,7 +360,7 @@ fn dag_positional_edge(target: Node) -> Edge {
 }
 
 // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
-// the single shared serializer (v4.std.target_model.concrete_syntax_token_to_node). The Conj wire
+// the single shared serializer (v4.std.compilers.target_model.concrete_syntax_token_to_node). The Conj wire
 // node is returned so the result still composes with nonterminal sub-trees in heterogeneous
 // grammar-row token lists.
 fn emit_fixed_token(token_class: Symbol) -> Node {

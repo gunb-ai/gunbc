@@ -19,7 +19,7 @@ import v4.std.diagnostic {
   Outcome,
   bind_outcome
 }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,

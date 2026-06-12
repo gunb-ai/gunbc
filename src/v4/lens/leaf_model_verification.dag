@@ -32,7 +32,7 @@ import v4.std.collection { List, optional_absent }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.host_run { ValueDiff }
 import v4.std.logic { Bool }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetAtomRealization,
   ValueSymbolIdentityPassthrough,
   source_atom_symbol,

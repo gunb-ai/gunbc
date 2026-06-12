@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/swift.dag
 // Scope: Swift language/standard-library scalar fact-bundles, ModelCore wave-1 (primitives), wave-2b (inhabitance+laws+effects+partiality).
-// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 Swift wave-1+2b; fixed-width integer spellings explicit, Int/UInt platform-word-width, Float/Double IEEE-754; wave-2b: signed int OrderedRing + unsigned int CommutativeSemiring + float ApproximateField + bool BooleanAlgebra + string FreeMonoid inhabitance; laws+effects+partiality; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
+// Consumes: v4.std.grammar, v4.std.compilers.lexing, v4.std.collection, v4.std.model_core, v4.std.compilers.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
+// Status: T-4 Swift wave-1+2b; fixed-width integer spellings explicit, Int/UInt platform-word-width, Float/Double IEEE-754; wave-2b: signed int OrderedRing + unsigned int CommutativeSemiring + float ApproximateField + bool BooleanAlgebra + string FreeMonoid inhabitance; laws+effects+partiality; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/compilers/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-SWIFT-LAW-KEY.
 // 🟡
@@ -33,7 +33,7 @@ import v4.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   ChoicePattern,
   DelimitedPattern,
@@ -79,9 +79,9 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
-import v4.std.target_model {
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,

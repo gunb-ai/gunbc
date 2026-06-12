@@ -42,7 +42,7 @@ import v4.extdeps.languages.rust {
   rust_type_expression_projection,
   rust_type_expression_projection_bundle_node
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,

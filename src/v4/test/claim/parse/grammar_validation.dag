@@ -8,7 +8,7 @@
 module v4.test.claim.parse.grammar_validation
 
 
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.grammar {
   GrammarProduction,
   GrammarRoot,

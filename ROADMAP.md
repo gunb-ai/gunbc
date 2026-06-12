@@ -4,6 +4,37 @@ Where the project stands and where it is headed. For the intellectual goal, read
 
 > **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 is frozen. v2 remains the production self-hosted compiler today.
 
+## Active wave — the stage-fold program
+
+> *Snapshot as of 2026-06-12, mirrored from the ctrl dep graph for in-repo visibility. ctrl's dated dependency graph stays authoritative for sequencing; if this drifts, ctrl wins and this is the stale copy.*
+
+**The one principle (§0).** Repoint the consumer onto the fold/model, then the old code deletes itself in the **same PR**. If the file is *larger* afterward, it was a graft, not a migration — the same-PR rule should have blocked it.
+
+**§1 — stage-fold (active, frontloaded ahead of all feature work).** Every compiler stage collapses to one fold over its model: `stage(x) = fold_carrier(x, stage_algebra(model))` — traversal owned by a reusable fold, every former hand-arm becomes one **data row**. Existence proof already on main: `05_emit` is 43 lines (`serialize ∘ translate`, frozen); this program makes the rest match it.
+
+| § | Stage | Carrier | State |
+|---|-------|---------|-------|
+| 1.1 | `06_translate` (keystone, load-bearing) | `fold_node` | **in progress** — #4699 is a mergeable milestone |
+| 1.2 | `03_normalize` | `fold_node` | ✅ merged (#4691, #4694) |
+| 1.3 | `03_resolve` / `03_name_resolve` | `fold_node` + env | ✅ core merged (#4700) |
+| 1.4 | `03_body_producer` | `fold_node` | ✅ PIN1 merged (#4695) |
+| 1.5 | `06_value_expression` | merge into `translate_algebra` | coupled to §1.1 |
+| 1.6 | `04_infer` (gather; solver stays a named kernel) | `fold_node` | ✅ merged (#4692) |
+| 1.7 | `02_parse` | `fold_grammar_expr` | ✅ merged (#4693) |
+| 1.8 | `01_tokenize` | **`fold_source`** (one new combinator) | not started — gated on the combinator |
+
+Keystone §1.1 progress (branch vs main): **4,912 → 3,919 lines**, `_go` accumulators **35 → 0** (traversal now owned by the fold), `_bounded` fuel **67 → 53**, `project_type_expression*` **45 → 23**. The file shrinks, so it is a migration not a graft. `fold_source` is the *only* genuinely-new machinery left in §1; everything else is repoint-then-delete onto folds that already exist.
+
+**§2 — control-flow bodies** (Branch → Bind → Loop, via a COMPREP function-body producer). The real next wave after §1, and the highest-leverage one — emit breadth (§3) and a runnable IO program (§4) both sit on it. Gated on the **#4699 keystone merge only** — the COMPREP source-bridge gate is verified closed (#4646/#4655), so #4699's merge timing is on §2's critical path.
+
+**§3 — emit breadth** (N data rows, not N×M hand-arms); includes the bidirectional emit/ingest round-trip (the fold's inverse proof) and dissolution of host-transport bridges. Depends on §1 + §2.
+
+**§4 — first runnable v4 program with I/O** (effect handlers, run-loop/scheduler). Depends on §2.
+
+> **Priority fork (operator's call, after §2 lands):** §3 + self-host (compiler/breadth lane) vs §4 (a demo-able running program). Both unblock once §2 lands; the pick sets the deepest staffing.
+
+**§5 — self-hosting** (get-off-v3 caller-census ratchet → zero hand-maintained Rust). Depends on §3.
+
 ## What works today (v2)
 
 The v2 compiler in [`src/v2/`](src/v2/) is self-hosted from `.dag` source: tokenize, parse, infer, emit, complexity, and ownership pipelines are authored as `.dag` programs with a small Rust bootstrap (`stage0`) that shrinks over time.

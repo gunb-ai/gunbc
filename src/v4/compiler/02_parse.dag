@@ -67,7 +67,7 @@ import v4.std.collection { Absent, List, Map, Optional, Present, Set, empty_map,
 import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.std.lexing { Token, TokenStream }
+import v4.std.compilers.lexing { Token, TokenStream }
 import v4.std.grammar {
   Choice,
   ParseGrammar,

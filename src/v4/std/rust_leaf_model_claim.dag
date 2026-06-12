@@ -6,7 +6,7 @@ module v4.std.rust_leaf_model_claim
 
 import v4.std.grammar { GrammarProduction }
 import v4.std.leaf_model_verification { TargetInvocation }
-import v4.std.lexing { LexRule }
+import v4.std.compilers.lexing { LexRule }
 import v4.std.logic { Bool }
 import v4.std.model_core { AlgebraInhabitanceDecl }
 import v4.std.node { Node, Symbol }

@@ -18,7 +18,7 @@ import v4.std.language_model {
   language_model_to_node,
   void_language_model
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetModel,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules

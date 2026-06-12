@@ -48,7 +48,7 @@ import v4.std.node {
   content_hash,
   node_synthetic
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,

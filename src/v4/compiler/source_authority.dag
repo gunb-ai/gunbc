@@ -32,7 +32,7 @@ import v4.std.diagnostic {
 import v4.std.grammar { ParseTree }
 import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v4.std.provenance { SpanIndex }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
 import v4.std.text { String }

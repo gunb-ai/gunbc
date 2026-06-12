@@ -43,7 +43,7 @@ import v4.extdeps.languages.go {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   infer_receipt_context

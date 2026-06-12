@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/target_model_operator_lookup_dissolution.dag
 // Scope: E-10 execution receipts for PassingCandidateFold dissolution of
-// target_operator_realization_catalog_lookup in std/target_model.dag.
+// target_operator_realization_catalog_lookup in std/compilers/target_model.dag.
 // Status: T-6 M-C precondition — acceptance, miss, fail-open malformed-row skip.
 
 module v4.test.claim.manual.target_model_operator_lookup_dissolution
@@ -9,7 +9,7 @@ import v4.extdeps.languages.typescript { ts_add_operator_realization_row }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   canonical_operation_op_add,
   target_operator_realization_catalog_lookup,
   target_operator_realization_catalog_miss,
