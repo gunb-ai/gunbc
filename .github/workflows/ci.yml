@@ -571,16 +571,10 @@ jobs:
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
     runs-on: [self-hosted, linux, arm64]
-<<<<<<< HEAD
     # 20m is the pre-#4633 ceiling, restored after batched discovery
     # (discover_owned_data --max-resolves 1) removed the ~15m per-entry
     # resolve fan-out. Do not raise this to absorb a slow step; root-cause it.
     timeout-minutes: 20
-=======
-    # C9 substrate-equivalence routinely exceeds 35m on self-hosted runners (observed
-    # 35m21s hard-cancel on runs 27380370110, 27382406411 with lens witnesses green).
-    timeout-minutes: 50
->>>>>>> 276a811276 (fix(ci): raise v4_lens_gate timeout for C9 substrate-equivalence)
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
