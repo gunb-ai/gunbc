@@ -17,10 +17,17 @@ import v4.std.algebra {
   list_snoc_item,
   non_empty
 }
-import v4.std.collection { List }
+import v4.std.collection { List, list_nth }
+import v4.std.witness { Holds, Violates }
 import v4.std.dependency { DependencyView }
-import v4.std.diagnostic { Outcome }
-import v4.std.node { Node }
+import v4.std.diagnostic { Outcome, Rejected, diagnostics_singleton }
+import v4.compiler.eval { eval_diagnostic }
+import v4.std.node {
+  ComputationNode,
+  Node,
+  SyntheticOccurrence,
+  Value
+}
 import v4.std.runtime { RuntimeValue }
 import v4.workflow.scheduler {
   RunnableFrontier,
@@ -153,6 +160,51 @@ fn runtime_run_result_from_state(
       scheduled: state.scheduled,
       remaining: remaining
     }
+  }
+}
+
+fn runtime_run_first_receipt_outcome(log: RuntimeRunLog) -> Outcome<RuntimeValue> {
+  match list_nth(
+    xs: log.entries,
+    wanted: 0,
+    absent: eval_diagnostic(reason: ^runtime_run_empty_log, node: receipt_placeholder_node())
+  ) {
+    Holds { value: receipt } => receipt.result
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+// Placeholder node for empty-log diagnostics only (no eval occurs).
+fn receipt_placeholder_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Single-node convenience: runtime_run over one root, projecting the lone receipt outcome.
+fn runtime_run_single_node(
+  node: Node,
+  dependencies: List<DependencyView>,
+  tree: InferredTree,
+  context: EvalContext
+) -> Outcome<RuntimeValue> {
+  match runtime_run(
+    nodes: [node],
+    dependencies: dependencies,
+    tree: tree,
+    context: context
+  ) {
+    RuntimeRunComplete { log: log, scheduled: _ } =>
+      runtime_run_first_receipt_outcome(log: log)
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: ^runtime_run_blocked, node: node)
+        )
+      }
   }
 }
 

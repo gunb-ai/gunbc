@@ -74,11 +74,7 @@ import v4.std.runtime {
 }
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.workflow.runtime_run {
-  RuntimeRunBlocked,
-  RuntimeRunComplete,
-  runtime_run
-}
+import v4.workflow.runtime_run { runtime_run_single_node }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
 fn program_atom(s: Symbol) -> Node {
@@ -369,29 +365,12 @@ fn program_tree(root: Node) -> InferredTree {
 data program_run_dependencies: List<DependencyView> = []
 
 fn program_runtime_run_single(root: Node, tree: InferredTree) -> Outcome<RuntimeValue> {
-  match runtime_run(
-    nodes: [root],
+  runtime_run_single_node(
+    node: root,
     dependencies: program_run_dependencies,
     tree: tree,
     context: program_context_with_effect_io()
-  ) {
-    RuntimeRunComplete { log: log, scheduled: _ } =>
-      match list_at_optional(xs: log.entries, index: 0) {
-        Present { value: receipt } => receipt.result
-        Absent =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: eval_diagnostic(reason: ^program_runtime_run_empty_log, node: root)
-            )
-          }
-      }
-    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: eval_diagnostic(reason: ^program_runtime_run_blocked, node: root)
-        )
-      }
-  }
+  )
 }
 
 // Runnable entry: evaluate the pick_if Branch with effect_io in the then-arm via runtime_run.
