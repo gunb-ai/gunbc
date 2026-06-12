@@ -8,6 +8,14 @@ import v4.compiler.infer {
   infer,
   infer_branch_operand_resolved_type,
   infer_branch_type_is_bool,
+  infer_debug_entries_accept,
+  infer_debug_facts_map_accept,
+  infer_debug_fold_accept,
+  infer_debug_fixup_accept,
+  infer_debug_node_facts_accept,
+  infer_debug_bounded_lattice_gate_accept,
+  infer_debug_inferred_facts_from_grounding_accept,
+  infer_debug_well_formed,
   inferred_facts_resolved_type,
   inferred_facts_witness_for_node,
   InferredTree
@@ -126,6 +134,50 @@ fn branch_infer_accepts_bool_if_else_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn branch_infer_debug_fold_accept_holds() -> Bool {
+  infer_debug_fold_accept(
+    tree: branch_infer_resolved_tree(root: branch_infer_bool_if_else_body_node())
+  )
+}
+
+fn branch_infer_debug_fold_true_atom_holds() -> Bool {
+  infer_debug_fold_accept(
+    tree: branch_infer_resolved_tree(
+      root: branch_infer_atom(s: ^dag_token_kw_true)
+    )
+  )
+}
+
+fn branch_infer_debug_well_formed_true_holds() -> Bool {
+  infer_debug_well_formed(node: branch_infer_atom(s: ^dag_token_kw_true))
+}
+
+fn branch_infer_debug_bounded_lattice_true_holds() -> Bool {
+  infer_debug_bounded_lattice_gate_accept(node: branch_infer_atom(s: ^dag_token_kw_true))
+}
+
+fn branch_infer_debug_descent_true_holds() -> Bool {
+  infer_debug_descent_accept(node: branch_infer_atom(s: ^dag_token_kw_true))
+}
+
+fn branch_infer_debug_inferred_facts_from_grounding_true_holds() -> Bool {
+  infer_debug_inferred_facts_from_grounding_accept(
+    node: branch_infer_atom(s: ^dag_token_kw_true)
+  )
+}
+
+fn branch_infer_debug_fixup_accept_holds() -> Bool {
+  infer_debug_fixup_accept(
+    tree: branch_infer_resolved_tree(root: branch_infer_bool_if_else_body_node())
+  )
+}
+
+fn branch_infer_debug_facts_map_accept_holds() -> Bool {
+  infer_debug_facts_map_accept(
+    tree: branch_infer_resolved_tree(root: branch_infer_bool_if_else_body_node())
+  )
 }
 
 fn comprep_branch_infer_bool_cond_accepts_holds() -> Bool {

@@ -591,9 +591,9 @@ fn infer_branch_entries_fixup(
 }
 
 // Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+fn infer_fold_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
-  match fold_node(
+  fold_node(
     n: tree,
     algebra: NodeFold {
       init: fn(n0) {
@@ -628,7 +628,12 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
         }
       }
     }
-  ) {
+  )
+}
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+  let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
+  match infer_fold_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
       match infer_branch_entries_fixup(entries: entries, partials: partials) {
@@ -655,6 +660,104 @@ fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
             },
             diagnostics: diagnostics_merge(outer: d, inner: md)
           }
+      }
+  }
+}
+
+// Debug probes — delete before merge once Q-B2 claims are green.
+fn infer_debug_entries_accept(tree: ResolvedTree) -> Bool {
+  match infer_entries_for_tree(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_debug_fold_accept(tree: ResolvedTree) -> Bool {
+  match infer_fold_entries_for_tree(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_debug_fixup_accept(tree: ResolvedTree) -> Bool {
+  let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
+  match infer_fold_entries_for_tree(tree: tree) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: entries, diagnostics: _ } =>
+      match infer_branch_entries_fixup(entries: entries, partials: partials) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn infer_debug_node_facts_accept(node: Node) -> Bool {
+  let partials = partial_bounded_lattice_instances_in_tree(tree: node)
+  match infer_node_facts(n: node, partials: partials) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_debug_well_formed(node: Node) -> Bool {
+  well_formed(n: node)
+}
+
+fn infer_debug_solve_constraints_accept(node: Node) -> Bool {
+  match solve_constraints(
+    policy: ConstraintSolvePolicy {
+      graph: infer_constraint_graph(n: node)
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_debug_bounded_lattice_gate_accept(node: Node) -> Bool {
+  let partials = partial_bounded_lattice_instances_in_tree(tree: node)
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_debug_descent_accept(node: Node) -> Bool {
+  match infer_descent_witness_for_node(n: node) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn infer_debug_inferred_facts_from_grounding_accept(node: Node) -> Bool {
+  match infer_descent_witness_for_node(n: node) {
+    Violates { diagnostic: _ } => false
+    Holds { value: descent_proof } =>
+      match solve_constraints(
+        policy: ConstraintSolvePolicy {
+          graph: infer_constraint_graph(n: node)
+        }
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: grounding, diagnostics: _ } =>
+          match inferred_facts_from_grounding(
+            grounding: grounding,
+            descent: Holds { value: descent_proof }
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn infer_debug_facts_map_accept(tree: ResolvedTree) -> Bool {
+  match infer_entries_for_tree(tree: tree) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: entries, diagnostics: _ } =>
+      match facts_map_from_entries(entries: entries) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
   }
 }
