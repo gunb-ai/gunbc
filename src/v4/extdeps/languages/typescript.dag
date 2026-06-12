@@ -171,6 +171,7 @@ import v4.std.compilers.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -627,6 +628,11 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^ts_token_kw_if,
+      then_token: ^ts_token_kw_then,
+      else_token: ^ts_token_kw_else
     }
   }
 }

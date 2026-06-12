@@ -1,0 +1,397 @@
+// src/v4/test/claim/manual/comprep_bind_lazy_arm_eval_acceptance.dag
+// Scope: SPINE-REACHED Bind eval witness — demand-driven eval_bind_node_eval (#4738).
+// Assertions: value edge evaluated before body; divergent value rejects without body success.
+
+module v4.test.claim.manual.comprep_bind_lazy_arm_eval_acceptance
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  empty_evaluation_environment,
+  eval_context_with_semantics,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v4.std.cardinality { termination_proof_witness_for_node }
+import v4.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  map_get,
+  map_insert
+}
+import v4.std.witness { Holds, Witness }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.machine { Byte }
+import v4.std.node {
+  Atom,
+  Arrow,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_edge
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v4.std.verdict { Pass }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn bind_lazy_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn bind_lazy_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn bind_lazy_i64() -> Node {
+  bind_lazy_atom(s: ^bind_lazy_i64_sym)
+}
+
+fn bind_lazy_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: bind_lazy_i64(),
+      bytes: [bind_lazy_byte()]
+    }
+  }
+}
+
+fn bind_lazy_lit_one() -> Node {
+  bind_lazy_atom(s: ^bind_lazy_lit_one_sym)
+}
+
+fn bind_lazy_divergent() -> Node {
+  bind_lazy_atom(s: ^bind_lazy_divergent_sym)
+}
+
+fn bind_lazy_counted() -> Node {
+  bind_lazy_atom(s: ^bind_lazy_counted_sym)
+}
+
+fn bind_lazy_counted_slot_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: bind_lazy_atom(s: ^bind_lazy_counted_slot_sym)
+  }
+}
+
+fn bind_lazy_touch_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: bind_lazy_atom(s: ^bind_lazy_touch_counter_sym)
+  }
+}
+
+fn bind_lazy_int_from_runtime(value: RuntimeValue) -> Int {
+  match value {
+    RuntimePrimitive { value: p } => count(p.bytes)
+    _ => 0
+  }
+}
+
+fn bind_lazy_touch_from_env(env: EvaluationEnvironment) -> Int {
+  match map_get(m: env.bindings, key: bind_lazy_touch_key()) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: v } => bind_lazy_int_from_runtime(value: v)
+        Absent => 0
+      }
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn bind_lazy_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^bind_lazy_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bind_lazy_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == bind_lazy_lit_one() {
+    outcome_accepted(value: bind_lazy_one_value())
+  } else if node == bind_lazy_divergent() {
+    outcome_rejected(d: bind_lazy_diagnostic(n: node))
+  } else if node == bind_lazy_counted() {
+    if bind_lazy_touch_from_env(env: env) >= 1 {
+      outcome_rejected(d: bind_lazy_diagnostic(n: node))
+    } else {
+      outcome_accepted(value: bind_lazy_one_value())
+    }
+  } else {
+    outcome_rejected(d: bind_lazy_diagnostic(n: node))
+  }
+}
+
+fn bind_lazy_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: bind_lazy_diagnostic(n: _node))
+}
+
+fn bind_lazy_choose_branch(
+  _node: Node,
+  _condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(d: bind_lazy_diagnostic(n: _node))
+}
+
+fn bind_lazy_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: bind_lazy_diagnostic(n: node))
+}
+
+fn bind_lazy_bind_value(
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  let bound = EvaluationEnvironment {
+    bindings: map_insert(m: env.bindings, key: key, value: value)
+  }
+  let touched = if key.declaration == bind_lazy_counted_slot_key().declaration {
+    let next = bind_lazy_touch_from_env(env: bound) + 1
+    EvaluationEnvironment {
+      bindings: map_insert(
+        m: bound.bindings,
+        key: bind_lazy_touch_key(),
+        value: RuntimePrimitive {
+          value: RuntimePrimitiveValue {
+            primitive_type: bind_lazy_i64(),
+            bytes: if next == 1 { [bind_lazy_byte()] } else { [bind_lazy_byte(), bind_lazy_byte()] }
+          }
+        }
+      )
+    }
+  } else {
+    bound
+  }
+  Accepted { value: touched, diagnostics: None }
+}
+
+fn bind_lazy_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: bind_lazy_allocate_literal },
+    transform: TransformInterpreter { call_primitive: bind_lazy_call_primitive },
+    branch: BranchInterpreter { choose_branch: bind_lazy_choose_branch },
+    loop: LoopInterpreter { step_loop: bind_lazy_step_loop },
+    bind: BindInterpreter { bind_value: bind_lazy_bind_value }
+  }
+}
+
+fn bind_lazy_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^bind_lazy_allocate_literal_sym,
+    call_primitive: ^bind_lazy_call_primitive_sym,
+    choose_branch: ^bind_lazy_choose_branch_sym,
+    step_loop: ^bind_lazy_step_loop_sym,
+    bind_value: ^bind_lazy_bind_value_sym
+  }
+}
+
+fn bind_lazy_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^bind_lazy_runtime_id,
+    interpretation: bind_lazy_interpretation(),
+    structure_witness: bind_lazy_interpretation_structure_witness()
+  )
+}
+
+fn bind_lazy_bind_node(value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: bind_lazy_counted_slot_key().declaration },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  }
+}
+
+fn bind_lazy_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn bind_lazy_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          occurrence_id: SyntheticOccurrence,
+          children: []
+        }
+      },
+      Edge { label: Positional, target: bind_lazy_i64() },
+      Edge { label: Positional, target: bind_lazy_i64() },
+      Edge { label: Named { name: arrow_body_edge }, target: body }
+    ]
+  }
+}
+
+fn bind_lazy_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^bind_lazy_actual }, target: call },
+      Edge { label: Named { name: ^bind_lazy_expected }, target: expected }
+    ]
+  }
+}
+
+fn bind_lazy_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: bind_lazy_i64(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn bind_lazy_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: bind_lazy_facts_lookup }
+  }
+}
+
+fn bind_lazy_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let arrow = bind_lazy_arrow_with_body(body: body)
+  let call = bind_lazy_pick_call(callee: arrow)
+  let root = bind_lazy_tree_root(call: call, expected: expected)
+  let tree = bind_lazy_admitted_tree(root: root)
+  outcome_accepted(
+    value: run_test_claim(
+      subject: TestClaimEvalSubject {
+        claim: CompilesClaim {
+          label: "manual/comprep_bind_lazy_arm: demand-driven Bind eval acceptance",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: call,
+          expected_value: expected,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        context: bind_lazy_context(),
+        tree: tree,
+        input: test_claim_typed_input_node(
+          evaluator_input: call,
+          evaluator_pin: ^bind_lazy_pick_call_pin
+        )
+      }
+    )
+  )
+}
+
+fn bind_lazy_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bind_lazy_counted_value_body_holds() -> Bool {
+  bind_lazy_run_passes(
+    run: bind_lazy_run(
+      body: bind_lazy_bind_node(
+        value: bind_lazy_counted(),
+        body: bind_lazy_lit_one()
+      ),
+      expected: bind_lazy_lit_one()
+    )
+  )
+}
+
+fn bind_lazy_divergent_value_rejects_holds() -> Bool {
+  match bind_lazy_run(
+    body: bind_lazy_bind_node(
+      value: bind_lazy_divergent(),
+      body: bind_lazy_lit_one()
+    ),
+    expected: bind_lazy_lit_one()
+  ) {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => false
+        _ => true
+      }
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bind_lazy_eval_acceptance_keystone_holds() -> Bool {
+  bind_lazy_counted_value_body_holds() && bind_lazy_divergent_value_rejects_holds()
+}
+
+data unified_claim_comprep_bind_lazy_arm_eval_acceptance: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_bind_lazy_arm_eval_acceptance.dag",
+    function: bind_lazy_eval_acceptance_keystone_holds
+  }
+}
