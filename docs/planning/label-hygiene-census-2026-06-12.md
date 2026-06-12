@@ -158,7 +158,7 @@ witnesses, types, env vars, file/crate names), which are the expensive ones.
 | `mvp2_` / `MVP-2` | 338 hits / 22 files | `eval_mvp2_add_subgraph`, `MVP2_RUNTIME_VALUE_FIVE_BYTES` | five-byte runtime-value contract comments in emit_host | rename → contract names (`runtime_value_five_bytes_*`) |
 | `pilot` / `Pilot*` | 356 hits + a whole crate | `src/v3/grounding_pilot/` crate, `PilotRustPrimitive`, `rust_pilot_primitives` | workspace member; "T-Ground-Pilot toy probe" per its own header | **delete-candidate**: if the probe's question is answered, retire the crate; else rename to what it validates (inhabitance-search parity) |
 | `wave[0-9]` / `wave2a` | 1429 hits / 100 files | `rust_language_model_wave1`, `ts_production_wave2a_type_annotation`, `dag_wave1_lex_token_symbol` | wave = grammar/coverage tier; lens-ci claim names | rename → coverage-descriptive tiers (e.g. `_core`, `_literals`) — **needs a naming table sign-off** |
-| `sg[0-9]` | 1250 hits / 62 files (sg2 ×887, sg8 ×286, sg1/sg0 ×~110 each) | `sg0_census_test`, `sg2_pass_node`, `sg8_def/use/proxy` | `sg0_census_test` is the hand-Rust census gate (CI-wired) | expansion of "SG" not recorded anywhere greppable — **needs operator/parent definition before renaming** |
+| `sg[0-9]` | 1250 hits / 62 files (sg2 ×887, sg8 ×286, sg1/sg0 ×~110 each) | `sg0_census_test`, `sg2_pass_node`, `sg8_def/use/proxy` | `sg0_census_test` is the hand-Rust census gate (CI-wired) | **SG = Self-Generation** (see F1e appendix) — program is live; rename = spell it out, pending naming-table sign-off |
 | `rung*` / `rung[0-9]+` | 711 hits / 37 files | `rung56_emit_vs_eval_run`, `BlockingForRung`, `nat_semiring_rung34_*` | ladder vocabulary is **live** in ROADMAP/design docs | needs operator decision: either the ladder vocabulary is blessed (then ids citing it are fine) or it renames everywhere incl. docs — don't rename ids unilaterally |
 | `phase1` / `Phase-1` | 675 hits / 117 files | `V4_PHASE1_NAT_SEMIRING_*` env vars, `Rustc_ErrorCode_Phase1` | `scripts/v4-phase1-nat-semiring-*-gate.sh` (3 gate scripts) + env-var contract | rename ids+scripts+env vars together, per gate |
 | task-IDs `T-NN`/`W-T-*`/`IRT-4` | T-22 ×297, T-4 ×142, … | `feature:T22-EVAL-CACHE-HASHES`, `feature:W-T-10-mvp1-exact-zip-closure` | 119 marks bind deleted TASKS.md | repoint/rewrite (F1a below) |
@@ -225,7 +225,7 @@ dispatches now, in parallel (the families are mostly file-disjoint).
 - **F1e — naming-table sign-off (blocking F3 only):** one short operator/parent
   review fixing replacement vocabulary for the decision-needing families:
   `wave[0-9]` tiers (proposal: coverage-descriptive — `_core`, `_literals`, …),
-  `sg[0-9]` (expansion not greppable — needs definition), `rung*` (ladder
+  `sg[0-9]` (SG = Self-Generation — resolved, see appendix), `rung*` (ladder
   vocabulary is live in ROADMAP — bless it or rename it everywhere, not just in
   ids). Without this, F3 renames would mint a second generation of guesses.
 
@@ -254,3 +254,47 @@ Naming direction everywhere: name by **what the artifact is**, not when it was
 scheduled — `add_translate_rust.dag` not `mvp1_rust_add_translate.dag`;
 `eval_by_execution_add.dag` not `comprep_eval_by_execution.dag`;
 `runtime_value_five_bytes` not `MVP2_RUNTIME_VALUE_FIVE_BYTES`.
+
+## F1e appendix — `sg[0-9]` resolved: SG = Self-Generation
+
+Defining cites:
+
+- **Live**: `docs/design-pure-bootstrap.md:340` — "**SG program**
+  (Self-Generation): SG retires specific Rust files by authoring their `.dag`
+  counterparts. PB is the program that names the endpoint: SG-N deliverables
+  feed PB-N stages."
+- **Deleted** (#4192 purge), fuller definition:
+  `docs/history/roadmap-active-deferrals.md:244` at `eceeed72d3^` — "The
+  Self-Gen (SG) program is the 'zero hand-authored Rust in src/v3' track …
+  every SG PR reduces the hand-authored Rust census in src/v3, ratchet only
+  down. SG-6 specifically owns build.rs, bootstrap.rs, pipeline_authority.rs,
+  lens_testgen.rs, and src/bin/regen_*.rs."
+
+Per-lane meanings (v3 family — what the renamer needs):
+
+| Lane | Surface | Cite |
+|---|---|---|
+| SG-0 | hand-Rust census + ratchet gate | `sg0_census_test.rs` header |
+| SG-1 | tokenize.dag tokenizer authority | `docs/design-pure-bootstrap.md` |
+| SG-2 / SG-2b | parser staging / .dag-owned parse logic | `src/v3/SELF_HOSTING.md:998` |
+| SG-3 | lower | `docs/design-pure-bootstrap-zero.md` |
+| SG-4 | infer dispatch | `docs/design-pure-bootstrap-zero.md` |
+| SG-5 | substrate / runtime-mirror projections | `src/v3/compiler/build.rs:661` |
+| SG-6 | build.rs / bootstrap.rs / regen binaries | deleted roadmap-active-deferrals.md |
+
+Unlike mvp1/comprep, the SG program is **live** (it is the thesis — Rust
+shrinks toward zero); the debt is only the cryptic abbreviation. Proposed F3
+rule (pending operator sign-off): spell it out — `sg` → `self_gen`
+(`sg0_census_test.rs` → `self_gen_census_test.rs`), with descriptive per-lane
+suffixes where the surface is clear. Caveat for the renamer: witness fns
+`sg2_arrow` / `sg2_mode2*` / `ts_sg2_conj` are in the known-false baseline
+ledger (5 v4 claim witnesses false on main, pre-existing) — any rename must
+carry that annotation along.
+
+**Second, unrelated SG family (DEFERRED):** v4 uses SG-1/SG-1b/SG-2/SG-3/SG-5
+as target-realization/grounding **catalog labels** in
+`src/v4/std/compilers/target_model.dag`. Its header cites
+`design-target-realization-canonical-home.md`, which no longer exists (likely
+#4192); no expansion found — possibly not even the same acronym. That file is
+skip-listed (in-flight #4741 + effect-emit PR1), so this family gets its own
+naming decision later.
