@@ -1,7 +1,7 @@
 // src/v4/compiler/03_normalize.dag
 //
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
-// Status: T-8 modeled — traversal on normalize_fold init/step; model in std/sugar.dag.
+// Status: T-8 modeled — traversal on normalize_fold init/step; model in std/compilers/sugar.dag.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 
 module v4.compiler.normalize
@@ -29,7 +29,7 @@ import v4.std.node {
   node_rebuild,
   well_formed
 }
-import v4.std.sugar {
+import v4.std.compilers.sugar {
   apply_sugar,
   classify_sugar
 }
