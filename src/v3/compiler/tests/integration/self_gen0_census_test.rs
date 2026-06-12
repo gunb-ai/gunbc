@@ -916,7 +916,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (`fixtures/r3_l5_corpus/*.v3` vs embedded `TestClaim.source` — byte equality ratchet in
     // `tests/boundary/l5_cross_target_consistency.rs`).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
-    "src/v3/compiler/tests/integration/self_gen_census_test.rs",
+    "src/v3/compiler/tests/integration/self_gen0_census_test.rs",
     "src/v3/compiler/tests/integration/self_gen1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/self_gen2_parse_authority_test.rs",
     "src/v3/compiler/tests/integration/self_gen2c1_parse_tables_authority_test.rs",
@@ -1345,7 +1345,7 @@ fn self_gen0_v3_hand_authored_census() {
         msg.push_str(
             "\nFix: remove these entries from the matching EXPECTED_HAND_AUTHORED_* \
              sub-ratchet in\n\
-             src/v3/compiler/tests/integration/self_gen_census_test.rs.\n",
+             src/v3/compiler/tests/integration/self_gen0_census_test.rs.\n",
         );
     }
     panic!("{msg}");

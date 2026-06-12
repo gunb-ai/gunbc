@@ -217,6 +217,8 @@ mod r3_substrate_gap_reflection_closure_test;
 mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
+#[path = "integration/self_gen0_census_test.rs"]
+mod self_gen0_census_test;
 #[path = "integration/self_gen1_tokenize_authority_test.rs"]
 mod self_gen1_tokenize_authority_test;
 #[path = "integration/self_gen2_parse_authority_test.rs"]
@@ -233,8 +235,6 @@ mod self_gen3_surface_reflection_consumer_test;
 mod self_gen6_hand_authored_census_test;
 #[path = "integration/self_gen7_prep_variant_payload_freshness_test.rs"]
 mod self_gen7_prep_variant_payload_freshness_test;
-#[path = "integration/self_gen_census_test.rs"]
-mod self_gen_census_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
@@ -1152,7 +1152,7 @@ mod parse_stage4_prep {
         // `std.cpu.types` / `std.cpu.ampere` (operator CPU taxonomy; P-CF supply authority)
         // until T-PB-B hand-Rust test floor reaches zero.
         // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `self_gen_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
         // this adds one `#[test]` fn only, same pattern as
         // `handwritten_parser_accepts_cache_interface_dag` below.
         parse_file(
@@ -1176,7 +1176,7 @@ mod parse_stage4_prep {
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.memory` /
         // operator fleet DIMM catalog until T-PB-B hand-Rust test floor reaches zero.
         // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `self_gen_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
         // this adds one `#[test]` fn only, same pattern as `handwritten_parser_accepts_cpu_dag`.
         parse_file(
             include_str!("../../../../dsl/std/memory.dag"),
@@ -1214,7 +1214,7 @@ mod parse_stage4_prep {
         // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
         // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.
         // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `self_gen_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
         // unchanged (N→N); this adds one `#[test]` fn only, same pattern as
         // `handwritten_parser_accepts_gunbc_digest_render_dag` below.
         parse_file(

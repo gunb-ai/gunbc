@@ -103,7 +103,7 @@ CONTENT_REPLACEMENTS: list[tuple[str, str]] = [
 # File renames: basename or relative path suffix → new basename
 FILE_RENAMES: list[tuple[str, str]] = [
     # sg test files
-    ("self_gen_census_test.rs", "self_gen_census_test.rs"),
+    ("self_gen0_census_test.rs", "self_gen0_census_test.rs"),
     ("self_gen1_tokenize_authority_test.rs", "self_gen1_tokenize_authority_test.rs"),
     ("self_gen2_parse_authority_test.rs", "self_gen2_parse_authority_test.rs"),
     ("self_gen2c1_parse_tables_authority_test.rs", "self_gen2c1_parse_tables_authority_test.rs"),

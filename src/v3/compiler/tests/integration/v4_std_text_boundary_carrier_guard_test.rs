@@ -17,7 +17,7 @@
 //!
 //! **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
 //! registration, mechanism (b)):** the matching `EXPECTED_HAND_AUTHORED_TEST` row in
-//! `self_gen_census_test.rs` lands in the same PR. Net of the fold-delete remains strongly
+//! `self_gen0_census_test.rs` lands in the same PR. Net of the fold-delete remains strongly
 //! negative (bulk parse-surface smoke deleted; only this absence-lint retained).
 //! Dissolves when a `.dag`/host structural mechanism can assert a module's declared-type
 //! set directly (type-absence as data).

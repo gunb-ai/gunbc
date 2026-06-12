@@ -12,7 +12,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
-use crate::self_gen_census_test::{
+use crate::self_gen0_census_test::{
     expected_hand_authored_fragments_count, expected_hand_authored_non_test_count,
 };
 

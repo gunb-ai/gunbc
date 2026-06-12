@@ -18,14 +18,14 @@ import std.verification {
 
 type Sg0CensusAuthority {}
 
-data self_gen_census_test_authority: Sg0CensusAuthority = {}
+data self_gen0_census_test_authority: Sg0CensusAuthority = {}
 
 data substrate_gap_reflection_residual_census_receipt: TestClaim = {
   name: "substrate_gap_reflection_residual_census_receipt",
   source: "// Reflection residual-census receipts read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r3_substrate_gap_reflection_residual_census_receipt.v3",
   predicate: CensusSubsetCount {
-    authority: self_gen_census_test_authority,
+    authority: self_gen0_census_test_authority,
     list_constant: expected_hand_authored_non_test,
     subset_predicate: lens_producer_files_subset_predicate
   },

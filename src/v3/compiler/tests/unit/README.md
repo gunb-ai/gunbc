@@ -37,7 +37,7 @@ Include it from `tests/integration.rs` via a `#[path =
 "unit/<name>.rs"] mod …` declaration. The consolidated binary shares
 one bootstrap across all three directories; do not introduce a
 separate `tests/unit.rs` binary without director sign-off (see
-`tests/integration/self_gen_census_test.rs`).
+`tests/integration/self_gen0_census_test.rs`).
 
 Tests whose wall-clock exceeds 2s per `#[test]` violate the ratchet
 at `scripts/check-test-timeout.sh`. A unit test reaching that bar

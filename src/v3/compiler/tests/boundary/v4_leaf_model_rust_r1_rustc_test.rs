@@ -5,7 +5,7 @@
 //! `scripts/v4-leaf-model-rust-r1-verify.sh`.
 //!
 //! **P5 receipt:** matching `_internal/INVARIANTS_OPS.md` row +
-//! `EXPECTED_HAND_AUTHORED_TEST` literal in `self_gen_census_test.rs` (same PR).
+//! `EXPECTED_HAND_AUTHORED_TEST` literal in `self_gen0_census_test.rs` (same PR).
 //! **Dissolution:** retire when T-22 eval + modeled `run_target_verification` owns
 //! rustc invocation without this hand-Rust bridge.
 

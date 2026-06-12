@@ -9,7 +9,7 @@
 //!
 //! **P5 receipt (`.github/PULL_REQUEST_TEMPLATE.md` Per-PR gate, disposition (2)):** same-PR
 //! `EXPECTED_HAND_AUTHORED_TEST` census delta **171 → 172** paths (literal in
-//! `self_gen_census_test.rs`; T-PB-B partition: module doc lines 9–10 +
+//! `self_gen0_census_test.rs`; T-PB-B partition: module doc lines 9–10 +
 //! `tests/boundary/README.md`). Workstream/lane (in-tree):
 //! `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8).
 //! **Dissolution:** delete this path when host runners are superseded by modeled verification
