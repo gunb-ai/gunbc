@@ -3607,7 +3607,7 @@ fn dag_mvp1_pick_arrow_domain_conj_node() -> Node {
   }
 }
 
-fn dag_mvp1_pick_if_body_node(
+fn dag_mvp1_pick_if_body_from_arms(
   condition: Node,
   then_arm: Node,
   else_arm: Node
@@ -3624,7 +3624,7 @@ fn dag_mvp1_pick_if_body_node(
 }
 
 fn dag_mvp1_pick_if_body_node() -> Node {
-  dag_mvp1_pick_if_body_node(
+  dag_mvp1_pick_if_body_from_arms(
     condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
     else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
@@ -3632,7 +3632,7 @@ fn dag_mvp1_pick_if_body_node() -> Node {
 }
 
 fn dag_mvp1_pick_if_body_swapped_arms_node() -> Node {
-  dag_mvp1_pick_if_body_node(
+  dag_mvp1_pick_if_body_from_arms(
     condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two),
     else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one)

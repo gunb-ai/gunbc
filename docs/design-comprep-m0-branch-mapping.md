@@ -1,7 +1,9 @@
 # COMPREP M0 Branch Mapping — Design Table (dep-graph-2026-06-12 §2)
 
-> **Status: DESIGN — map, not territory.** gunbc#4699 merged (main 7e126d1a7c); implementation
-> in progress per dep-graph-2026-06-12 §2. Review artifact for COMPREP wave-2 keystone scoping
+> **Status: FAN-IN (i) GREEN.** gunbc#4699 merged (main 7e126d1a7c); M0-B1 eval-by-execution
+> keystone `comprep_branch_eval_by_execution_keystone_holds` passes via `--claim-run`.
+> Keystone source: `fn one_or_two() -> Int { if true then 1 else 2 }` (literal Bool cond;
+> param-ref M0-B1a deferred). Review artifact for COMPREP wave-2 keystone scoping
 > (Branch first in the §2 sequence Branch → Bind → Loop). Mirrors the add-keystone row shape
 > used for COMPREP wave-1 (`03_body_producer`, `06_value_expression`, `comprep_eval_by_execution`).
 
