@@ -11034,26 +11034,13 @@ pub fn unify_record_lit_generics(
                 formal.clone(),
                 scope.type_env.clone().source_indices.clone(),
             );
-            match record_lit_instantiated_fields(
-                Some(type_name.clone()),
-                Some(formal.clone()),
+            unify_record_lit_field_walk(
+                record_lit_expected_fields(Some(type_name), scope.clone()),
+                record.clone(),
+                generic_names.clone(),
                 scope.clone(),
-            ) {
-                Some(struct_fields) => unify_record_lit_field_walk(
-                    struct_fields.clone(),
-                    record.clone(),
-                    generic_names.clone(),
-                    scope.clone(),
-                    acc,
-                ),
-                None => unify_record_lit_field_walk(
-                    record_lit_expected_fields(Some(type_name.clone()), scope.clone()),
-                    record.clone(),
-                    generic_names.clone(),
-                    scope.clone(),
-                    acc,
-                ),
-            }
+                acc,
+            )
         }
     }
 }
