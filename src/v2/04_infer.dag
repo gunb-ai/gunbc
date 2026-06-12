@@ -5293,23 +5293,13 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
     }
   } else {
     let type_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
-    match record_lit_instantiated_fields(type_name: Present { value: type_name }, expected: Present { value: formal }, scope: scope) {
-      Present { value: struct_fields } =>
-        unify_record_lit_field_walk(struct_fields: struct_fields, record: record, generic_names: generic_names, scope: scope, acc: acc)
-      Absent =>
-        if is_record_lit_expr(e: record) {
-          let record_type_name = type_node_label(n: record, source_indices: scope.type_env.source_indices)
-          if record_type_name != "" && record_type_name == type_name {
-            unify_record_lit_field_walk(
-              struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
-              record: record,
-              generic_names: generic_names,
-              scope: scope,
-              acc: acc
-            )
-          } else { acc }
-        } else { acc }
-    }
+    unify_record_lit_field_walk(
+      struct_fields: record_lit_expected_fields(type_name: Present { value: type_name }, scope: scope),
+      record: record,
+      generic_names: generic_names,
+      scope: scope,
+      acc: acc
+    )
   }
 }
 

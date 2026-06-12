@@ -3109,9 +3109,9 @@ pub fn infer_expr(
                             .iter()
                             .cloned()
                             {
-                                __result.push(authored_name_at(
+                                __result.push(param_node_name_at(
+                                    p.clone(),
                                     scope.type_env.clone().source_indices.clone(),
-                                    param_node_type_expr(p.clone()),
                                 ));
                             }
                             __result
@@ -10773,6 +10773,23 @@ pub struct ArgGenericFoldState {
     pub subst: Rc<HashMap<String, Rc<Node>>>,
 }
 
+pub fn type_node_label(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let authored = authored_name_at(source_indices, n.clone());
+        if (authored.clone().as_str() != "".to_string().as_str()) {
+            authored.clone()
+        } else {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => tv_id.clone(),
+                _ => n.name.clone(),
+            }
+        }
+    }
+}
+
 pub fn param_is_generic_decl(
     p: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -10780,11 +10797,16 @@ pub fn param_is_generic_decl(
     {
         let pt = param_node_type_expr(p.clone());
         let pname = param_node_name_at(p.clone(), source_indices.clone());
-        let tname = authored_name_at(source_indices.clone(), pt.clone());
-        ((((pt.children.clone().len() as i64) == 0)
+        let tname = type_node_label(pt.clone(), source_indices.clone());
+        let type_expr_is_var = match pt.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
+            None => false,
+        };
+        (((((pt.children.clone().len() as i64) == 0)
             && (pt.connective.clone() == Connective::NoConnective))
-            && ((pname.clone().as_str() != "".to_string().as_str())
-                && (pname.clone().as_str() == tname.as_str())))
+            && (pname.clone().as_str() != "".to_string().as_str()))
+            && ((pname.clone().as_str() == tname.as_str())
+                || (type_expr_is_var && (pname.clone().as_str() == pt.name.clone().as_str()))))
     }
 }
 
@@ -10846,23 +10868,6 @@ pub fn unify_generics(
                 }
             } else {
                 break acc.clone();
-            }
-        }
-    }
-}
-
-pub fn type_node_label(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let authored = authored_name_at(source_indices, n.clone());
-        if (authored.clone().as_str() != "".to_string().as_str()) {
-            authored.clone()
-        } else {
-            match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: tv_id, .. }) => tv_id.clone(),
-                _ => n.name.clone(),
             }
         }
     }
