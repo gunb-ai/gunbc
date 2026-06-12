@@ -1097,90 +1097,6 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     }
 }
 
-pub fn lookup_applied_field_type_node(
-    base_rt: Rc<Node>,
-    field_name: String,
-    scope: Rc<InferScope>,
-) -> Option<Rc<Node>> {
-    match base_rt.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: _, .. }) => {
-            match lookup_type_for(scope.type_env.clone(), base_rt.clone()) {
-                Some(decl) => {
-                    if (((decl.params.clone().len() as i64) == 0)
-                        || ((decl.params.clone().len() as i64)
-                            != (base_rt.children.clone().len() as i64)))
-                    {
-                        None
-                    } else {
-                        {
-                            let subst = Rc::new(
-                                decl.params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .enumerate()
-                                    .map(|(i, v)| (i as i64, v))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .iter()
-                            .cloned()
-                            .fold(
-                                v2_rt::rc_empty_map::<String, Rc<Node>>(),
-                                |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                                    let slot = authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        pair.1.clone(),
-                                    );
-                                    match base_rt
-                                        .children
-                                        .clone()
-                                        .get(pair.0.clone() as usize)
-                                        .cloned()
-                                    {
-                                        Some(arg) => v2_rt::rc_map_insert(
-                                            acc.clone(),
-                                            slot.clone(),
-                                            resolved_type(arg.clone()),
-                                        ),
-                                        None => acc.clone(),
-                                    }
-                                },
-                            );
-                            match Rc::new({
-                                let mut __result = Vec::new();
-                                for sf in decl.children.clone().iter().cloned() {
-                                    if (authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        sf.clone(),
-                                    )
-                                    .as_str()
-                                        == field_name.clone().as_str())
-                                    {
-                                        __result.push(sf);
-                                    }
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned()
-                            {
-                                Some(sf) => Some(substitute_generics(
-                                    field_node_type_expr(sf.clone()),
-                                    subst,
-                                    scope.type_env.clone().source_indices.clone(),
-                                )),
-                                None => None,
-                            }
-                        }
-                    }
-                }
-                None => None,
-            }
-        }
-        _ => None,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
     pub ty: Rc<Node>,
@@ -3129,23 +3045,13 @@ pub fn infer_expr(
                                 {
                                     st.subst.clone()
                                 } else {
-                                    if is_record_lit_expr(arg_value(a.clone())) {
-                                        unify_record_lit_generics(
-                                            formal_raw.clone(),
-                                            ar.typed.clone(),
-                                            generic_names.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                            st.subst.clone(),
-                                        )
-                                    } else {
-                                        unify_generics(
-                                            formal_raw.clone(),
-                                            resolved_type(ar.typed.clone()),
-                                            generic_names.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                            st.subst.clone(),
-                                        )
-                                    }
+                                    unify_generics(
+                                        formal_raw.clone(),
+                                        resolved_type(ar.typed.clone()),
+                                        generic_names.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        st.subst.clone(),
+                                    )
                                 };
                                 Rc::new(ArgGenericFoldState {
                                     results: v2_rt::concat(
@@ -10748,13 +10654,6 @@ pub fn param_is_generic_decl(
     }
 }
 
-pub fn is_record_lit_expr(e: Rc<Node>) -> bool {
-    match (*e.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-        _ => false,
-    }
-}
-
 pub fn unify_generics(
     mut formal: Rc<Node>,
     mut actual: Rc<Node>,
@@ -10810,68 +10709,6 @@ pub fn unify_generics(
             }
         }
     }
-}
-
-pub fn unify_record_lit_generics(
-    formal: Rc<Node>,
-    record: Rc<Node>,
-    generic_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    acc: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let formal_expanded = match formal.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: expanded, .. }) => expanded.clone(),
-            _ => formal.clone(),
-        };
-        if ((formal_expanded.children.clone().len() as i64) == 0) {
-            acc
-        } else {
-            formal_expanded.children.clone().iter().cloned().fold(
-                acc,
-                |st: Rc<HashMap<String, Rc<Node>>>, ff: Rc<Node>| {
-                    let field_name = authored_name_at(source_indices.clone(), ff.clone());
-                    match Rc::new({
-                        let mut __result = Vec::new();
-                        for fi in record.children.clone().iter().cloned() {
-                            if (field_init_node_name_at(fi.clone(), source_indices.clone())
-                                .as_str()
-                                == field_name.clone().as_str())
-                            {
-                                __result.push(fi);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(fi) => {
-                            let actual_value = field_init_node_value(fi.clone());
-                            if is_record_lit_expr(actual_value.clone()) {
-                                unify_record_lit_generics(
-                                    field_node_type_expr(ff.clone()),
-                                    actual_value.clone(),
-                                    generic_names.clone(),
-                                    source_indices.clone(),
-                                    st.clone(),
-                                )
-                            } else {
-                                unify_generics(
-                                    field_node_type_expr(ff.clone()),
-                                    resolved_type(actual_value.clone()),
-                                    generic_names.clone(),
-                                    source_indices.clone(),
-                                    st.clone(),
-                                )
-                            }
-                        }
-                        None => st.clone(),
-                    }
-                },
-            )
-        }
-    })
 }
 
 pub fn substitute_generics(
