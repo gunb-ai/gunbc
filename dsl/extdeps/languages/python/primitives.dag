@@ -1,7 +1,7 @@
 // extdeps/languages/python/primitives.dag — Structural target-primitive
 // declarations for the Python target (T-Ground-Python tranche 1 / spec authority).
 //
-// TRANCHE 1 (this file): Python language-reference built-in types whose
+// FIRST SLICE (this file): Python language-reference built-in types whose
 // value domain is fixed by the language spec — `int` (arbitrary precision),
 // `bool`, `str` (immutable Unicode code-point sequence), and `None` (the
 // single inhabitant of `NoneType`). See Python Language Reference §"The
@@ -56,14 +56,14 @@
 //
 // SUBSTRATE-GAP FLAGS:
 //   1. Python `int` is arbitrary precision — no fixed-width carrier and no
-//      modular-wrap overflow. Tranche-1 models this with the
+//      modular-wrap overflow. This file models it with the
 //      `PythonIntUnboundedCarrier` sentinel (no `range_min/max`,
 //      no `overflow` field) so consumers cannot read a false fixed width.
 //      Post-DB-11 / cardinality substrate this becomes
 //      `OrderedRing<UnboundedSignedInteger>` with countably-infinite
 //      cardinality; today the sentinel carrier is the honest declaration.
 //   2. `bool` is a subclass of `int` per the Python data model
-//      (True == 1, False == 0). Tranche-1 routes `bool` through
+//      (True == 1, False == 0). This file routes `bool` through
 //      `PythonBooleanPrimitive` with the canonical two-element Boolean
 //      algebra value-domain (Bit-carrier sentinel) and does not yet model
 //      the int-coercion edge — that lives in coercion / operator slices,

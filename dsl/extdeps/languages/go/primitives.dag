@@ -1,7 +1,7 @@
 // extdeps/languages/go/primitives.dag — Structural target-primitive declarations
 // for the Go target (T-Ground-Go / spec authority).
 //
-// TRANCHE 1 (this file): Go spec predeclared types with fixed machine
+// FIRST SLICE (this file): Go spec predeclared types with fixed machine
 // representations — booleans, fixed-width integers, floats, complex, string,
 // and the byte/rune aliases (go.dev/ref/spec §Types, §Predeclared_identifiers).
 // The empty struct type `struct{}` is **not** predeclared; it is the canonical
@@ -97,7 +97,7 @@ type GoTargetCarrier
 // Multi-arm sum (same structural rule as rust/primitives.dag `IntegerOverflow` and
 // this file's float tags): a single-arm `type X = Tag` leaves `Tag` unresolved in
 // the v2 bootstrap compiler — `GoModularWrapOnFixedWidth` must be introduced as a
-// sum arm. Tranche-1 rows use only `GoModularWrapOnFixedWidth`. The two additional
+// sum arm. Rows in this file use only `GoModularWrapOnFixedWidth`. The two additional
 // arms are **parse scaffolding only** (never populated in this authority slice);
 // future operator/substrate refinements get their own rows — not Rust `Saturating`
 // / `Trap` names copied onto the Go spec surface.
