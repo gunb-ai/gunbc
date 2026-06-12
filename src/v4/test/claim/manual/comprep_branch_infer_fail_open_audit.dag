@@ -4,8 +4,9 @@
 
 module v4.test.claim.manual.comprep_branch_infer_fail_open_audit
 
-import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.infer { infer }
 import v4.extdeps.languages.dag {
+  dag_mvp1_pick_if_body_fixture,
   dag_mvp1_pick_if_body_from_arms,
   dag_mvp1_type_atom_node
 }
@@ -37,6 +38,14 @@ fn comprep_branch_infer_fail_open_audit_rejects_holds() -> Bool {
 // RED-on-main detector: GREEN when infer silently accepts divergent arms (fail-open).
 fn comprep_branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
   match infer(tree: comprep_branch_infer_fail_open_audit_body()) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Main-line control: literal-arm pick body should still infer-accept (not over-reject).
+fn comprep_branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+  match infer(tree: dag_mvp1_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
