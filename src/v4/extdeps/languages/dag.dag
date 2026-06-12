@@ -3420,7 +3420,14 @@ fn dag_mvp1_captured_flat_atom_binding_for_ident(
   }
 }
 
-// COMPREP wave-2 M0-B1 — flat-index binding table for pick(b) if-then-else keystone.
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:dag_mvp1_pick_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_pick_if_arrow_signature_from_resolved in 03_body_producer) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
+// pick flat-index table (index 5 codomain); owner/lane: Mgr-§2 (sharp-ibex-851) —
+// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
+// flat-index binding lookup in extdeps for pick/if-then-else.
 fn dag_mvp1_pick_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node

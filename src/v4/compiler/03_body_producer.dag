@@ -271,8 +271,9 @@ fn mvp1_resolved_captured_atoms(resolved_root: Node) -> Outcome<List<Node>> {
 // from the resolved Arrow's declared signature+body carriers (real body_producer dispatch)
 // rather than recognizing the fixed MVP1 flat-token indices 5/9/12/14/15/16; owner/lane:
 // Mgr-RUNTIME (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden:
-// adding a second hard-coded flat-index shape here (a third would mean building the dispatch
-// surface, not another literal index table).
+// adding a third hard-coded flat-index shape here (wave-2 M0-B1 pick indices 8/10/12 is the
+// reviewed second shape — see COMPREP-WAVE2-BODY-BRIDGE marks below; a third would mean
+// building the dispatch surface, not another literal index table).
 fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
@@ -533,6 +534,14 @@ fn body_producer_pick_condition_from_atom(cond: Node) -> Outcome<Node> {
   }
 }
 
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:body_producer_pick_if_body_from_atoms (via produce_mvp1_pick_if_arrow_with_body_from_resolved;
+// executed by comprep_branch_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
+// dissolve-on: if-then-else body production derives from structured normalize/resolve Behavior
+// carriers (Branch child projection) rather than fixed MVP1 flat-token indices 8/10/12;
+// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
+// forbidden: permanent untagged pick flat-index bridge helpers in body_producer.
 fn body_producer_pick_if_body_from_atoms(
   atoms: List<Node>,
   witness: Node
@@ -589,6 +598,14 @@ fn body_producer_pick_if_body_from_atoms(
   )
 }
 
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:produce_mvp1_pick_if_arrow_signature_from_resolved (via
+// produce_mvp1_pick_if_arrow_with_body_from_resolved; executed by comprep_branch_eval_by_execution
+// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: zero-param arrow signature derives
+// from resolved Arrow carriers rather than flat-token index 5 + pick binding table;
+// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
+// forbidden: permanent untagged pick signature flat-index bridge in body_producer.
 fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
