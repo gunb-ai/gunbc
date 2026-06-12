@@ -5,7 +5,7 @@
 
 module v4.compiler.infer
 
-import v4.std.algebra { length, list_snoc_item }
+import v4.std.algebra { list_snoc_item }
 // kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not Practice-12 fuel.
 import v4.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -13,16 +13,7 @@ import v4.std.bounded_lattice_completeness {
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection {
-  Absent,
-  List,
-  Map,
-  Optional,
-  Present,
-  list_at_optional,
-  optional_absent,
-  optional_present
-}
+import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -47,24 +38,18 @@ import v4.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
-import v4.std.logic { Bool, bool_node }
+import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
-  Branch,
   ComputationNode,
-  Edge,
   Node,
   NodeFold,
-  Positional,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
-  all_edges_positional,
   fold_node,
   well_formed
 }
-import v4.std.node_query { node_positional_child_targets }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.std.witness { Holds, Violates, Witness }
 
 // AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
@@ -107,15 +92,24 @@ type InferredFactsEntry {
   node: Node
   facts: InferredFacts
 }
+type InferredFactsEntryList = List<InferredFactsEntry>
+type InferGatherChildOutcome = Outcome<InferredFactsEntryList>
+type InferGatherChildResults = List<InferGatherChildOutcome>
+
+type InferGatherFoldAcc
+  = InferGatherLeaf { result: InferGatherChildOutcome }
+  | InferGatherBranch {
+      node: Node,
+      partials: List<Node>,
+      child_results: InferGatherChildResults
+    }
+
 
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 // 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
-data infer_branch_shape_invalid: Symbol = infer_branch_shape_invalid
-data infer_branch_cond_not_bool: Symbol = infer_branch_cond_not_bool
-data infer_branch_arm_type_mismatch: Symbol = infer_branch_arm_type_mismatch
 
 // §1-tail A4 disposition (post-#4692): Practice-12 `_bounded` fuel residue = 0 in this stage.
 // SG-6 BoundedLattice gather/gate → fuel-delete: rows in v4.std.bounded_lattice_completeness
@@ -142,374 +136,6 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
     reason: infer_algebra_ref_ungrounded,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: infer_branch_shape_invalid,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: infer_branch_cond_not_bool,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: infer_branch_arm_type_mismatch,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn infer_branch_int_binding_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// 🟡 gated — COMPREP M0-B1 literal operand typing — feature:COMPREP-WAVE2-BRANCH-INFER-LITERAL-TYPES —
-// bind:docs/design-comprep-m0-branch-mapping.md §12.11 Q-B2 — dissolve-on: T-9 constraint carriers
-// assign literal operand types during infer_node_facts instead of Branch-row semantic projection;
-// forbidden: growing ad-hoc literal-class tables without a dissolution receipt.
-fn infer_branch_optional_semantic_operand_type(node: Node) -> Optional<Node> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-        optional_present(value: bool_node())
-      } else if (id == ^dag_mvp1_pick_lit_one) || (id == ^dag_mvp1_pick_lit_two) {
-        optional_present(value: infer_branch_int_binding_type_node())
-      } else {
-        optional_absent()
-      }
-    _ => optional_absent()
-  }
-}
-
-fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
-  match infer_branch_optional_semantic_operand_type(node: node) {
-    Present { value: semantic_type } => semantic_type
-    Absent => inferred_facts_resolved_type(facts: facts)
-  }
-}
-
-fn infer_branch_canonical_grounding(node: Node, unified_type: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
-    node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: ^constraint_property_being_canonical,
-        evidence: unified_type
-      },
-      closedness: StructuralPropertyWitness {
-        property: ^constraint_property_candidate_set_closedness,
-        evidence: node
-      }
-    }
-  }
-}
-
-fn infer_branch_child_facts(
-  child_outcome: Outcome<List<InferredFactsEntry>>,
-  target: Node,
-) -> Outcome<InferredFacts> {
-  match child_outcome {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: entries, diagnostics: d } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: target) {
-        Holds { value: facts } => Accepted { value: facts, diagnostics: d }
-        Violates { diagnostic: diag } => outcome_rejected(diag)
-      }
-  }
-}
-
-fn infer_unify_branch_arm_types(
-  then_node: Node,
-  then_facts: InferredFacts,
-  else_node: Node,
-  else_facts: InferredFacts,
-) -> Outcome<Node> {
-  let then_type = infer_branch_operand_resolved_type(node: then_node, facts: then_facts)
-  let else_type = infer_branch_operand_resolved_type(node: else_node, facts: else_facts)
-  if then_type == else_type {
-    Accepted {
-      value: then_type,
-      diagnostics: None
-    }
-  } else {
-    outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
-  }
-}
-
-// Q-B2 gather-algebra row: Bool-if-else Branch — cond child typed Bool; arms unify to Branch result type.
-fn infer_branch_bool_if_else(
-  node: Node,
-  partials: List<Node>,
-  cond_target: Node,
-  cond_facts: InferredFacts,
-  then_target: Node,
-  then_facts: InferredFacts,
-  else_target: Node,
-  else_facts: InferredFacts,
-) -> Outcome<InferredFacts> {
-  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: cd } =>
-      if infer_branch_operand_resolved_type(node: cond_target, facts: cond_facts) != bool_node() {
-        outcome_rejected(infer_branch_cond_not_bool_diagnostic(node: node))
-      } else {
-        match infer_unify_branch_arm_types(
-          then_node: then_target,
-          then_facts: then_facts,
-          else_node: else_target,
-          else_facts: else_facts
-        ) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: unified_type, diagnostics: ud } =>
-            match infer_descent_witness_for_node(n: node) {
-              Violates { diagnostic: d } =>
-                Rejected { diagnostics: diagnostics_singleton(d: d) }
-              Holds { value: descent_proof } =>
-                bind_outcome(
-                  o: inferred_facts_from_grounding(
-                    grounding: infer_branch_canonical_grounding(
-                      node: node,
-                      unified_type: unified_type
-                    ),
-                    descent: Holds { value: descent_proof }
-                  ),
-                  f: fn(facts) {
-                    Accepted {
-                      value: facts,
-                      diagnostics: diagnostics_merge(outer: cd, inner: ud)
-                    }
-                  }
-                )
-            }
-        }
-      }
-  }
-}
-
-type InferGatherFoldAcc
-  = InferGatherLeaf { result: Outcome<List<InferredFactsEntry>> }
-  | InferGatherBranch {
-      node: Node,
-      partials: List<Node>,
-      child_results: List<Outcome<List<InferredFactsEntry>>>
-    }
-
-fn infer_gather_leaf_init(n: Node, partials: List<Node>) -> Outcome<List<InferredFactsEntry>> {
-  match infer_node_facts(n: n, partials: partials) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: entry, diagnostics: ed } =>
-          Accepted {
-            value: [entry],
-            diagnostics: diagnostics_merge(outer: d, inner: ed)
-          }
-      }
-  }
-}
-
-fn infer_gather_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
-  match n.kind {
-    ComputationNode { behavior: Branch } =>
-      InferGatherBranch {
-        node: n,
-        partials: partials,
-        child_results: []
-      }
-    _ => InferGatherLeaf { result: infer_gather_leaf_init(n: n, partials: partials) }
-  }
-}
-
-fn infer_gather_acc_to_outcome(acc: InferGatherFoldAcc) -> Outcome<List<InferredFactsEntry>> {
-  match acc {
-    InferGatherLeaf { result: r } => r
-    InferGatherBranch { node: n, partials: _, child_results: _ } =>
-      outcome_rejected(infer_branch_shape_invalid_diagnostic(node: n))
-  }
-}
-
-fn infer_concat_gather_child_entries(
-  child_results: List<Outcome<List<InferredFactsEntry>>>
-) -> Outcome<List<InferredFactsEntry>> {
-  fold(child_results, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, child) {
-    match acc {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: acc_entries, diagnostics: ad } =>
-        match child {
-          Rejected { diagnostics: cr } =>
-            Rejected {
-              diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-            }
-          Accepted { value: child_entries, diagnostics: cd } =>
-            Accepted {
-              value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
-              diagnostics: diagnostics_merge(outer: ad, inner: cd)
-            }
-        }
-    }
-  })
-}
-
-fn infer_branch_gather_finalize(
-  node: Node,
-  partials: List<Node>,
-  child_results: List<Outcome<List<InferredFactsEntry>>>
-) -> Outcome<List<InferredFactsEntry>> {
-  let positional_targets = node_positional_child_targets(node: node)
-  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
-    outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-  } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
-      Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-      Present { value: cond_target } =>
-        match list_at_optional(xs: positional_targets, index: 1) {
-          Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-          Present { value: then_target } =>
-            match list_at_optional(xs: positional_targets, index: 2) {
-              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-              Present { value: else_target } =>
-                match list_at_optional(xs: child_results, index: 0) {
-                  Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-                  Present { value: cond_child } =>
-                    match list_at_optional(xs: child_results, index: 1) {
-                      Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-                      Present { value: then_child } =>
-                        match list_at_optional(xs: child_results, index: 2) {
-                          Absent =>
-                            outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-                          Present { value: else_child } =>
-                            bind_outcome(
-                              o: infer_branch_child_facts(
-                                child_outcome: cond_child,
-                                target: cond_target
-                              ),
-                              f: fn(cond_facts) {
-                                bind_outcome(
-                                  o: infer_branch_child_facts(
-                                    child_outcome: then_child,
-                                    target: then_target
-                                  ),
-                                  f: fn(then_facts) {
-                                    bind_outcome(
-                                      o: infer_branch_child_facts(
-                                        child_outcome: else_child,
-                                        target: else_target
-                                      ),
-                                      f: fn(else_facts) {
-                                        bind_outcome(
-                                          o: infer_branch_bool_if_else(
-                                            node: node,
-                                            partials: partials,
-                                            cond_target: cond_target,
-                                            cond_facts: cond_facts,
-                                            then_target: then_target,
-                                            then_facts: then_facts,
-                                            else_target: else_target,
-                                            else_facts: else_facts
-                                          ),
-                                          f: fn(branch_facts) {
-                                            bind_outcome(
-                                              o: admitted_inferred_facts_entry(
-                                                node: node,
-                                                facts: branch_facts
-                                              ),
-                                              f: fn(branch_entry) {
-                                                bind_outcome(
-                                                  o: infer_concat_gather_child_entries(
-                                                    child_results: child_results
-                                                  ),
-                                                  f: fn(child_entries) {
-                                                    outcome_accepted(
-                                                      value: concat_inferred_facts_entries(
-                                                        a: child_entries,
-                                                        b: [branch_entry]
-                                                      )
-                                                    )
-                                                  }
-                                                )
-                                              }
-                                            )
-                                          }
-                                        )
-                                      }
-                                    )
-                                  }
-                                )
-                              }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-  }
-}
-
-fn infer_gather_step(
-  acc: InferGatherFoldAcc,
-  e: Edge,
-  child: InferGatherFoldAcc,
-) -> InferGatherFoldAcc {
-  match acc {
-    InferGatherLeaf { result: r } =>
-      match r {
-        Rejected { diagnostics: rj } => InferGatherLeaf { result: Rejected { diagnostics: rj } }
-        Accepted { value: acc_entries, diagnostics: ad } =>
-          match infer_gather_acc_to_outcome(acc: child) {
-            Rejected { diagnostics: cr } =>
-              InferGatherLeaf {
-                result: Rejected {
-                  diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-                }
-              }
-            Accepted { value: child_entries, diagnostics: cd } =>
-              InferGatherLeaf {
-                result: Accepted {
-                  value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
-                  diagnostics: diagnostics_merge(outer: ad, inner: cd)
-                }
-              }
-          }
-    InferGatherBranch { node: node, partials: partials, child_results: child_results } => {
-      let child_outcome = infer_gather_acc_to_outcome(acc: child)
-      match child_outcome {
-        Rejected { diagnostics: r } =>
-          InferGatherLeaf { result: Rejected { diagnostics: r } }
-        Accepted { value: _, diagnostics: _ } =>
-          let next_results = list_snoc_item(xs: child_results, item: child_outcome)
-          if length(xs: next_results) == length(xs: node_positional_child_targets(node: node)) {
-            InferGatherLeaf {
-              result: infer_branch_gather_finalize(
-                node: node,
-                partials: partials,
-                child_results: next_results
-              )
-            }
-          } else {
-            InferGatherBranch {
-              node: node,
-              partials: partials,
-              child_results: next_results
-            }
-          }
-      }
-    }
   }
 }
 
@@ -733,18 +359,41 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
-  infer_gather_acc_to_outcome(
-    acc: fold_node(
-      n: tree,
-      algebra: NodeFold {
-        init: fn(n0) {
-          infer_gather_init(n: n0, partials: partials)
-        },
-        step: fn(acc, e, child) {
-          infer_gather_step(acc: acc, e: e, child: child)
+  fold_node(
+    n: tree,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match infer_node_facts(n: n0, partials: partials) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: n0, facts: facts) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: entry, diagnostics: ed } =>
+                Accepted {
+                  value: [entry],
+                  diagnostics: diagnostics_merge(outer: d, inner: ed)
+                }
+            }
+        }
+      },
+      step: fn(acc, e, child) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: acc_entries, diagnostics: ad } =>
+            match child {
+              Rejected { diagnostics: cr } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+                }
+              Accepted { value: child_entries, diagnostics: cd } =>
+                Accepted {
+                  value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
+                  diagnostics: diagnostics_merge(outer: ad, inner: cd)
+                }
+            }
         }
       }
-    )
+    }
   )
 }
 
