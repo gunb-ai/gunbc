@@ -1347,33 +1347,30 @@ fn decode_value_expression_projection_bundle(
                               bind_outcome(
                                 o: projection_bundle_child(
                                   bundle: bundle,
-<<<<<<< HEAD
                                   name: target_value_expr_field_effect_apply
                                 ),
                                 f: fn(effect_bundle) {
                                   bind_outcome(
                                     o: decode_effect_apply_shape_bundle(bundle: effect_bundle),
                                     f: fn(effect_apply_form) {
-=======
-                                  name: target_value_expr_field_conditional
-                                ),
-                                f: fn(conditional_bundle) {
-                                  bind_outcome(
-                                    o: decode_conditional_shape_bundle(
-                                      bundle: conditional_bundle
-                                    ),
-                                    f: fn(conditional_form) {
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
+                                      bind_outcome(
+                                        o: projection_bundle_child(
+                                          bundle: bundle,
+                                          name: target_value_expr_field_conditional
+                                        ),
+                                        f: fn(conditional_bundle) {
+                                          bind_outcome(
+                                            o: decode_conditional_shape_bundle(
+                                              bundle: conditional_bundle
+                                            ),
+                                            f: fn(conditional_form) {
                                       outcome_accepted(
                                         TargetValueExpressionProjection {
                                           binding_ref_form: binding_ref_form,
                                           primitive_apply_form: primitive_apply_form,
                                           callable_apply_form: callable_apply_form,
-<<<<<<< HEAD
-                                          effect_apply_form: effect_apply_form
-=======
+                                          effect_apply_form: effect_apply_form,
                                           conditional_form: conditional_form
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
                                         }
                                       )
                                     }
@@ -2182,11 +2179,8 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValuePrimitiveApply =>
       optional_absent()
-<<<<<<< HEAD
     ValueEffectApply =>
-=======
     ValueConditional =>
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
       optional_absent()
   }
 }
@@ -3502,12 +3496,11 @@ fn target_value_expression_to_concrete_tokens(
         projection: projection,
         catalog: catalog
       )
-<<<<<<< HEAD
     TargetValueExprEffectApply =>
       target_value_expression_effect_apply_to_concrete_tokens(
         expr: expr,
         projection: projection
-=======
+      )
     TargetValueExprSymbolIdentity =>
       target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
     TargetValueExprConditional =>
@@ -3515,7 +3508,6 @@ fn target_value_expression_to_concrete_tokens(
         expr: expr,
         projection: projection,
         catalog: catalog
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
       )
     _ =>
       outcome_rejected(
@@ -3751,7 +3743,6 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-<<<<<<< HEAD
         name: target_value_expr_field_effect_apply,
         target: target_model_type_conj_node(
           // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
@@ -3793,7 +3784,8 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               )
             ]
           )
-=======
+      ),
+      target_model_named_edge(
         name: target_value_expr_field_conditional,
         target: target_model_type_conj_node(
           children: [
@@ -3816,7 +3808,6 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               )
             )
           ]
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
         )
       )
     ]
@@ -3881,11 +3872,8 @@ fn target_value_template_apply(
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
-<<<<<<< HEAD
     ValueEffectApply =>
-=======
     ValueConditional =>
->>>>>>> 845de1399b (WIP: §2 control-flow bodies: Branch EMIT row (ii) + round-trip (iii) + Bind/L)
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
