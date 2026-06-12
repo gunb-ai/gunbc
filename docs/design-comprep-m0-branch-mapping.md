@@ -169,7 +169,28 @@ parallel `if` matcher outside the algebra.
 
 ## 10. Implementation sequencing (post-#4699)
 
-1. Land substrate kinds + wire validators (`target_model.dag`) with template twin.
-2. Land `choose_branch_bool_if_else` + M0-B1 eval claim.
-3. Land body_producer row + source-bridged parse fixture.
-4. Land value_expression projection row (wave-3 coupled emit can trail eval keystone).
+**§8 cadence — one fan-in per PR:**
+
+| Fan-in | PR | Status |
+|--------|-----|--------|
+| **(i) eval-by-execution** | gunbc#4730 | GREEN — `comprep_branch_eval_by_execution_keystone_holds`; merges at 2 api-review approvals (no `06_translate`; no load-bearing design-sign) |
+| **(ii) emit** | follow-on carrier PR | `TargetValueExprConditional` ONE algebra row + `06_translate` edit |
+| **(iii) round-trip** | follow-on carrier PR | emit row → ingest → byte-identical; gates §3-deep spawn |
+
+1. ~~Land `choose_branch_bool_if_else` + M0-B1 eval claim.~~ **Done (fan-in i / #4730).**
+2. ~~Land body_producer row + source-bridged parse fixture.~~ **Done (fan-in i / #4730).**
+3. Land substrate kinds + wire validators (`target_model.dag`) with template twin **(fan-in ii).**
+4. Land value_expression projection row **(fan-in ii, coupled to step 3).**
+
+## 11. Fan-in (ii) emit — design-sign routing (LOCKED 2026-06-12)
+
+Load-bearing `06_translate` + `target_model` algebra row **requires design sign before merge**.
+
+**Authority route (effective now — do NOT deviate):**
+
+- **NOT** still-raven (archived/unreachable — messages bounce).
+- When fan-in (ii) diff is ready: send diff + design question to **sharp-fox-370** (program coordinator).
+- Coordinator escalates to **parent (snappy-crab)** to spawn a live design-ruling work-item and bind a signing authority (same mechanism as tidy-stag-172 fold ruling after still-raven archival).
+- Merge fan-in (ii) PR only after live authority sign on the structural diff.
+
+Tripwire unchanged: ONE `TargetValueExprConditional` row; STOP/escalate if >1 row or multi-site translate edits.
