@@ -3630,8 +3630,12 @@ fn eval_builtin(
         // that shadow a coproduct's arm-set with a parallel `data ctor_tag: Symbol` vocabulary.
         // The constructor's own name IS the discriminant; no per-type code is required.
         "discriminant" => match positional.first() {
-            Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
-            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            Some(Value::Variant { variant_name, .. }) => {
+                Ok(Some(Value::Str(resolve_sym(*variant_name))))
+            }
+            Some(Value::Record { type_name, .. }) => {
+                Ok(Some(Value::Str(resolve_sym(*type_name))))
+            }
             _ => Ok(None),
         },
 
@@ -4064,20 +4068,32 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 variant_name,
                 fields,
                 ..
-            } => match variant_name.as_str() {
-                "Empty" => {
-                    record_flatten(out.len());
-                    return Some(out);
-                }
-                "Cons" => match (fields.get("head"), fields.get("tail")) {
-                    (Some(head), Some(tail)) => {
-                        out.push(head.clone());
-                        cur = tail.clone();
+            } => {
+                let empty = active_ctx().map(|ctx| ctx.sym("Empty"));
+                let cons = active_ctx().map(|ctx| ctx.sym("Cons"));
+                let head = active_ctx().map(|ctx| ctx.sym("head"));
+                let tail = active_ctx().map(|ctx| ctx.sym("tail"));
+                match (empty, cons, head, tail) {
+                    (Some(empty), Some(cons), Some(head_sym), Some(tail_sym))
+                        if *variant_name == empty =>
+                    {
+                        record_flatten(out.len());
+                        return Some(out);
+                    }
+                    (Some(_empty), Some(cons), Some(head_sym), Some(tail_sym))
+                        if *variant_name == cons =>
+                    {
+                        match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                            (Some(head), Some(tail)) => {
+                                out.push(head.clone());
+                                cur = tail.clone();
+                            }
+                            _ => return None,
+                        }
                     }
                     _ => return None,
-                },
-                _ => return None,
-            },
+                }
+            }
             _ => return None,
         }
     }
@@ -4114,9 +4130,9 @@ fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>>
 fn is_map_lookup_receiver(val: &Value) -> bool {
     match val {
         Value::Map(_) => true,
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            fields.contains_key("lookup")
-        }
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => active_ctx()
+            .map(|ctx| fields.contains_key(&ctx.sym("lookup")))
+            .unwrap_or(false),
         _ => false,
     }
 }
