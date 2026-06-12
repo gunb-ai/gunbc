@@ -5750,7 +5750,7 @@ fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<Int, TypeBinding>
     let with_existing = map_merge(acc, env.carrier_bindings)
     fold(env.bindings |> map_values, init: with_existing, f: (bacc, binding) =>
       match binding.resolved.binding_id {
-        Present { value: binding_id } => map_insert(bacc, binding_id, binding)
+        Present { value: binding_id } => map_insert(bacc, binding_id.value, binding)
         Absent => bacc
       }
     )
