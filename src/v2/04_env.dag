@@ -1,15 +1,34 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import v2.std.core { BindingId, Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, error_type }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
 // Types
 // =========================================================================
 
+// Three binding maps coexist during phase-1 migration: `bindings` is the
+// legacy intern-key index for unresolved/name-only lookup; `decl_registry`
+// is the authority stamp (BindingId → declaration metadata + binding_key);
+// `carrier_bindings` holds imported/hidden structural carriers keyed by
+// BindingId when no local decl_registry row exists. `lookup_type_for`
+// consults decl_registry first, verifies binding_id on the resolved node,
+// and only accepts the legacy intern row when it carries the same BindingId.
+// If that intern row is shadowed by another visible same-name import,
+// carrier_bindings may still supply the exact BindingId-keyed hidden row;
+// without that exact carrier row, lookup returns a compiler error.
+// 🟡 tracked scaffold — owner: Mgr-SOUNDNESS; lane: #4587 BindingId phase-2.
+// Dissolve when declaration registration stamps every local/imported transparent
+// alias through one BindingId-keyed declaration table before lookup: fold
+// carrier_bindings into decl_registry-backed rows and demote `bindings` to the
+// unresolved pre-registration spelling index only. Forbidden steady state:
+// payload-owning parallel maps or spelling fallback for BindingId-stamped nodes.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
+  carrier_bindings: Map<BindingId, TypeBinding>
+  decl_registry: Map<BindingId, TypeDeclBinding>
+  duplicate_decl_ids: List<BindingId>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
@@ -21,6 +40,71 @@ type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
+}
+
+type TypeDeclBinding {
+  binding_id: BindingId
+  authority: TypeDeclAuthority
+  binding_key: Int
+  decl_arity: Int
+  name: String
+  provenance: SubValueRelation
+}
+
+type TypeDeclAuthority {
+  module_name: String
+  decl_name: String
+  decl_span: SourceSpan
+}
+
+type BindingIdAllocator {
+  next_id: Int
+}
+
+type BindingIdAllocResult {
+  binding_id: BindingId
+  allocator: BindingIdAllocator
+}
+
+fn empty_binding_id_allocator() -> BindingIdAllocator {
+  BindingIdAllocator { next_id: 1 }
+}
+
+fn alloc_binding_id(allocator: BindingIdAllocator) -> BindingIdAllocResult {
+  BindingIdAllocResult {
+    binding_id: BindingId { value: allocator.next_id },
+    allocator: BindingIdAllocator { next_id: allocator.next_id + 1 }
+  }
+}
+
+type DeclRegistryMergeState {
+  decl_registry: Map<BindingId, TypeDeclBinding>
+  duplicate_decl_ids: List<BindingId>
+}
+
+fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<BindingId, TypeDeclBinding>) -> DeclRegistryMergeState {
+  fold(map_keys(incoming), init: state, f: (acc, binding_id) =>
+    match map_get(incoming, binding_id) {
+      Present { value: binding } =>
+        match map_get(acc.decl_registry, binding_id) {
+          Present { value: existing } =>
+            if existing.authority == binding.authority {
+              acc
+            } else {
+              DeclRegistryMergeState {
+                decl_registry: acc.decl_registry,
+                duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
+              }
+            }
+          Absent =>
+            DeclRegistryMergeState {
+              decl_registry: map_insert(acc.decl_registry, binding_id, binding),
+              duplicate_decl_ids: acc.duplicate_decl_ids
+            }
+        }
+      Absent => acc
+    }
+  )
 }
 
 // =========================================================================
@@ -55,14 +139,95 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
+fn lookup_decl_arity_for(env: TypeEnv, node: Node) -> Int? {
+  match node.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Present { value: decl } => Present { value: decl.decl_arity }
+        Absent => none
+      }
+    Absent =>
+      let node_name = authored_name(env: env, node: node)
+      let by_ident = match node.ident {
+        Present { value: id } =>
+          fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => if decl.binding_key == id { Present { value: decl.decl_arity } } else { none }
+            }
+          )
+        Absent => none
+      }
+      match by_ident {
+        Present { value: _ } => by_ident
+        Absent =>
+          fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => if decl.name == node_name { Present { value: decl.decl_arity } } else { none }
+            }
+          )
+      }
+  }
+}
+
+fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
+  match node.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.carrier_bindings, binding_id) {
+        Present { value: binding } => Present { value: binding.resolved }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn node_has_binding_id(n: Node, binding_id: BindingId) -> Bool {
+  match n.binding_id {
+    Present { value: actual } => actual == binding_id
+    Absent => false
+  }
+}
+
+fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
+  match node.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Present { value: decl } =>
+          match lookup_type(env: env, ident: decl.binding_key) {
+            Present { value: resolved } =>
+              if node_has_binding_id(n: resolved, binding_id: binding_id) {
+                Present { value: resolved }
+              } else {
+                match lookup_carrier_type_for(env: env, node: node) {
+                  Present { value: carrier } => Present { value: carrier }
+                  Absent => Present { value: error_type }
+                }
+              }
+            Absent => lookup_carrier_type_for(env: env, node: node)
+          }
+        Absent => lookup_carrier_type_for(env: env, node: node)
+      }
+    Absent => none
+  }
+}
+
 fn authored_name(env: TypeEnv, node: Node) -> String {
   authored_name_at(source_indices: env.source_indices, node: node)
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  match node.ident {
-    Present { value: id } => lookup_type(env: env, ident: id)
-    Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+  match node.binding_id {
+    Present { value: _ } => lookup_binding_id_type_for(env: env, node: node)
+    Absent =>
+      match node.ident {
+        Present { value: id } =>
+          match lookup_type(env: env, ident: id) {
+            Present { value: resolved } => Present { value: resolved }
+            Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+          }
+        Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+      }
   }
 }
 
@@ -127,6 +292,14 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let merged_carrier_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.carrier_bindings))
+  let merged_decl_state = fold(envs, init: DeclRegistryMergeState { decl_registry: empty_map(), duplicate_decl_ids: [] }, f: (acc, env) =>
+    let with_prior_duplicates = DeclRegistryMergeState {
+      decl_registry: acc.decl_registry,
+      duplicate_decl_ids: concat(acc.duplicate_decl_ids, env.duplicate_decl_ids)
+    }
+    merge_decl_registry_state(state: with_prior_duplicates, incoming: env.decl_registry)
+  )
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
@@ -135,5 +308,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
     Present { value: first_env } => first_env.intern_table
     Absent => empty_intern_table()
   }
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  TypeEnv { bindings: merged_bindings, carrier_bindings: merged_carrier_bindings, decl_registry: merged_decl_state.decl_registry, duplicate_decl_ids: merged_decl_state.duplicate_decl_ids, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }
