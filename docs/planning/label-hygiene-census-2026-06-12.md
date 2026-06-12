@@ -213,6 +213,11 @@ dispatches now, in parallel (the families are mostly file-disjoint).
   T6/B3 phase prose). Includes the two runtime string literals in
   `v4_test_bootstrap_infra_closeout_test.rs` (update assertion sites together).
   File-batched to dodge #4741's two extdeps files until it merges.
+  **Operator ruling 2026-06-12 (during F1a review):** repointed marks carry only
+  the live bind (e.g. `bind gunbc#4757`) — no historical/meta parentheticals
+  like "(re-anchor of deleted TASKS.md T-9)" in code comments. The deleted-ledger
+  genealogy lives in the tracking issues (#4750/#4751, #4757–#4766, #4773), not
+  inline. Applies to all future repoints/renames.
 - **F1b — pilot crate disposition:** decide delete-vs-rename for
   `src/v3/grounding_pilot/` ("T-Ground-Pilot toy probe" by its own header). If
   the probe's question (inhabitance-search reproduces table-lookup routing) is
