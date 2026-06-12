@@ -10852,7 +10852,13 @@ pub fn unify_record_lit_generics(
 ) -> Rc<HashMap<String, Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((formal.children.clone().len() as i64) == 0) {
-            acc
+            unify_generics(
+                formal.clone(),
+                resolved_type(record.clone()),
+                generic_names.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                acc,
+            )
         } else {
             {
                 let type_name = authored_name_at(
