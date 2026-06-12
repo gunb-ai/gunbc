@@ -724,6 +724,46 @@ fn optional_present_absent_patterns_keep_canonical_names() {
 }
 
 #[test]
+fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children_NEG_CONTROL() {
+    let bool_inner = leaf_node("Bool".to_string());
+    let applied_optional = Rc::new(Node {
+        name: "Optional".to_string(),
+        ident: None,
+        span: make_span(0, 0),
+        ident_span: default_ident_span("Optional".to_string(), make_span(0, 0)),
+        children: Rc::new(vec![bool_inner]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(applied_optional);
+    let present_lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject.clone(),
+        "Present".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        1,
+    );
+    match present_lookup.status.as_ref() {
+        NodeLookupStatus::LookupResolved { node, .. } => assert_eq!(node.name, "Present"),
+        status => panic!(
+            "expected applied Optional<Bool> Present lookup to resolve, got {:?}",
+            status
+        ),
+    }
+}
+
+#[test]
 fn real_optional_coproduct_preserves_present_absent_pattern_names() {
     let scope = empty_infer_scope();
     let optional_sum = sum_node(
