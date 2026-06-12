@@ -217,6 +217,7 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
+// 🟡 bootstrap-limitation interim — bind node://adhoc-f581ce40-042 — dissolve-on: v2 generic lambda-param instantiation from call-site type (named fold_init/fold_step until struct-literal field lambdas and List<Node> from [] in anonymous bodies type-check inline).
 fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
   match bounded_lattice_instance_completeness(instance: n) {
     BoundedLatticePartial { missing: _ } => [n]
