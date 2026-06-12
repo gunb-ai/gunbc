@@ -141,8 +141,9 @@ The Rust file `v4_hollow_alias_gate.rs` is a **P5(b) interim mirror** with a *ri
 (Practice 8 three-prong `HollowDeclarationSite`) than the structural `.dag` gate. It exists
 because no production consumer yet executes the `.dag` gate body. **Dissolution trigger:** first
 green execution of `fact_density_hollow_alias_gate` from lowered `.dag` in the compile-lens path;
-then delete `v4_hollow_alias_gate.rs` and its SG-0 census row (−1 `EXPECTED_HAND_AUTHORED_TEST`
-path).
+then delete `v4_hollow_alias_gate.rs` and its SG-0 census row (−1
+`EXPECTED_HAND_AUTHORED_NON_TEST` path in `sg0_census_test.rs` — the mirror is registered as
+hand-authored **non-test** Rust, not `EXPECTED_HAND_AUTHORED_TEST`).
 
 ### 4.1 Why not `fold_node` inside the gate (yet)
 
@@ -246,7 +247,8 @@ mirror). Typecheck + grep alone is not done (E-10).
 ### Phase C — Dissolution (P5(b) receipt)
 
 6. Delete `src/v3/compiler/src/v4_hollow_alias_gate.rs`.
-7. Remove SG-0 census row; PR body Mechanism (b) −1 path.
+7. Remove `src/v3/compiler/src/v4_hollow_alias_gate.rs` from `EXPECTED_HAND_AUTHORED_NON_TEST`
+   in `sg0_census_test.rs`; PR body Mechanism (b) −1 non-test path.
 
 (Kernel-ambient symbol unification with `target_model.dag` is **out of Phases A–D** — see §5
 dissolve-on-arrival mark; lands post-#4699, not in the build slice.)
