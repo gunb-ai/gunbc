@@ -143,7 +143,7 @@ thread_local! {
 
 fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
     ACTIVE_CTX.with(|cell| {
-        let prev = cell.replace(ctx as *const InterpContext);
+        let prev = cell.replace(Some(ctx as *const InterpContext));
         let result = f();
         cell.set(prev);
         result
@@ -959,10 +959,8 @@ impl InterpContext {
     }
 
     /// Resolve an interned symbol back to its source spelling.
-    pub fn resolve(&self, sym: Symbol) -> &str {
-        // SAFETY: `sym` is only produced by this context's interner.
-        let borrow = self.symbols.borrow();
-        borrow.resolve(sym)
+    pub fn resolve(&self, sym: Symbol) -> String {
+        self.symbols.borrow().resolve(sym).to_string()
     }
 
     fn sym_fields<I>(&self, fields: I) -> HashMap<Symbol, Value>
@@ -4156,7 +4154,8 @@ fn raw_map_lookup(
             None => Ok(Value::Null),
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let lookup = fields.get("lookup").ok_or_else(|| InterpError::TypeError {
+            let lookup_sym = ctx.sym("lookup");
+            let lookup = fields.get(&lookup_sym).ok_or_else(|| InterpError::TypeError {
                 msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
             })?;
             match lookup {
