@@ -321,6 +321,8 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
+      dag_literal_lex_rule(token_class: ^dag_mvp1_pick_lit_one, text: "1"),
+      dag_literal_lex_rule(token_class: ^dag_mvp1_pick_lit_two, text: "2"),
       dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_module, text: "module"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_import, text: "import"),
