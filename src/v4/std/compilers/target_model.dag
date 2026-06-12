@@ -115,6 +115,16 @@ import v4.std.node_query { find_named_child, node_labeled_child_edges, node_posi
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
+// NEGATIVE TRIPWIRE — do NOT add `import v4.std.runtime` (or any closure-widening import:
+// machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
+// generic-instantiation bug — Optional<T> variant lookup fails (62 "variant Present/Absent not
+// found in type Optional" across target_model + 06_value_expression). Reuse the runtime effect
+// vocabulary by DISCRIMINANT SYMBOL instead (TargetValueExprEffectApply stores the
+// EffectRequestKind discriminant); do the typed EffectRequestKind/Read|WriteResource decode at
+// the small-closure 06_value_expression projection boundary. Reintroducing this edge is caught
+// by ci_floor_emit + v4_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
+// separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
+
 type TargetModel {
   bundle: Node
   lex: LexRules
