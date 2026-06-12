@@ -28,7 +28,7 @@ import v4.extdeps.languages.dag {
   dag_language_model_wave1,
   dag_mvp1_source_text
 }
-import v4.std.collection { Absent, List, Map, Present, map_insert }
+import v4.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
 import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.diagnostic {
