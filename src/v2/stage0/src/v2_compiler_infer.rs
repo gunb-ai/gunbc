@@ -48,7 +48,7 @@ pub use crate::v2_compiler_infer_env::{
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
     merge_inductive_fields, put_inductive_field, put_inductive_field_cross,
 };
-pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeDeclBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
@@ -736,6 +736,7 @@ pub fn nominal_ref_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -1641,6 +1642,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -2317,6 +2319,7 @@ pub fn infer_method_args_with_fold(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_id: None,
                                     ident: None,
                                 });
                                 let lam_value = arg_value(a.clone());
@@ -3170,6 +3173,7 @@ pub fn infer_expr(
                                             .clone(),
                                         match_pattern: receiver.match_pattern.clone(),
                                         expr_data: receiver.expr_data.clone(),
+                                        binding_id: None,
                                         ident: None,
                                     })
                                 } else {
@@ -4520,6 +4524,7 @@ match bare_s {
                                 has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
                                 match_pattern: pn.match_pattern.clone(),
                                 expr_data: pn.expr_data.clone(),
+                                binding_id: None,
                             })
                         });
                     }
@@ -5097,6 +5102,7 @@ pub fn infer_record_lit(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         }));
                     }
@@ -5120,6 +5126,7 @@ pub fn infer_record_lit(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_id: None,
                     ident: None,
                 });
                 let typed_field_nodes = typed_fields;
@@ -7369,6 +7376,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence),
                     }),
+                    binding_id: None,
                     ident: None,
                 })
             }
@@ -7659,6 +7667,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    binding_id: None,
                     ident: None,
                 })
             }
@@ -7767,6 +7776,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    binding_id: None,
                     ident: None,
                 })
             }
@@ -7892,6 +7902,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    binding_id: None,
                     ident: None,
                 })
             }
@@ -8159,6 +8170,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
                             expr_data: body.expr_data.clone(),
+                            binding_id: None,
                             ident: None,
                         })
                     }
@@ -8228,6 +8240,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    binding_id: None,
                     ident: None,
                 })
             }
@@ -9972,6 +9985,7 @@ pub fn infer_property_values(
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
                             expr_data: p.expr_data.clone(),
+                            binding_id: None,
                             ident: None,
                         }),
                         val_result.diagnostics.clone(),
@@ -10037,6 +10051,7 @@ pub fn infer_auth_source_properties(
                                     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                                     match_pattern: p.match_pattern.clone(),
                                     expr_data: p.expr_data.clone(),
+                                    binding_id: None,
                                     ident: None,
                                 }),
                                 val_result.diagnostics.clone(),
@@ -10098,6 +10113,7 @@ pub fn infer_transport_node(
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
                     expr_data: t.expr_data.clone(),
+                    binding_id: None,
                     ident: None,
                 })),
                 diagnostics: prop_result.diagnostics.clone(),
@@ -10148,6 +10164,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_id: None,
                     ident: None,
                 }),
                 diagnostics: v2_rt::concat(transport_diags, props_diags),
@@ -10244,6 +10261,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         }),
                         diagnostics: v2_rt::concat(
@@ -10284,6 +10302,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
                                 ident: None,
                             }),
                             diagnostics: v2_rt::concat(
@@ -10333,6 +10352,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_id: None,
                                     ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(
@@ -10375,6 +10395,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_id: None,
                                     ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(transport_diags, props_diags),
@@ -10411,6 +10432,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_id: None,
                                     ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(transport_diags, props_diags),
@@ -10591,6 +10613,7 @@ pub fn substitute_generics(
                         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                         match_pattern: n.match_pattern.clone(),
                         expr_data: n.expr_data.clone(),
+                        binding_id: None,
                         ident: None,
                     })
                 }
@@ -10751,6 +10774,7 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
                                 ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
@@ -10782,6 +10806,7 @@ pub fn build_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_id: None,
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
@@ -10807,6 +10832,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let present_variant = Rc::new(Node {
@@ -10827,6 +10853,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let absent_variant = Rc::new(Node {
@@ -10847,6 +10874,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let kernel_optional = Rc::new(Node {
@@ -10867,6 +10895,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let kernel_bindings = v2_rt::rc_map_insert(
@@ -10906,6 +10935,9 @@ pub fn build_type_env(
             );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: kernel_recursive_types,
             recursive_type_set: kernel_recursive_type_set,
             inductive_fields: node_fields,
@@ -11018,6 +11050,9 @@ pub fn build_type_env(
         );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: import_recursive,
             recursive_type_set: import_recursive_set,
             inductive_fields: import_inductive_fields,
@@ -11087,6 +11122,7 @@ pub fn build_type_env(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         });
                         v2_rt::rc_map_insert(
@@ -11123,6 +11159,7 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
                                 ident: None,
                             });
                             v2_rt::rc_map_insert(
@@ -11183,6 +11220,7 @@ pub fn build_type_env(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
+                                        binding_id: None,
                                         ident: None,
                                     });
                                     v2_rt::rc_map_insert(
@@ -11276,6 +11314,9 @@ pub fn build_type_env(
         let all_local_bindings = v2_rt::rc_map_merge(local_bindings.clone(), param_bindings);
         let pre_local_env = Rc::new(TypeEnv {
             bindings: all_local_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11343,6 +11384,9 @@ pub fn build_type_env(
             merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
+            carrier_bindings: merged.carrier_bindings.clone(),
+            decl_registry: merged.decl_registry.clone(),
+            duplicate_decl_ids: merged.duplicate_decl_ids.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
             inductive_fields: merged_inductive_fields,
@@ -11359,6 +11403,9 @@ pub fn build_type_env(
         let resolved_diags = resolved.diagnostics.clone();
         let final_env = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
+            carrier_bindings: resolved_env_out.carrier_bindings.clone(),
+            decl_registry: resolved_env_out.decl_registry.clone(),
+            duplicate_decl_ids: resolved_env_out.duplicate_decl_ids.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
             inductive_fields: resolved_env_out.inductive_fields.clone(),
@@ -11421,6 +11468,7 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
                                 ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
@@ -11448,6 +11496,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let present_variant = Rc::new(Node {
@@ -11468,6 +11517,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let absent_variant = Rc::new(Node {
@@ -11488,6 +11538,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let kernel_optional = Rc::new(Node {
@@ -11508,6 +11559,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let kernel_bindings = v2_rt::rc_map_insert(
@@ -11523,6 +11575,9 @@ pub fn build_type_env_unresolved(
         );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11635,6 +11690,9 @@ pub fn build_type_env_unresolved(
         );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: import_recursive,
             recursive_type_set: import_recursive_set,
             inductive_fields: import_inductive_fields,
@@ -11671,6 +11729,7 @@ pub fn build_type_env_unresolved(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         });
                         v2_rt::rc_map_insert(
@@ -11707,6 +11766,7 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
                                 ident: None,
                             });
                             v2_rt::rc_map_insert(
@@ -11767,6 +11827,9 @@ pub fn build_type_env_unresolved(
         );
         let pre_local_env = Rc::new(TypeEnv {
             bindings: local_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11834,6 +11897,9 @@ pub fn build_type_env_unresolved(
             merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
+            carrier_bindings: merged.carrier_bindings.clone(),
+            decl_registry: merged.decl_registry.clone(),
+            duplicate_decl_ids: merged.duplicate_decl_ids.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
             inductive_fields: merged_inductive_fields,
@@ -12358,6 +12424,7 @@ pub fn typecheck_module(
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
                             expr_data: item.expr_data.clone(),
+                            binding_id: None,
                             ident: None,
                         })
                     } else {
@@ -12549,6 +12616,9 @@ pub fn topo_resolve_types(
                 return Rc::new(EnvResolveResult {
                     env: Rc::new(TypeEnv {
                         bindings: stuck_accum.bindings.clone(),
+                        carrier_bindings: env.carrier_bindings.clone(),
+                        decl_registry: env.decl_registry.clone(),
+                        duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                         recursive_types: env.recursive_types.clone(),
                         recursive_type_set: env.recursive_type_set.clone(),
                         inductive_fields: env.inductive_fields.clone(),
@@ -12618,6 +12688,9 @@ pub fn topo_resolve_types(
             let __tco_0 = next_remaining;
             let __tco_1 = Rc::new(TypeEnv {
                 bindings: ready_accum.bindings.clone(),
+                carrier_bindings: env.carrier_bindings.clone(),
+                decl_registry: env.decl_registry.clone(),
+                duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                 recursive_types: env.recursive_types.clone(),
                 recursive_type_set: env.recursive_type_set.clone(),
                 inductive_fields: env.inductive_fields.clone(),
