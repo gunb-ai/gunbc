@@ -4,6 +4,7 @@
 // Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
 module v4.std.compilers.target_model
+import v4.std.runtime { EffectRequestKind, ReadResource, WriteResource }
 
 import v4.std.algebra {
   Cons,
@@ -114,6 +115,10 @@ import v4.std.type_expr_projection_row_schema {
 import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
+// First v4.std.runtime edge from the compiler value-emit substrate — the emit-side effect carrier
+// reuses the runtime effect vocabulary rather than minting its own (M9). Acyclic: v4.std.runtime
+// imports only collection/diagnostic/logic/machine/model_core/node, none of compilers/target_model.
+import v4.std.runtime { EffectRequestKind, ReadResource, WriteResource }
 
 type TargetModel {
   bundle: Node
@@ -489,6 +494,11 @@ type SourceAtomValue
 
 // 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
 // PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
+// EffectApply is the emit-time projection of an already-modeled v4.std.runtime EffectRequest
+// (M9: attach to the existing effect concept, no parallel emit-side effect vocabulary) — a
+// distinct FORM (effect application at the boundary), not a second operator arm. It carries the
+// reused EffectRequestKind discriminator + operand expressions; continuation/operation/arguments
+// are eval-only concepts the target language's own sequencing carries, so they are not projected.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -499,6 +509,7 @@ type TargetValueExpressionKind
   | TargetValueExprReferenceBoxNew
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
+  | TargetValueExprEffectApply
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -590,6 +601,7 @@ data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_ca
 data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
 data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
+data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
 data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
@@ -2347,6 +2359,79 @@ fn target_value_expression_primitive_apply(
       ),
       occurrence_id: SyntheticOccurrence
     }
+  }
+}
+
+// Emit-side carrier for applying a v4.std.runtime EffectRequest at the target-language boundary
+// (M9: the EffectRequestKind discriminator is reused, not re-minted). Structurally mirrors
+// target_value_expression_primitive_apply — a kind edge (the effect's own discriminant, encoded
+// like TargetValueTemplateKind) plus operand-expression edges (reusing the primitive-apply operand
+// encoding). The token-emission arm + per-target shim projection land in PR2; PR1 is the additive
+// carrier and its wire round-trip twin only — the algebra's `_ =>` reject arm stays fail-closed.
+fn target_value_expression_effect_apply(
+  effect_kind: EffectRequestKind,
+  operands: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprEffectApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_effect_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: target_value_expr_field_effect_kind,
+            target: target_model_type_atom_node(identity: discriminant(v: effect_kind))
+          )
+        ],
+        right: target_value_expr_primitive_apply_operand_edges(operands: operands)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+// Round-trip twin (bidirectional templates §10.6): decode the effect kind back to the runtime
+// EffectRequestKind by discriminant match. Fail-closed on a missing or unknown kind edge.
+fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<EffectRequestKind> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_effect_kind {
+                match e.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: id } =>
+      if id == discriminant(v: ReadResource) {
+        outcome_accepted(ReadResource)
+      } else if id == discriminant(v: WriteResource) {
+        outcome_accepted(WriteResource)
+      } else {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      }
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
   }
 }
 
