@@ -204,6 +204,9 @@ fn value_expr_atom_to_symbol_identity_token(atom: Symbol) -> Outcome<Symbol> {
   outcome_accepted(atom)
 }
 
+// 🟡 gated — feature:value-expression-pick-literal-binding-ref — consumer:value_expr_project_pick_literal_atom —
+// bind:node://adhoc-ecf6bf2b-84c — dissolve-on: Q-B2 literal-arm binding table lands; forbidden: hand-rolled
+// int-literal token_class projection for M0 pick arms past this interim map.
 fn value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
   if id == ^dag_mvp1_pick_lit_one {
     outcome_accepted(
