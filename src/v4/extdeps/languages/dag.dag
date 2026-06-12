@@ -117,6 +117,7 @@ import v4.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetConditionalShape,
+  TargetEffectApplyShape,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
@@ -3743,6 +3744,12 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^dag_token_lparen,
       separator: ^dag_token_comma,
       close: ^dag_token_rparen
+    },
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [],
+      open: ^dag_token_lparen,
+      close: ^dag_token_rparen,
+      separator: ^dag_token_comma
     },
     conditional_form: TargetConditionalShape {
       if_token: ^dag_token_kw_if,
