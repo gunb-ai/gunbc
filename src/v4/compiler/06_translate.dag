@@ -2279,10 +2279,10 @@ fn serialize_type_expr_record_fields_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
   } else {
-    fold_list(
-      xs: fields,
-      empty: Accepted { value: Empty, diagnostics: None },
-      cons: fn(acc, field) {
+    fold(
+      fields,
+      init: Accepted { value: Empty, diagnostics: None },
+      f: fn(acc, field) {
         bind_outcome(
           o: acc,
           f: fn(source) {
