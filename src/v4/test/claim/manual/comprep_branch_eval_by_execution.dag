@@ -521,6 +521,41 @@ fn comprep_branch_produced_body_is_branch_holds() -> Bool {
   }
 }
 
+data comprep_branch_three_literal_body: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  occurrence_id: SyntheticOccurrence,
+  children: [
+    Edge { label: Positional, target: comprep_branch_bool_true_arg_node() },
+    Edge { label: Positional, target: comprep_branch_literal_one_node() },
+    Edge { label: Positional, target: comprep_branch_literal_two_node() }
+  ]
+}
+
+fn comprep_branch_three_literal_eval_holds() -> Bool {
+  let root = comprep_branch_three_literal_body
+  match eval(
+    tree: comprep_branch_admitted_tree(root: root),
+    interpretation: comprep_branch_interpretation(),
+    inputs: inputs_root_only(root: root)
+  ) {
+    Accepted { value: actual, diagnostics: None } =>
+      comprep_branch_runtime_int_is_one(value: actual)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_literal_eval_holds() -> Bool {
+  let root = comprep_branch_literal_one_node()
+  match eval(
+    tree: comprep_branch_admitted_tree(root: root),
+    interpretation: comprep_branch_interpretation(),
+    inputs: inputs_root_only(root: root)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn comprep_branch_body_only_rejects_quickly_holds() -> Bool {
   match produce_mvp1_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
