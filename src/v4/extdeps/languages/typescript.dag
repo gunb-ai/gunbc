@@ -171,6 +171,7 @@ import v4.std.compilers.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetEffectCalleeRow,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -628,13 +629,24 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
     },
-    // Applied-effect projection: the two EffectRequestKind variants map to host shim entrypoints
-    // (`__gunbc_effect_read` / `__gunbc_effect_write`, lexed below). The emit stage frames operands
-    // like a call; the shim bodies (fs.readFileSync / fs.writeFileSync) are supplied by the host
-    // workspace preamble, not the compiler — so effects are descriptor-driven, never hand-listed.
+    // Applied-effect projection: the `callees` catalog binds each v4.std.runtime EffectRequestKind
+    // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
+    // shim entrypoint token (`__gunbc_effect_read` / `__gunbc_effect_write`, lexed below). The emit
+    // stage frames operands like a call and resolves the callee by catalog lookup; the shim bodies
+    // (fs.readFileSync / fs.writeFileSync) are supplied by the host workspace preamble, not the
+    // compiler — so effects are descriptor-driven, never hand-listed. A new effect kind is one more
+    // row here, with no compiler-stage edit (Cost-of-Change = 1).
     effect_apply_form: TargetEffectApplyShape {
-      read_callee: ^ts_token_effect_read_callee,
-      write_callee: ^ts_token_effect_write_callee,
+      callees: [
+        TargetEffectCalleeRow {
+          effect_kind: ^ReadResource,
+          callee: ^ts_token_effect_read_callee
+        },
+        TargetEffectCalleeRow {
+          effect_kind: ^WriteResource,
+          callee: ^ts_token_effect_write_callee
+        }
+      ],
       open: ^ts_token_lparen,
       close: ^ts_token_rparen,
       separator: ^ts_token_comma

@@ -32,6 +32,7 @@ import v4.std.collection {
   empty_map,
   list_at_optional,
   map_get,
+  map_insert,
   optional_absent,
   optional_present
 }
@@ -581,17 +582,30 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
-// T6 — per-language applied-effect projection shape. `read_callee`/`write_callee` are the host
-// shim entrypoint tokens for the two v4.std.runtime EffectRequestKind variants (ReadResource,
-// WriteResource); the per-language descriptor supplies them, so the emit stage names no host
-// token of its own (anti-cement #4623). The emit arm selects the callee by the carrier's stored
-// effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource` by identity
-// (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as the
-// canonical-operation `id == discriminant(v: OpAdd {})` at the catalog lookup below) — then frames
-// the operand binding refs exactly like a primitive `CallIdent` apply (open / separator / close).
+// T6 — per-language applied-effect projection. The emit arm selects the host shim callee by the
+// carrier's stored effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource`
+// by identity (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as
+// the canonical-operation `id == discriminant(v: OpAdd {})` at the catalog lookup below).
+//
+// One descriptor catalog row: an effect-kind discriminant Symbol bound to the host shim callee
+// token that realizes that effect. Mirrors a `target_operator_realization` row — the catalog,
+// not a shape field, is the per-effect authority, so a new EffectRequestKind variant extends the
+// projection by exactly ONE row (Cost-of-Change = 1), never a new shape field or callee branch.
+type TargetEffectCalleeRow {
+  effect_kind: Symbol
+  callee: Symbol
+}
+
+// `callees` is a data catalog of `TargetEffectCalleeRow` (effect-kind discriminant -> host shim
+// callee token), mirroring `target_operator_realizations_catalog`. The emit arm resolves a
+// carrier's stored discriminant (`^ReadResource` / `^WriteResource` by identity) by folding the
+// catalog rows into a `Map<Symbol, Symbol>` and taking ONE fail-closed `map_get` — a miss is
+// rejected, never silently emitted (anti-cement gunbc#4623: the stage hard-codes no per-effect
+// callee). The catalog is a `List` (not an in-memory `Map`) so it round-trips through the wire
+// projection bundle, which a closure-backed `Map` cannot. Operand binding refs are framed exactly
+// like a primitive `CallIdent` apply (open / separator / close).
 type TargetEffectApplyShape {
-  read_callee: Symbol
-  write_callee: Symbol
+  callees: List<TargetEffectCalleeRow>
   open: Symbol
   close: Symbol
   separator: Symbol
@@ -622,8 +636,9 @@ data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_bindi
 data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
 data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
 data target_value_expr_field_effect_apply: Symbol = target_value_expr_field_effect_apply
-data target_value_expr_field_read_callee: Symbol = target_value_expr_field_read_callee
-data target_value_expr_field_write_callee: Symbol = target_value_expr_field_write_callee
+data target_value_expr_effect_callee_row_edge: Symbol = target_value_expr_effect_callee_row_edge
+data target_value_expr_field_effect_callee: Symbol = target_value_expr_field_effect_callee
+data target_value_expr_effect_callee_row_wire_malformed: Symbol = target_value_expr_effect_callee_row_wire_malformed
 data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
 data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
@@ -1146,43 +1161,98 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   )
 }
 
+// Serialize one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
+fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: target_value_expr_field_effect_kind,
+        target: target_model_type_atom_node(identity: row.effect_kind)
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_effect_callee,
+        target: target_model_type_atom_node(identity: row.callee)
+      )
+    ]
+  )
+}
+
+// Decode one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
+fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEffectCalleeRow> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_kind),
+    f: fn(effect_kind) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_callee),
+        f: fn(callee) {
+          outcome_accepted(
+            TargetEffectCalleeRow { effect_kind: effect_kind, callee: callee }
+          )
+        }
+      )
+    }
+  )
+}
+
+// Fold the effect-callee catalog rows off the wire bundle. Row edges carry
+// `target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
+// differently and are skipped here (decoded by `decode_effect_apply_shape_bundle`). A malformed row
+// fails the whole decode closed.
+fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
+  match fold(
+    bundle.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: rows, diagnostics: d } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_effect_callee_row_edge {
+                bind_outcome(
+                  o: target_value_expr_effect_callee_row_from_wire(row: edge.target),
+                  f: fn(row) {
+                    outcome_accepted(list_snoc_item(xs: rows, item: row))
+                  }
+                )
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Accepted { value: rows, diagnostics: d } => Accepted { value: rows, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplyShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: target_value_expr_field_read_callee
-    ),
-    f: fn(read_callee) {
+    o: decode_effect_apply_callee_rows(bundle: bundle),
+    f: fn(callees) {
       bind_outcome(
-        o: projection_bundle_symbol_field(
-          bundle: bundle,
-          field: target_value_expr_field_write_callee
-        ),
-        f: fn(write_callee) {
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        f: fn(open) {
           bind_outcome(
-            o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
-            f: fn(open) {
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_close
+            ),
+            f: fn(close) {
               bind_outcome(
                 o: projection_bundle_symbol_field(
                   bundle: bundle,
-                  field: target_value_expr_field_close
+                  field: target_value_expr_field_separator
                 ),
-                f: fn(close) {
-                  bind_outcome(
-                    o: projection_bundle_symbol_field(
-                      bundle: bundle,
-                      field: target_value_expr_field_separator
-                    ),
-                    f: fn(separator) {
-                      outcome_accepted(
-                        TargetEffectApplyShape {
-                          read_callee: read_callee,
-                          write_callee: write_callee,
-                          open: open,
-                          close: close,
-                          separator: separator
-                        }
-                      )
+                f: fn(separator) {
+                  outcome_accepted(
+                    TargetEffectApplyShape {
+                      callees: callees,
+                      open: open,
+                      close: close,
+                      separator: separator
                     }
                   )
                 }
@@ -2614,22 +2684,33 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
   )
 }
 
-// Select the host shim callee for the stored effect kind by identity. ReadResource → read_callee,
-// WriteResource → write_callee (the two closed v4.std.runtime EffectRequestKind variants); any
-// other Symbol fails closed. No host token is named here — both callees come from the descriptor.
+// Resolve the host shim callee for the stored effect-kind discriminant from the descriptor
+// catalog: fold the `callees` rows into a `Map<Symbol, Symbol>`, then take ONE `map_get`. A miss
+// fails closed (unsupported-kind diagnostic), never silently emitted. No effect kind is branched on
+// or host token named here — the catalog is the sole per-effect authority, so a new
+// EffectRequestKind variant extends `callees` by one row and this resolver is untouched.
 fn target_value_expr_effect_apply_callee(
   effect_kind: Symbol,
   shape: TargetEffectApplyShape,
   expr: TargetValueExpression
 ) -> Outcome<Symbol> {
-  if effect_kind == ^ReadResource {
-    outcome_accepted(shape.read_callee)
-  } else if effect_kind == ^WriteResource {
-    outcome_accepted(shape.write_callee)
-  } else {
-    outcome_rejected(
-      target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
-    )
+  match map_get(
+    m: fold_list(
+      xs: shape.callees,
+      empty: empty_map(),
+      cons: fn(acc, row) { map_insert(acc, row.effect_kind, row.callee) }
+    ),
+    key: effect_kind
+  ) {
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: callee } => outcome_accepted(callee)
+        Absent =>
+          outcome_rejected(
+            target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+          )
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -3331,38 +3412,45 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: target_value_expr_field_effect_apply,
         target: target_model_type_conj_node(
-          children: [
-            target_model_named_edge(
-              name: target_value_expr_field_read_callee,
-              target: target_model_type_atom_node(
-                identity: projection.effect_apply_form.read_callee
-              )
+          // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
+          // followed by the shared open / close / separator framing. Decode inverts this in
+          // `decode_effect_apply_shape_bundle`. Wire symmetry is why `callees` is a `List` and not
+          // an in-memory closure-backed `Map` (which has no enumeration to serialize).
+          children: list_append(
+            left: fold_list(
+              xs: projection.effect_apply_form.callees,
+              empty: Empty,
+              cons: fn(acc, row) {
+                Cons {
+                  head: target_model_named_edge(
+                    name: target_value_expr_effect_callee_row_edge,
+                    target: target_value_expr_effect_callee_row_node(row: row)
+                  ),
+                  tail: acc
+                }
+              }
             ),
-            target_model_named_edge(
-              name: target_value_expr_field_write_callee,
-              target: target_model_type_atom_node(
-                identity: projection.effect_apply_form.write_callee
+            right: [
+              target_model_named_edge(
+                name: target_value_expr_field_open,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.open
+                )
+              ),
+              target_model_named_edge(
+                name: target_value_expr_field_close,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.close
+                )
+              ),
+              target_model_named_edge(
+                name: target_value_expr_field_separator,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.separator
+                )
               )
-            ),
-            target_model_named_edge(
-              name: target_value_expr_field_open,
-              target: target_model_type_atom_node(
-                identity: projection.effect_apply_form.open
-              )
-            ),
-            target_model_named_edge(
-              name: target_value_expr_field_close,
-              target: target_model_type_atom_node(
-                identity: projection.effect_apply_form.close
-              )
-            ),
-            target_model_named_edge(
-              name: target_value_expr_field_separator,
-              target: target_model_type_atom_node(
-                identity: projection.effect_apply_form.separator
-              )
-            )
-          ]
+            ]
+          )
         )
       )
     ]
