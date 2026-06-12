@@ -260,15 +260,33 @@ fn project_branch_bool_if_else(
       )
     )
   } else {
-    bind_outcome(
-      o: list_at_optional(xs: node_positional_child_targets(node: body), index: 0),
-      f: fn(cond) {
-        bind_outcome(
-          o: list_at_optional(xs: node_positional_child_targets(node: body), index: 1),
-          f: fn(then_arm) {
-            bind_outcome(
-              o: list_at_optional(xs: node_positional_child_targets(node: body), index: 2),
-              f: fn(else_arm) {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          value_expr_diagnostic(
+            reason: value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: cond } =>
+        match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+          Absent =>
+            outcome_rejected(
+              value_expr_diagnostic(
+                reason: value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+          Present { value: then_arm } =>
+            match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+              Absent =>
+                outcome_rejected(
+                  value_expr_diagnostic(
+                    reason: value_expr_reason_transform_shape_invalid,
+                    node: body
+                  )
+                )
+              Present { value: else_arm } =>
                 bind_outcome(
                   o: value_expr_project_body_subexpression(
                     arrow: arrow,
@@ -303,12 +321,9 @@ fn project_branch_bool_if_else(
                     )
                   }
                 )
-              }
-            )
-          }
-        )
-      }
-    )
+            }
+        }
+    }
   }
 }
 
