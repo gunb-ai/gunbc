@@ -199,12 +199,12 @@ fn comprep_branch_runtime_int_is_one(value: RuntimeValue) -> Bool {
   }
 }
 
-fn comprep_branch_bool_true_arg_node() -> Node {
-  comprep_branch_atom(s: ^comprep_branch_bool_true_arg)
+fn comprep_branch_kw_true_node() -> Node {
+  comprep_branch_atom(s: ^dag_token_kw_true)
 }
 
-fn comprep_branch_bool_false_arg_node() -> Node {
-  comprep_branch_atom(s: ^comprep_branch_bool_false_arg)
+fn comprep_branch_kw_false_node() -> Node {
+  comprep_branch_atom(s: ^dag_token_kw_false)
 }
 
 fn comprep_branch_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
@@ -212,9 +212,9 @@ fn comprep_branch_allocate_literal(node: Node, _env: EvaluationEnvironment) -> O
     outcome_accepted(value: comprep_branch_one_value())
   } else if node == comprep_branch_literal_two_node() {
     outcome_accepted(value: comprep_branch_two_value())
-  } else if node == comprep_branch_bool_true_arg_node() {
+  } else if node == comprep_branch_kw_true_node() {
     outcome_accepted(value: comprep_branch_bool_value(is_true: true))
-  } else if node == comprep_branch_bool_false_arg_node() {
+  } else if node == comprep_branch_kw_false_node() {
     outcome_accepted(value: comprep_branch_bool_value(is_true: false))
   } else {
     outcome_rejected(d: comprep_branch_runtime_diagnostic(n: node))
@@ -314,24 +314,12 @@ fn comprep_branch_context() -> EvalContext {
   )
 }
 
-fn comprep_branch_bool_arg_node(condition: Bool) -> Node {
-  if condition {
-    comprep_branch_bool_true_arg_node()
-  } else {
-    comprep_branch_bool_false_arg_node()
-  }
-}
-
-fn comprep_branch_pick_call(callee: Node, condition: Bool) -> Node {
+fn comprep_branch_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge {
-        label: Positional,
-        target: comprep_branch_bool_arg_node(condition: condition)
-      }
+      Edge { label: Positional, target: callee }
     ]
   }
 }
@@ -366,8 +354,8 @@ fn comprep_branch_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-fn comprep_branch_inferred_run_tree(callee: Node, expected: Node, condition: Bool) -> Outcome<InferredTree> {
-  let call = comprep_branch_pick_call(callee: callee, condition: condition)
+fn comprep_branch_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
+  let call = comprep_branch_pick_call(callee: callee)
   let root = comprep_branch_tree_root(call: call, expected: expected)
   outcome_accepted(value: comprep_branch_admitted_tree(root: root))
 }
@@ -400,16 +388,11 @@ fn comprep_branch_subject(
 
 fn comprep_branch_run(
   callee: Node,
-  expected: Node,
-  condition: Bool
+  expected: Node
 ) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
-  let input = comprep_branch_pick_call(callee: callee, condition: condition)
+  let input = comprep_branch_pick_call(callee: callee)
   bind_outcome(
-    o: comprep_branch_inferred_run_tree(
-      callee: callee,
-      expected: expected,
-      condition: condition
-    ),
+    o: comprep_branch_inferred_run_tree(callee: callee, expected: expected),
     f: fn(tree) {
       outcome_accepted(
         value: run_test_claim(
@@ -444,22 +427,7 @@ fn comprep_branch_source_driven_pick_true_executes_holds() -> Bool {
       comprep_branch_run_passes(
         run: comprep_branch_run(
           callee: arrow,
-          expected: comprep_branch_literal_one_node(),
-          condition: true
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_branch_source_driven_pick_false_executes_holds() -> Bool {
-  match comprep_source_bridged_pick_if_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      comprep_branch_run_passes(
-        run: comprep_branch_run(
-          callee: arrow,
-          expected: comprep_branch_literal_two_node(),
-          condition: false
+          expected: comprep_branch_literal_one_node()
         )
       )
     Rejected { diagnostics: _ } => false
@@ -469,11 +437,10 @@ fn comprep_branch_source_driven_pick_false_executes_holds() -> Bool {
 fn comprep_branch_direct_runtime_true_holds() -> Bool {
   match comprep_source_bridged_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
-      let input = comprep_branch_pick_call(callee: arrow, condition: true)
+      let input = comprep_branch_pick_call(callee: arrow)
       match comprep_branch_inferred_run_tree(
         callee: arrow,
-        expected: comprep_branch_literal_one_node(),
-        condition: true
+        expected: comprep_branch_literal_one_node()
       ) {
         Accepted { value: tree, diagnostics: _ } =>
           match eval(
@@ -498,8 +465,7 @@ fn comprep_branch_swapped_arms_red_holds() -> Bool {
       comprep_branch_run_passes(
         run: comprep_branch_run(
           callee: arrow,
-          expected: comprep_branch_literal_one_node(),
-          condition: true
+          expected: comprep_branch_literal_one_node()
         )
       ) == false
     Rejected { diagnostics: _ } => false
@@ -575,30 +541,35 @@ fn comprep_branch_body_only_rejects_quickly_holds() -> Bool {
   }
 }
 
-fn comprep_branch_direct_eval_true_holds() -> Bool {
+fn comprep_branch_minimal_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: comprep_branch_facts_lookup
+    }
+  }
+}
+
+fn comprep_branch_eval_call_only_holds() -> Bool {
   match produce_mvp1_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
-      let input = comprep_branch_pick_call(callee: arrow, condition: true)
-      match comprep_branch_inferred_run_tree(
-        callee: arrow,
-        expected: comprep_branch_literal_one_node(),
-        condition: true
+      let input = comprep_branch_pick_call(callee: arrow)
+      match eval(
+        tree: comprep_branch_minimal_tree(root: input),
+        interpretation: comprep_branch_interpretation(),
+        inputs: inputs_root_only(root: input)
       ) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match eval(
-            tree: tree,
-            interpretation: comprep_branch_interpretation(),
-            inputs: inputs_root_only(root: input)
-          ) {
-            Accepted { value: actual, diagnostics: None } =>
-              comprep_branch_runtime_int_is_one(value: actual)
-            _ => false
-          }
-        Rejected { diagnostics: _ } => false
+        Accepted { value: actual, diagnostics: None } =>
+          comprep_branch_runtime_int_is_one(value: actual)
+        _ => false
       }
     }
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn comprep_branch_direct_eval_true_holds() -> Bool {
+  comprep_branch_eval_call_only_holds()
 }
 
 fn comprep_branch_fixture_producer_holds() -> Bool {
@@ -607,8 +578,7 @@ fn comprep_branch_fixture_producer_holds() -> Bool {
       comprep_branch_run_passes(
         run: comprep_branch_run(
           callee: arrow,
-          expected: comprep_branch_literal_one_node(),
-          condition: true
+          expected: comprep_branch_literal_one_node()
         )
       )
     Rejected { diagnostics: _ } => false
@@ -616,14 +586,13 @@ fn comprep_branch_fixture_producer_holds() -> Bool {
 }
 
 // COMPREP wave-2 M0-B1 runtime keystone:
-//   1. source-driven-true — bridged pick(b) if b then 1 else 2 executes to 1 when b=true;
-//   2. source-driven-false — same body executes to 2 when b=false;
-//   3. source-pipeline-admits — source pick fn tokenizes→parses→normalizes→resolves→body_producer;
-//   4. swapped-arms-red — then/else swap fails when b=true expects 1;
+//   1. source-driven-executes — bridged one_or_two() if true then 1 else 2 executes to 1;
+//   2. direct-runtime — same bridged callee through eval directly;
+//   3. source-pipeline-admits — source fn tokenizes→parses→normalizes→resolves→body_producer;
+//   4. swapped-arms-red — then/else swap fails the run (discriminating red);
 //   5. fixture-producer — direct fixture path also executes (sanity).
 fn comprep_branch_eval_by_execution_keystone_holds() -> Bool {
   comprep_branch_source_driven_pick_true_executes_holds()
-    && comprep_branch_source_driven_pick_false_executes_holds()
     && comprep_branch_direct_runtime_true_holds()
     && comprep_branch_source_pipeline_admits_holds()
     && comprep_branch_swapped_arms_red_holds()

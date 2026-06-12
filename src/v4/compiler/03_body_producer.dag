@@ -42,10 +42,11 @@ import v4.extdeps.languages.dag {
   dag_mvp1_add_arrow_signature_node,
   dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
   dag_mvp1_add_operator_node,
-  dag_mvp1_bool_type_binding,
   dag_mvp1_captured_flat_atom_binding_for_ident,
   dag_mvp1_int_type_binding,
   dag_mvp1_node_is_int_literal_atom,
+  dag_mvp1_node_is_kw_false_atom,
+  dag_mvp1_node_is_kw_true_atom,
   dag_mvp1_pick_arrow_with_body_fixture,
   dag_mvp1_pick_arrow_with_body_swapped_arms_fixture,
   dag_mvp1_pick_captured_flat_atom_binding_for_ident
@@ -61,10 +62,11 @@ data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_r
 data body_producer_reason_mvp1_resolved_not_arrow: Symbol = body_producer_reason_mvp1_resolved_not_arrow
 data body_producer_reason_mvp1_resolved_shape: Symbol = body_producer_reason_mvp1_resolved_shape
 
-// COMPREP wave-2 M0-B1 — bridge maps parse int_literal atoms to eval-recognizable literal symbols.
-data body_producer_pick_param_b: Symbol = ^dag_binding_param_b
+// COMPREP wave-2 M0-B1 — bridge maps parse atoms to eval-recognizable literal/condition symbols.
 data body_producer_pick_lit_one: Symbol = ^dag_mvp1_pick_lit_one
 data body_producer_pick_lit_two: Symbol = ^dag_mvp1_pick_lit_two
+data body_producer_pick_kw_true: Symbol = ^dag_token_kw_true
+data body_producer_pick_kw_false: Symbol = ^dag_token_kw_false
 
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -516,6 +518,21 @@ fn body_producer_branch_if_body(
   )
 }
 
+fn body_producer_pick_condition_from_atom(cond: Node) -> Outcome<Node> {
+  if dag_mvp1_node_is_kw_true_atom(node: cond) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_kw_true))
+  } else if dag_mvp1_node_is_kw_false_atom(node: cond) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_kw_false))
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_mvp1_resolved_shape,
+        n: cond
+      )
+    )
+  }
+}
+
 fn body_producer_pick_if_body_from_atoms(
   atoms: List<Node>,
   witness: Node
@@ -523,15 +540,15 @@ fn body_producer_pick_if_body_from_atoms(
   bind_outcome(
     o: mvp1_flat_atom_at(
       atoms: atoms,
-      wanted: 11,
+      wanted: 8,
       reason: body_producer_reason_mvp1_resolved_shape,
       witness: witness
     ),
-    f: fn(_condition) {
+    f: fn(cond) {
       bind_outcome(
         o: mvp1_flat_atom_at(
           atoms: atoms,
-          wanted: 13,
+          wanted: 10,
           reason: body_producer_reason_mvp1_resolved_shape,
           witness: witness
         ),
@@ -539,17 +556,22 @@ fn body_producer_pick_if_body_from_atoms(
           bind_outcome(
             o: mvp1_flat_atom_at(
               atoms: atoms,
-              wanted: 15,
+              wanted: 12,
               reason: body_producer_reason_mvp1_resolved_shape,
               witness: witness
             ),
             f: fn(else_arm) {
               if dag_mvp1_node_is_int_literal_atom(node: then_arm)
                 && dag_mvp1_node_is_int_literal_atom(node: else_arm) {
-                body_producer_branch_if_body(
-                  condition: computation_param_ref_node(identity: body_producer_pick_param_b),
-                  then_arm: type_atom_node(identity: body_producer_pick_lit_one),
-                  else_arm: type_atom_node(identity: body_producer_pick_lit_two)
+                bind_outcome(
+                  o: body_producer_pick_condition_from_atom(cond: cond),
+                  f: fn(condition) {
+                    body_producer_branch_if_body(
+                      condition: condition,
+                      then_arm: type_atom_node(identity: body_producer_pick_lit_one),
+                      else_arm: type_atom_node(identity: body_producer_pick_lit_two)
+                    )
+                  }
                 )
               } else {
                 outcome_rejected(
@@ -574,79 +596,38 @@ fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Ou
       bind_outcome(
         o: mvp1_flat_atom_at(
           atoms: atoms,
-          wanted: 3,
+          wanted: 5,
           reason: body_producer_reason_mvp1_resolved_shape,
           witness: resolved_root
         ),
-        f: fn(domain_b) {
+        f: fn(codomain) {
           bind_outcome(
-            o: mvp1_flat_atom_at(
-              atoms: atoms,
-              wanted: 5,
-              reason: body_producer_reason_mvp1_resolved_shape,
-              witness: resolved_root
+            o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+              flat_index: 5,
+              ident_atom: codomain
             ),
-            f: fn(domain_type) {
-              bind_outcome(
-                o: mvp1_flat_atom_at(
-                  atoms: atoms,
-                  wanted: 8,
-                  reason: body_producer_reason_mvp1_resolved_shape,
-                  witness: resolved_root
-                ),
-                f: fn(codomain) {
-                  bind_outcome(
-                    o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
-                      flat_index: 3,
-                      ident_atom: domain_b
-                    ),
-                    f: fn(param_binding) {
-                      bind_outcome(
-                        o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
-                          flat_index: 5,
-                          ident_atom: domain_type
-                        ),
-                        f: fn(type_binding) {
-                          bind_outcome(
-                            o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
-                              flat_index: 8,
-                              ident_atom: codomain
-                            ),
-                            f: fn(codomain_binding) {
-                              bind_outcome(
-                                o: body_producer_arrow_domain_conj_single_binding(
-                                  binding: param_binding,
-                                  type_binding: type_binding
-                                ),
-                                f: fn(domain) {
-                                  outcome_accepted(
-                                    value: node_synthetic(
-                                      kind: TypeNode { connective: Arrow },
-                                      children: [
-                                        Edge {
-                                          label: Positional,
-                                          target: domain
-                                        },
-                                        Edge {
-                                          label: Positional,
-                                          target: type_atom_node(identity: codomain_binding)
-                                        },
-                                        Edge {
-                                          label: Positional,
-                                          target: type_atom_node(identity: codomain_binding)
-                                        }
-                                      ]
-                                    )
-                                  )
-                                }
-                              )
-                            }
-                          )
-                        }
+            f: fn(codomain_binding) {
+              outcome_accepted(
+                value: node_synthetic(
+                  kind: TypeNode { connective: Arrow },
+                  children: [
+                    Edge {
+                      label: Positional,
+                      target: node_synthetic(
+                        kind: TypeNode { connective: Conj },
+                        children: []
                       )
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
                     }
-                  )
-                }
+                  ]
+                )
               )
             }
           )
