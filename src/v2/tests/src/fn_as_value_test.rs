@@ -148,7 +148,7 @@ fn use_bad() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.nope }) }
 fn fold_list_generic_cons_callback_binds_element_type() {
     let src = r#"module test.fold_gi
 type Rec { v: Int }
-type IntList = Empty | Cons { head: Int, tail: IntList }
+type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }
 fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
@@ -186,6 +186,7 @@ fn field_access() -> Int {
 fn fold_list_right_generic_snoc_callback_binds_element_type() {
     let src = r#"module test.fold_right_gi
 type Rec { v: Int }
+type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }
 fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
