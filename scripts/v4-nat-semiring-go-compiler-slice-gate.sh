@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh
+# scripts/v4-nat-semiring-go-compiler-slice-gate.sh
 #
 # L1 Go compiler-slice receipt for fixture=phase1/nat_semiring: after go emit + R2-go-compile
 # prerequisite, record structured JSON tying slice_id go_l1_nat_semiring_rung2 → go build verdict.
 #
 # Authority: docs/planning/v4-go-l1-compiler-slice-compile-worksheet-2026-06-01.md
-# (GO-L1-COMPILER-SLICE-COMPILE); complements scripts/v4-phase1-nat-semiring-rung-gate.sh
+# (GO-L1-COMPILER-SLICE-COMPILE); complements scripts/v4-nat-semiring-rung-gate.sh
 # (R2-go-compile cell). Non-goals: L2 cross-target eval, L3 self-output fixed point, full
 # v4-bootstrap-viability.sh.
 #
 # Env:
-#   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (same as rung gate; required)
-#   V4_PHASE1_NAT_SEMIRING_GO — go binary (default: go)
-#   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — per-invocation timeout (default: 300)
-#   V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT — exit 1 on FAIL when 1 (when chained from
-#     rung gate, parent sets this from GO_COMPILER_SLICE_STRICT and/or V4_PHASE1_NAT_SEMIRING_STRICT)
+#   V4_NAT_SEMIRING_RUNG_GATE_OUT — emit output dir (same as rung gate; required)
+#   V4_NAT_SEMIRING_GATE_GO — go binary (default: go)
+#   V4_NAT_SEMIRING_GATE_TIMEOUT_SECS — per-invocation timeout (default: 300)
+#   V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT — exit 1 on FAIL when 1 (when chained from
+#     rung gate, parent sets this from GO_COMPILER_SLICE_STRICT and/or V4_NAT_SEMIRING_RUNG_GATE_STRICT)
 
 set -euo pipefail
 
@@ -23,18 +23,18 @@ cd "$root"
 
 fixture_id="phase1/nat_semiring"
 slice_id="go_l1_nat_semiring_rung2"
-go_bin="${V4_PHASE1_NAT_SEMIRING_GO:-go}"
-timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
-strict="${V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT:-0}"
+go_bin="${V4_NAT_SEMIRING_GATE_GO:-go}"
+timeout_secs="${V4_NAT_SEMIRING_GATE_TIMEOUT_SECS:-300}"
+strict="${V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT:-0}"
 
-if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_PHASE1_NAT_SEMIRING_OUT:-}" ]]; then
-  out="${RUNNER_TEMP:-/tmp}/v4-phase1-nat-semiring"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_NAT_SEMIRING_RUNG_GATE_OUT:-}" ]]; then
+  out="${RUNNER_TEMP:-/tmp}/v4-nat-semiring-rung-gate"
 else
-  out="${V4_PHASE1_NAT_SEMIRING_OUT:-}"
+  out="${V4_NAT_SEMIRING_RUNG_GATE_OUT:-}"
 fi
 
 if [[ -z "$out" ]]; then
-  echo "error: V4_PHASE1_NAT_SEMIRING_OUT must point at the rung-gate emit tree" >&2
+  echo "error: V4_NAT_SEMIRING_RUNG_GATE_OUT must point at the rung-gate emit tree" >&2
   exit 2
 fi
 
@@ -44,7 +44,7 @@ summary="${out}.go-compiler-slice-gate-summary.txt"
 receipt_json="${out}.go-compiler-slice-receipt.json"
 
 if [[ ! -d "$go_tree" ]]; then
-  echo "error: go emit tree missing at $go_tree (run v4-phase1-nat-semiring-rung-gate.sh first)" >&2
+  echo "error: go emit tree missing at $go_tree (run v4-nat-semiring-rung-gate.sh first)" >&2
   exit 2
 fi
 
@@ -117,7 +117,7 @@ import json
 import os
 
 payload = {
-    "schema": "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1",
+    "schema": "scripts/v4-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1",
     "slice_id": os.environ["V4_GO_L1_RECEIPT_SLICE_ID"],
     "fixture_id": os.environ["V4_GO_L1_RECEIPT_FIXTURE_ID"],
     "go_module_root": os.environ["V4_GO_L1_RECEIPT_GO_MODULE_ROOT"],

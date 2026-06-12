@@ -131,7 +131,7 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path.starts_with("src/v4/test/v2_run_preflight/")
         || path == "src/v4/test/coercion_fold_int_rust_fixture.dag"
         || path.starts_with("fixtures/v4-mvp1/")
-        || path == ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+        || path == ".github/ci-floor/v4-rust-full-tree-emit-probe.sh"
         || path.starts_with(".github/ci-floor/")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn v4_m1_probe_script_triggers_v4_bucket() {
         assert!(ci_changed_path_affects_v4(
-            ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+            ".github/ci-floor/v4-rust-full-tree-emit-probe.sh"
         ));
         assert!(ci_changed_path_affects_workflow_policy(
             ".github/ci-floor/v4-bootstrap-viability.sh"
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn aggregate_fixture_matches_modeled_buckets() {
         let flags = ci_component_affected_from_changed_paths([
-            ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+            ".github/ci-floor/v4-rust-full-tree-emit-probe.sh",
             "docs/unrelated.md",
         ]);
         assert!(!flags.v2);
@@ -350,7 +350,7 @@ mod tests {
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "install.sh",
-            ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+            ".github/ci-floor/v4-rust-full-tree-emit-probe.sh",
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "install.sh",

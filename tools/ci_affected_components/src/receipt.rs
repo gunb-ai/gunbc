@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn partition_is_a_complete_disjoint_cover() {
-        let flags = flags_for([".github/ci-floor/v4-m1-rust-emit-probe.sh"]);
+        let flags = flags_for([".github/ci-floor/v4-rust-full-tree-emit-probe.sh"]);
         let (selected, skipped) = component_partition(flags);
         assert_eq!(selected.len() + skipped.len(), COMPONENT_BUCKETS.len());
         for bucket in COMPONENT_BUCKETS {

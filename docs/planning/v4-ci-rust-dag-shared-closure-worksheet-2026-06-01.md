@@ -28,7 +28,7 @@ DFS path:
   v4 CI model:
     - src/v4/workflow/ci.dag — records the shared DAG artifact env contract for M1/bootstrap.
   host transport:
-    - scripts/v4-m1-rust-emit-probe.sh — uses --target rust+dag when V4_M1_DAG_EMIT_OUT is set.
+    - scripts/v4-rust-full-tree-emit-probe.sh — uses --target rust+dag when V4_RUST_DAG_SHARED_CLOSURE_OUT is set.
     - scripts/v4-bootstrap-viability.sh — validates the proven shared DAG receipt via
       V4_BOOTSTRAP_REUSE_LOG, otherwise preserves independent --target dag compile behavior.
 Deepest unsound boundary:
@@ -72,8 +72,8 @@ artifact plan, inspect typed modules for emit, or call `emit_from_artifact_plan`
 
 ## §2 CI Gate Semantics
 
-`scripts/v4-m1-rust-emit-probe.sh` keeps its existing Rust cargo-check role. When CI supplies
-`V4_M1_DAG_EMIT_OUT`, it asks `gunbc` for `--target rust+dag`, moves the Rust and DAG halves to
+`scripts/v4-rust-full-tree-emit-probe.sh` keeps its existing Rust cargo-check role. When CI supplies
+`V4_RUST_DAG_SHARED_CLOSURE_OUT`, it asks `gunbc` for `--target rust+dag`, moves the Rust and DAG halves to
 their modeled output dirs, and copies the shared compile receipt for bootstrap.
 
 `scripts/v4-bootstrap-viability.sh` only reuses that DAG half when `V4_BOOTSTRAP_REUSE_LOG` is set

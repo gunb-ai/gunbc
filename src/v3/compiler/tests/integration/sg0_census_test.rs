@@ -1013,15 +1013,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
-    // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-python-runtime-gate.sh` chained from rung gate.
     // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
     // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
-    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
     // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
     // the parent rung gate fails closed when
-    // `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` and `go`/`gofmt` are missing.
+    // `V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT=1` and `go`/`gofmt` are missing.
     // Dissolve with the same generated/TestClaim host setup receipt as #4229.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
