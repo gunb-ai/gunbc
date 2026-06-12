@@ -68,7 +68,7 @@ type CompileLensOutcome = Outcome<Witness<Node>>
 
 type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 
-// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
+// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
 type CompileLens {
   gate: CompileLensGate
 }
@@ -163,7 +163,7 @@ fn apply_compile_lens_introspect(
 }
 
 
-// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
+// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: compile-orchestrator gate surface; lens application semantics stay in v4.lens.application.
 // CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
 // CompileLensIntrospect: advisory — gate runs but rejection is wrapped as Accepted(Violates) so compilation is never blocked.

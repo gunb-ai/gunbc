@@ -30,14 +30,14 @@ type FalsificationCase<Subject, Expectation> {
   expected_failure_mode: Expectation
 }
 
-// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// 🟡 gated — feature:leaf-model-fixture-runner — bind gunbc#4762 —
 // dissolve-on: testgen emits LeafModelFixture rows and runner exercises target toolchain;
 // forbidden: parallel fixture vocabulary outside this carrier.
 type TargetArtifact {
   source_text: String
 }
 
-// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// 🟡 gated — feature:leaf-model-fixture-runner — bind gunbc#4762 —
 // dissolve-on: TargetToolchain / TargetEdition / TargetBuildProfile / TargetOverflowDispositionField coproducts replace these Symbol scaffolds;
 // forbidden: parallel invocation vocab outside this carrier.
 type TargetInvocation {

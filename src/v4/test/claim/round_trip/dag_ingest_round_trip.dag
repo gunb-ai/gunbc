@@ -5,7 +5,7 @@
 // Fixture: src/v4/test/fixture/dag_round_trip_mvp1.dag (committed wave-1 surface program).
 // Normalization budget: C5 trivia normalization from dag.dag only — whitespace and comments are
 //   DeclaredNormalized (TriviaRule-stripped); all other surface features are Modeled (lossless).
-// Anchor: src/v4/TASKS.md §T-36; THESIS §B2-OMNI ingest=emit⁻¹ (C5).
+// Anchor: THESIS §B2-OMNI ingest=emit⁻¹ (C5); readiness tracking: gunbc#4763.
 
 module v4.test.claim.round_trip.dag_ingest_round_trip
 

@@ -1,5 +1,5 @@
 // src/v4/test/claim/parse/parse_table_claims.dag
-// Scope: Wave-A W1 — v4.compiler.parse `token_position_indices` as a discriminating
+// Scope: v4.compiler.parse `token_position_indices` as a discriminating
 // claim-run witness, routed through v2 (`dag run --claim-run`).
 //
 // Migrates the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append

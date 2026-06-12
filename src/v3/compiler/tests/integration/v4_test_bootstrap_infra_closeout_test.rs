@@ -178,11 +178,8 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
 
     assert!(
         TESTGEN_WISHLIST_DAG.contains("type TestgenOracleBasis")
-            && TESTGEN_WISHLIST_DAG
-                .contains("feature:t19-generator-oracle-basis-carrier")
-            && TESTGEN_WISHLIST_DAG.contains(
-                "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
-            )
+            && TESTGEN_WISHLIST_DAG.contains("feature:t19-generator-oracle-basis-carrier")
+            && TESTGEN_WISHLIST_DAG.contains("bound task: gunbc#4762",)
             && TESTGEN_WISHLIST_DAG.contains("dissolve-on-arrival: delete TestgenOracleBasis")
             && TESTGEN_WISHLIST_DAG.contains("StructuralConstructionWitness")
             && TESTGEN_WISHLIST_DAG.contains("AlgebraLawWitness")
@@ -581,7 +578,7 @@ fn check_t19_testgen_activation() {
             "ManualLbeDisjDagSurface",
             "ManualLbeTransformDagSurface",
             "type TestClaimCoproductVariant",
-            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "feature:testclaim-coproduct-reflection; bound task: gunbc#4759",
             "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
             "GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
             "ManualRefinementNonEmptyListBase",

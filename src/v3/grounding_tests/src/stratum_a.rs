@@ -1,7 +1,7 @@
 //! Stratum A — name-keyed routing parity for `MethodTemplateContract` Phase 1 rows.
 //!
 //! Source: `docs/briefs/t-ground-tests.md` (test plan item 1). Generalizes the pilot
-//! kernel-integer checks (`src/v3/grounding_pilot/src/lib.rs:408-460`) onto the
+//! kernel-integer checks (`src/v3/grounding_inhabitance_mirror/src/lib.rs:408-460`) onto the
 //! per-target row lists `rust_*` / `python_*` / `go_*` from T-Ground-LanguageSpec #1195.
 //!
 //! **Substrate read path:** Stratum A walks [`v3_compiler::generated_full_bootstrap_dag`] only.

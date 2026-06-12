@@ -365,7 +365,7 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
 // Witnesses: refinement_authoritative_constants.dag (reject paths + one positive_int accept);
 // formatter catalog accept table deferred to docs/audit/v4-deferral-audit-2026-05-29.md §A1 /
-// TASKS.md T-4.16 (T-22 manual-corpus compile budget; not a separate filed PR).
+// Manual-corpus compile budget tracked under gunbc#4757 (not a separate filed PR).
 
 
 // 🟢 coproduct dissolution — TERMINAL. The ordered/unordered distinction is the irreducible

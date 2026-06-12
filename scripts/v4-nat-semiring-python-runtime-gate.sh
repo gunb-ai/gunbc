@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# scripts/v4-phase1-nat-semiring-python-runtime-gate.sh
+# scripts/v4-nat-semiring-python-runtime-gate.sh
 #
 # L1 Python runtime receipt for fixture=phase1/nat_semiring: after py_compile (rung gate),
 # verify the emitted Python covers every ratified fixture law, execute each emitted .py
 # under the fixture emit tree, and record typed host verdicts.
 #
 # Authority: docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md Worksheet B
-# (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION); complements scripts/v4-phase1-nat-semiring-rung-gate.sh
+# (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION); complements scripts/v4-nat-semiring-rung-gate.sh
 # (py_compile-only for R0/R2). Cross-target MVP-2 stdout parity (L2) is proven via
 # emit_host_bridge integration tests until per-law emit lands.
 #
 # Env:
-#   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (same as rung gate; required)
-#   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
-#   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — per-invocation timeout (default: 300)
-#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — exit 1 on FAIL when 1 (when chained from
-#     rung gate, parent sets this from PYTHON_RUNTIME_STRICT and/or V4_PHASE1_NAT_SEMIRING_STRICT)
+#   V4_NAT_SEMIRING_RUNG_GATE_OUT — emit output dir (same as rung gate; required)
+#   V4_NAT_SEMIRING_GATE_PYTHON — python3 binary (default: python3)
+#   V4_NAT_SEMIRING_GATE_TIMEOUT_SECS — per-invocation timeout (default: 300)
+#   V4_NAT_SEMIRING_PYTHON_RUNTIME_GATE_STRICT — exit 1 on FAIL when 1 (when chained from
+#     rung gate, parent sets this from PYTHON_RUNTIME_STRICT and/or V4_NAT_SEMIRING_RUNG_GATE_STRICT)
 
 set -euo pipefail
 
@@ -23,18 +23,18 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 fixture_id="phase1/nat_semiring"
-python_bin="${V4_PHASE1_NAT_SEMIRING_PYTHON:-python3}"
-timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
-strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT:-0}"
+python_bin="${V4_NAT_SEMIRING_GATE_PYTHON:-python3}"
+timeout_secs="${V4_NAT_SEMIRING_GATE_TIMEOUT_SECS:-300}"
+strict="${V4_NAT_SEMIRING_PYTHON_RUNTIME_GATE_STRICT:-0}"
 
-if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_PHASE1_NAT_SEMIRING_OUT:-}" ]]; then
-  out="${RUNNER_TEMP:-/tmp}/v4-phase1-nat-semiring"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_NAT_SEMIRING_RUNG_GATE_OUT:-}" ]]; then
+  out="${RUNNER_TEMP:-/tmp}/v4-nat-semiring-rung-gate"
 else
-  out="${V4_PHASE1_NAT_SEMIRING_OUT:-}"
+  out="${V4_NAT_SEMIRING_RUNG_GATE_OUT:-}"
 fi
 
 if [[ -z "$out" ]]; then
-  echo "error: V4_PHASE1_NAT_SEMIRING_OUT must point at the rung-gate emit tree" >&2
+  echo "error: V4_NAT_SEMIRING_RUNG_GATE_OUT must point at the rung-gate emit tree" >&2
   exit 2
 fi
 
@@ -42,7 +42,7 @@ py_tree="$out/python"
 summary="${out}.python-runtime-gate-summary.txt"
 
 if [[ ! -d "$py_tree" ]]; then
-  echo "error: python emit tree missing at $py_tree (run v4-phase1-nat-semiring-rung-gate.sh first)" >&2
+  echo "error: python emit tree missing at $py_tree (run v4-nat-semiring-rung-gate.sh first)" >&2
   exit 2
 fi
 
