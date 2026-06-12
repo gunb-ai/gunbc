@@ -157,6 +157,24 @@ jobs:
       run: python3 scripts/check_v4_layering_imports.py
     - name: Layering import gate detects planted violations
       run: python3 scripts/check_v4_layering_imports.py --perturb-check
+  # CI wall-time budget gate -- every timeout-minutes in .github/workflows/ must stay
+  # within the ceiling declared in scripts/check_ci_timeout_budgets.py. Stops the
+  # bump-the-timeout-in-the-same-diff pattern (#4324, #4633): a raise requires a loud,
+  # separately-reviewable edit to the ceiling table with the root-cause analysis.
+  timeout_budgets:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: All timeout-minutes within declared ceilings
+      run: python3 scripts/check_ci_timeout_budgets.py
+    - name: Timeout budget gate detects a planted raise
+      run: python3 scripts/check_ci_timeout_budgets.py --perturb-check
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
@@ -571,12 +589,20 @@ jobs:
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
     runs-on: [self-hosted, linux, arm64]
+<<<<<<< HEAD
     # 35m was too tight: cold-cache build + two --perturb-checks
     # (v4-lens-ci-gate.sh + v4-substrate-equivalence-gate.sh) on arm64 with
     # CARGO_BUILD_JOBS=2 exceeds 35m, CANCELLING the job across all branches
     # (incl. main) and surfacing as a false "flake". 55m clears the cold path;
     # sccache/cargo-cache warmth is the deeper follow-up.
     timeout-minutes: 55
+=======
+    # 20m is the pre-#4633 ceiling, restored after batched discovery
+    # (discover_owned_data --max-resolves, see v4-discover-owned-data.sh)
+    # removed the ~15m per-entry resolve fan-out. Do not raise this to absorb
+    # a slow step; root-cause it (enforced by the timeout_budgets gate).
+    timeout-minutes: 20
+>>>>>>> origin/main
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -717,7 +743,7 @@ jobs:
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   ci:
     if: always()
-    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports, timeout_budgets]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -758,6 +784,10 @@ jobs:
         fi
         if [[ "${{ needs.layering_imports.result }}" != "success" ]]; then
           echo "::error::layering_imports gate did not succeed (result=${{ needs.layering_imports.result }}); std/ or extdeps/ has a wrong-direction compiler import -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.timeout_budgets.result }}" != "success" ]]; then
+          echo "::error::timeout_budgets gate did not succeed (result=${{ needs.timeout_budgets.result }}); a workflow timeout-minutes exceeds its declared ceiling -- ci aggregator fails closed."
           exit 1
         fi
         echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"

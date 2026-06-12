@@ -24,10 +24,27 @@ if [[ ! -x "$discover_bin" ]]; then
   exit 2
 fi
 
+# --max-resolves is the discovery latency ratchet: batched discovery merges
+# entry closures into collision-free merged compiles; a new decl-name collision
+# that forces an extra split fails here loudly (the binary prints the colliding
+# decl + files) instead of silently re-inflating CI wall-time. Fix is to
+# dissolve/rename the colliding decl, never to raise this number for latency
+# headroom. Currently 3, accounting for two DOCUMENTED duplicate-decl debts:
+# - `type OverflowDisposition`: src/v4/std/integer.dag vs
+#   src/v4/extdeps/languages/rust.dag (unify/rename is a substrate modeling
+#   decision, MODELING.md M9).
+# - `type PassingCandidateFold`: src/v4/std/find_witness.dag vs
+#   src/v4/compiler/03_name_resolve.dag — deliberate duplicate with a
+#   dissolve-on-arrival mark (03_name_resolve.dag:108): importing
+#   find_witness.dag is blocked by its transitive predicate-module pull into
+#   this very discovery closure; resolution is the marked find_witness
+#   substrate PR (extract to a lightweight Node-dep-only std module).
+# When either debt dissolves, LOWER this number in the same PR.
 "$discover_bin" \
   --source-root "$source_root" \
   --scan-dir "$scan_dir" \
   --emit-dag-manifest "$manifest" \
+  --max-resolves 3 \
   --format transport-tsv >"$transport_tsv"
 
 if git ls-files --error-unmatch "$manifest" >/dev/null 2>&1; then

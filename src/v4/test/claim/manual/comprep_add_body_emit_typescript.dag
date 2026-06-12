@@ -8,13 +8,15 @@
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
 import v4.compiler.body_producer {
-  mvp1_add_arrow_signature_node,
-  mvp1_add_arrow_with_body_node,
-  mvp1_add_arrow_with_body_swapped_operands_node,
-  mvp1_add_binary_body_node,
-  mvp1_add_binary_body_swapped_operands_node,
   produce_mvp1_add_arrow_with_body,
   produce_mvp1_add_arrow_with_body_swapped_operands
+}
+import v4.extdeps.languages.dag {
+  dag_mvp1_add_arrow_signature_fixture,
+  dag_mvp1_add_arrow_with_body_fixture,
+  dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
+  dag_mvp1_add_binary_body_fixture,
+  dag_mvp1_add_binary_body_swapped_operands_fixture
 }
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -217,23 +219,23 @@ data comprep_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantics
 data comprep_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
 
 fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == mvp1_add_arrow_with_body_node {
+  if node == dag_mvp1_add_arrow_with_body_fixture {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == mvp1_add_arrow_signature_node {
+  } else if node == dag_mvp1_add_arrow_signature_fixture {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == mvp1_add_binary_body_node {
+  } else if node == dag_mvp1_add_binary_body_fixture {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == mvp1_add_arrow_with_body_swapped_operands_node {
+  } else if node == dag_mvp1_add_arrow_with_body_swapped_operands_fixture {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == mvp1_add_binary_body_swapped_operands_node {
+  } else if node == dag_mvp1_add_binary_body_swapped_operands_fixture {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }

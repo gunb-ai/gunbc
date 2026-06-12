@@ -17,7 +17,8 @@ import v4.std.diagnostic {
 import v4.std.algebra {
   field_reciprocal_nonzero_precondition_node,
   field_reciprocal_operation,
-  field_reciprocal_operation_node
+  field_reciprocal_operation_node,
+  fold_list
 }
 import v4.std.logic {
   BoolPrimitiveFacts,
@@ -274,4 +275,53 @@ fn wave1_model_core() -> ModelCore {
 
 fn wave1_void() -> ModelCore {
   wave1_model_core()
+}
+
+
+type PrimitiveBundleSubstrateHead
+  = PrimitiveBundleSubstrateHeadMissing
+  | PrimitiveBundleSubstrateHeadFound { substrate: Node }
+
+
+fn model_core_empty_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+
+fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> Node {
+  match bundle {
+    PrimitiveFactBundle { substrate_carrier: substrate, spec_facts: _ } => substrate
+  }
+}
+
+
+// 🟡 gated — feature:model-core-node-projection — consumer:v4.std.language_model.language_model_to_node —
+// dissolve-on: ModelCore core edge projects primitives/inhabitance/laws/effects/partiality as named Conj facts;
+// forbidden: lossy head-only primitive substrate projection without this gate (INVARIANTS P1 facts-flow-forward).
+fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> Node {
+  match fold_list(
+    xs: bundles,
+    empty: PrimitiveBundleSubstrateHeadMissing,
+    cons: fn(acc, bundle) {
+      match acc {
+        PrimitiveBundleSubstrateHeadFound { substrate: _ } => acc
+        PrimitiveBundleSubstrateHeadMissing =>
+          PrimitiveBundleSubstrateHeadFound {
+            substrate: primitive_fact_bundle_substrate(bundle: bundle)
+          }
+      }
+    }
+  ) {
+    PrimitiveBundleSubstrateHeadFound { substrate: node } => node
+    PrimitiveBundleSubstrateHeadMissing => model_core_empty_conj_node()
+  }
+}
+
+
+fn model_core_first_primitive_substrate(core: ModelCore) -> Node {
+  primitive_fact_bundle_list_head_substrate(bundles: core.primitives)
 }

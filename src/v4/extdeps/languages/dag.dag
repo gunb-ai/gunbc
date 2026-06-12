@@ -6,12 +6,24 @@
 
 module v4.extdeps.languages.dag
 
-import v4.std.collection { Absent, List, Set, Map, Present, empty_map, map_insert }
+import v4.std.collection {
+  Absent,
+  List,
+  Set,
+  Map,
+  Optional,
+  Present,
+  empty_map,
+  map_insert,
+  optional_absent,
+  optional_present
+}
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
+  grammar_expr_optional,
   ParseGrammar,
   FormalGrammarSymbol,
   FormalNonterminalOccurrence,
@@ -24,7 +36,6 @@ import v4.std.grammar {
   Choice,
   ModeledGrammar,
   Nonterminal,
-  Optional,
   Repeat,
   Sequence,
   Terminal,
@@ -61,13 +72,32 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_edge
+}
 import v4.std.node_query { find_named_child }
 import v4.std.target_model {
+  CanonicalOperation,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
   TargetModel,
+  canonical_operation_equal,
+  canonical_operation_from_wire_node,
+  canonical_operation_op_add,
+  target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
@@ -83,7 +113,18 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool }
 import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
-import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.qualified_name {
   QnCons,
   QnEmpty,
@@ -128,6 +169,37 @@ type DagLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
+}
+
+data dag_surface_operator_canonicalization_miss: Symbol = dag_surface_operator_canonicalization_miss
+
+fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: dag_surface_operator_canonicalization_miss,
+    at: port_locus(port: ^dag_surface_operator_canonicalization_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data dag_surface_operator_canonicalization_port: Symbol = dag_surface_operator_canonicalization_port
+
+// Wave-1 surface infix operator → substrate CanonicalOperation rows (design-value-emit-schema.md §7 Q-V1).
+fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcome<CanonicalOperation> {
+  if surface_token == ^dag_token_plus {
+    outcome_accepted(canonical_operation_op_add())
+  } else {
+    outcome_rejected(
+      dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
+    )
+  }
+}
+
+// shell: `lm` reserved for PR-T-FINISH translate_algebra §1.5 model-derived table; wave-1 delegates to _member.
+fn dag_surface_operator_canonicalization_lookup(
+  lm: DagLanguageModel,
+  surface_token: Symbol
+) -> Outcome<CanonicalOperation> {
+  dag_surface_operator_canonicalization_member(surface_token: surface_token)
 }
 
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
@@ -1581,7 +1653,7 @@ fn dag_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
 }
 
 fn dag_grammar_optional(element: GrammarExpr) -> GrammarExpr {
-  Optional { element: element }
+  grammar_expr_optional(element: element)
 }
 
 fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
@@ -3199,6 +3271,205 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   map_insert(m2, ^dag_binding_type_int, "Int")
 }
+
+fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
+  [^dag_binding_param_x, ^dag_binding_param_y]
+}
+
+fn dag_mvp1_int_type_binding() -> Symbol {
+  ^dag_binding_type_int
+}
+
+data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_atom_binding_miss
+
+fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
+  Diagnostic {
+    reason: dag_mvp1_captured_flat_atom_binding_miss,
+    at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_atom_binding_port
+
+// Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
+fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
+    _ => false
+  }
+}
+
+// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE —
+// consumer:dag_mvp1_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_add_arrow_signature_from_resolved in 03_body_producer) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
+// flat-index table (indices 5/9/12); owner/lane: Mgr-RUNTIME (neat-bat-593) —
+// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
+// flat-index binding lookup in extdeps. diagnostic-at: port_locus only — flat_index is a
+// token-table index, not a byte offset (ByteRange elsewhere is byte positions); distinct
+// locus variant deferred until scaffold dissolves.
+fn dag_mvp1_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_param_x)
+  } else if flat_index == 9 {
+    outcome_accepted(^dag_binding_param_y)
+  } else if flat_index == 12 {
+    outcome_accepted(^dag_binding_type_int)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_operator_node() -> Node {
+  dag_mvp1_type_atom_node(identity: ^dag_token_plus)
+}
+
+fn dag_mvp1_arrow_domain_conj_node() -> Node {
+  let children = fold_list(
+    xs: dag_mvp1_add_param_binding_ids(),
+    empty: Empty,
+    cons: fn(acc, binding_id) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge {
+          label: Named { name: binding_id },
+          target: dag_mvp1_type_atom_node(identity: dag_mvp1_int_type_binding())
+        }
+      )
+    }
+  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: operator },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: left_binding)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: right_binding)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_binary_body_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_x,
+    right_binding: ^dag_binding_param_y
+  )
+}
+
+fn dag_mvp1_add_binary_body_swapped_operands_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_y,
+    right_binding: ^dag_binding_param_x
+  )
+}
+
+fn dag_mvp1_add_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_with_body_swapped_operands_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_swapped_operands_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_add_arrow_signature_fixture: Node = dag_mvp1_add_arrow_signature_node()
+data dag_mvp1_add_binary_body_fixture: Node = dag_mvp1_add_binary_body_node()
+data dag_mvp1_add_binary_body_swapped_operands_fixture: Node = dag_mvp1_add_binary_body_swapped_operands_node()
+data dag_mvp1_add_arrow_with_body_fixture: Node = dag_mvp1_add_arrow_with_body_node()
+data dag_mvp1_add_arrow_with_body_swapped_operands_fixture: Node = dag_mvp1_add_arrow_with_body_swapped_operands_node()
 
 fn dag_mvp1_target_model() -> TargetModel {
   TargetModel {

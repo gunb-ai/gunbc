@@ -50,7 +50,7 @@ in `THESIS.md` and `ROADMAP.md`, which now carry a one-line "see doc-authority" 
 |-----|------|
 | [`THESIS.md`](../../THESIS.md) | why gunbc exists + the canonical *claims index* (each claim's argument lives in one `docs/thesis/` essay) |
 | [`INVARIANTS.md`](../../INVARIANTS.md) | the must-not-violate rules (P1–P5 + the C/E/L/DB ID index) |
-| [`MODELING.md`](../../MODELING.md) | how to extend the language (M1–M10) |
+| [`MODELING.md`](../../MODELING.md) | how to extend the language (M1–M11) |
 | [`ROADMAP.md`](../../ROADMAP.md) | current **state / plan** (what works, what's landing, lanes, deferrals) — *not* claims |
 | [`CODING.md`](../../CODING.md) / [`TESTING.md`](../../TESTING.md) | implementation / test discipline |
 | [`DIRECTION-CHECKLIST.md`](../../DIRECTION-CHECKLIST.md) `[live]` | the derived design-scan; **owns zero facts** — every item names its `→` authority home |
