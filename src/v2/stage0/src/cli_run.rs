@@ -256,6 +256,32 @@ pub fn resolve_entry_graph(
     resolve_entry_graph_with_index(&index, entry_file)
 }
 
+/// Opaque module source index built from a set of source roots. Pass to
+/// `resolve_entry_with_index` to resolve multiple entries without re-scanning
+/// the filesystem per entry. Used by the `claim_batch` multi-entry green pass.
+pub struct MultiEntryIndex(ModuleSourceIndex);
+
+/// Scan the given source roots once and return a `MultiEntryIndex`. Subsequent
+/// calls to `resolve_entry_with_index` reuse the pre-built index instead of
+/// re-running the filesystem scan.
+pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    MultiEntryIndex(build_module_index(source_roots))
+}
+
+/// Resolve one entry's import closure using a pre-built `MultiEntryIndex`.
+pub fn resolve_entry_with_index(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    resolve_entry_graph_with_index(&index.0, entry_file)
+}
+
 fn resolve_entry_graph_with_index(
     index: &ModuleSourceIndex,
     entry_file: &str,
