@@ -8,7 +8,9 @@ module v4.test.claim.manual.infer_bounded_lattice_completeness_anchor
 
 import v4.compiler.infer {
   InferredTree,
-  infer,
+  infer
+}
+import v4.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   infer_bounded_lattice_instance_gate,
   partial_bounded_lattice_instances_in_tree

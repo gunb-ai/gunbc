@@ -8,7 +8,7 @@
 
 module v4.test.claim.manual.sg5_set_non_ordable_falsification
 
-import v4.compiler.translate { project_type_expression_node }
+import v4.compiler.translate { translate_type_expression_project }
 import v4.extdeps.languages.rust {
   rust_sg5_non_ordable_type_node,
   rust_sg5_set_non_ordable_source_type_node,
@@ -52,7 +52,7 @@ fn sg5_claim_input(ok: Bool) -> Node {
 }
 
 fn sg5_set_non_ordable_projection_rejects() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg5_set_non_ordable_source_type_node(),
     target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()

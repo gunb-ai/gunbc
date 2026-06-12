@@ -572,6 +572,95 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
   }
 }
 
+// When a record literal is inferred against an instantiated generic expected type
+// (e.g. return position NodeFoldTopDown<MyFold, MyFold>), use the resolved
+// expanded struct fields (fn types with A/R already substituted) instead of
+// the bare generic template from lookup_type_by_name.
+fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
+  match type_name {
+    Present { value: tn } =>
+      match expected {
+        Present { value: exp } =>
+          if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == tn
+            && exp.connective == Conj
+            && exp.children |> count > 0 {
+            Present { value: exp }
+          } else {
+            match exp.inferred {
+              Present { value: Resolved { node: expanded } } =>
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: expanded) == tn {
+                  Present { value: expanded }
+                } else { none }
+              _ =>
+                let rt = resolved_type(n: exp)
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: rt) == tn {
+                  Present { value: rt }
+                } else { none }
+            }
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+  match record_lit_expanded_from_expected(type_name: type_name, expected: expected, scope: scope) {
+    Present { value: expanded } =>
+      if expanded.connective == Conj && expanded.children |> count > 0 {
+        Present { value: expanded.children }
+      } else { none }
+    Absent => none
+  }
+}
+
+// Build instantiated struct fields by substituting type-arg slots from an applied
+// generic expected type (NodeFoldTopDown<MyFold, MyFold>) into the template fields.
+fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+  match type_name {
+    Present { value: tn } =>
+      match expected {
+        Present { value: exp } =>
+          if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) != tn {
+            none
+          } else if exp.children |> count == 0 {
+            none
+          } else {
+            match lookup_type_for(env: scope.type_env, node: exp) {
+              Present { value: decl } =>
+                if (decl.params |> count) != (exp.children |> count) {
+                  none
+                } else {
+                  let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+                    let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
+                    match exp.children |> skip(pair.first) |> first {
+                      Present { value: arg } => map_insert(acc, slot, resolved_type(n: arg))
+                      Absent => acc
+                    }
+                  )
+                  let template_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+                  Present { value: template_fields |> map(sf =>
+                    Node {
+                      name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                      children: sf.children, connective: sf.connective, params: sf.params,
+                      inferred: Present { value: Resolved { node: substitute_generics(n: field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
+                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                      transport: sf.transport, properties: sf.properties,
+                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                      expr_data: sf.expr_data
+                    }
+                  ) }
+                }
+              Absent => none
+            }
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 type KernelListTyDiag {
   ty: Node
   miss_diags: List<ErrorNode>
@@ -1263,6 +1352,13 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+fn is_record_lit_expr(e: Node) -> Bool {
+  match e.expr_data {
+    ExprRecordLit { parent_enum: _ } => true
+    _ => false
+  }
+}
+
 fn seed_override_map() -> Map<String, Node> {
   fold([""], init: empty_map(), f: (acc, k) => map_insert(acc, k, unit_type))
 }
@@ -1369,7 +1465,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: base_diags
         }
       } else {
-      match lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices) {
+      let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
+      match field_type_lookup {
         Present { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
           let fa_texpr = make_named_expr_node(
@@ -1477,7 +1574,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
         let generic_names = sig_params
           |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
+          |> map(p => param_node_name_at(n: p, source_indices: scope.type_env.source_indices))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -1489,8 +1586,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
           let expected = if has_formal { Present { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
-          let next_subst = if (is_lambda_expr(e: arg_value(n: a)) || !has_formal) {
+          let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
             st.subst
+          } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
+            unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
           } else {
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
@@ -2127,7 +2226,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
+      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
 
     ExprListLit =>
       let span = texpr.span
@@ -2539,7 +2638,8 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                             field_inits: [payload_init],
                             span: span,
                             name_span: name_span,
-                            scope: scope
+                            scope: scope,
+                            expected: none
                           ) }
                       }
                     Absent => none
@@ -2563,14 +2663,26 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 }
 
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult {
-  let struct_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  let struct_fields = match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+    Present { value: fields } => fields
+    Absent =>
+      match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+        Present { value: fields } => fields
+        Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+      }
+  }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
-        let ft = resolved_type(n: sf)
-        if ft.ident_span != none { Present { value: ft } } else { none }
+        let ft = match sf.inferred {
+          Present { value: Resolved { node: rt } } => rt
+          _ => field_node_type_expr(n: sf)
+        }
+        if ft.ident_span != none || type_node_is_callable(n: ft) {
+          Present { value: ft }
+        } else { none }
       Absent => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
@@ -5029,18 +5141,34 @@ fn is_type_variable_name(name: String) -> Bool {
 // order while threading the generic substitution built from concrete args.
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
 
+fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  if authored != "" {
+    authored
+  } else {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv_id } } => tv_id
+      _ => n.name
+    }
+  }
+}
+
 fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let pt = param_node_type_expr(n: p)
   let pname = param_node_name_at(n: p, source_indices: source_indices)
-  let tname = authored_name_at(source_indices: source_indices, node: pt)
+  let tname = type_node_label(n: pt, source_indices: source_indices)
+  let type_expr_is_var = match pt.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
+  }
   // Bare-leaf type AND self-named: a generic declaration is spelled `T: T` /
   // `U: U` (value-name == type-name), which distinguishes it from a value param
   // whose type happens to be a generic (`x: T` — names differ) or a concrete
-  // type (`node: Node`). Do NOT fall back to is_type_variable_name(tname): that
-  // would misclassify a value param of a USER type named T/K/V (e.g. `x: T`
-  // where `type T { ... }`) as a generic, corrupting value-param indexing.
+  // type (`node: Node`). After resolve, type params may carry TypeVariable
+  // inferred nodes whose authored_name is empty — fall back to param/type names.
   (pt.children |> count == 0 && pt.connective == NoConnective)
-    && ((pname != "") && (pname == tname))
+    && pname != ""
+    && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
 // Bind generic names by unifying a value-formal against the actual arg type.
@@ -5049,16 +5177,17 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // into its one type-arg. Multi-generic / nested / arrow unification is the
 // deferred roadmap (A) — added only when a witness forces it.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let fname = authored_name_at(source_indices: source_indices, node: formal)
+  let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  if f_bare && (generic_names |> any(g => g == fname)) {
+  if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
+    && (generic_names |> any(g => g == bind_name)) {
     // Fail-closed on conflict: bind a generic ONCE (first occurrence wins); never
     // silently overwrite. A later occurrence that disagrees is not papered over by
     // a fresh binding here — it is caught when that arg is inferred against the
     // formal already substituted with the first binding (a typed mismatch at the
     // arg), so inference cannot proceed with a silent unstated choice.
-    match map_get(acc, fname) {
-      Absent => map_insert(acc, fname, actual)
+    match map_get(acc, bind_name) {
+      Absent => map_insert(acc, bind_name, actual)
       Present { value: _ } => acc
     }
   } else if formal.children |> count == 1 && actual.children |> count == 1 {
@@ -5073,6 +5202,72 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
   } else { acc }
 }
 
+fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if !is_record_lit_expr(e: arg_expr) || generic_names |> count == 0 {
+    false
+  } else if formal.children |> count > 0 {
+    true
+  } else {
+    let formal_name = type_node_label(n: formal, source_indices: source_indices)
+    let record_name = type_node_label(n: arg_expr, source_indices: source_indices)
+    formal_name != "" && record_name != "" && formal_name == record_name
+  }
+}
+
+fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
+  fold(struct_fields, init: acc, f: (st, sf) =>
+    let field_name = authored_name_at(source_indices: scope.type_env.source_indices, node: sf)
+    match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices) == field_name) |> first {
+      Present { value: fi } =>
+        let actual_value = field_init_node_value(n: fi)
+        let field_formal = match sf.inferred {
+          Present { value: Resolved { node: rt } } => rt
+          _ => field_node_type_expr(n: sf)
+        }
+        if is_record_lit_expr(e: actual_value) {
+          unify_record_lit_generics(formal: field_formal, record: actual_value, generic_names: generic_names, scope: scope, acc: st)
+        } else {
+          unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
+        }
+      Absent => st
+    }
+  )
+}
+
+fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
+  if formal.children |> count == 0 {
+    let formal_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
+    let is_generic_slot = generic_names |> any(g => g == formal_name)
+    if is_generic_slot {
+      unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+    } else if is_record_lit_expr(e: record) {
+      let record_type_name = type_node_label(n: record, source_indices: scope.type_env.source_indices)
+      if record_type_name != "" && formal_name == record_type_name {
+        unify_record_lit_field_walk(
+          struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
+          record: record,
+          generic_names: generic_names,
+          scope: scope,
+          acc: acc
+        )
+      } else {
+        unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+      }
+    } else {
+      unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+    }
+  } else {
+    let type_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
+    unify_record_lit_field_walk(
+      struct_fields: record_lit_expected_fields(type_name: Present { value: type_name }, scope: scope),
+      record: record,
+      generic_names: generic_names,
+      scope: scope,
+      acc: acc
+    )
+  }
+}
+
 // Substitute bound generics into a type node. Unlike substitute_type_slots,
 // this also descends Arrow params — an Arrow's input types live in Node.params
 // (not children), so a formal like fn(T) -> Outcome<U> needs the input T
@@ -5084,7 +5279,14 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   // non-generic call (and any generic call that bound nothing) a true no-op.
   if (map_keys(subst) |> count) == 0 { n }
   else {
-  let nm = authored_name_at(source_indices: source_indices, node: n)
+  match n.inferred {
+    Present { value: TypeVariable { id: tv_id } } =>
+      match map_get(subst, tv_id) {
+        Present { value: c } => c
+        Absent => n
+      }
+    _ =>
+  let nm = type_node_label(n: n, source_indices: source_indices)
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
     match map_get(subst, nm) {
@@ -5106,6 +5308,7 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
       is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
       match_pattern: n.match_pattern, expr_data: n.expr_data
     }
+  }
   }
   }
 }
