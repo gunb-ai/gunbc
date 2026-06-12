@@ -185,6 +185,16 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
+type NodeFoldTopDown<A,R> {
+  init: fn(Node, A) -> R
+  child_context: fn(Node, A, Edge) -> A
+  step: fn(R, Edge, R) -> R
+}
+fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
+  fold(n.children, init: algebra.init(n, ctx), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_topdown(n: e.target, ctx: algebra.child_context(n, ctx, e), algebra: algebra))
+  })
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type EdgeDiscipline
   = NoEdges
