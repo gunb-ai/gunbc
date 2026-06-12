@@ -661,6 +661,30 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
   }
 }
 
+// Field type lookup on an applied generic carrier (Outer<S>, Middle<S>, …).
+fn lookup_applied_field_type_node(base_rt: Node, field_name: String, scope: InferScope) -> Node? {
+  match lookup_type_for(env: scope.type_env, node: base_rt) {
+    Present { value: decl } =>
+      if (decl.params |> count) == 0 || (decl.params |> count) != (base_rt.children |> count) {
+        none
+      } else {
+        let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+          let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
+          match base_rt.children |> skip(pair.first) |> first {
+            Present { value: arg } => map_insert(acc, slot, resolved_type(n: arg))
+            Absent => acc
+          }
+        )
+        match decl.children |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == field_name) |> first {
+          Present { value: sf } =>
+            Present { value: substitute_generics(n: field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
+}
+
 type KernelListTyDiag {
   ty: Node
   miss_diags: List<ErrorNode>
