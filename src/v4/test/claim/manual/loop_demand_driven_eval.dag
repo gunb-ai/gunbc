@@ -10,6 +10,7 @@ import v4.compiler.eval {
   eval,
   eval_context_with_semantics,
   inputs_root_only,
+  runtime_value_eq,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
@@ -295,6 +296,36 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   )
 }
 
+fn loop_eval_body_direct_accepts_holds() -> Bool {
+  let body = loop_eval_loop_node(body: loop_eval_lit_one())
+  let tree = loop_eval_admitted_tree(root: body)
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: body)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_call_accepts_holds() -> Bool {
+  let body = loop_eval_loop_node(body: loop_eval_lit_one())
+  let arrow = loop_eval_arrow_with_body(body: body)
+  let call = loop_eval_pick_call(callee: arrow)
+  let tree = loop_eval_admitted_tree(
+    root: loop_eval_tree_root(call: call, expected: loop_eval_lit_one())
+  )
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: call)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn loop_eval_direct_call_holds() -> Bool {
   let body = loop_eval_loop_node(body: loop_eval_lit_one())
   let arrow = loop_eval_arrow_with_body(body: body)
@@ -313,7 +344,7 @@ fn loop_eval_direct_call_holds() -> Bool {
         interpretation: loop_eval_interpretation(),
         inputs: inputs_root_only(root: loop_eval_lit_one())
       ) {
-        Accepted { value: expected, diagnostics: _ } => actual == expected
+        Accepted { value: expected, diagnostics: _ } => runtime_value_eq(a: actual, b: expected)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
