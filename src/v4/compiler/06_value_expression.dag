@@ -201,13 +201,7 @@ fn value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
 }
 
 fn value_expr_atom_to_symbol_identity_token(atom: Symbol) -> Outcome<Symbol> {
-  if atom == ^dag_mvp1_pick_lit_one {
-    outcome_accepted(^dag_token_int_literal)
-  } else if atom == ^dag_mvp1_pick_lit_two {
-    outcome_accepted(^dag_token_int_literal)
-  } else {
-    outcome_accepted(atom)
-  }
+  outcome_accepted(atom)
 }
 
 fn value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpression> {
