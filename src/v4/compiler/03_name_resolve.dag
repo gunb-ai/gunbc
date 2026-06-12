@@ -42,8 +42,10 @@ import v4.std.node {
   Conj,
   Edge,
   Node,
+  NodeFoldTopDown,
   Symbol,
   TypeNode,
+  fold_node_topdown,
   well_formed
 }
 import v4.std.passing_candidate_fold {
@@ -348,6 +350,13 @@ fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
 }
 
 
+type AdmitExportsFold {
+  origin: QualifiedName
+  state: AdmissionState
+  at_conj: Bool
+}
+
+
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
@@ -361,6 +370,57 @@ fn admit_named_export_edge(
 }
 
 
+fn named_exports_topdown_init(n: Node, fold: AdmitExportsFold) -> AdmitExportsFold {
+  AdmitExportsFold {
+    origin: fold.origin,
+    state: fold.state,
+    at_conj: match n.kind {
+      TypeNode { connective: Conj } => true
+      _ => false
+    }
+  }
+}
+
+
+fn named_exports_topdown_child_context(
+  n: Node,
+  fold: AdmitExportsFold,
+  e: Edge
+) -> AdmitExportsFold {
+  fold
+}
+
+
+fn named_exports_topdown_step(
+  acc: AdmitExportsFold,
+  e: Edge,
+  child_r: AdmitExportsFold
+) -> AdmitExportsFold {
+  if acc.at_conj {
+    AdmitExportsFold {
+      origin: acc.origin,
+      state: admit_named_export_edge(
+        edge: e,
+        origin: acc.origin,
+        state: acc.state
+      ),
+      at_conj: true
+    }
+  } else {
+    child_r
+  }
+}
+
+
+fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
+  NodeFoldTopDown {
+    init: named_exports_topdown_init,
+    child_context: named_exports_topdown_child_context,
+    step: named_exports_topdown_step
+  }
+}
+
+
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
@@ -368,9 +428,18 @@ fn admit_named_exports(
 ) -> AdmissionState {
   match root.kind {
     TypeNode { connective: Conj } =>
-      fold(root.children, init: state, f: fn(acc, e) {
-        admit_named_export_edge(edge: e, origin: origin, state: acc)
-      })
+      match fold_node_topdown(
+        n: root,
+        ctx: AdmitExportsFold {
+          origin: origin,
+          state: state,
+          at_conj: false
+        },
+        algebra: named_exports_topdown_algebra()
+      ) {
+        AdmitExportsFold { state: folded_state, origin: _, at_conj: _ } =>
+          folded_state
+      }
     _ => state
   }
 }
