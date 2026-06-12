@@ -1372,31 +1372,23 @@ fn decode_value_expression_projection_bundle(
                                               bundle: conditional_bundle
                                             ),
                                             f: fn(conditional_form) {
-                                  name: target_value_expr_field_conditional
-                                ),
-                                f: fn(conditional_bundle) {
-                                  bind_outcome(
-                                    o: decode_conditional_shape_bundle(
-                                      bundle: conditional_bundle
-                                    ),
-                                    f: fn(conditional_form) {
-                                      outcome_accepted(
-                                        TargetValueExpressionProjection {
-                                          binding_ref_form: binding_ref_form,
-                                          primitive_apply_form: primitive_apply_form,
-                                          callable_apply_form: callable_apply_form,
-                                          effect_apply_form: effect_apply_form,
-                                          conditional_form: conditional_form
-                                          effect_apply_form: effect_apply_form
-                                          conditional_form: conditional_form
+                                              outcome_accepted(
+                                                TargetValueExpressionProjection {
+                                                  binding_ref_form: binding_ref_form,
+                                                  primitive_apply_form: primitive_apply_form,
+                                                  callable_apply_form: callable_apply_form,
+                                                  effect_apply_form: effect_apply_form,
+                                                  conditional_form: conditional_form
+                                                }
+                                              )
+                                            }
+                                          )
                                         }
                                       )
                                     }
                                   )
                                 }
                               )
-                            }
-                          )
                         }
                       )
                     }
