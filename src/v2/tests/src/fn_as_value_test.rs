@@ -149,9 +149,36 @@ fn use_get() -> Int { get(w: Wrap { value: Rec { v: 9 } }).v }
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
         Ok(Value::Int(9)) => {}
-        other => panic!(
-            "expected Int(9) from one-level wrap generic call return .v, got {other:?}"
-        ),
+        other => {
+            panic!("expected Int(9) from one-level wrap generic call return .v, got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn generic_nested_record_body_field_access_red() {
+    let src = r#"module test.gi4b
+type Inner<S> { value: S }
+type Outer<S> { inner: Inner<S> }
+type Rec { v: Int }
+fn use_body() -> Rec {
+  let o = Outer { inner: Inner { value: Rec { v: 9 } } }
+  o.inner.value
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_body") {
+        Ok(Value::Record {
+            type_name: _,
+            fields: _,
+        }) => {}
+        other => panic!("expected Rec from nested body field access, got {other:?}"),
     }
 }
 
@@ -162,7 +189,7 @@ type Inner<S> { value: S }
 type Outer<S> { inner: Inner<S> }
 type Rec { v: Int }
 fn get<S>(o: Outer<S>) -> S { o.inner.value }
-fn use_get() -> Int { get(o: Outer { inner: Inner { value: Rec { v: 9 } } }).v }
+fn use_get() -> Rec { get(o: Outer { inner: Inner { value: Rec { v: 9 } } }) }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
     let resolved = compile_to_resolved(Rc::new(sources));
@@ -172,8 +199,11 @@ fn use_get() -> Int { get(o: Outer { inner: Inner { value: Rec { v: 9 } } }).v }
         .as_ref()
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_get") {
-        Ok(Value::Int(9)) => {}
-        other => panic!("expected Int(9) from nested generic record call return .v, got {other:?}"),
+        Ok(Value::Record {
+            type_name: _,
+            fields: _,
+        }) => {}
+        other => panic!("expected Rec record from nested generic get call, got {other:?}"),
     }
 }
 
