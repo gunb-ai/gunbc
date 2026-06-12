@@ -73,9 +73,7 @@ pub fn empty_binding_id_allocator() -> BindingIdAllocator {
 
 pub fn alloc_binding_id(allocator: BindingIdAllocator) -> Rc<BindingIdAllocResult> {
     Rc::new(BindingIdAllocResult {
-        binding_id: BindingId {
-            value: allocator.next_id.clone(),
-        },
+        binding_id: BindingId::mint(allocator.next_id.clone()),
         allocator: BindingIdAllocator {
             next_id: (allocator.next_id.clone() + 1),
         },
