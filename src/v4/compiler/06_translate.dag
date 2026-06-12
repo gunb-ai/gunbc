@@ -1900,7 +1900,12 @@ fn translate_algebra(
                 value: TypeExprTranslateVariants { variants: Empty },
                 diagnostics: None
               }
-            Instantiation | Cardinality =>
+            Instantiation =>
+              Accepted {
+                value: TypeExprTranslatePositional { items: Empty },
+                diagnostics: None
+              }
+            Cardinality =>
               Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
                 diagnostics: None
@@ -2095,7 +2100,27 @@ fn translate_type_expression_project(
                   }
                 )
               }
-            Conj | Disj | Arrow =>
+            Conj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Disj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Arrow =>
               bind_outcome(
                 o: fold_node(
                   n: node,
