@@ -20,9 +20,9 @@ use v3_compiler::dag::{
     Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective, ValueBody,
 };
 use v3_grounding_inhabitance_mirror::{
-    target_name as pilot_target_name, IntegerAlgebra as PilotIntegerAlgebra,
-    IntegerOverflow as PilotIntegerOverflow, NonIntegerAlgebra as PilotNonIntegerAlgebra,
-    RustPrimitive as PilotRustPrimitive, TargetCarrier as PilotTargetCarrier,
+    target_name as mirror_target_name, IntegerAlgebra as MirrorIntegerAlgebra,
+    IntegerOverflow as MirrorIntegerOverflow, NonIntegerAlgebra as MirrorNonIntegerAlgebra,
+    RustPrimitive as MirrorRustPrimitive, TargetCarrier as MirrorTargetCarrier,
     RUST_INHABITANCE_MIRROR,
 };
 
@@ -76,9 +76,9 @@ pub fn validate_loaded_rust_primitive_type_structure() -> StructureResult<RustPr
 
 pub fn validate_rust_primitive_type_structure(
     dag: &Dag,
-    pilot_list_decl: &Declaration,
+    grounding_list_decl: &Declaration,
 ) -> StructureResult<RustPrimitiveTypeShape> {
-    let rust_primitive_id = rust_primitive_element_id(pilot_list_decl)?;
+    let rust_primitive_id = rust_primitive_element_id(grounding_list_decl)?;
     let rust_primitive = dag.declaration(rust_primitive_id);
     expect_named_decl(
         rust_primitive,
@@ -174,9 +174,9 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
             actual: format!("{shape:?}"),
         });
     }
-    validate_pilot_values_with_shape(&shape)?;
+    validate_mirror_values_with_shape(&shape)?;
     validate_rust_grounding_primitives_target_name_multiset_matches_mirror()?;
-    validate_rust_pilot_rows_match_mirror()
+    validate_rust_grounding_rows_match_mirror()
 }
 
 /// Cementing receipt (R3 / gunbc#2461): every `target_name` in the lowered
@@ -185,14 +185,14 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
 /// if either side introduces or drops a name the other lacks.
 pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror() -> StructureResult<()> {
     let dag = Dag::new();
-    let pilot_list = dag
+    let grounding_list = dag
         .rust_grounding_primitives()
         .ok_or_else(|| StructureMismatch {
             location: "Dag::rust_grounding_primitives".to_string(),
             expected: "loaded rust_grounding_primitives declaration".to_string(),
             actual: "missing".to_string(),
         })?;
-    let body = pilot_list
+    let body = grounding_list
         .value_body
         .as_ref()
         .ok_or_else(|| StructureMismatch {
@@ -224,7 +224,7 @@ pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror() 
 
     let mut from_mirror: Vec<String> = RUST_INHABITANCE_MIRROR
         .iter()
-        .map(|p| pilot_target_name(p).to_string())
+        .map(|p| mirror_target_name(p).to_string())
         .collect();
 
     from_dag.sort();
@@ -241,9 +241,9 @@ pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror() 
 
 /// Phase 2: every lowered `rust_grounding_primitives` list element must match the
 /// mirror row at the same position (authority ordering in `primitives.dag`).
-pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
+pub fn validate_rust_grounding_rows_match_mirror() -> StructureResult<()> {
     let dag = Dag::new();
-    let pilot_list = dag
+    let grounding_list = dag
         .rust_grounding_primitives()
         .ok_or_else(|| StructureMismatch {
             location: "Dag::rust_grounding_primitives".to_string(),
@@ -251,7 +251,7 @@ pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
             actual: "missing".to_string(),
         })?;
 
-    let rust_primitive_id = rust_primitive_element_id(pilot_list)?;
+    let rust_primitive_id = rust_primitive_element_id(grounding_list)?;
     let rust_primitive = dag.declaration(rust_primitive_id);
     let disj_variants = expect_disj_variants(
         rust_primitive,
@@ -259,7 +259,7 @@ pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
         &["IntegerPrimitive", "NonIntegerPrimitive"],
     )?;
 
-    let body = pilot_list
+    let body = grounding_list
         .value_body
         .as_ref()
         .ok_or_else(|| StructureMismatch {
@@ -283,17 +283,17 @@ pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
     }
 
     for (idx, (element, mirror)) in elements.iter().zip(RUST_INHABITANCE_MIRROR).enumerate() {
-        assert_rust_pilot_row_matches_mirror(&dag, &disj_variants, idx, element, mirror)?;
+        assert_rust_grounding_row_matches_mirror(&dag, &disj_variants, idx, element, mirror)?;
     }
     Ok(())
 }
 
-fn assert_rust_pilot_row_matches_mirror(
+fn assert_rust_grounding_row_matches_mirror(
     dag: &Dag,
     disj_variants: &[Field],
     idx: usize,
     element: &FieldValue,
-    mirror: &PilotRustPrimitive,
+    mirror: &MirrorRustPrimitive,
 ) -> StructureResult<()> {
     let location = format!("rust_grounding_primitives[{idx}]");
     let FieldValue::Variant {
@@ -311,7 +311,7 @@ fn assert_rust_pilot_row_matches_mirror(
     let variant_label = rust_primitive_variant_label(disj_variants, *constructor, idx)?;
     let label = variant_label.as_str();
     match mirror {
-        PilotRustPrimitive::IntegerPrimitive { .. } => {
+        MirrorRustPrimitive::IntegerPrimitive { .. } => {
             if label != "IntegerPrimitive" {
                 return Err(StructureMismatch {
                     location,
@@ -321,7 +321,7 @@ fn assert_rust_pilot_row_matches_mirror(
             }
             assert_integer_primitive_payload_matches(dag, payload, mirror)
         }
-        PilotRustPrimitive::NonIntegerPrimitive { .. } => {
+        MirrorRustPrimitive::NonIntegerPrimitive { .. } => {
             if label != "NonIntegerPrimitive" {
                 return Err(StructureMismatch {
                     location,
@@ -563,7 +563,7 @@ fn enum_shape(name: &str, variants: &[&str]) -> EnumShape {
     }
 }
 
-fn validate_pilot_values_with_shape(shape: &RustPrimitiveTypeShape) -> StructureResult<()> {
+fn validate_mirror_values_with_shape(shape: &RustPrimitiveTypeShape) -> StructureResult<()> {
     let variant_names: BTreeSet<&str> = shape
         .variants
         .iter()
@@ -576,7 +576,7 @@ fn validate_pilot_values_with_shape(shape: &RustPrimitiveTypeShape) -> Structure
 
     for primitive in RUST_INHABITANCE_MIRROR {
         match primitive {
-            PilotRustPrimitive::IntegerPrimitive {
+            MirrorRustPrimitive::IntegerPrimitive {
                 algebra,
                 carrier,
                 overflow,
@@ -585,26 +585,26 @@ fn validate_pilot_values_with_shape(shape: &RustPrimitiveTypeShape) -> Structure
                 require_variant_known(&variant_names, "RustPrimitive.IntegerPrimitive")?;
                 require_tag_known(
                     &integer_algebras,
-                    pilot_integer_algebra_name(*algebra),
+                    mirror_integer_algebra_name(*algebra),
                     "IntegerAlgebra",
                 )?;
-                require_tag_known(&carriers, pilot_carrier_name(*carrier), "TargetCarrier")?;
+                require_tag_known(&carriers, mirror_carrier_name(*carrier), "TargetCarrier")?;
                 require_tag_known(
                     &overflows,
-                    pilot_overflow_name(*overflow),
+                    mirror_overflow_name(*overflow),
                     "IntegerOverflow",
                 )?;
             }
-            PilotRustPrimitive::NonIntegerPrimitive {
+            MirrorRustPrimitive::NonIntegerPrimitive {
                 algebra, carrier, ..
             } => {
                 require_variant_known(&variant_names, "RustPrimitive.NonIntegerPrimitive")?;
                 require_tag_known(
                     &non_integer_algebras,
-                    pilot_non_integer_algebra_name(*algebra),
+                    mirror_non_integer_algebra_name(*algebra),
                     "NonIntegerAlgebra",
                 )?;
-                require_tag_known(&carriers, pilot_carrier_name(*carrier), "TargetCarrier")?;
+                require_tag_known(&carriers, mirror_carrier_name(*carrier), "TargetCarrier")?;
             }
         }
     }
@@ -643,38 +643,38 @@ fn require_tag_known(tags: &BTreeMap<&str, ()>, tag: &str, enum_name: &str) -> S
     }
 }
 
-fn pilot_integer_algebra_name(algebra: PilotIntegerAlgebra) -> &'static str {
+fn mirror_integer_algebra_name(algebra: MirrorIntegerAlgebra) -> &'static str {
     match algebra {
-        PilotIntegerAlgebra::OrderedRing => "OrderedRingAlgebra",
-        PilotIntegerAlgebra::Semiring => "SemiringAlgebra",
+        MirrorIntegerAlgebra::OrderedRing => "OrderedRingAlgebra",
+        MirrorIntegerAlgebra::Semiring => "SemiringAlgebra",
     }
 }
 
-fn pilot_non_integer_algebra_name(algebra: PilotNonIntegerAlgebra) -> &'static str {
+fn mirror_non_integer_algebra_name(algebra: MirrorNonIntegerAlgebra) -> &'static str {
     match algebra {
-        PilotNonIntegerAlgebra::ApproximateField => "ApproximateFieldAlgebra",
-        PilotNonIntegerAlgebra::BooleanAlgebra => "BooleanAlgebraAlgebra",
-        PilotNonIntegerAlgebra::Terminal => "TerminalAlgebra",
+        MirrorNonIntegerAlgebra::ApproximateField => "ApproximateFieldAlgebra",
+        MirrorNonIntegerAlgebra::BooleanAlgebra => "BooleanAlgebraAlgebra",
+        MirrorNonIntegerAlgebra::Terminal => "TerminalAlgebra",
     }
 }
 
-fn pilot_carrier_name(carrier: PilotTargetCarrier) -> &'static str {
+fn mirror_carrier_name(carrier: MirrorTargetCarrier) -> &'static str {
     match carrier {
-        PilotTargetCarrier::Bit => "BitCarrier",
-        PilotTargetCarrier::Byte => "ByteCarrier",
-        PilotTargetCarrier::Word16 => "Word16Carrier",
-        PilotTargetCarrier::Word32 => "Word32Carrier",
-        PilotTargetCarrier::Word64 => "Word64Carrier",
-        PilotTargetCarrier::Word128 => "Word128Carrier",
-        PilotTargetCarrier::Terminal => "TerminalCarrier",
+        MirrorTargetCarrier::Bit => "BitCarrier",
+        MirrorTargetCarrier::Byte => "ByteCarrier",
+        MirrorTargetCarrier::Word16 => "Word16Carrier",
+        MirrorTargetCarrier::Word32 => "Word32Carrier",
+        MirrorTargetCarrier::Word64 => "Word64Carrier",
+        MirrorTargetCarrier::Word128 => "Word128Carrier",
+        MirrorTargetCarrier::Terminal => "TerminalCarrier",
     }
 }
 
-fn pilot_overflow_name(overflow: PilotIntegerOverflow) -> &'static str {
+fn mirror_overflow_name(overflow: MirrorIntegerOverflow) -> &'static str {
     match overflow {
-        PilotIntegerOverflow::TwoComplementWrap => "TwoComplementWrap",
-        PilotIntegerOverflow::Saturating => "Saturating",
-        PilotIntegerOverflow::Trap => "Trap",
+        MirrorIntegerOverflow::TwoComplementWrap => "TwoComplementWrap",
+        MirrorIntegerOverflow::Saturating => "Saturating",
+        MirrorIntegerOverflow::Trap => "Trap",
     }
 }
 
@@ -810,9 +810,9 @@ fn require_string_eq(actual: &str, expected: &str, field: &str) -> StructureResu
 fn assert_integer_primitive_payload_matches(
     dag: &Dag,
     payload: &[FieldValue],
-    pilot: &PilotRustPrimitive,
+    pilot: &MirrorRustPrimitive,
 ) -> StructureResult<()> {
-    let PilotRustPrimitive::IntegerPrimitive {
+    let MirrorRustPrimitive::IntegerPrimitive {
         target_name,
         algebra,
         carrier,
@@ -823,7 +823,7 @@ fn assert_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_rust_pilot_rows_match_mirror".to_string(),
+            location: "validate_rust_grounding_rows_match_mirror".to_string(),
             expected: "IntegerPrimitive mirror row".to_string(),
             actual: "NonIntegerPrimitive".to_string(),
         });
@@ -845,7 +845,7 @@ fn assert_integer_primitive_payload_matches(
         &payload[1],
         &format!("{ctx}.algebra"),
     )?;
-    require_string_eq(&alg, pilot_integer_algebra_name(*algebra), "algebra")?;
+    require_string_eq(&alg, mirror_integer_algebra_name(*algebra), "algebra")?;
     let car = expect_nullary_variant_label(
         dag,
         "TargetCarrier",
@@ -861,7 +861,7 @@ fn assert_integer_primitive_payload_matches(
         &payload[2],
         &format!("{ctx}.carrier"),
     )?;
-    require_string_eq(&car, pilot_carrier_name(*carrier), "carrier")?;
+    require_string_eq(&car, mirror_carrier_name(*carrier), "carrier")?;
     let rmin = expect_literal_string_at(payload, 3, ctx)?;
     require_string_eq(&rmin, range_min_inclusive, "range_min_inclusive")?;
     let rmax = expect_literal_string_at(payload, 4, ctx)?;
@@ -881,16 +881,16 @@ fn assert_integer_primitive_payload_matches(
         &payload[6],
         &format!("{ctx}.overflow"),
     )?;
-    require_string_eq(&ov, pilot_overflow_name(*overflow), "overflow")?;
+    require_string_eq(&ov, mirror_overflow_name(*overflow), "overflow")?;
     Ok(())
 }
 
 fn assert_non_integer_primitive_payload_matches(
     dag: &Dag,
     payload: &[FieldValue],
-    pilot: &PilotRustPrimitive,
+    pilot: &MirrorRustPrimitive,
 ) -> StructureResult<()> {
-    let PilotRustPrimitive::NonIntegerPrimitive {
+    let MirrorRustPrimitive::NonIntegerPrimitive {
         target_name,
         algebra,
         carrier,
@@ -898,7 +898,7 @@ fn assert_non_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_rust_pilot_rows_match_mirror".to_string(),
+            location: "validate_rust_grounding_rows_match_mirror".to_string(),
             expected: "NonIntegerPrimitive mirror row".to_string(),
             actual: "IntegerPrimitive".to_string(),
         });
@@ -924,7 +924,7 @@ fn assert_non_integer_primitive_payload_matches(
         &payload[1],
         &format!("{ctx}.algebra"),
     )?;
-    require_string_eq(&alg, pilot_non_integer_algebra_name(*algebra), "algebra")?;
+    require_string_eq(&alg, mirror_non_integer_algebra_name(*algebra), "algebra")?;
     let car = expect_nullary_variant_label(
         dag,
         "TargetCarrier",
@@ -940,7 +940,7 @@ fn assert_non_integer_primitive_payload_matches(
         &payload[2],
         &format!("{ctx}.carrier"),
     )?;
-    require_string_eq(&car, pilot_carrier_name(*carrier), "carrier")?;
+    require_string_eq(&car, mirror_carrier_name(*carrier), "carrier")?;
     let ic = expect_literal_bool_at(payload, 3, ctx)?;
     if ic != *is_copy {
         return Err(StructureMismatch {
@@ -963,19 +963,19 @@ mod tests {
     }
 
     #[test]
-    fn mirror_consistency_links_loader_shape_to_pilot_constants() {
+    fn mirror_consistency_links_loader_shape_to_mirror_constants() {
         validate_mirror_consistency().expect("pilot mirror matches loaded type shape");
     }
 
     #[test]
-    fn rust_grounding_primitives_target_name_multiset_matches_grounding_inhabitance_mirror_mirror() {
+    fn rust_grounding_primitives_target_name_multiset_matches_inhabitance_mirror() {
         validate_rust_grounding_primitives_target_name_multiset_matches_mirror()
             .expect("authority `target_name` multiset matches RUST_INHABITANCE_MIRROR (gunbc#2461)");
     }
 
     #[test]
-    fn all_enumerated_pilot_rows_match_mirror_including_floats() {
-        validate_rust_pilot_rows_match_mirror()
+    fn all_enumerated_grounding_rows_match_mirror_including_floats() {
+        validate_rust_grounding_rows_match_mirror()
             .expect("all lowered list rows match RUST_INHABITANCE_MIRROR, including f32/f64");
     }
 

@@ -1,6 +1,6 @@
-// v3-grounding-inhabitance-mirror crate root -- T-Ground-Pilot toy inhabitance-search engine.
+// v3-grounding-inhabitance-mirror crate root — inhabitance-search routing mirror.
 //
-// PROBE SCOPE (T-Ground-Pilot worker brief):
+// MIRROR SCOPE (T-Ground inhabitance parity):
 //   Validate that algebra-homomorphism inhabitance search reproduces
 //   today's name-keyed table-lookup routing for the Rust target on a
 //   bounded primitive set: {i8, i16, i32, i64, i128, u8, u16, u32, u64, u128,
@@ -18,23 +18,23 @@
 //   Does inhabitance-search routing — consuming structural target-primitive
 //   declarations and selecting by algebra-homomorphism — produce the same
 //   target-primitive selection as today's name-keyed table lookup, on a
-//   small Rust pilot set?
+//   small Rust grounding primitive set?
 //
-// PROBE — NOT PRODUCTION:
+// MIRROR — NOT PRODUCTION:
 //   This crate is a deliberate side-channel. It does not feed the emit
 //   pipeline; it does not consume the v3 substrate's parsed-Dag form; it
 //   does not edit dsl/extdeps/languages/rust/types.dag or dsl/std/coercion.dag.
 //   It mirrors the structural facts authored in dsl/extdeps/languages/rust/
 //   primitives.dag and dsl/std/integer.dag as Rust constants and walks them
-//   to demonstrate routing equivalence on the pilot set.
+//   to demonstrate routing equivalence on the bounded grounding set.
 //
 //   Production routing through the .dag substrate ("the real walker")
 //   lands in T-Ground-Engine after the proposal greenlights the approach.
-//   This probe's job is the greenlight signal.
+//   This mirror's job is the greenlight signal.
 //
 // CRATE-LEVEL ISOLATION:
 //   Lives as a sibling crate of v3-compiler (not a module within it) so
-//   the probe's lifecycle is fully isolated: zero compiler-internal deps,
+//   the mirror's lifecycle is fully isolated: zero compiler-internal deps,
 //   no coupling to the production pipeline, and the SG-0 hand-Rust
 //   ratchet on src/v3/compiler is untouched.
 //
@@ -53,9 +53,9 @@
 //      Cardinality<T, Exactly(1)>.
 //
 // ESCALATION (per brief, do not absorb in lane):
-//   - Any pilot-set type can't be structurally declared without inventing
+//   - Any mirror-set type can't be structurally declared without inventing
 //     a substrate capability beyond what's flagged above.
-//   - Any routing-parity failure on the pilot set.
+//   - Any routing-parity failure on the mirror set.
 //   - Any case where inhabitance-search composition fails for a primitive
 //     class (e.g. can't distinguish signed/unsigned via single homomorphism).
 //   None of these triggered while authoring this probe; see PR description
@@ -606,7 +606,7 @@ mod tests {
     /// Coverage — every type in DAG_INHABITANCE_TYPES grounds to exactly one
     /// primitive. Asserts the pilot set is fully covered.
     #[test]
-    fn pilot_set_fully_covered() {
+    fn inhabitance_set_fully_covered() {
         for &dag in DAG_INHABITANCE_TYPES {
             let r = ground(dag);
             assert!(r.is_ok(), "pilot type {dag:?} must ground; got {r:?}");
@@ -616,7 +616,7 @@ mod tests {
     /// Coverage — engine output names exactly match the canonical
     /// expectation across all 14 pilot types in one place.
     #[test]
-    fn full_pilot_routing_table() {
+    fn full_inhabitance_routing_table() {
         let expected: &[(DagType, &str)] = &[
             (DagType::Int8, "i8"),
             (DagType::Int16, "i16"),
@@ -659,7 +659,7 @@ mod tests {
     /// Pilot is constructed so each RoutingKey is uniquely inhabited.
     /// Confirms no two primitive declarations collide on the same key.
     #[test]
-    fn pilot_primitives_have_unique_routing_keys() {
+    fn mirror_primitives_have_unique_routing_keys() {
         let mut seen: Vec<RoutingKey> = Vec::new();
         for p in RUST_INHABITANCE_MIRROR {
             let key = routing_key(p);
