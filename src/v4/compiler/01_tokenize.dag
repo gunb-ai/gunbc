@@ -1,9 +1,8 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Status: T-6 lexer walk realized. Zero Annotation Mandate applied: fold-based lex_walk
-//         (LexWalkAcc over source chars), fold-based RepeatPattern/OneOrMorePattern arms in
-//         lex_match_pattern; lex_string_fuel and lex_repeat_pattern removed. T-22: 0 diagnostics.
+// Status: §1.8 stage-fold — lex_walk = fold_source(src, lex_walk_source_algebra); lex_try_rule
+//         = fold_lex_pattern<LexMatchThunk>. T-6 lexer walk realized. T-22: 0 diagnostics.
 
 
 module v4.compiler.tokenize
@@ -420,8 +419,7 @@ fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
 }
 
 
-// Accumulator for fold-based lex_walk.
-// fold_list(xs: source) bounds iterations to length(source); done: true short-circuits.
+// Accumulator for fold_source-based lex walk.
 // Each successful step consumes ≥1 chars (zero-width guard sets error: true).
 type LexWalkAcc {
   remaining: String
@@ -433,58 +431,56 @@ type LexWalkAcc {
 
 
 // lex_walk: scan source left-to-right; emit tokens, discard trivia, error on E1.
-// fold_list(xs: source) provides the termination bound (length(source) iterations).
-// Each non-error step consumes ≥1 characters; done: true short-circuits remaining steps.
+// §1.8: one fold_source over lex rules — traversal owned by the combinator.
 fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
-  let init = LexWalkAcc { remaining: source, tokens: Empty, pos: 0, done: false, error: false }
-  let result = fold_list(
-    xs: source,
-    empty: init,
-    cons: fn(acc, _) {
-      match acc.done {
-        true => acc
-        false =>
-          match string_is_empty(s: acc.remaining) {
-            true =>
-              LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: false }
-            false =>
-              match lex_try_rules(rules: rules.rules, source: acc.remaining) {
-                LexRuleNoMatch =>
-                  LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
-                LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-                  match string_is_empty(s: lexeme) {
-                    true =>
-                      LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
-                    false =>
-                      LexWalkAcc {
-                        remaining: remaining,
-                        tokens: acc.tokens,
-                        pos: acc.pos + length(xs: lexeme),
-                        done: false,
-                        error: false
-                      }
-                  }
-                LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-                  match string_is_empty(s: lexeme) {
-                    true =>
-                      LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
-                    false =>
-                      LexWalkAcc {
-                        remaining: remaining,
-                        tokens: list_snoc_item(
-                          xs: acc.tokens,
-                          item: Token { class: class, lexeme: lexeme, file: file, start: acc.pos, end: acc.pos + length(xs: lexeme) }
-                        ),
-                        pos: acc.pos + length(xs: lexeme),
-                        done: false,
-                        error: false
-                      }
-                  }
-              }
-          }
+  let algebra: SourceFold<LexWalkAcc> = SourceFold {
+      init: fn(src) {
+        LexWalkAcc { remaining: src, tokens: Empty, pos: 0, done: false, error: false }
+      },
+      is_done: fn(acc) { acc.done },
+      step: fn(acc) {
+        match string_is_empty(s: acc.remaining) {
+          true =>
+            LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: false }
+          false =>
+            match lex_try_rules(rules: rules.rules, source: acc.remaining) {
+              LexRuleNoMatch =>
+                LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+              LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+                match string_is_empty(s: lexeme) {
+                  true =>
+                    LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+                  false =>
+                    LexWalkAcc {
+                      remaining: remaining,
+                      tokens: acc.tokens,
+                      pos: acc.pos + length(xs: lexeme),
+                      done: false,
+                      error: false
+                    }
+                }
+              LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+                match string_is_empty(s: lexeme) {
+                  true =>
+                    LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+                  false =>
+                    LexWalkAcc {
+                      remaining: remaining,
+                      tokens: list_snoc_item(
+                        xs: acc.tokens,
+                        item: Token { class: class, lexeme: lexeme, file: file, start: acc.pos, end: acc.pos + length(xs: lexeme) }
+                      ),
+                      pos: acc.pos + length(xs: lexeme),
+                      done: false,
+                      error: false
+                    }
+                }
+            }
+        }
       }
     }
-  )
+  }
+  let result = fold_source(src: source, algebra: algebra)
   let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
   if result.error {
     Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
