@@ -78,6 +78,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -94,6 +95,50 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
         resolved_type(ch.clone())
     } else {
         ch.clone()
+    }
+}
+
+pub fn node_is_bare_type_ref(n: Rc<Node>) -> bool {
+    (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+}
+
+pub fn node_bare_alias_target_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if node_is_bare_type_ref(n.clone()) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                if node_is_bare_type_ref(target.clone()) {
+                    Some(authored_name_at(source_indices, target.clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+pub fn nodes_are_transparent_bare_alias_pair(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let left_name = authored_name_at(source_indices.clone(), left.clone());
+        let right_name = authored_name_at(source_indices.clone(), right.clone());
+        match node_bare_alias_target_name(left.clone(), source_indices.clone()) {
+            Some(left_target) => (left_target.clone().as_str() == right_name.as_str()),
+            None => match node_bare_alias_target_name(right.clone(), source_indices.clone()) {
+                Some(right_target) => (right_target.clone().as_str() == left_name.as_str()),
+                None => false,
+            },
+        }
     }
 }
 
@@ -164,6 +209,8 @@ pub fn structural_carrier_template_name(
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
+                ident: n.ident.clone(),
+                binding_id: n.binding_id.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
                 children: n.children.clone(),
@@ -180,12 +227,48 @@ pub fn structural_carrier_template_name(
                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                 match_pattern: n.match_pattern.clone(),
                 expr_data: n.expr_data.clone(),
-                ident: None,
             }),
             source_indices,
         )
     } else {
         canonical_template_name(n.clone(), source_indices)
+    }
+}
+
+pub fn free_monoid_coproduct_element(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if ((n.connective.clone() == Connective::Disj)
+        && (canonical_template_name(n.clone(), source_indices.clone()).as_str()
+            == "FreeMonoid".to_string().as_str()))
+    {
+        {
+            let cons_variant =
+                find_child_named(n.clone(), "Cons".to_string(), source_indices.clone());
+            match cons_variant {
+                Some(cons) => {
+                    let head_by_name = match find_child_named(
+                        cons.clone(),
+                        "head".to_string(),
+                        source_indices.clone(),
+                    ) {
+                        Some(head_field) => Some(child_type_node(head_field.clone())),
+                        None => None,
+                    };
+                    match head_by_name.clone() {
+                        Some(_) => head_by_name.clone(),
+                        None => match cons.children.clone().first().cloned() {
+                            Some(first_field) => Some(child_type_node(first_field.clone())),
+                            None => None,
+                        },
+                    }
+                }
+                None => None,
+            }
+        }
+    } else {
+        None
     }
 }
 
@@ -202,7 +285,10 @@ pub fn is_leaf_type(n: Rc<Node>) -> bool {
 }
 
 pub fn is_unit_like(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
+        || (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (n.name.clone().as_str() == "Unit".to_string().as_str())))
 }
 
 pub fn is_fully_resolved(
@@ -275,6 +361,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
+                        binding_id: None,
                         ident: None,
                     }),
                     Rc::new(Node {
@@ -297,6 +384,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
+                        binding_id: None,
                         ident: None,
                     }),
                 ]),
@@ -313,6 +401,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_id: None,
                 ident: None,
             })),
             None => None,
@@ -347,6 +436,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_id: None,
                 ident: None,
             })]),
             connective: Connective::NoConnective,
@@ -362,6 +452,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         })),
         None => None,
@@ -408,6 +499,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
+            binding_id: None,
             ident: None,
         })
     }
@@ -444,6 +536,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_id: None,
                     ident: None,
                 })]),
                 connective: Connective::NoConnective,
@@ -459,6 +552,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_id: None,
                 ident: None,
             }),
             diagnostics: Rc::new(vec![]),
@@ -499,6 +593,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         }),
                         Rc::new(Node {
@@ -519,6 +614,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_id: None,
                             ident: None,
                         }),
                     ]),
@@ -535,6 +631,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_id: None,
                     ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
@@ -574,6 +671,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -602,6 +700,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_id: None,
                 ident: None,
             }),
             Rc::new(Node {
@@ -622,6 +721,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_id: None,
                 ident: None,
             }),
         ]),
@@ -638,6 +738,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -661,6 +762,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_id: None,
         ident: None,
     })
 }
@@ -703,6 +805,7 @@ pub fn algebra_method_field(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         })
     }
@@ -715,6 +818,8 @@ pub fn enrich_base_with_fields(
 ) -> Rc<Node> {
     Rc::new(Node {
         name: name,
+        ident: base.ident.clone(),
+        binding_id: base.binding_id.clone(),
         span: base.span.clone(),
         ident_span: base.ident_span.clone(),
         children: fields,
@@ -731,7 +836,6 @@ pub fn enrich_base_with_fields(
         has_non_tail_self_call: base.has_non_tail_self_call.clone(),
         match_pattern: base.match_pattern.clone(),
         expr_data: base.expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -1762,11 +1866,11 @@ pub fn node_type_shape(
 }
 
 pub fn node_type_compatible(
-    mut left: Rc<Node>,
-    mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    loop {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let left_err = if (left.inferred.clone() != None) {
             is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -1792,145 +1896,344 @@ pub fn node_type_compatible(
         let right_is_unit = is_unit_like(right.clone());
         let left_is_unit = is_unit_like(left.clone());
         if (left_err || right_err) {
-            break true;
+            true
         } else {
             if (left_tv || right_tv) {
-                break true;
+                true
             } else {
                 if (left_opt.clone() && right_is_unit) {
-                    break true;
+                    true
                 } else {
                     if (left_is_unit && right_opt.clone()) {
-                        break true;
+                        true
                     } else {
-                        let left_is_container =
-                            node_is_element_collection(left.clone(), source_indices.clone());
-                        let right_is_container =
-                            node_is_element_collection(right.clone(), source_indices.clone());
-                        if (left_is_container && right_is_container) {
-                            if (canonical_template_name(left.clone(), source_indices.clone())
-                                .as_str()
-                                != canonical_template_name(right.clone(), source_indices.clone())
-                                    .as_str())
-                            {
-                                break false;
-                            } else {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_ch) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_ch) => {
-                                                let left_el = child_type_node(left_ch.clone());
-                                                let right_el = child_type_node(right_ch.clone());
-                                                let left_el_is_unit = is_unit_like(left_el.clone());
-                                                let right_el_is_unit =
-                                                    is_unit_like(right_el.clone());
-                                                if (left_el_is_unit || right_el_is_unit) {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                break true;
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        break true;
-                                    }
-                                }
-                            }
-                        } else {
-                            if (((((canonical_template_name(
-                                left.clone(),
-                                source_indices.clone(),
-                            )
-                            .as_str()
-                                == canonical_template_name(
-                                    right.clone(),
-                                    source_indices.clone(),
-                                )
-                                .as_str())
-                                && (authored_name_at(source_indices.clone(), left.clone())
+                        {
+                            let left_is_container =
+                                node_is_element_collection(left.clone(), source_indices.clone());
+                            let right_is_container =
+                                node_is_element_collection(right.clone(), source_indices.clone());
+                            if (left_is_container.clone() && right_is_container.clone()) {
+                                if (canonical_template_name(left.clone(), source_indices.clone())
                                     .as_str()
-                                    != authored_name_at(source_indices.clone(), right.clone())
-                                        .as_str()))
-                                && ((left.children.clone().len() as i64) == 1))
-                                && ((right.children.clone().len() as i64) == 1))
-                                && (is_declared_container_alias_spelling(authored_name_at(
-                                    source_indices.clone(),
-                                    left.clone(),
-                                )) || is_declared_container_alias_spelling(authored_name_at(
-                                    source_indices.clone(),
-                                    right.clone(),
-                                ))))
-                            {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_ch) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_ch) => {
-                                                let left_el = child_type_node(left_ch.clone());
-                                                let right_el = child_type_node(right_ch.clone());
-                                                if (is_unit_like(left_el.clone())
-                                                    || is_unit_like(right_el.clone()))
-                                                {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
+                                    != canonical_template_name(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    .as_str())
+                                {
+                                    false
+                                } else {
+                                    match left.children.clone().first().cloned() {
+                                        Some(left_ch) => {
+                                            match right.children.clone().first().cloned() {
+                                                Some(right_ch) => {
+                                                    let left_el = child_type_node(left_ch.clone());
+                                                    let right_el =
+                                                        child_type_node(right_ch.clone());
+                                                    let left_el_is_unit =
+                                                        is_unit_like(left_el.clone());
+                                                    let right_el_is_unit =
+                                                        is_unit_like(right_el.clone());
+                                                    if (left_el_is_unit || right_el_is_unit) {
+                                                        true
+                                                    } else {
+                                                        node_type_compatible(
+                                                            left_el.clone(),
+                                                            right_el.clone(),
+                                                            source_indices.clone(),
+                                                        )
                                                     }
                                                 }
-                                            }
-                                            None => {
-                                                break true;
+                                                None => true,
                                             }
                                         }
-                                    }
-                                    None => {
-                                        break true;
+                                        None => true,
                                     }
                                 }
                             } else {
-                                if (left_opt.clone() && right_opt.clone()) {
-                                    let left_inner = with_required_cardinality(left.clone());
-                                    let right_inner = with_required_cardinality(right.clone());
-                                    let left_inner_is_unit = is_unit_like(left_inner.clone());
-                                    let right_inner_is_unit = is_unit_like(right_inner.clone());
-                                    if (left_inner_is_unit || right_inner_is_unit) {
-                                        break true;
-                                    } else {
+                                if ((free_monoid_coproduct_element(
+                                    left.clone(),
+                                    source_indices.clone(),
+                                ) != None)
+                                    && (free_monoid_coproduct_element(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    ) != None))
+                                {
+                                    {
+                                        let left_el = free_monoid_coproduct_element(
+                                            left.clone(),
+                                            source_indices.clone(),
+                                        )
+                                        .clone()
+                                        .unwrap();
+                                        let right_el = free_monoid_coproduct_element(
+                                            right.clone(),
+                                            source_indices.clone(),
+                                        )
+                                        .clone()
+                                        .unwrap();
+                                        if (is_unit_like(left_el.clone())
+                                            || is_unit_like(right_el.clone()))
                                         {
-                                            let __tco_0 = left_inner.clone();
-                                            let __tco_1 = right_inner.clone();
-                                            left = __tco_0;
-                                            right = __tco_1;
-                                            continue;
+                                            true
+                                        } else {
+                                            node_type_compatible(
+                                                left_el.clone(),
+                                                right_el.clone(),
+                                                source_indices.clone(),
+                                            )
                                         }
                                     }
                                 } else {
-                                    if (left_opt.clone() || right_opt.clone()) {
-                                        break false;
-                                    } else {
-                                        break (authored_name_at(
+                                    if (left_is_container.clone()
+                                        && (free_monoid_coproduct_element(
+                                            right.clone(),
                                             source_indices.clone(),
-                                            left.clone(),
-                                        )
-                                        .as_str()
-                                            == authored_name_at(
+                                        ) != None))
+                                    {
+                                        match left.children.clone().first().cloned() {
+                                            Some(left_ch) => {
+                                                let left_el = child_type_node(left_ch.clone());
+                                                let right_el = free_monoid_coproduct_element(
+                                                    right.clone(),
+                                                    source_indices.clone(),
+                                                )
+                                                .clone()
+                                                .unwrap();
+                                                if (is_unit_like(left_el.clone())
+                                                    || is_unit_like(right_el.clone()))
+                                                {
+                                                    true
+                                                } else {
+                                                    node_type_compatible(
+                                                        left_el.clone(),
+                                                        right_el.clone(),
+                                                        source_indices.clone(),
+                                                    )
+                                                }
+                                            }
+                                            None => true,
+                                        }
+                                    } else {
+                                        if (right_is_container.clone()
+                                            && (free_monoid_coproduct_element(
+                                                left.clone(),
                                                 source_indices.clone(),
+                                            ) != None))
+                                        {
+                                            match right.children.clone().first().cloned() {
+                                                Some(right_ch) => {
+                                                    let left_el = free_monoid_coproduct_element(
+                                                        left.clone(),
+                                                        source_indices.clone(),
+                                                    )
+                                                    .clone()
+                                                    .unwrap();
+                                                    let right_el =
+                                                        child_type_node(right_ch.clone());
+                                                    if (is_unit_like(left_el.clone())
+                                                        || is_unit_like(right_el.clone()))
+                                                    {
+                                                        true
+                                                    } else {
+                                                        node_type_compatible(
+                                                            left_el.clone(),
+                                                            right_el.clone(),
+                                                            source_indices.clone(),
+                                                        )
+                                                    }
+                                                }
+                                                None => true,
+                                            }
+                                        } else {
+                                            if (node_is_keyed_collection(
+                                                left.clone(),
+                                                source_indices.clone(),
+                                            ) && node_is_keyed_collection(
                                                 right.clone(),
-                                            )
-                                            .as_str());
+                                                source_indices.clone(),
+                                            )) {
+                                                if (authored_name_at(
+                                                    source_indices.clone(),
+                                                    left.clone(),
+                                                )
+                                                .as_str()
+                                                    != authored_name_at(
+                                                        source_indices.clone(),
+                                                        right.clone(),
+                                                    )
+                                                    .as_str())
+                                                {
+                                                    false
+                                                } else {
+                                                    if (((left.children.clone().len() as i64) != 2)
+                                                        || ((right.children.clone().len() as i64)
+                                                            != 2))
+                                                    {
+                                                        false
+                                                    } else {
+                                                        match left.children.clone().first().cloned() {
+    Some(left_key_ch) => match right.children.clone().first().cloned() {
+    Some(right_key_ch) => match left.children.clone().get(1 as usize).cloned() {
+    Some(left_val_ch) => match right.children.clone().get(1 as usize).cloned() {
+    Some(right_val_ch) => (node_type_compatible(child_type_node(left_key_ch.clone()), child_type_node(right_key_ch.clone()), source_indices.clone()) && node_type_compatible(child_type_node(left_val_ch.clone()), child_type_node(right_val_ch.clone()), source_indices.clone())),
+    None => false,
+},
+    None => false,
+},
+    None => false,
+},
+    None => false,
+}
+                                                    }
+                                                }
+                                            } else {
+                                                if ((((canonical_template_name(
+                                                    left.clone(),
+                                                    source_indices.clone(),
+                                                )
+                                                .as_str()
+                                                    == canonical_template_name(
+                                                        right.clone(),
+                                                        source_indices.clone(),
+                                                    )
+                                                    .as_str())
+                                                    && ((left.children.clone().len() as i64)
+                                                        == 1))
+                                                    && ((right.children.clone().len() as i64)
+                                                        == 1))
+                                                    && (is_declared_container_alias_spelling(
+                                                        authored_name_at(
+                                                            source_indices.clone(),
+                                                            left.clone(),
+                                                        ),
+                                                    ) || is_declared_container_alias_spelling(
+                                                        authored_name_at(
+                                                            source_indices.clone(),
+                                                            right.clone(),
+                                                        ),
+                                                    )))
+                                                {
+                                                    match left.children.clone().first().cloned() {
+                                                        Some(left_ch) => match right
+                                                            .children
+                                                            .clone()
+                                                            .first()
+                                                            .cloned()
+                                                        {
+                                                            Some(right_ch) => {
+                                                                let left_el = child_type_node(
+                                                                    left_ch.clone(),
+                                                                );
+                                                                let right_el = child_type_node(
+                                                                    right_ch.clone(),
+                                                                );
+                                                                if (is_unit_like(left_el.clone())
+                                                                    || is_unit_like(
+                                                                        right_el.clone(),
+                                                                    ))
+                                                                {
+                                                                    true
+                                                                } else {
+                                                                    node_type_compatible(
+                                                                        left_el.clone(),
+                                                                        right_el.clone(),
+                                                                        source_indices.clone(),
+                                                                    )
+                                                                }
+                                                            }
+                                                            None => true,
+                                                        },
+                                                        None => true,
+                                                    }
+                                                } else {
+                                                    if (left_opt.clone() && right_opt.clone()) {
+                                                        {
+                                                            let left_inner =
+                                                                with_required_cardinality(
+                                                                    left.clone(),
+                                                                );
+                                                            let right_inner =
+                                                                with_required_cardinality(
+                                                                    right.clone(),
+                                                                );
+                                                            let left_inner_is_unit =
+                                                                is_unit_like(left_inner.clone());
+                                                            let right_inner_is_unit =
+                                                                is_unit_like(right_inner.clone());
+                                                            if (left_inner_is_unit
+                                                                || right_inner_is_unit)
+                                                            {
+                                                                true
+                                                            } else {
+                                                                node_type_compatible(
+                                                                    left_inner.clone(),
+                                                                    right_inner.clone(),
+                                                                    source_indices.clone(),
+                                                                )
+                                                            }
+                                                        }
+                                                    } else {
+                                                        if (left_opt.clone() || right_opt.clone()) {
+                                                            false
+                                                        } else {
+                                                            if nodes_are_transparent_bare_alias_pair(
+                                                                left.clone(),
+                                                                right.clone(),
+                                                                source_indices.clone(),
+                                                            ) {
+                                                                true
+                                                            } else {
+                                                                if (((left.binding_id.clone()
+                                                                    != None)
+                                                                    && (right.binding_id.clone()
+                                                                        != None))
+                                                                    && (left.binding_id.clone()
+                                                                        == right
+                                                                            .binding_id
+                                                                            .clone()))
+                                                                {
+                                                                    true
+                                                                } else {
+                                                                    if ((authored_name_at(
+                                                                        source_indices.clone(),
+                                                                        left.clone(),
+                                                                    )
+                                                                    .as_str()
+                                                                        == authored_name_at(
+                                                                            source_indices.clone(),
+                                                                            right.clone(),
+                                                                        )
+                                                                        .as_str())
+                                                                        && is_kernel_type(
+                                                                            authored_name_at(
+                                                                                source_indices
+                                                                                    .clone(),
+                                                                                left.clone(),
+                                                                            ),
+                                                                        ))
+                                                                    {
+                                                                        true
+                                                                    } else {
+                                                                        match left.binding_id.clone() {
+    Some(left_binding_id) => match right.binding_id.clone() {
+    Some(right_binding_id) => (left_binding_id.clone() == right_binding_id.clone()),
+    None => false,
+},
+    None => match right.binding_id.clone() {
+    Some(_) => false,
+    None => (authored_name_at(source_indices.clone(), left.clone()).as_str() == authored_name_at(source_indices.clone(), right.clone()).as_str()),
+},
+}
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1939,7 +2242,7 @@ pub fn node_type_compatible(
                 }
             }
         }
-    }
+    })
 }
 
 pub fn prefer_specific_type(
