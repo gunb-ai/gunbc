@@ -46,7 +46,6 @@ import v4.std.node {
   Atom,
   ComputationNode,
   Edge,
-  Named,
   Node,
   Positional,
   Symbol,
