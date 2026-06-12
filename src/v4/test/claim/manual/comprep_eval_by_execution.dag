@@ -62,6 +62,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
+  loop_bound_edge,
   SyntheticOccurrence
 }
 import v4.std.node_query { node_positional_child_targets }
@@ -775,7 +776,11 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
+      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
+      Edge {
+        label: Named { name: loop_bound_edge },
+        target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal)
+      }
     ]
   }
 }

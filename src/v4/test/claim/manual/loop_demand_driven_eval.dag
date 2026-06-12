@@ -7,9 +7,7 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval,
   eval_context_with_semantics,
-  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
@@ -46,7 +44,9 @@ import v4.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
-  arrow_body_edge
+  arrow_body_edge,
+  loop_bound_edge,
+  well_formed
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -108,6 +108,10 @@ fn loop_eval_lit_one() -> Node {
 
 fn loop_eval_divergent() -> Node {
   loop_eval_atom(s: ^loop_eval_divergent_sym)
+}
+
+fn loop_eval_measure() -> Node {
+  loop_eval_atom(s: ^loop_eval_measure_sym)
 }
 
 fn loop_eval_diagnostic(n: Node) -> Diagnostic {
@@ -188,7 +192,10 @@ fn loop_eval_loop_node(body: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
-    children: [Edge { label: Positional, target: body }]
+    children: [
+      Edge { label: Positional, target: body },
+      Edge { label: Named { name: loop_bound_edge }, target: loop_eval_measure() }
+    ]
   }
 }
 
@@ -285,31 +292,10 @@ fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-fn loop_eval_direct_loop_accepts() -> Bool {
-  let loop_node = loop_eval_loop_node(body: loop_eval_divergent())
-  let tree = loop_eval_admitted_tree(root: loop_node)
-  match eval(
-    tree: tree,
-    interpretation: loop_eval_interpretation(),
-    inputs: inputs_root_only(root: loop_node)
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn loop_eval_direct_loop_body_holds() -> Bool {
-  let loop_node = loop_eval_loop_node(body: loop_eval_divergent())
-  let tree = loop_eval_admitted_tree(root: loop_node)
-  match eval(
-    tree: tree,
-    interpretation: loop_eval_interpretation(),
-    inputs: inputs_root_only(root: loop_node)
-  ) {
-    Accepted { value: v, diagnostics: d } =>
-      (d == None) && (v == loop_eval_one_value())
-    Rejected { diagnostics: _ } => false
-  }
+fn loop_eval_loop_node_well_formed_holds() -> Bool {
+  well_formed(
+    n: loop_eval_loop_node(body: loop_eval_divergent())
+  )
 }
 
 // Demand-driven: divergent loop body is never interpreted; step_loop_continue still runs on spine.
