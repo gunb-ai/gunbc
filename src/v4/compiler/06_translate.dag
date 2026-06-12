@@ -3775,13 +3775,9 @@ fn translate_type_expression_tree(
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if arrow_has_transform_body(arrow: node) {
-    // E-9 bodied Arrow: skip structure-preserving fold (it rewrites body-scope atoms through
-    // binding projection shells). Coerce signature slots only; preserve producer body IR.
-    translate_bodied_arrow_coerce_signature_slots(
-      arrow: node,
-      tree: tree,
-      target: target
-    )
+    // E-9 bodied Arrow: serialize derives signature from grammar scaffold + body from
+    // value-expression projection — preserve producer IR unchanged through translate.
+    outcome_accepted(node)
   } else {
     bind_outcome(
       o: fold_node(
