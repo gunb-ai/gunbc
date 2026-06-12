@@ -5,12 +5,12 @@
 //!
 //! **Phase 2 (sharpened-(b), enumeration slice)** walks
 //! `rust_grounding_primitives.value_body` as [`ValueBody::List`] and checks that
-//! each pilot row matches the authority ordering in
-//! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the pilot
-//! crate's `RUST_INHABITANCE_MIRROR` mirror until mirror retirement completes).
+//! each grounding row matches the authority ordering in
+//! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the inhabitance
+//! mirror crate's `RUST_INHABITANCE_MIRROR` until mirror retirement completes).
 //!
 //! **Target-name multiset (R3 / gunbc#2461):** the sorted multiset of
-//! `target_name` strings in the lowered pilot list must match the multiset
+//! `target_name` strings in the lowered grounding list must match the multiset
 //! from `RUST_INHABITANCE_MIRROR` (`validate_rust_grounding_primitives_target_name_multiset_matches_mirror`),
 //! wired into [`validate_mirror_consistency`].
 

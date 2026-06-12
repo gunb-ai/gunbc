@@ -200,10 +200,10 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
     let Some(witness) = integer_routing_witness_walk(dag, decl, 0) else {
         return IntegerRangeLookup::Missing;
     };
-    let Some(pilot) = dag.rust_grounding_primitives() else {
+    let Some(grounding_list) = dag.rust_grounding_primitives() else {
         return IntegerRangeLookup::Missing;
     };
-    let Some(body) = pilot.value_body.as_ref() else {
+    let Some(body) = grounding_list.value_body.as_ref() else {
         return IntegerRangeLookup::Missing;
     };
     let ValueBody::List(elements) = body else {
@@ -215,7 +215,7 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
         None => {
             return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
                 "bootstrap: RustPrimitive.IntegerPrimitive variant type is unavailable".to_string(),
-                pilot.span.clone(),
+                grounding_list.span.clone(),
             ));
         }
     };
@@ -232,7 +232,7 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
         if *constructor != integer_primitive_ctor {
             continue;
         }
-        match grounding_integer_row(witness, payload, pilot.span.clone()) {
+        match grounding_integer_row(witness, payload, grounding_list.span.clone()) {
             Ok(Some(m)) => matches.push(m),
             Ok(None) => {}
             Err(diag) => return IntegerRangeLookup::Invalid(diag),
@@ -789,8 +789,8 @@ pub(crate) fn validate_rust_grounding_integer_primitives(dag: &mut Dag) {
     // Authority file for span when the declaration is absent (extdeps fixture).
     const RUST_INHABITANCE_MIRROR_AUTHORITY: &str = "dsl/extdeps/languages/rust/primitives.dag";
 
-    let (default_span, pilot_elements) = {
-        let Some(pilot) = dag.rust_grounding_primitives() else {
+    let (default_span, grounding_elements) = {
+        let Some(grounding_list) = dag.rust_grounding_primitives() else {
             dag.attach_diagnostic(malformed_integer_range_fact(
                 "bootstrap: `rust_grounding_primitives` is missing from the extdeps fixture; \
                  integer range authority is unavailable (expected extdeps `primitives.dag` load)"
@@ -799,8 +799,8 @@ pub(crate) fn validate_rust_grounding_integer_primitives(dag: &mut Dag) {
             ));
             return;
         };
-        let sp = pilot.span.clone();
-        let snap = match pilot.value_body.as_ref() {
+        let sp = grounding_list.span.clone();
+        let snap = match grounding_list.value_body.as_ref() {
             None => GroundingListSnapshot::MissingBody,
             Some(ValueBody::List(els)) => GroundingListSnapshot::List(els.clone()),
             Some(_) => GroundingListSnapshot::NotList,
@@ -808,7 +808,7 @@ pub(crate) fn validate_rust_grounding_integer_primitives(dag: &mut Dag) {
         (sp, snap)
     };
 
-    let elements: &[FieldValue] = match &pilot_elements {
+    let elements: &[FieldValue] = match &grounding_elements {
         GroundingListSnapshot::List(els) => els,
         GroundingListSnapshot::MissingBody => {
             dag.attach_diagnostic(malformed_integer_range_fact(
@@ -1102,7 +1102,7 @@ mod tests {
     }
 
     #[test]
-    fn int128_witness_matches_i128_pilot_row_constructors() {
+    fn int128_witness_matches_i128_grounding_row_constructors() {
         // T-Int128 Slice B1: signed Int128 -> i128 pilot row via Word128Carrier.
         let dag = Dag::new();
         assert!(
@@ -1115,8 +1115,8 @@ mod tests {
             .expect("Int128 in bootstrap")
             .id;
         let witness = integer_routing_witness_for_decl(&dag, int128).expect("Int128 witness");
-        let pilot = dag.rust_grounding_primitives().expect("pilot");
-        let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list body") else {
+        let grounding_list = dag.rust_grounding_primitives().expect("grounding list");
+        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body") else {
             panic!("expected list");
         };
         let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
@@ -1144,7 +1144,7 @@ mod tests {
         }
         assert_eq!(
             matched, 1,
-            "exactly one pilot IntegerPrimitive row for Int128 witness"
+            "exactly one grounding IntegerPrimitive row for Int128 witness"
         );
     }
 
@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn uint8_witness_matches_u8_pilot_row_constructors() {
+    fn uint8_witness_matches_u8_grounding_row_constructors() {
         let dag = Dag::new();
         assert!(
             dag.diagnostics().is_empty(),
@@ -1183,8 +1183,8 @@ mod tests {
             .expect("UInt8 in bootstrap")
             .id;
         let witness = integer_routing_witness_for_decl(&dag, uint8).expect("UInt8 witness");
-        let pilot = dag.rust_grounding_primitives().expect("pilot");
-        let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list body") else {
+        let grounding_list = dag.rust_grounding_primitives().expect("grounding list");
+        let ValueBody::List(elements) = grounding_list.value_body.as_ref().expect("list body") else {
             panic!("expected list");
         };
         let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
@@ -1212,7 +1212,7 @@ mod tests {
         }
         assert_eq!(
             matched, 1,
-            "exactly one pilot IntegerPrimitive row for UInt8 witness"
+            "exactly one grounding IntegerPrimitive row for UInt8 witness"
         );
     }
 }
