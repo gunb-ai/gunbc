@@ -13,7 +13,11 @@ import v4.std.algebra {
   list_snoc_item,
   unique
 }
-import v4.compiler.target_carriers { LanguageModel }
+import v4.std.language_model {
+  LanguageModel,
+  language_model_to_node,
+  void_language_model
+}
 import v4.std.target_model {
   TargetModel,
   target_model_edge_selection_policy,
@@ -169,11 +173,7 @@ fn bootstrap_construct_list_append_unique(
 }
 
 fn seed_capability_language_model() -> LanguageModel {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^bootstrap_seed_language_model_identity } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
+  void_language_model(identity: ^bootstrap_seed_language_model_identity)
 }
 
 fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
@@ -506,7 +506,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
       },
       Edge {
         label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
-        target: inputs.snapshot.language_model
+        target: language_model_to_node(lm: inputs.snapshot.language_model)
       },
       Edge {
         label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },

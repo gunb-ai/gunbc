@@ -537,7 +537,8 @@ fn resolve_with_admission(
     Accepted { value: admitted, diagnostics: namespace_diag } =>
       match resolve_with_namespace(
         tree: admitted.subject_root,
-        namespace: admitted.namespace
+        namespace: admitted.namespace,
+        lm: lm
       ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>
           Accepted {
