@@ -9,9 +9,16 @@ import v4.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body_swapped_arms
 }
 import v4.compiler.emit { emit }
+import v4.compiler.translate { target_serialize_bodied_arrow_from_model }
+import v4.compiler.value_expression {
+  project_arrow_body_to_value_expression,
+  value_expression_projection_from_target,
+  value_expression_to_concrete_tokens
+}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.extdeps.languages.dag {
+  dag_mvp1_pick_arrow_with_body_fixture,
   dag_mvp1_pick_source_text,
   dag_mvp1_pick_target_model
 }
@@ -103,6 +110,49 @@ fn comprep_branch_emit_swapped_from_producer(target: TargetModel) -> Outcome<Tar
       emit(tree: tree, target: target)
     }
   )
+}
+
+fn comprep_branch_emit_body_tokens_holds() -> Bool {
+  match value_expression_projection_from_target(target: dag_mvp1_pick_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: projection, diagnostics: _ } =>
+      match project_arrow_body_to_value_expression(
+        arrow: dag_mvp1_pick_arrow_with_body_fixture,
+        target: dag_mvp1_pick_target_model()
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: expr, diagnostics: _ } =>
+          match value_expression_to_concrete_tokens(
+            expr: expr,
+            target: dag_mvp1_pick_target_model(),
+            projection: projection
+          ) {
+            Accepted { value: _, diagnostics: d } => d == None
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn comprep_branch_emit_serialize_accepts_holds() -> Bool {
+  match target_serialize_bodied_arrow_from_model(
+    target: dag_mvp1_pick_target_model(),
+    emitted: dag_mvp1_pick_arrow_with_body_fixture
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_branch_emit_serialize_only_holds() -> Bool {
+  match target_serialize_bodied_arrow_from_model(
+    target: dag_mvp1_pick_target_model(),
+    emitted: dag_mvp1_pick_arrow_with_body_fixture
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source == dag_mvp1_pick_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn comprep_branch_emit_if_then_else_holds() -> Bool {
