@@ -1467,11 +1467,14 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:EVAL-LAZY-ARM — consumer:eval_edge_is_runtime_argument
-// (executed by comprep_eval_lazy_arm_branch_suppression_holds keystone) —
-// bind:node://adhoc-e80d87aa-297 — dissolve-on: eval_edge_is_runtime_argument consumes
-// model-declared edge-discipline query from v4.std.node_query instead of inline behavior matches;
-// owner/lane: Mgr-RUNTIME — trigger: lazy-arm edge predicate lands in v4.std.node_query;
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; unchosen arms
+// do not execute); current shape is channel suppression only — arm bodies still execute
+// during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
 // forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_branch(node: Node) -> Bool {
   match node.kind {
@@ -1481,11 +1484,14 @@ fn eval_node_is_branch(node: Node) -> Bool {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:EVAL-LAZY-ARM — consumer:eval_edge_is_runtime_argument
-// (executed by comprep_eval_lazy_arm_branch_suppression_holds keystone) —
-// bind:node://adhoc-e80d87aa-297 — dissolve-on: eval_edge_is_runtime_argument consumes
-// model-declared edge-discipline query from v4.std.node_query instead of inline behavior matches;
-// owner/lane: Mgr-RUNTIME — trigger: lazy-arm edge predicate lands in v4.std.node_query;
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; loop body folds
+// zero times per iteration); current shape is channel suppression only — loop children still
+// execute during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
 // forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_loop(node: Node) -> Bool {
   match node.kind {

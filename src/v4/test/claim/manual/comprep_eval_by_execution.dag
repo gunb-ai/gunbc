@@ -210,9 +210,10 @@ fn comprep_eval_choose_branch(node: Node, _value: RuntimeValue, _env: Evaluation
   outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
 }
 
-// Branch lazy-arm suppression consumer (E-10 / node://adhoc-edb982e2-4a4):
-// Always selects arm at positional index 1 from the Branch node — used in the lazy-arm
-// discrimination test where arm index 2 would reject if eagerly evaluated.
+// Branch channel-suppression consumer (E-10 / node://adhoc-e80d87aa-297):
+// Always selects arm at positional index 1. Used in the channel-suppression discrimination
+// test. NOTE: arm bodies still execute during fold_node's bottom-up catamorphism; this stub
+// selects arm1 after the fold so eval_branch_node can call eval_runtime_node on the chosen arm.
 fn comprep_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
     Present { value: arm } => outcome_accepted(value: arm)
@@ -240,9 +241,10 @@ fn comprep_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   }
 }
 
-// Branch node: condition=literal_two, arm1=literal_five (selected), arm2=unknown (would reject if
-// eagerly evaluated). Discriminating red: without arm suppression, arm2 short-circuits the fold
-// before eval_branch_node is ever called.
+// Branch node: condition=literal_two, arm1=literal_five (selected), arm2=unknown-atom (rejects in
+// allocate_literal). Discriminating red: without channel suppression, arm2's Rejected short-circuits
+// child_values before eval_branch_node is reached. With it, the rejection is dropped from child_values
+// (arm2 still executes during the fold — channel suppression, not execution suppression).
 fn comprep_eval_lazy_arm_branch_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
@@ -724,10 +726,12 @@ fn comprep_excess_actual_red_holds() -> Bool {
   comprep_excess_actual_executes_to_five() == false
 }
 
-// Lazy-arm suppression discriminating test (node://adhoc-edb982e2-4a4):
-// Branch with a failing arm (unknown literal) evaluates to five_value via the selected arm.
-// Without eval_edge_is_runtime_argument Branch suppression, arm2 rejects during fold,
-// short-circuiting child_values before eval_branch_node is ever called.
+// Channel-suppression discriminating test (node://adhoc-e80d87aa-297):
+// Branch with a failing arm evaluates to five_value via the selected arm.
+// Without eval_edge_is_runtime_argument Branch suppression, arm2's Rejected short-circuits
+// child_values before eval_branch_node is reached. This tests channel suppression ONLY —
+// arm2 still executes during fold_node's bottom-up catamorphism; its rejection is merely
+// dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
 fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
   let branch = comprep_eval_lazy_arm_branch_node()
   let tree = comprep_eval_admitted_tree(root: branch)
