@@ -640,11 +640,10 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                   )
                   let template_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
                   Present { value: template_fields |> map(sf =>
-                    let field_ty = child_type_node(ch: sf)
                     Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_ty, subst: subst, source_indices: scope.type_env.source_indices) } },
+                      inferred: Present { value: Resolved { node: substitute_generics(n: child_type_node(ch: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
                       return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                       transport: sf.transport, properties: sf.properties,
                       type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -2668,7 +2667,9 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = child_type_node(ch: sf)
-        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.connective == Arrow { Present { value: ft } } else { none }
+        if ft.ident_span != none || type_node_is_callable(n: ft) {
+          Present { value: ft }
+        } else { none }
       Absent => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
