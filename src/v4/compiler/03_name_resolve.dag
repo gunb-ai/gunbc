@@ -367,54 +367,34 @@ fn admit_named_export_edge(
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:node-fold-topdown-generic-field-access — gap: bootstrap emitter cannot field-access generic A/R in inline NodeFoldTopDown { init/step/child_context } struct literals (8 ci_floor_emit errors; same gap class as fold_list<T> sites in this file); bootstrap-tax +72 LOC (§0 marked exception — reviewers net before graft-vs-migration): named_exports_topdown_{init,child_context,step} extracted + fold result match-destructured; forbidden: specialized fold variant in std/ — interim is named top-level step fns with concrete types only; dissolve-on: inline named_exports_topdown_{init,child_context,step} lambdas back into named_exports_topdown_algebra() struct literal and this scaffolding deletes when node://adhoc-f581ce40-042 lands (v2 generic lambda-param instantiation from call-site type; shrink expected).
-fn named_exports_topdown_init(n: Node, fold: AdmitExportsFold) -> AdmitExportsFold {
-  AdmitExportsFold {
-    origin: fold.origin,
-    state: fold.state,
-    at_conj: match n.kind {
-      TypeNode { connective: Conj } => true
-      _ => false
-    }
-  }
-}
-
-
-fn named_exports_topdown_child_context(
-  n: Node,
-  fold: AdmitExportsFold,
-  e: Edge
-) -> AdmitExportsFold {
-  fold
-}
-
-
-fn named_exports_topdown_step(
-  acc: AdmitExportsFold,
-  e: Edge,
-  child_r: AdmitExportsFold
-) -> AdmitExportsFold {
-  if acc.at_conj {
-    AdmitExportsFold {
-      origin: acc.origin,
-      state: admit_named_export_edge(
-        edge: e,
-        origin: acc.origin,
-        state: acc.state
-      ),
-      at_conj: true
-    }
-  } else {
-    child_r
-  }
-}
-
-
 fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
   NodeFoldTopDown {
-    init: named_exports_topdown_init,
-    child_context: named_exports_topdown_child_context,
-    step: named_exports_topdown_step
+    init: fn(n, fold) {
+      AdmitExportsFold {
+        origin: fold.origin,
+        state: fold.state,
+        at_conj: match n.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        }
+      }
+    },
+    child_context: fn(n, fold, e) { fold },
+    step: fn(acc, e, child_r) {
+      if acc.at_conj {
+        AdmitExportsFold {
+          origin: acc.origin,
+          state: admit_named_export_edge(
+            edge: e,
+            origin: acc.origin,
+            state: acc.state
+          ),
+          at_conj: true
+        }
+      } else {
+        child_r
+      }
+    }
   }
 }
 
