@@ -4,14 +4,14 @@
 //! type structure (sum partition, field shapes, nested tag enums).
 //!
 //! **Phase 2 (sharpened-(b), enumeration slice)** walks
-//! `rust_pilot_primitives.value_body` as [`ValueBody::List`] and checks that
+//! `rust_grounding_primitives.value_body` as [`ValueBody::List`] and checks that
 //! each pilot row matches the authority ordering in
 //! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the pilot
-//! crate's `RUST_PILOT_PRIMITIVES` mirror until mirror retirement completes).
+//! crate's `RUST_INHABITANCE_MIRROR` mirror until mirror retirement completes).
 //!
 //! **Target-name multiset (R3 / gunbc#2461):** the sorted multiset of
 //! `target_name` strings in the lowered pilot list must match the multiset
-//! from `RUST_PILOT_PRIMITIVES` (`validate_rust_pilot_primitives_target_name_multiset_matches_mirror`),
+//! from `RUST_INHABITANCE_MIRROR` (`validate_rust_grounding_primitives_target_name_multiset_matches_mirror`),
 //! wired into [`validate_mirror_consistency`].
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,11 +19,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use v3_compiler::dag::{
     Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective, ValueBody,
 };
-use v3_grounding_pilot::{
+use v3_grounding_inhabitance_mirror::{
     target_name as pilot_target_name, IntegerAlgebra as PilotIntegerAlgebra,
     IntegerOverflow as PilotIntegerOverflow, NonIntegerAlgebra as PilotNonIntegerAlgebra,
     RustPrimitive as PilotRustPrimitive, TargetCarrier as PilotTargetCarrier,
-    RUST_PILOT_PRIMITIVES,
+    RUST_INHABITANCE_MIRROR,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,10 +65,10 @@ pub struct RustPrimitiveTypeShape {
 pub fn validate_loaded_rust_primitive_type_structure() -> StructureResult<RustPrimitiveTypeShape> {
     let dag = Dag::new();
     let root = dag
-        .rust_pilot_primitives()
+        .rust_grounding_primitives()
         .ok_or_else(|| StructureMismatch {
-            location: "Dag::rust_pilot_primitives".to_string(),
-            expected: "loaded rust_pilot_primitives declaration".to_string(),
+            location: "Dag::rust_grounding_primitives".to_string(),
+            expected: "loaded rust_grounding_primitives declaration".to_string(),
             actual: "missing".to_string(),
         })?;
     validate_rust_primitive_type_structure(&dag, root)
@@ -83,7 +83,7 @@ pub fn validate_rust_primitive_type_structure(
     expect_named_decl(
         rust_primitive,
         "RustPrimitive",
-        "rust_pilot_primitives element",
+        "rust_grounding_primitives element",
     )?;
 
     let variant_fields = expect_disj_variants(
@@ -169,40 +169,40 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
     let shape = validate_loaded_rust_primitive_type_structure()?;
     if shape != expected_mirror_shape() {
         return Err(StructureMismatch {
-            location: "RUST_PILOT_PRIMITIVES implicit shape".to_string(),
+            location: "RUST_INHABITANCE_MIRROR implicit shape".to_string(),
             expected: format!("{:?}", expected_mirror_shape()),
             actual: format!("{shape:?}"),
         });
     }
     validate_pilot_values_with_shape(&shape)?;
-    validate_rust_pilot_primitives_target_name_multiset_matches_mirror()?;
+    validate_rust_grounding_primitives_target_name_multiset_matches_mirror()?;
     validate_rust_pilot_rows_match_mirror()
 }
 
 /// Cementing receipt (R3 / gunbc#2461): every `target_name` in the lowered
-/// `rust_pilot_primitives` list matches the multiset carried by
-/// `RUST_PILOT_PRIMITIVES`, with substrate (`.dag`) as authority - fail-closed
+/// `rust_grounding_primitives` list matches the multiset carried by
+/// `RUST_INHABITANCE_MIRROR`, with substrate (`.dag`) as authority - fail-closed
 /// if either side introduces or drops a name the other lacks.
-pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> StructureResult<()> {
+pub fn validate_rust_grounding_primitives_target_name_multiset_matches_mirror() -> StructureResult<()> {
     let dag = Dag::new();
     let pilot_list = dag
-        .rust_pilot_primitives()
+        .rust_grounding_primitives()
         .ok_or_else(|| StructureMismatch {
-            location: "Dag::rust_pilot_primitives".to_string(),
-            expected: "loaded rust_pilot_primitives declaration".to_string(),
+            location: "Dag::rust_grounding_primitives".to_string(),
+            expected: "loaded rust_grounding_primitives declaration".to_string(),
             actual: "missing".to_string(),
         })?;
     let body = pilot_list
         .value_body
         .as_ref()
         .ok_or_else(|| StructureMismatch {
-            location: "rust_pilot_primitives.value_body".to_string(),
+            location: "rust_grounding_primitives.value_body".to_string(),
             expected: "data body present".to_string(),
             actual: "None".to_string(),
         })?;
     let ValueBody::List(elements) = body else {
         return Err(StructureMismatch {
-            location: "rust_pilot_primitives.value_body".to_string(),
+            location: "rust_grounding_primitives.value_body".to_string(),
             expected: "ValueBody::List".to_string(),
             actual: value_body_kind(body),
         });
@@ -210,7 +210,7 @@ pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> S
 
     let mut from_dag: Vec<String> = Vec::with_capacity(elements.len());
     for (idx, element) in elements.iter().enumerate() {
-        let ctx = format!("rust_pilot_primitives[{idx}]");
+        let ctx = format!("rust_grounding_primitives[{idx}]");
         let FieldValue::Variant { payload, .. } = element else {
             return Err(StructureMismatch {
                 location: ctx.clone(),
@@ -222,7 +222,7 @@ pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> S
         from_dag.push(name);
     }
 
-    let mut from_mirror: Vec<String> = RUST_PILOT_PRIMITIVES
+    let mut from_mirror: Vec<String> = RUST_INHABITANCE_MIRROR
         .iter()
         .map(|p| pilot_target_name(p).to_string())
         .collect();
@@ -231,7 +231,7 @@ pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> S
     from_mirror.sort();
     if from_dag != from_mirror {
         return Err(StructureMismatch {
-            location: "rust_pilot_primitives.target_name multiset".to_string(),
+            location: "rust_grounding_primitives.target_name multiset".to_string(),
             expected: format!("{from_mirror:?}"),
             actual: format!("{from_dag:?}"),
         });
@@ -239,15 +239,15 @@ pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> S
     Ok(())
 }
 
-/// Phase 2: every lowered `rust_pilot_primitives` list element must match the
+/// Phase 2: every lowered `rust_grounding_primitives` list element must match the
 /// mirror row at the same position (authority ordering in `primitives.dag`).
 pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
     let dag = Dag::new();
     let pilot_list = dag
-        .rust_pilot_primitives()
+        .rust_grounding_primitives()
         .ok_or_else(|| StructureMismatch {
-            location: "Dag::rust_pilot_primitives".to_string(),
-            expected: "loaded rust_pilot_primitives declaration".to_string(),
+            location: "Dag::rust_grounding_primitives".to_string(),
+            expected: "loaded rust_grounding_primitives declaration".to_string(),
             actual: "missing".to_string(),
         })?;
 
@@ -263,26 +263,26 @@ pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
         .value_body
         .as_ref()
         .ok_or_else(|| StructureMismatch {
-            location: "rust_pilot_primitives.value_body".to_string(),
+            location: "rust_grounding_primitives.value_body".to_string(),
             expected: "data body present".to_string(),
             actual: "None".to_string(),
         })?;
     let ValueBody::List(elements) = body else {
         return Err(StructureMismatch {
-            location: "rust_pilot_primitives.value_body".to_string(),
+            location: "rust_grounding_primitives.value_body".to_string(),
             expected: "ValueBody::List".to_string(),
             actual: value_body_kind(body),
         });
     };
-    if elements.len() != RUST_PILOT_PRIMITIVES.len() {
+    if elements.len() != RUST_INHABITANCE_MIRROR.len() {
         return Err(StructureMismatch {
-            location: "rust_pilot_primitives.value_body".to_string(),
-            expected: format!("{} mirror rows", RUST_PILOT_PRIMITIVES.len()),
+            location: "rust_grounding_primitives.value_body".to_string(),
+            expected: format!("{} mirror rows", RUST_INHABITANCE_MIRROR.len()),
             actual: format!("{} loaded rows", elements.len()),
         });
     }
 
-    for (idx, (element, mirror)) in elements.iter().zip(RUST_PILOT_PRIMITIVES).enumerate() {
+    for (idx, (element, mirror)) in elements.iter().zip(RUST_INHABITANCE_MIRROR).enumerate() {
         assert_rust_pilot_row_matches_mirror(&dag, &disj_variants, idx, element, mirror)?;
     }
     Ok(())
@@ -295,7 +295,7 @@ fn assert_rust_pilot_row_matches_mirror(
     element: &FieldValue,
     mirror: &PilotRustPrimitive,
 ) -> StructureResult<()> {
-    let location = format!("rust_pilot_primitives[{idx}]");
+    let location = format!("rust_grounding_primitives[{idx}]");
     let FieldValue::Variant {
         constructor,
         payload,
@@ -355,12 +355,12 @@ fn rust_primitive_element_id(decl: &Declaration) -> StructureResult<DeclarationI
             Ok(arguments[0].value)
         }
         TypeConnective::Instantiation { arguments, .. } => Err(StructureMismatch {
-            location: "rust_pilot_primitives".to_string(),
+            location: "rust_grounding_primitives".to_string(),
             expected: "List<RustPrimitive> with one template argument".to_string(),
             actual: format!("Instantiation with {} template arguments", arguments.len()),
         }),
         other => Err(StructureMismatch {
-            location: "rust_pilot_primitives".to_string(),
+            location: "rust_grounding_primitives".to_string(),
             expected: "List<RustPrimitive> instantiation".to_string(),
             actual: connective_name(other).to_string(),
         }),
@@ -574,7 +574,7 @@ fn validate_pilot_values_with_shape(shape: &RustPrimitiveTypeShape) -> Structure
     let carriers = variant_set(&shape.target_carrier);
     let overflows = variant_set(&shape.integer_overflow);
 
-    for primitive in RUST_PILOT_PRIMITIVES {
+    for primitive in RUST_INHABITANCE_MIRROR {
         match primitive {
             PilotRustPrimitive::IntegerPrimitive {
                 algebra,
@@ -624,7 +624,7 @@ fn require_variant_known(variants: &BTreeSet<&str>, variant: &str) -> StructureR
         Ok(())
     } else {
         Err(StructureMismatch {
-            location: "RUST_PILOT_PRIMITIVES".to_string(),
+            location: "RUST_INHABITANCE_MIRROR".to_string(),
             expected: format!("loaded shape contains `{variant}`"),
             actual: "missing".to_string(),
         })
@@ -709,7 +709,7 @@ fn rust_primitive_variant_label(
         .find(|variant| variant.ty == constructor)
         .map(|variant| variant.label.clone())
         .ok_or_else(|| StructureMismatch {
-            location: format!("rust_pilot_primitives[{row_index}].constructor"),
+            location: format!("rust_grounding_primitives[{row_index}].constructor"),
             expected: "constructor id belonging to RustPrimitive".to_string(),
             actual: "unknown constructor".to_string(),
         })
@@ -968,15 +968,15 @@ mod tests {
     }
 
     #[test]
-    fn rust_pilot_primitives_target_name_multiset_matches_grounding_pilot_mirror() {
-        validate_rust_pilot_primitives_target_name_multiset_matches_mirror()
-            .expect("authority `target_name` multiset matches RUST_PILOT_PRIMITIVES (gunbc#2461)");
+    fn rust_grounding_primitives_target_name_multiset_matches_grounding_inhabitance_mirror_mirror() {
+        validate_rust_grounding_primitives_target_name_multiset_matches_mirror()
+            .expect("authority `target_name` multiset matches RUST_INHABITANCE_MIRROR (gunbc#2461)");
     }
 
     #[test]
     fn all_enumerated_pilot_rows_match_mirror_including_floats() {
         validate_rust_pilot_rows_match_mirror()
-            .expect("all lowered list rows match RUST_PILOT_PRIMITIVES, including f32/f64");
+            .expect("all lowered list rows match RUST_INHABITANCE_MIRROR, including f32/f64");
     }
 
     #[test]

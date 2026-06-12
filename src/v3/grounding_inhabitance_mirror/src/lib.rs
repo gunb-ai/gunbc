@@ -1,4 +1,4 @@
-// v3-grounding-pilot crate root -- T-Ground-Pilot toy inhabitance-search engine.
+// v3-grounding-inhabitance-mirror crate root -- T-Ground-Pilot toy inhabitance-search engine.
 //
 // PROBE SCOPE (T-Ground-Pilot worker brief):
 //   Validate that algebra-homomorphism inhabitance search reproduces
@@ -182,10 +182,10 @@ pub fn routing_key(p: &RustPrimitive) -> RoutingKey {
 // Mirrors `dsl/extdeps/languages/rust/primitives.dag` for the hand-authored
 // grounding pilot. Dissolution trigger matches the compiler census note:
 // once R2 T-Substrate's top-level aggregate `ValueBody` sub-lane makes
-// `rust_pilot_primitives` row values structurally walkable, this mirror's
+// `rust_grounding_primitives` row values structurally walkable, this mirror's
 // integer ranges should be read from generated substrate accessors instead
 // of maintained as a third range list.
-pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
+pub const RUST_INHABITANCE_MIRROR: &[RustPrimitive] = &[
     // Signed integers — OrderedRing over machine-word carriers.
     RustPrimitive::IntegerPrimitive {
         target_name: "i8",
@@ -340,7 +340,7 @@ pub enum DagType {
     Unit,
 }
 
-pub const DAG_PILOT_TYPES: &[DagType] = &[
+pub const DAG_INHABITANCE_TYPES: &[DagType] = &[
     DagType::Int8,
     DagType::Int16,
     DagType::Int32,
@@ -450,12 +450,12 @@ pub enum GroundingError {
     },
 }
 
-/// Search RUST_PILOT_PRIMITIVES for the unique primitive whose routing
+/// Search RUST_INHABITANCE_MIRROR for the unique primitive whose routing
 /// key matches. This is the algebra-homomorphism match the proposal
 /// calls "the mapping should fall out from the algebra, not from a
 /// hand-maintained table."
 pub fn find_inhabitant(key: RoutingKey) -> Result<&'static RustPrimitive, GroundingError> {
-    let matches: Vec<&'static RustPrimitive> = RUST_PILOT_PRIMITIVES
+    let matches: Vec<&'static RustPrimitive> = RUST_INHABITANCE_MIRROR
         .iter()
         .filter(|p| routing_key(p) == key)
         .collect();
@@ -603,11 +603,11 @@ mod tests {
         }
     }
 
-    /// Coverage — every type in DAG_PILOT_TYPES grounds to exactly one
+    /// Coverage — every type in DAG_INHABITANCE_TYPES grounds to exactly one
     /// primitive. Asserts the pilot set is fully covered.
     #[test]
     fn pilot_set_fully_covered() {
-        for &dag in DAG_PILOT_TYPES {
+        for &dag in DAG_INHABITANCE_TYPES {
             let r = ground(dag);
             assert!(r.is_ok(), "pilot type {dag:?} must ground; got {r:?}");
         }
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn pilot_primitives_have_unique_routing_keys() {
         let mut seen: Vec<RoutingKey> = Vec::new();
-        for p in RUST_PILOT_PRIMITIVES {
+        for p in RUST_INHABITANCE_MIRROR {
             let key = routing_key(p);
             assert!(
                 !seen.contains(&key),
@@ -859,7 +859,7 @@ mod tests {
     /// exhaustive by sum-type construction.
     #[test]
     fn overflow_lives_only_on_integer_variant() {
-        for p in RUST_PILOT_PRIMITIVES {
+        for p in RUST_INHABITANCE_MIRROR {
             match p {
                 RustPrimitive::IntegerPrimitive { overflow, .. } => {
                     // Pilot population: every integer primitive uses

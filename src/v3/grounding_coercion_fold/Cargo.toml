@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 # T-Ground-Coercion-Fold — structural fold scaffold (program intent × substrate
-# → target inhabitance OR fail-closed diagnostic). Sibling to grounding_pilot /
+# → target inhabitance OR fail-closed diagnostic). Sibling to grounding_inhabitance_mirror /
 # grounding_engine / grounding_lifetime; does not touch `src/v3/compiler/` SG-0.
 
 [dependencies]

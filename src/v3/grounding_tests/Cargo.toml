@@ -7,7 +7,7 @@ publish = false
 
 # T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) against
 # LanguageSpec Phase 1 `MethodTemplateContract` row authorities. Sibling to
-# grounding_pilot / grounding_engine / grounding_lifetime / grounding_coercion_fold;
+# grounding_inhabitance_mirror / grounding_engine / grounding_lifetime / grounding_coercion_fold;
 # does not touch `src/v3/compiler/` SG-0.
 
 [dependencies]

@@ -3441,7 +3441,7 @@ impl Dag {
             kind,
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
         ) {
-            crate::int_literal_ranges::validate_rust_pilot_integer_primitives(self);
+            crate::int_literal_ranges::validate_rust_grounding_integer_primitives(self);
         }
         self.stamp_declaration_append_begin_after_bootstrap();
     }
@@ -4223,7 +4223,7 @@ impl Dag {
             })
     }
 
-    /// Typed accessor for the `rust_pilot_primitives` data declaration
+    /// Typed accessor for the `rust_grounding_primitives` data declaration
     /// from `dsl/extdeps/languages/rust/primitives.dag` (path authorized by
     /// B4.4 `bootstrap_fixture_authority` and the regen host's
     /// `BOOTSTRAP_FIXTURE_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
@@ -4242,8 +4242,8 @@ impl Dag {
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
     /// `Dag.diagnostics`.
-    pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
-        self.declaration_by_name("rust_pilot_primitives")
+    pub fn rust_grounding_primitives(&self) -> Option<&Declaration> {
+        self.declaration_by_name("rust_grounding_primitives")
     }
 
     /// Typed accessor for `data kernel_algebra_profile` in

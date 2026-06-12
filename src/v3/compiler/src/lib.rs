@@ -5967,7 +5967,7 @@ pub fn compile_to_dag_modules_in_order(sources: &[(&str, &str)]) -> Result<Dag, 
 
 /// Structural witness for integer literal range narrowing: the
 /// `IntegerAlgebra` and `TargetCarrier` variant payload [`dag::DeclarationId`]s
-/// used to match rows in `rust_pilot_primitives`, derived from std
+/// used to match rows in `rust_grounding_primitives`, derived from std
 /// `OrderedRing<C>` / `Semiring<C>` by declaration identity (no template-name
 /// string routing).
 pub fn integer_literal_routing_witness(
