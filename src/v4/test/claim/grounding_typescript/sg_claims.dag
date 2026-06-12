@@ -164,7 +164,7 @@ fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 /
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 /
 // G.2 grounding_typescript run_test_claim roster — dissolve-on: T-22 claim runner evaluates
 // Outcome and lookup results directly without Accepted=>true / Rejected=>false Bool projection.
 fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {

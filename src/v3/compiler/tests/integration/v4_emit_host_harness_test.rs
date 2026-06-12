@@ -5,7 +5,7 @@
 //! `nat_semiring_rung34_eval.dag`) + executable boundary `tools/emit_host_runner`.
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
-//! **TASKS.md** T-38 / rung-4 host receipt path.
+//! gunbc#4765 / rung-4 host receipt path.
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` land in the same PR. **This PR (+1 census path):**
@@ -40,7 +40,7 @@
 //! deferral remains T-PB-B / T-22: retire this host parse-surface probe when `.dag` TestClaim
 //! execution or a generated harness owns the L1 Python runtime fixture coverage roster.
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
-//! **TASKS.md** T-22 T-38; delete these hand-authored per-target snippets when generated
+//! gunbc#4757/gunbc#4765; delete these hand-authored per-target snippets when generated
 //! `TestClaimRun` host transport materializes the six rung-5 law subjects for Rust/Python/Go.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
