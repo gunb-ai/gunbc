@@ -572,6 +572,42 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
   }
 }
 
+// When a record literal is inferred against an instantiated generic expected type
+// (e.g. return position NodeFoldTopDown<MyFold, MyFold>), use the resolved
+// expanded struct fields (fn types with A/R already substituted) instead of
+// the bare generic template from lookup_type_by_name.
+fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
+  match type_name {
+    Present { value: tn } =>
+      match expected {
+        Present { value: exp } =>
+          match exp.inferred {
+            Present { value: Resolved { node: expanded } } =>
+              if authored_name_at(source_indices: scope.type_env.source_indices, node: expanded) == tn {
+                Present { value: expanded }
+              } else { none }
+            _ =>
+              let rt = resolved_type(n: exp)
+              if authored_name_at(source_indices: scope.type_env.source_indices, node: rt) == tn {
+                Present { value: rt }
+              } else { none }
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+  match record_lit_expanded_from_expected(type_name: type_name, expected: expected, scope: scope) {
+    Present { value: expanded } =>
+      if expanded.connective == Conj && expanded.children |> count > 0 {
+        Present { value: expanded.children }
+      } else { none }
+    Absent => none
+  }
+}
+
 type KernelListTyDiag {
   ty: Node
   miss_diags: List<ErrorNode>
@@ -2127,7 +2163,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
+      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
 
     ExprListLit =>
       let span = texpr.span
@@ -2539,7 +2575,8 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                             field_inits: [payload_init],
                             span: span,
                             name_span: name_span,
-                            scope: scope
+                            scope: scope,
+                            expected: none
                           ) }
                       }
                     Absent => none
@@ -2563,14 +2600,17 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 }
 
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult {
-  let struct_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  let struct_fields = match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+    Present { value: fields } => fields
+    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+  }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = resolved_type(n: sf)
-        if ft.ident_span != none { Present { value: ft } } else { none }
+        if ft.ident_span != none || type_node_is_callable(n: ft) { Present { value: ft } } else { none }
       Absent => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)

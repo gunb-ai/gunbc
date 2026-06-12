@@ -930,6 +930,31 @@ pub fn record_lit_expected_fields(
     }
 }
 
+pub fn record_lit_fields_from_expected(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Vec<Rc<Node>>>> {
+    match type_name {
+        Some(tn) => match expected {
+            Some(exp) => {
+                let rt = resolved_type(exp.clone());
+                if ((authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone())
+                    .as_str()
+                    == tn.clone().as_str())
+                    && ((rt.children.clone().len() as i64) > 0))
+                {
+                    Some(rt.children.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+        None => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
     pub ty: Rc<Node>,
@@ -4162,6 +4187,7 @@ match bare_s {
                     span.clone(),
                     node_name_span(texpr.clone()),
                     scope.clone(),
+                    expected.clone(),
                 )
             }
             ExprData::ExprListLit => {
@@ -4925,6 +4951,7 @@ pub fn infer_variant_constructor_call(
                                                     span.clone(),
                                                     name_span,
                                                     scope.clone(),
+                                                    None,
                                                 ))
                                             }
                                         },
@@ -4971,9 +4998,14 @@ pub fn infer_record_lit(
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let struct_fields = record_lit_expected_fields(type_name.clone(), scope.clone());
+        let struct_fields =
+            match record_lit_fields_from_expected(type_name.clone(), expected, scope.clone()) {
+                Some(fields) => fields.clone(),
+                None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+            };
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
             for fi in field_inits.iter().cloned() {
