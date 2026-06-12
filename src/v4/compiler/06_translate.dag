@@ -3894,6 +3894,19 @@ fn translate_node_computation(
     }
   )
 }
+fn translate_node_mvp1_fold(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) { translate_mvp1_fold_init(node: n0, tree: tree, target: target) },
+      step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+    }
+  )
+}
 fn translate_node_mvp1(
   node: Node,
   tree: InferredTree,
@@ -3904,13 +3917,7 @@ fn translate_node_mvp1(
     // value-expression projection + grammar scaffold — preserve producer IR.
     outcome_accepted(node)
   } else {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) { translate_mvp1_fold_init(node: n0, tree: tree, target: target) },
-      step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-    }
-  )
+    translate_node_mvp1_fold(node: node, tree: tree, target: target)
   }
 }
 fn translate_node(
