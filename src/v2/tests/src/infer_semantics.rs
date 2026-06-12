@@ -303,7 +303,7 @@ type AccountId = Refined<String>
         module
             .type_env
             .decl_registry
-            .get(&user_binding_id)
+            .get(&user_binding_id.value)
             .expect("UserId binding id must be registered")
             .name,
         "UserId"
@@ -312,7 +312,7 @@ type AccountId = Refined<String>
         module
             .type_env
             .decl_registry
-            .get(&account_binding_id)
+            .get(&account_binding_id.value)
             .expect("AccountId binding id must be registered")
             .name,
         "AccountId"
