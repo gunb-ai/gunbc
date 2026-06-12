@@ -1,12 +1,12 @@
-// src/v4/std/sugar.dag
+// src/v4/std/compilers/sugar.dag
 // Scope: surface sugar — sugar-rule lowering to kernel connective + edge discipline.
-// M9 concept-DAG home: sibling to node.dag (Connective, EdgeDiscipline, edges_conform).
+// M9 concept-DAG home: std/compilers/ (compiler-pipeline transformation models); imports node.dag for Connective, EdgeDiscipline, edges_conform.
 // Surface atom IDENTITY (^dag_c3_surface_sugar_* prelude) is language-specific extdep;
 // this module owns the TRANSFORMATION model only, keyed by-reference to those atoms.
 // Status: T-8 modeled — data-table authority for surface_atom → SugarLowering.
 // 🟡 gated — feature:CP-1b-surface-sugar-language-model — dissolve-on: surface_atom identity lookup owned by LanguageModel carrier; forbidden: parallel Atom identity classifier outside this table + LanguageModel projection.
 
-module v4.std.sugar
+module v4.std.compilers.sugar
 
 import v4.std.collection { Absent, Present, optional_absent, optional_present }
 import v4.std.diagnostic {
