@@ -106,7 +106,7 @@ type PrimitiveOperationRef {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) binds EffectSemanticsDecl.operations when first PrimitiveOperationRef carries non-trivial effect (ledger: T-33 · TASKS.md § T-33)
+// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) binds EffectSemanticsDecl.operations when first PrimitiveOperationRef carries non-trivial effect (bind gunbc#4764)
 type EffectSemanticsDecl {
   operations: List<PrimitiveOperationRef>
 }
@@ -125,7 +125,7 @@ type PartialityDischarge
   | RefinementHonoring { validation: Node }
 
 
-// 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (ledger: T-33 · TASKS.md § T-33)
+// 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (bind gunbc#4764)
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
 }
