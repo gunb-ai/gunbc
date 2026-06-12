@@ -253,11 +253,10 @@ pub fn resolve_entry_graph(
     String,
 > {
     let index = build_module_index(source_roots);
-    resolve_entry_graph_with_index(source_roots, &index, entry_file)
+    resolve_entry_graph_with_index(&index, entry_file)
 }
 
 fn resolve_entry_graph_with_index(
-    source_roots: &[String],
     index: &ModuleSourceIndex,
     entry_file: &str,
 ) -> Result<
@@ -268,6 +267,23 @@ fn resolve_entry_graph_with_index(
     String,
 > {
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
+    resolved_graph_from_sources(sources)
+}
+
+/// Compile an already-assembled source closure to a resolved graph, or return
+/// formatted blocking diagnostics. Shared by the per-entry path
+/// (`resolve_entry_graph_with_index`) and the batched discovery path
+/// (`discover_owned_data_decls`), which merges many entry closures into one
+/// compile.
+fn resolved_graph_from_sources(
+    sources: Vec<Rc<v2_compiler_compile::SourceFile>>,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
     let result = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
 
     let has_errors = result
@@ -961,12 +977,112 @@ fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
         .any(|line| line.trim_start().starts_with("data unified_claim_"))
 }
 
-/// Glob claim corpus files, resolve each entry fail-closed, expose owned `data` facts.
+/// Top-level decl names declared by one source file (column-0 item keywords).
+/// Used ONLY to group entry closures into collision-free merged resolves; the
+/// discovered facts themselves still come exclusively from the resolved graph.
+fn top_level_decl_names(content: &str) -> Vec<String> {
+    const ITEM_KEYWORDS: [&str; 8] = [
+        "data ",
+        "fn ",
+        "func ",
+        "type ",
+        "service ",
+        "const ",
+        "pattern ",
+        "resource ",
+    ];
+    let mut names = Vec::new();
+    for line in content.lines() {
+        let Some(rest) = ITEM_KEYWORDS.iter().find_map(|kw| line.strip_prefix(kw)) else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names
+}
+
+/// One merged resolve unit: entry files whose combined import closures declare
+/// no top-level name twice, so a single `compile_to_resolved` over the union
+/// yields the same per-entry facts as per-entry resolves.
+struct DiscoveryResolveGroup {
+    /// (entry path, entry module, count of column-0 `data unified_claim_` markers).
+    entries: Vec<(String, String, usize)>,
+    /// file path -> source, union of member entry closures.
+    sources: HashMap<String, Rc<v2_compiler_compile::SourceFile>>,
+    /// top-level decl name -> declaring file path.
+    decl_names: HashMap<String, String>,
+}
+
+/// `None` if the closure can merge into the group; otherwise the first
+/// top-level decl-name collision, as `(name, file already in group, new file)`.
+fn closure_group_conflict(
+    group: &DiscoveryResolveGroup,
+    closure: &[Rc<v2_compiler_compile::SourceFile>],
+    names_by_file: &HashMap<String, Rc<Vec<String>>>,
+) -> Option<(String, String, String)> {
+    for source in closure {
+        if group.sources.contains_key(&source.path) {
+            continue;
+        }
+        for name in names_by_file[&source.path].iter() {
+            if let Some(existing) = group.decl_names.get(name) {
+                if existing != &source.path {
+                    return Some((name.clone(), existing.clone(), source.path.clone()));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn add_closure_to_group(
+    group: &mut DiscoveryResolveGroup,
+    closure: Vec<Rc<v2_compiler_compile::SourceFile>>,
+    names_by_file: &HashMap<String, Rc<Vec<String>>>,
+) {
+    for source in closure {
+        if group.sources.contains_key(&source.path) {
+            continue;
+        }
+        for name in names_by_file[&source.path].iter() {
+            group.decl_names.insert(name.clone(), source.path.clone());
+        }
+        group.sources.insert(source.path.clone(), source);
+    }
+}
+
+/// Discovery output: resolved-type owned-data records plus the resolve-count
+/// receipt consumed by the CI latency ratchet (`--max-resolves`).
+pub struct OwnedDataDiscovery {
+    pub records: Vec<OwnedDataDeclRecord>,
+    pub entry_count: usize,
+    /// Number of `compile_to_resolved` graph resolves performed. 1 unless a
+    /// top-level decl-name collision between entry closures forces a split.
+    pub graph_resolves: usize,
+    /// One line per forced group split: the decl-name collision (name, file
+    /// already in the group, new file) that made the entry start a new group.
+    pub group_split_collisions: Vec<String>,
+}
+
+/// Glob claim corpus files, resolve fail-closed, expose owned `data` facts.
+///
+/// Latency shape (the #4633→ratchet history): a resolve costs ~O(closure), and
+/// entry closures overlap almost entirely, so this batches all entries into
+/// collision-free groups and resolves each group ONCE instead of resolving per
+/// entry (formerly ~46 near-identical full resolves per CI run). Facts are
+/// still read per entry from the typed graph; grouping is a pure orchestration
+/// change over the same resolve + extraction primitives.
 pub fn discover_owned_data_decls(
     source_roots: &[String],
     scan_dir: &str,
     exclude_subpaths: &[String],
-) -> Result<Vec<OwnedDataDeclRecord>, String> {
+) -> Result<OwnedDataDiscovery, String> {
     let scan_path = Path::new(scan_dir);
     if !scan_path.is_dir() {
         return Err(format!("scan dir does not exist: {}", scan_dir));
@@ -977,7 +1093,11 @@ pub fn discover_owned_data_decls(
     files.retain(|p| !path_excluded(p, exclude_subpaths));
 
     let module_index = build_module_index(source_roots);
-    let mut all_records = Vec::new();
+
+    let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
+    let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
+    let mut group_split_collisions: Vec<String> = Vec::new();
+    let mut entry_count = 0usize;
     for path in files {
         let entry = path.to_string_lossy().to_string();
         let content = std::fs::read_to_string(&path)
@@ -991,19 +1111,78 @@ pub fn discover_owned_data_decls(
                 entry
             )
         })?;
+        let marker_count = content
+            .lines()
+            .filter(|line| line.starts_with("data unified_claim_"))
+            .count();
+        entry_count += 1;
 
-        let (graph, source_indices) =
-            resolve_entry_graph_with_index(source_roots, &module_index, &entry)?;
+        let closure = load_sources_for_entry_with_index(&module_index, &entry)?;
+        for source in &closure {
+            names_by_file
+                .entry(source.path.clone())
+                .or_insert_with(|| Rc::new(top_level_decl_names(&source.content)));
+        }
+
+        let member = (entry, entry_module, marker_count);
+        let mut first_conflict: Option<(String, String, String)> = None;
+        match groups.iter_mut().find(|g| {
+            match closure_group_conflict(g, &closure, &names_by_file) {
+                None => true,
+                Some(conflict) => {
+                    first_conflict.get_or_insert(conflict);
+                    false
+                }
+            }
+        }) {
+            Some(group) => {
+                group.entries.push(member);
+                add_closure_to_group(group, closure, &names_by_file);
+            }
+            None => {
+                if let Some((name, existing_file, new_file)) = first_conflict {
+                    group_split_collisions.push(format!(
+                        "entry {} split off over decl `{}` ({} vs {})",
+                        member.0, name, existing_file, new_file
+                    ));
+                }
+                let mut group = DiscoveryResolveGroup {
+                    entries: vec![member],
+                    sources: HashMap::new(),
+                    decl_names: HashMap::new(),
+                };
+                add_closure_to_group(&mut group, closure, &names_by_file);
+                groups.push(group);
+            }
+        }
+    }
+
+    let graph_resolves = groups.len();
+    let mut all_records = Vec::new();
+    for group in groups {
+        let mut sources: Vec<Rc<v2_compiler_compile::SourceFile>> =
+            group.sources.into_values().collect();
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        all_records.extend(owned_data_decls_for_entry(
-            &graph,
-            &si,
-            &entry,
-            &entry_module,
-        )?);
+        for (entry, entry_module, marker_count) in group.entries {
+            let records = owned_data_decls_for_entry(&graph, &si, &entry, &entry_module)?;
+            // Fail-closed guard on the merged-resolve path: every column-0
+            // `data unified_claim_` marker must surface as a resolved record;
+            // a shortfall means a registry collision swallowed a decl.
+            if records.len() != marker_count {
+                return Err(format!(
+                    "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
+                    entry,
+                    records.len(),
+                    marker_count
+                ));
+            }
+            all_records.extend(records);
+        }
     }
 
     all_records.sort_by(|a, b| {
@@ -1012,7 +1191,12 @@ pub fn discover_owned_data_decls(
             .then_with(|| a.decl_name.cmp(&b.decl_name))
     });
     verify_bool_witness_transport_projection_complete(&all_records)?;
-    Ok(all_records)
+    Ok(OwnedDataDiscovery {
+        records: all_records,
+        entry_count,
+        graph_resolves,
+        group_split_collisions,
+    })
 }
 
 pub fn bool_witness_claim_arm_count(records: &[OwnedDataDeclRecord]) -> usize {
