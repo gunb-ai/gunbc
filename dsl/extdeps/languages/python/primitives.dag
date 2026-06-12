@@ -28,7 +28,7 @@
 //       slice lands; do not cite stdlib paths here.
 //
 // CONSUMER BOUNDARY: top-level list / record `ValueBody` aggregates lower
-// structurally today (rust_pilot_primitives is loaded as `ValueBody::List`
+// structurally today (rust_grounding_primitives is loaded as `ValueBody::List`
 // by `src/v3/grounding_engine/src/lib.rs:7`, registered via
 // `src/v3/std/extdeps_bootstrap_fixtures.dag:23`). What is *not* yet live
 // for this file: no `BootstrapFixture` row has been registered for

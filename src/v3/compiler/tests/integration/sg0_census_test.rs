@@ -236,12 +236,12 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // T-Substrate cardinality subset for int literals (2026-04-25): the
 // range-comparison shim in `int_literal_ranges.rs` is host-side
 // reconciliation glue over already-declared String-decimal range facts
-// while `rust_pilot_primitives.value_body` remains an unparsed top-level
+// while `rust_grounding_primitives.value_body` remains an unparsed top-level
 // list. It intentionally compares only source literals that already fit
 // `LiteralBits::Int(i64)`; the declared u64 upper half is not reachable
 // until the deferred carrier-widening lane replaces that source-literal
 // carrier. Dissolution triggers: R2 T-Substrate's top-level aggregate
-// `ValueBody` sub-lane makes `rust_pilot_primitives` row values
+// `ValueBody` sub-lane makes `rust_grounding_primitives` row values
 // structurally walkable, and the carrier-widening lane makes the full
 // declared unsigned range parseable by source literals. At that point
 // this helper should consume those declared rows directly or move behind
@@ -629,7 +629,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/emit_verification_gates_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
-    // `Dag::rust_pilot_primitives()` type-structure walk + the
+    // `Dag::rust_grounding_primitives()` type-structure walk + the
     // `ValueBody::Unparsed` boundary that flips when R2 T-Substrate's
     // 4th sub-lane lands top-level `ValueBody::List`/aggregate.
     // Dissolves into testgen authority when the testgen path covers

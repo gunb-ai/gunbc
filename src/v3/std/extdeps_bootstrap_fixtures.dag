@@ -32,7 +32,7 @@ type BootstrapFixture {
 // Named product of every pilot fixture row (extend with new fields when adding
 // targets; cost of change stays this file + the parallel `const` filter).
 type BootstrapFixtureSet {
-  rust_pilot_primitives: BootstrapFixture
+  rust_grounding_primitives: BootstrapFixture
   rust_method_template_contracts: BootstrapFixture
   python_method_template_contracts: BootstrapFixture
   go_method_template_contracts: BootstrapFixture
@@ -45,7 +45,7 @@ type BootstrapFixtureSet {
 }
 
 data bootstrap_fixture_authority: BootstrapFixtureSet = {
-  rust_pilot_primitives: {
+  rust_grounding_primitives: {
     virtual_path: "dsl/extdeps/languages/rust/primitives.dag"
   },
   rust_method_template_contracts: {

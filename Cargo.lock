@@ -1318,8 +1318,12 @@ name = "v3-grounding-engine"
 version = "0.1.0"
 dependencies = [
  "v3-compiler",
- "v3-grounding-pilot",
+ "v3-grounding-inhabitance-mirror",
 ]
+
+[[package]]
+name = "v3-grounding-inhabitance-mirror"
+version = "0.1.0"
 
 [[package]]
 name = "v3-grounding-lifetime"
@@ -1327,10 +1331,6 @@ version = "0.1.0"
 dependencies = [
  "v3-compiler",
 ]
-
-[[package]]
-name = "v3-grounding-pilot"
-version = "0.1.0"
 
 [[package]]
 name = "v3-grounding-tests"
