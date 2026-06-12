@@ -1724,57 +1724,154 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
       }
   }
 }
-fn project_type_expression_children(
-  children: List<Node>,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<Node>> {
-  fold_list(
-    xs: children,
-    empty: Accepted { value: Empty, diagnostics: None },
-    cons: fn(acc, child) {
-      bind_outcome(
-        o: acc,
-        f: fn(items) {
-          bind_outcome(
-            o: project_type_expression_node(node: child, target: target, projection: projection),
-            f: fn(projected) {
-              outcome_accepted(list_snoc_item(xs: items, item: projected))
-            }
-          )
-        }
-      )
-    }
-  )
-}
 // 🟡 gated — feature:sg-2-type-expr-projection-row-data — owner:witty-raven-599 —
 // bind node://adhoc-3bb63121-471 (W2-proper / plan G1 completion) — dissolve-on:
 // each connective realization in translate_algebra is a DATA row on
 // TargetTypeExpressionProjection (generic row interpreter), not a per-connective algebra
 // fn; PR-T-FINISH lands traversal-fold + homing-correction only — forbidden: letting this
 // float as an untracked follow-up.
-// 🟢 TERMINAL — irreducible NodeFold states for translate_algebra Conj arm (Slots = field
-// accumulation; Done = leaf/subtree already projected); not a public API surface.
+// 🟢 TERMINAL — irreducible NodeFold states for translate_algebra row arms (Slots/Variants/
+// Positional = connective-specific accumulation; Done = leaf/subtree already projected).
 type TypeExprTranslateAcc
   = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
+  | TypeExprTranslateVariants { variants: List<TargetTypeExprVariantSlot> }
+  | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
 
-fn translate_algebra_conj_finalize(
+fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  match acc {
-    TypeExprTranslateDone { node: n } => outcome_accepted(n)
-    TypeExprTranslateSlots { slots: fields } =>
-      if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
-      } else {
-        outcome_accepted(
-          target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
-        )
+  match anchor.kind {
+    TypeNode { connective: connective } =>
+      match connective {
+        Atom { identity: _ } =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Conj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateSlots { slots: fields } =>
+              if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
+                outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+              } else {
+                outcome_accepted(
+                  target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
+                )
+              }
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Disj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateVariants { variants: variants } =>
+              outcome_accepted(
+                target_type_expr_sum_emitted(form: projection.disj_form, variants: variants)
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Instantiation =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslatePositional { items: projected } =>
+              bind_outcome(
+                o: list_head_and_tail(xs: projected, node: anchor),
+                f: fn(split) {
+                  outcome_accepted(
+                    target_type_expr_instantiation_emitted(
+                      form: projection.instantiation_form,
+                      head: split.head,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Cardinality =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslatePositional { items: projected } =>
+              bind_outcome(
+                o: list_head_and_tail(xs: projected, node: anchor),
+                f: fn(split) {
+                  outcome_accepted(
+                    target_type_expr_cardinality_emitted(
+                      form: projection.cardinality_form,
+                      head: split.head,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Arrow =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
       }
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
   }
+}
+
+fn translate_type_expression_arrow_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_expr_arrow_split_from_types(
+      types: node_positional_child_targets(node: node),
+      node: node
+    ),
+    f: fn(original_split) {
+      bind_outcome(
+        o: translate_project_arrow_split_types(
+          original_split: original_split,
+          target: target,
+          projection: projection,
+          anchor: node
+        ),
+        f: fn(split) {
+          bind_outcome(
+            o: type_expr_projection_graft_substrate_in_row_slot(
+              projection: projection,
+              connective: Arrow,
+              node: node,
+              projected_positional: list_append(
+                left: split.inputs,
+                right: Cons { head: split.output, tail: Empty }
+              )
+            ),
+            f: fn(grafted) {
+              bind_outcome(
+                o: type_expr_projection_graft_witness_gate(
+                  source_facts: grafted,
+                  projection: projection,
+                  connective: Arrow
+                ),
+                f: fn(_) {
+                  outcome_accepted(
+                    target_type_expr_arrow_emitted(
+                      form: projection.arrow_form,
+                      inputs: split.inputs,
+                      output: split.output
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 fn translate_algebra(
@@ -1784,18 +1881,45 @@ fn translate_algebra(
   NodeFold {
     init: fn(n) {
       match n.kind {
-        TypeNode { connective: Conj } =>
-          Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
-        TypeNode { connective: _ } =>
-          bind_outcome(
-            o: project_type_expression_node(node: n, target: target, projection: projection),
-            f: fn(emitted) {
+        TypeNode { connective: connective } =>
+          match connective {
+            Atom { identity: id } =>
               Accepted {
-                value: TypeExprTranslateDone { node: emitted },
+                value: TypeExprTranslateDone {
+                  node: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: id
+                  )
+                },
                 diagnostics: None
               }
-            }
-          )
+            Conj =>
+              Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+            Disj =>
+              Accepted {
+                value: TypeExprTranslateVariants { variants: Empty },
+                diagnostics: None
+              }
+            Instantiation | Cardinality =>
+              Accepted {
+                value: TypeExprTranslatePositional { items: Empty },
+                diagnostics: None
+              }
+            Arrow =>
+              bind_outcome(
+                o: translate_type_expression_arrow_project(
+                  node: n,
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(emitted) {
+                  Accepted {
+                    value: TypeExprTranslateDone { node: emitted },
+                    diagnostics: None
+                  }
+                }
+              )
+          }
         ComputationNode { behavior: _ } =>
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
       }
@@ -1814,7 +1938,7 @@ fn translate_algebra(
                       Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                     Accepted { value: child_acc, diagnostics: cd } =>
                       bind_outcome(
-                        o: translate_algebra_conj_finalize(
+                        o: translate_algebra_finalize(
                           acc: child_acc,
                           anchor: e.target,
                           projection: projection
@@ -1851,46 +1975,68 @@ fn translate_algebra(
                     translate_type_expression_shape_missing_diagnostic(node: e.target)
                   )
               }
+            TypeExprTranslateVariants { variants: variants } =>
+              match e.label {
+                Named { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_finalize(
+                          acc: child_acc,
+                          anchor: e.target,
+                          projection: projection
+                        ),
+                        f: fn(projected) {
+                          Accepted {
+                            value: TypeExprTranslateVariants {
+                              variants: list_snoc_item(
+                                xs: variants,
+                                item: TargetTypeExprVariantSlot {
+                                  label: label,
+                                  type_expr: projected
+                                }
+                              )
+                            },
+                            diagnostics: diagnostics_merge(outer: d, inner: cd)
+                          }
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+            TypeExprTranslatePositional { items: items } =>
+              match child {
+                Rejected { diagnostics: cr } =>
+                  Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                Accepted { value: child_acc, diagnostics: cd } =>
+                  bind_outcome(
+                    o: translate_algebra_finalize(
+                      acc: child_acc,
+                      anchor: e.target,
+                      projection: projection
+                    ),
+                    f: fn(projected) {
+                      Accepted {
+                        value: TypeExprTranslatePositional {
+                          items: list_snoc_item(xs: items, item: projected)
+                        },
+                        diagnostics: diagnostics_merge(outer: d, inner: cd)
+                      }
+                    }
+                  )
+              }
           }
       }
     }
   }
 }
 
-fn project_type_expression_disj_variants(
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprVariantSlot>> {
-  fold(
-    node.children,
-    init: Accepted { value: Empty, diagnostics: None },
-    f: fn(acc, e) {
-      bind_outcome(
-        o: acc,
-        f: fn(slots) {
-          match e.label {
-            Named { name: label } =>
-              bind_outcome(
-                o: project_type_expression_node(node: e.target, target: target, projection: projection),
-                f: fn(projected) {
-                  outcome_accepted(
-                    list_snoc_item(
-                      xs: slots,
-                      item: TargetTypeExprVariantSlot { label: label, type_expr: projected }
-                    )
-                  )
-                }
-              )
-            Positional =>
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-          }
-        }
-      )
-    }
-  )
-}
-fn project_type_expression_node(
+fn translate_type_expression_project(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -1899,146 +2045,69 @@ fn project_type_expression_node(
     ComputationNode { behavior: _ } =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
     TypeNode { connective: connective } =>
-  bind_outcome(
-    o: type_expr_projection_row_closedness_from_target(
-      target: target,
-      projection: projection,
-      connective: connective
-    ),
-    f: fn(_) {
-      match connective {
-        Atom { identity: id } =>
-          Accepted {
-            value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
-            diagnostics: None
-          }
-        Instantiation =>
-          if target_collection_type_node_is_free_monoid_carrier(node: node) {
-            project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
-          } else {
-            bind_outcome(
-              o: project_type_expression_children(
-                children: node_positional_child_targets(node: node),
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  o: list_head_and_tail(xs: projected, node: node),
-                  f: fn(split) {
-                    Accepted {
-                      value: target_type_expr_instantiation_emitted(
-                        form: projection.instantiation_form,
-                        head: split.head,
-                        args: split.tail
-                      ),
-                      diagnostics: None
-                    }
-                  }
-                )
-              }
-            )
-          }
-        Cardinality =>
-          if target_collection_type_node_is_set_carrier(node: node) {
-            project_set_collection_type_node(node: node, target: target, projection: projection)
-          } else {
-            bind_outcome(
-              o: project_type_expression_children(
-                children: node_positional_child_targets(node: node),
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  o: list_head_and_tail(xs: projected, node: node),
-                  f: fn(split) {
-                    Accepted {
-                      value: target_type_expr_cardinality_emitted(
-                        form: projection.cardinality_form,
-                        head: split.head,
-                        args: split.tail
-                      ),
-                      diagnostics: None
-                    }
-                  }
-                )
-              }
-            )
-          }
-        Conj =>
-          bind_outcome(
-            o: fold_node(n: node, algebra: translate_algebra(target: target, projection: projection)),
-            f: fn(acc) {
-              translate_algebra_conj_finalize(acc: acc, anchor: node, projection: projection)
-            }
-          )
-        Disj =>
-          bind_outcome(
-            o: project_type_expression_disj_variants(
-              node: node,
-              target: target,
-              projection: projection
-            ),
-            f: fn(variants) {
-              Accepted {
-                value: target_type_expr_sum_emitted(form: projection.disj_form, variants: variants),
-                diagnostics: None
-              }
-            }
-          )
-        Arrow =>
-          bind_outcome(
-            o: type_expr_arrow_split_from_types(
-              types: node_positional_child_targets(node: node),
-              node: node
-            ),
-            f: fn(original_split) {
+      bind_outcome(
+        o: type_expr_projection_row_closedness_from_target(
+          target: target,
+          projection: projection,
+          connective: connective
+        ),
+        f: fn(_) {
+          match connective {
+            Atom { identity: _ } =>
               bind_outcome(
-                o: translate_project_arrow_split_types(
-                  original_split: original_split,
-                  target: target,
-                  projection: projection,
-                  anchor: node
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
                 ),
-                f: fn(split) {
-                  bind_outcome(
-                    o: type_expr_projection_graft_substrate_in_row_slot(
-                      projection: projection,
-                      connective: Arrow,
-                      node: node,
-                      projected_positional: list_append(
-                        left: split.inputs,
-                        right: Cons { head: split.output, tail: Empty }
-                      )
-                    ),
-                    f: fn(grafted) {
-                      bind_outcome(
-                        o: type_expr_projection_graft_witness_gate(
-                          source_facts: grafted,
-                          projection: projection,
-                          connective: Arrow
-                        ),
-                        f: fn(_) {
-                          Accepted {
-                            value: target_type_expr_arrow_emitted(
-                              form: projection.arrow_form,
-                              inputs: split.inputs,
-                              output: split.output
-                            ),
-                            diagnostics: None
-                          }
-                        }
-                      )
-                    }
-                  )
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
                 }
               )
-            }
-          )
-      }
-    }
-  )
+            Instantiation =>
+              if target_collection_type_node_is_free_monoid_carrier(node: node) {
+                project_free_monoid_collection_type_node(
+                  node: node,
+                  target: target,
+                  projection: projection
+                )
+              } else {
+                bind_outcome(
+                  o: fold_node(
+                    n: node,
+                    algebra: translate_algebra(target: target, projection: projection)
+                  ),
+                  f: fn(acc) {
+                    translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                  }
+                )
+              }
+            Cardinality =>
+              if target_collection_type_node_is_set_carrier(node: node) {
+                project_set_collection_type_node(node: node, target: target, projection: projection)
+              } else {
+                bind_outcome(
+                  o: fold_node(
+                    n: node,
+                    algebra: translate_algebra(target: target, projection: projection)
+                  ),
+                  f: fn(acc) {
+                    translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                  }
+                )
+              }
+            Conj | Disj | Arrow =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+          }
+        }
+      )
   }
 }
 fn type_expr_atom_binding_from_positional(
