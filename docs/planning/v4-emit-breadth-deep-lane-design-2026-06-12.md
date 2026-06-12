@@ -4,13 +4,13 @@
 > **Work item:** `node://adhoc-f64ad6df-d11` · **Session:** `clever-moth-532` (Mgr-§3 composite).
 > **Planning authority:** `gunb-ai/ctrl` `gunbc-planning/dependency-graph-2026-06-11.md` §3 +
 > `dependency-graph-2026-06-12.md` frontier update.
-> **Operator fork (2026-06-12):** **§3-deep, §4 thin** — deepest capacity here; §4 is one thin
-> bounded lane (effect handlers + one §2 body + run loop).
+> **Operator fork (2026-06-12, ctrl#1563 via snappy-crab):** **§3-DEEP / §4-THIN** — standing
+> decision, no fresh operator call. §3 inherits deepest capacity the day a Branch body
+> round-trips; §4 is ONE thin bounded lane (`royal-ferret`, `program.dag` PR #4744).
 >
-> **Implementation GO:** sharp-fox-370 worker (`adhoc-fdd9ccb8-b54`) owns Branch emit row +
-> round-trip; sharp-fox or snappy-crab-849 announces GO. Until Branch body round-trips green:
-> **NO** compiler-stage `.dag` edits, **NO** emit-surface code. Same pre-gate pattern as
-> sharp-ibex §2.
+> **Implementation GO:** sharp-fox-370 **owns announcing GO** when fan-in **(iii) round-trip**
+> greens (downstream of fan-in **(ii) emit**, in flight: `valiant-swift-466` PR #4741).
+> Until GO: **NO** compiler-stage `.dag` edits, **NO** emit-surface code.
 
 ## 1. North star — one row per form, rows not arms
 
@@ -27,6 +27,14 @@ work around.
 **P2 audit rule:** every PR touching compiler stages must sweep **all** stage `.dag` files —
 including `emit_host.dag` (past audit missed it by only checking `06_translate`). Emit-surface
 diffs in load-bearing stages route through snappy-crab-849 for signing authority.
+
+### 1.1 Day-1 tripwires (ctrl#1563 fork ruling — bake now)
+
+| Tripwire | Falsifier | Action |
+|----------|-----------|--------|
+| **§1 regression** | Second-target emit **edits** `06_translate` fold logic instead of **adding** `target_model` rows consumed by existing folds | **STOP** — §1 regressed; escalate sharp-fox-370 |
+| **Anti-cement (#4623)** | `run_emit_host` hand-list deletion before TS **round-trips through the descriptor** | **HOLD** — hand-list dies only after descriptor round-trip proof |
+| **One row per form** | >1 `TargetValueExpressionKind` or multi-site translate matcher | **STOP** — escalate snappy-crab-849 |
 
 ## 2. Emit-coverage census — BY EXECUTION
 
@@ -148,7 +156,7 @@ templates or cementing per-target logic to satisfy a ratchet.
 
 | Order | SG-0 / bridge path | Migration replacement | §3 rung that unlocks |
 |-------|-------------------|----------------------|----------------------|
-| D1 | `emit_host_eval.rs` | `TargetModel.runtime_row` + generated eval transport | L0 body emit + T-22 row |
+| D1 | `emit_host_eval.rs` | `TargetModel.runtime_row` + generated eval transport | TS descriptor round-trip green (#4623) + T-22 row |
 | D2 | `emit_host_bridge.rs` | same | D1 |
 | D3 | `r1c_e_emit_gates.rs` + bin | `.dag` claim runner | L1 emit receipts |
 | D4 | `boundary_emit_gates.rs` + bin | T-PB-B claim execution | breadth claims |
@@ -171,7 +179,7 @@ templates or cementing per-target logic to satisfy a ratchet.
 
 | # | When | Owner hint |
 |---|------|------------|
-| W0 | Branch round-trip green | sharp-fox `adhoc-fdd9ccb8-b54` (in flight) |
+| W0 | Branch round-trip green | sharp-fox `adhoc-fdd9ccb8-b54`; (ii) emit: valiant-swift-466 #4741 |
 | W1 | Rust descriptor + claims | extdeps worker; P2 sweep all compiler stages |
 | W2 | TS body emit red → green | producer→emit path; no hand token list |
 | W3 | T-22 runtime_row | model PR; dissolves emit_host if-chains |
@@ -201,4 +209,4 @@ Escalate immediately if:
 - [x] Rust-second-target through descriptor + T-22 dissolve plan (§4)
 - [x] §5 census-drain ordering (§5)
 - [x] §3-deep / §4-thin fork recorded (§6)
-- [ ] Implementation GO — blocked on Branch body round-trip (`adhoc-fdd9ccb8-b54`)
+- [ ] Implementation GO — sharp-fox-370 announces when fan-in (iii) round-trip green
