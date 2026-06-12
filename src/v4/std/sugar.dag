@@ -129,35 +129,23 @@ fn sugar_positional_unwrap_child(children: List<Edge>) -> Node? {
   }
 }
 
-fn sugar_edges_ok(lowering: SugarLowering, children: List<Edge>) -> Bool {
-  match lowering {
-    SugarRewriteConnective { connective: _, edges: discipline } =>
-      edges_conform(children: children, d: discipline)
-    SugarUnwrapPositionalChild {} =>
-      match sugar_positional_unwrap_child(children: children) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
-}
-
 fn apply_sugar(rule: SugarRule, n: Node, children: List<Edge>) -> Outcome<Node> {
-  if sugar_edges_ok(lowering: rule.lowering, children: children) {
-    match rule.lowering {
-      SugarRewriteConnective { connective: connective, edges: _ } =>
+  match rule.lowering {
+    SugarRewriteConnective { connective: connective, edges: discipline } =>
+      if edges_conform(children: children, d: discipline) {
         Accepted {
           value: sugar_type_node(connective: connective, children: children, n: n),
           diagnostics: None
         }
-      SugarUnwrapPositionalChild {} =>
-        match sugar_positional_unwrap_child(children: children) {
-          Present { value: child } =>
-            Accepted { value: child, diagnostics: None }
-          Absent =>
-            Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
-        }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+    SugarUnwrapPositionalChild {} =>
+      match sugar_positional_unwrap_child(children: children) {
+        Present { value: child } =>
+          Accepted { value: child, diagnostics: None }
+        Absent =>
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
   }
 }
