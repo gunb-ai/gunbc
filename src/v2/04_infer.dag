@@ -1497,10 +1497,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: base_diags
         }
       } else {
-      let field_type_lookup = match lookup_applied_field_type_node(base_rt: base_rt, field_name: field_name, scope: scope) {
-        Present { value: ft } => Present { value: ft }
-        Absent => lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
-      }
+      let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
       match field_type_lookup {
         Present { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
