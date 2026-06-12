@@ -2,6 +2,7 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
