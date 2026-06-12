@@ -23,6 +23,7 @@ import v4.std.algebra {
   inhabitant_edge,
   lattice_field_join,
   lattice_field_meet,
+  fold_list_right,
   list_snoc_item
 }
 import v4.std.collection { List }
@@ -229,9 +230,13 @@ fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
         }
       },
       step: fn(acc, e, child) {
-        fold(child, init: acc, f: fn(a, p) {
-          list_snoc_item(xs: a, item: p)
-        })
+        fold_list_right(
+          xs: child,
+          empty: acc,
+          snoc: fn(a, p) {
+            list_snoc_item(xs: a, item: p)
+          }
+        )
       }
     }
   )
