@@ -76,15 +76,25 @@ type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
 data parse_tree_to_target_model_bridge_not_realized: Symbol = parse_tree_to_target_model_bridge_not_realized
 data cross_language_bridge_port: Symbol = cross_language_bridge_port
 
+// Named break point for the go cell: go's grammar validates but its add-fn parse
+// production currently rejects (go_mvp1_grammar_validates_fixture=true,
+// go_mvp1_grammar_parse_accepted=false, both by execution). This is a distinct,
+// upstream-of-the-bridge gap — reported, not hidden.
+data go_add_parse_production_currently_rejects: Symbol = go_add_parse_production_currently_rejects
+
 // 🟡 witness-body scaffold — feature:parse-tree-to-target-model-bridge ·
 //   consumer:cross-language-emit-matrix ·
 //   dissolve-on: a real fn carries Outcome<ParseTree> to the emit-side core node a
 //   TargetModel serializes (ParseTree -> grammar-relation rows -> core node), at which
 //   point this returns Holds and the python->ts matrix cell flips to ChainProven.
+// Returns the concrete Witness so call sites can destructure it. (The v2 interpreter
+// resolves Holds/Violates on the applied `Witness<T>`, not through a type alias of it —
+// hence the concrete return type; the ParseTreeToTargetModelBridgeCheck alias names the
+// same shape at construction-only sites, mirroring self_host.dag's *Check aliases.)
 fn parse_tree_to_target_model_bridge_scaffold(
   source_parse_tree: Symbol,
   intended_target_language: Symbol
-) -> ParseTreeToTargetModelBridgeCheck {
+) -> Witness<ParseTreeToTargetModelBridge> {
   Violates {
     diagnostic: Diagnostic {
       reason: parse_tree_to_target_model_bridge_not_realized,
@@ -93,6 +103,12 @@ fn parse_tree_to_target_model_bridge_scaffold(
     }
   }
 }
+
+// Construction-only named check object (the alias is the documented public name).
+data cross_language_python_to_typescript_bridge_check: ParseTreeToTargetModelBridgeCheck = parse_tree_to_target_model_bridge_scaffold(
+  source_parse_tree: ^cross_language_python_add_parse_tree,
+  intended_target_language: ^typescript
+)
 
 // Links 2-4 fail closed exactly at the named check (no silent skip, no shim).
 fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
@@ -163,12 +179,13 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     target_language: ^typescript,
     status: ChainFailsClosedAtCheck { check: parse_tree_to_target_model_bridge_not_realized }
   },
-  // go -> ts: same bridge gap; parse direction proven (go_mvp1_grammar_parse_accepted),
-  //   TS-out end shared with the python row.
+  // go -> ts: FAILS CLOSED earlier than python — at go's own add-fn parse production,
+  //   which currently rejects (validate=true, parse_accepted=false by execution). The
+  //   ParseTree->TargetModel bridge is moot for go until link 1 holds. FINDING reported.
   CrossLanguageEmitMatrixRow {
     source_language: ^go,
     target_language: ^typescript,
-    status: ChainFailsClosedAtCheck { check: parse_tree_to_target_model_bridge_not_realized }
+    status: ChainFailsClosedAtCheck { check: go_add_parse_production_currently_rejects }
   }
 ]
 
