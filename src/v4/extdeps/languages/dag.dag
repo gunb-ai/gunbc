@@ -3253,6 +3253,22 @@ fn dag_grammar_production_mvp1_fn_pick() -> GrammarProduction {
   }
 }
 
+fn dag_grammar_pick_condition_terminal() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
+    right: dag_grammar_terminal(token_class: ^dag_token_kw_false)
+  )
+}
+
+fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  let cls = concrete_syntax_token_class(token: token)
+  if cls == ^dag_token_kw_true {
+    dag_grammar_pick_condition_terminal()
+  } else {
+    dag_grammar_terminal(token_class: cls)
+  }
+}
+
 fn dag_grammar_sequence_from_token_classes_pick() -> GrammarExpr {
   match fold_list(
     xs: dag_mvp1_pick_concrete_tokens(),
@@ -3261,13 +3277,13 @@ fn dag_grammar_sequence_from_token_classes_pick() -> GrammarExpr {
       match state {
         DagGramBuild1StateInit =>
           DagGramBuild1StateReady {
-            expr: dag_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: dag_grammar_terminal_for_mvp1_pick_token(token: token)
           }
         DagGramBuild1StateReady { expr: acc } =>
           DagGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: dag_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: dag_grammar_terminal_for_mvp1_pick_token(token: token)
             }
           }
       }
