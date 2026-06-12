@@ -627,6 +627,17 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
+    },
+    // Applied-effect projection: the two EffectRequestKind variants map to host shim entrypoints
+    // (`__gunbc_effect_read` / `__gunbc_effect_write`, lexed below). The emit stage frames operands
+    // like a call; the shim bodies (fs.readFileSync / fs.writeFileSync) are supplied by the host
+    // workspace preamble, not the compiler — so effects are descriptor-driven, never hand-listed.
+    effect_apply_form: TargetEffectApplyShape {
+      read_callee: ^ts_token_effect_read_callee,
+      write_callee: ^ts_token_effect_write_callee,
+      open: ^ts_token_lparen,
+      close: ^ts_token_rparen,
+      separator: ^ts_token_comma
     }
   }
 }
@@ -2002,7 +2013,9 @@ fn ts_wave1_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rparen, text: ")"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
-      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";")
+      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
+      ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
+      ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")
     ]
   }
 }
