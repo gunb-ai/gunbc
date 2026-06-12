@@ -30,5 +30,33 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
-          echo "Rerunning failed jobs for workflow run ${RUN_ID} after conclusion=${CONCLUSION}"
+          echo "Evaluating rerun for workflow run ${RUN_ID} after conclusion=${CONCLUSION}"
+          # A job killed by its own timeout-minutes is (almost always) a deterministic
+          # latency overrun, not runner flake: rerunning burns another full ceiling and
+          # `run_attempt < 4` compounds that to ~4x without changing the outcome (the
+          # #4633 v4_lens_gate regression cost up to 4x35min per push this way). If
+          # EVERY failed job in the run timed out, skip the rerun and say so. A mixed
+          # run (some timeout, some other failure) still reruns: --failed retries the
+          # possibly-flaky ones, and the timeout jobs are already lost either way.
+          # Annotation fetch errors fail OPEN (job counts as "other") so an API hiccup
+          # preserves today's rerun behavior instead of suppressing a legitimate retry.
+          timeout_jobs=0
+          other_jobs=0
+          while read -r job_id; do
+            [ -n "$job_id" ] || continue
+            if gh api "repos/${REPO}/check-runs/${job_id}/annotations" \
+                 -q '.[].message' 2>/dev/null \
+               | grep -q "exceeded the maximum execution time"; then
+              timeout_jobs=$((timeout_jobs + 1))
+            else
+              other_jobs=$((other_jobs + 1))
+            fi
+          done < <(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+                     --paginate -q '.jobs[] | select(.conclusion == "failure") | .id')
+          echo "failed jobs: ${timeout_jobs} timed out, ${other_jobs} failed for other reasons"
+          if [ "$timeout_jobs" -gt 0 ] && [ "$other_jobs" -eq 0 ]; then
+            echo "::notice title=spot rerun skipped::all ${timeout_jobs} failed job(s) hit timeout-minutes -- deterministic latency overrun; root-cause the slow step instead of rerunning"
+            exit 0
+          fi
+          echo "Rerunning failed jobs for workflow run ${RUN_ID}"
           gh run rerun "${RUN_ID}" --repo "${REPO}" --failed
