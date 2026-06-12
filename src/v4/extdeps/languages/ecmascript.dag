@@ -138,7 +138,7 @@ type EcmascriptGrammarRelationRow {
 }
 
 // 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
-// authoring record; compiler ingest authority is `v4.compiler.target_carriers` `LanguageModel = Node`
+// authoring record; compiler ingest authority is `v4.std.language_model` `LanguageModel`
 // (TASKS.md Theme-A #9: LexRules/Grammar are projections, not parallel authorities). Peer:
 // `PythonLanguageModel`, `TsLanguageModel`, `KotlinLanguageModel`. dissolve-on: wave-1 bundle
 // projects to `Node` at the ingest boundary (cf. `python_mvp1_target_model_node`).
