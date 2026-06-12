@@ -8,21 +8,24 @@ module v4.test.claim.manual.runtime_run
 
 import v4.compiler.eval {
   EvalContext,
-  eval_context_with_semantics
+  eval_context_with_semantics,
+  eval_diagnostic
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.algebra { length }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.dependency { DependencyView }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
 import v4.std.logic { Bool }
 import v4.std.node {
-  Atom,
   ComputationNode,
-  Edge,
   Node,
-  Symbol,
-  TypeNode,
   Value,
   SyntheticOccurrence
 }
@@ -48,23 +51,19 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.workflow.runtime_run {
-  RuntimeRunLog,
-  RuntimeRunResult,
   RuntimeRunComplete,
   RuntimeRunBlocked,
-  RuntimeRunReceipt,
+  RuntimeRunLog,
   RuntimeRunState,
   runtime_run,
   runtime_run_log_empty,
   runtime_run_step_from_frontier
 }
 import v4.workflow.scheduler { RunnableFrontier }
-import v4.test.claim.lens_common.infer_fixture {
-  claim_inferred_facts_from_nodes
-}
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.extdeps.runtimes.v4_effect_io_pure { effect_io_pure_unit_type_node }
 
-// Two independent Value nodes — initial frontier contains both.
+// Two independent Value nodes — no dependencies, both runnable from the initial frontier.
 data runtime_run_node_a: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
@@ -95,6 +94,7 @@ fn runtime_run_facts_for(node: Node) -> InferredFacts {
   )
 }
 
+// Per-node lookup: grounding.node matches the queried node exactly.
 fn runtime_run_fact_lookup(node: Node) -> Witness<InferredFacts> {
   if node == runtime_run_node_a {
     Holds { value: runtime_run_facts_for(node: runtime_run_node_a) }
@@ -102,7 +102,7 @@ fn runtime_run_fact_lookup(node: Node) -> Witness<InferredFacts> {
     Holds { value: runtime_run_facts_for(node: runtime_run_node_b) }
   } else {
     Violates {
-      diagnostic: runtime_run_missing_facts_diagnostic(node: node)
+      diagnostic: eval_diagnostic(reason: ^runtime_run_facts_miss, node: node)
     }
   }
 }
@@ -116,7 +116,9 @@ fn runtime_run_test_tree() -> InferredTree {
 
 // Minimal interpretation: allocate_literal always succeeds with a unit value.
 fn runtime_run_unit_value() -> RuntimeValue {
-  RuntimeUnit { value: RuntimeUnitValue { unit_type: effect_io_pure_unit_type_node() } }
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: effect_io_pure_unit_type_node() }
+  }
 }
 
 fn runtime_run_allocate_literal(
@@ -133,7 +135,7 @@ fn runtime_run_reject_primitive(
 ) -> Outcome<RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: runtime_run_eval_diagnostic(node: node)
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
   }
 }
@@ -145,7 +147,7 @@ fn runtime_run_reject_branch(
 ) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: runtime_run_eval_diagnostic(node: node)
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
   }
 }
@@ -156,7 +158,7 @@ fn runtime_run_reject_loop(
 ) -> Outcome<ControlTransfer> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: runtime_run_eval_diagnostic(node: node)
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
   }
 }
@@ -197,34 +199,7 @@ fn runtime_run_context() -> EvalContext {
   )
 }
 
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Locus,
-  NodeLocus,
-  NoCorrectionReason,
-  Unavailable,
-  diagnostics_singleton,
-  node_locus
-}
-
-fn runtime_run_eval_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^runtime_run_eval_rejected,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-fn runtime_run_missing_facts_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^runtime_run_facts_miss,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-// Gate witness 1: single frontier step evaluates one node and appends receipt.
+// Gate witness 1: single frontier step evaluates one node and appends one receipt.
 fn runtime_run_step_appends_receipt_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
@@ -234,10 +209,10 @@ fn runtime_run_step_appends_receipt_holds() -> Bool {
     tree: runtime_run_test_tree(),
     context: runtime_run_context()
   )
-  count(state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
+  length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
 }
 
-// Gate witness 2: full sequential run over two independent nodes completes with both scheduled.
+// Gate witness 2: full sequential run over two independent nodes reaches RuntimeRunComplete.
 fn runtime_run_completes_both_nodes_holds() -> Bool {
   match runtime_run(
     nodes: runtime_run_nodes,
@@ -246,20 +221,14 @@ fn runtime_run_completes_both_nodes_holds() -> Bool {
     context: runtime_run_context()
   ) {
     RuntimeRunComplete { log: log, scheduled: scheduled } =>
-      count(log.entries) == 2 && count(scheduled) == 2
+      length(xs: log.entries) == 2 && length(xs: scheduled) == 2
     RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } => false
   }
 }
 
-// Discriminating red: a single-step run with dependencies does not advance past blocked frontier.
-fn runtime_run_step_respects_dependency_order_holds() -> Bool {
-  // node_b depends on node_a: only node_a is runnable initially.
-  let dep = DependencyView {
-    source: runtime_run_node_a,
-    dependent: runtime_run_node_b,
-    kind: DataDependsOn,
-    usage_site: runtime_run_node_b
-  }
+// Discriminating red: a two-node frontier-only step does not advance further —
+// step_from_frontier processes only the nodes given, not the whole node set.
+fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
   let state = runtime_run_step_from_frontier(
@@ -268,14 +237,14 @@ fn runtime_run_step_respects_dependency_order_holds() -> Bool {
     tree: runtime_run_test_tree(),
     context: runtime_run_context()
   )
-  // Only node_a is scheduled after step with frontier [node_a].
-  state.scheduled == [runtime_run_node_a] && count(state.log.entries) == 1
+  // node_b is NOT scheduled — step only processes nodes in the frontier.
+  state.scheduled == [runtime_run_node_a] && length(xs: state.log.entries) == 1
 }
 
 fn runtime_run_claims_hold() -> Bool {
   runtime_run_step_appends_receipt_holds()
     && runtime_run_completes_both_nodes_holds()
-    && runtime_run_step_respects_dependency_order_holds()
+    && runtime_run_step_is_bounded_to_frontier_holds()
 }
 
 data unified_claim_runtime_run: UnifiedTestClaim = BoolWitnessClaim {
