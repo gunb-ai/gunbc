@@ -266,4 +266,6 @@ Escalate immediately if:
 - [x] Rust-second-target through descriptor + T-22 dissolve plan (§4)
 - [x] §5 census-drain ordering (§5)
 - [x] §3-deep / §4-thin fork recorded (§6)
+- [x] Emit CLI façade early deliverable (§3.0)
+- [x] `plan_checks.dag` north-star fixture slot (§3.1; census pending)
 - [ ] Implementation GO — sharp-fox-370 announces when fan-in (iii) round-trip green
