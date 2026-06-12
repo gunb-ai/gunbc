@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/v4-nat-semiring-rung-gate.sh
 #
-# Phase 1 rung gate: drives rungs 0–2 acceptance predicates over the ratified Phase 1
+# Nat-semiring rung gate: drives rungs 0–2 acceptance predicates over the ratified
 # fixture phase1/nat_semiring on a single module path, not the corpus-wide src/v4 sweep.
 # Reports the §2.4 verdict matrix with PASS|FAIL|SKIP cell vocabulary:
 #

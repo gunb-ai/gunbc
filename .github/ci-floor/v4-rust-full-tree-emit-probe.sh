@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .github/ci-floor/v4-rust-full-tree-emit-probe.sh
 #
-# M1 fail-closed gate: v2-compiler --target rust over full src/v4 must exit 0 and emit a
+# Rust full-tree emit probe (fail-closed gate): v2-compiler --target rust over full src/v4 must exit 0 and emit a
 # clean `compiled: N files emitted, 0 diagnostics` receipt. Missing compiler, v2 emit
 # failure, a missing receipt, or nonzero diagnostics fail the step.
 #

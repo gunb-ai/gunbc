@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # .github/ci-floor/v4-typescript-structural-emit-probe.sh
 #
-# M0 measurement probe: v4 structural TypeScript emit for MVP-1 add-fn, then Node exercise
-# of the canonical emitted source. Documents the first real gap between translate-time emit
-# (green) and emit-host execute+eval wiring (missing typescript row).
+# TypeScript structural emit probe: v4 structural TypeScript emit for MVP-1 add-fn, then Node
+# exercise of the canonical emitted source. Documents the first real gap between translate-time
+# emit (green) and emit-host execute+eval wiring (missing typescript row).
 #
-# Authority: ctrl#1489 emit spine M0 lane; mirrors v4-rust-full-tree-emit-probe.sh receipt shape.
+# Authority: ctrl#1489 emit spine; mirrors v4-rust-full-tree-emit-probe.sh receipt shape.
 #
 # Env:
 #   V2_COMPILER              — gunbc binary (default: target/release/gunbc)
