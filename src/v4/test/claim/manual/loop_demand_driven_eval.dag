@@ -7,7 +7,9 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
+  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
@@ -279,6 +281,33 @@ fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
         Pass => true
         _ => false
       }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_direct_loop_accepts() -> Bool {
+  let loop_node = loop_eval_loop_node(body: loop_eval_divergent())
+  let tree = loop_eval_admitted_tree(root: loop_node)
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: loop_node)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_direct_loop_body_holds() -> Bool {
+  let loop_node = loop_eval_loop_node(body: loop_eval_divergent())
+  let tree = loop_eval_admitted_tree(root: loop_node)
+  match eval(
+    tree: tree,
+    interpretation: loop_eval_interpretation(),
+    inputs: inputs_root_only(root: loop_node)
+  ) {
+    Accepted { value: v, diagnostics: d } =>
+      (d == None) && (v == loop_eval_one_value())
     Rejected { diagnostics: _ } => false
   }
 }
