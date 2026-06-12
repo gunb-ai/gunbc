@@ -51,7 +51,7 @@ import v4.std.node_query {
 }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
+// 🟡 gated — feature:section-ref-identity-evidence —
 // dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
 // node-containment evidence from the shared declaration/node identity substrate; forbidden:
 // marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.

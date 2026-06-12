@@ -73,7 +73,7 @@ import v4.std.refinement {
   refined_vacuous_stub_pack
 }
 import v4.std.witness { Holds, Violates, Witness }
-// Intentionally trivial: routes lens-internal SizeVariable lists through refine (T-12 placeholder).
+// Intentionally trivial: routes lens-internal SizeVariable lists through refine (placeholder).
 // 🟡 gated — feature:complexity-variables-refine-placeholder — bind T-12-COMPLEXITY-PROJECTION — dissolve-on-arrival: replace admits=true with a real SizeVariable-list predicate or remove the refine wrapper once complexity projection no longer needs a Refined carrier; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
@@ -87,7 +87,7 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 
 
 // 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-12-COMPLEXITY-PROJECTION
-// with testgen (T-19); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
+// with testgen; dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
   reason: ^complexity_variables_invalid,
   vacuous: vacuous_admits_marker

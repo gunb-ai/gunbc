@@ -44,7 +44,7 @@ type EditLocusBinding {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature: Q-Regex-Primitive — bind: gunbc#3560 T-21 — dissolve-on-arrival: replace
+// feature: Q-Regex-Primitive — bind: gunbc#3560 — dissolve-on-arrival: replace
 // injected `path_regex_matches` with substrate regex primitive; forbidden: hand-maintained
 // path-regex in workflow YAML (Gate #103).
 type EditLocusRead {
