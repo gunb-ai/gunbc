@@ -7,7 +7,7 @@
 //!
 //! Host runner: `scripts/v4-leaf-model-rust-r3-internal-verify.sh`.
 //!
-//! **P5 receipt:** `EXPECTED_HAND_AUTHORED_TEST` in `sg0_census_test.rs`.
+//! **P5 receipt:** `EXPECTED_HAND_AUTHORED_TEST` in `self_gen_census_test.rs`.
 //! **Dissolution:** retire when T-22 eval exercises `RustEmitProjectionEqualityExpectation`
 //! without this hand-Rust bridge.
 

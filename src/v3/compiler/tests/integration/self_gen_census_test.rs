@@ -1,4 +1,4 @@
-//! SG-0 — v3 Rust authority census + ratchet.
+//! Self-Generation-0 — v3 Rust authority census + ratchet.
 //!
 //! Enumerates every `.rs` file under `src/v3/compiler` and partitions
 //! it into **generated** (listed in the producer-owned manifest at
@@ -122,7 +122,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // hand-authored. Sorted; one path per line, relative to the
 // workspace root. **Every SG-1..SG-7 PR shortens this list.**
 // Removing an entry means the owning lane has retired the file;
-// adding an entry is forbidden outside SG-0 without director
+// adding an entry is forbidden outside Self-Generation-0 without director
 // sign-off.
 // SG-6 landing (PR #560): the four per-lens regen bins
 // (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
@@ -133,7 +133,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // at the time (`src/bin/regen_lens.rs`). **R3 gate #7** (`regen_lens_dot_rs_retired`,
 // 2026-05-14): that program-sized bin path retired; logic lives in
 // `regen_lens_driver.rs` with a thin `regen_lens_entry.rs` `[[bin]]` shell.
-// The new `sg6_hand_authored_census_test.rs`
+// The new `self_gen6_hand_authored_census_test.rs`
 // pins the reduced bin census + full `(name, lens_file,
 // generated_file)` registry tuples + `--lens` singleton resolve +
 // end-to-end CLI smoke; it is hand-authored test infrastructure and
@@ -141,8 +141,8 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 //
 // SG-6 follow-up landing (director sign-off from the
 // `clever-swift-141` brief, 2026-04-19): the former standalone
-// `sg4_prep_infer_helpers_freshness_test.rs` was absorbed into
-// `sg6_hand_authored_census_test.rs`, so the infer-helpers snapshot
+// `self_gen4_prep_infer_helpers_freshness_test.rs` was absorbed into
+// `self_gen6_hand_authored_census_test.rs`, so the infer-helpers snapshot
 // gate now resolves through the same `LensRegistryEntry` authority as
 // the unified `regen_lens` driver. One more hand-authored test file
 // retired; no standalone per-helper freshness harness remains.
@@ -165,7 +165,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // generated lens snapshot or unit-only helper. Dissolution trigger:
 // when this slice is absorbed into a generic correction harness or a
 // `.dag`-native correction-validation path, drop the entry. This is
-// a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
+// a bounded Self-Generation-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
 //
 // T-PB-A-B: `lower.rs` stays on this list — canonical lowering remains
@@ -199,7 +199,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // recursive-descent parse algorithm migrated to
 // `src/v3/compiler/parse_parser_body.txt` — a scaffold fragment
 // `include_str!`'d into the `regen_parse` output. Ratchet extension
-// below (`EXPECTED_HAND_AUTHORED_FRAGMENTS` + `sg0_v3_hand_authored_txt_fragments`)
+// below (`EXPECTED_HAND_AUTHORED_FRAGMENTS` + `self_gen0_v3_hand_authored_txt_fragments`)
 // counts non-`.rs` scaffolds so the net measurement matches reality.
 // Dissolution trigger: same as the header on `parse_parser_body.txt`
 // (SG-2b proper / SG-3f surface reflection follow-on).
@@ -210,11 +210,11 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // consumers are the freshness-diff and stage0-copy commands. The
 // parser body fragment lives at the crate root, so the existing
 // consumers never see it; adding it would be a dead entry. The
-// SG-0 fragment ratchet below is the sole census authority for
+// Self-Generation-0 fragment ratchet below is the sole census authority for
 // crate-root scaffolds.
 //
 // SG-3f-d consumption proof (director review on PR #605, 2026-04-20):
-// `sg3_surface_reflection_consumer_test.rs` is a bounded host-side
+// `self_gen3_surface_reflection_consumer_test.rs` is a bounded host-side
 // rustc harness proving reflected `Surface*` carriers are consumable
 // from `.dag`, emitted against `parse_surface`, and executable against
 // real parser output. It is intentionally not modeled as a generated
@@ -283,7 +283,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // (hand `tests/boundary/*.rs` → `.dag` `TestClaim` / substrate target verification).
     // Dissolution: delete this bin when the last class-5 boundary host shim in `tests/boundary/`
     // is retired and `boundary_emit_gates.template.dag` (or generated runner) is sole authority
-    // for the remaining `ExecuteCommand` claims — checkable: SG-0 `EXPECTED_HAND_AUTHORED_TEST`
+    // for the remaining `ExecuteCommand` claims — checkable: Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`
     // no longer lists any `tests/boundary/*` path still covered only by this bin.
     "src/v3/compiler/src/bin/boundary_emit_gates.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
@@ -331,7 +331,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/rust_target.rs",
     // W3 / T-38: executable `run_emit_host_rust` hand-Rust bridge (`tools/emit_host_runner`).
     // **P5 receipt (Mechanism (b)):** matching row in `_internal/INVARIANTS_OPS.md`
-    // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
+    // § Self-Generation-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
     // T-22: `emit_host_eval.rs` — rust/go/python rows (#4225/#4254 main) + B3 `run_host_process`
@@ -346,7 +346,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // v3-eval-intercept-only; v2 --claim-run has no hook) — dissolves at T-22 substrate eval /
     // gunbc#4750 (supersedes #4674). `v4_emit_host_eval_dispatch_test.rs` covers rust rows only; `comprep_b3_ts_descriptor_node_run.dag`
     // is wire scaffold (not v2 --claim-run).
-    // Census **+0 NON_TEST** (row on main since #4225; #4641 extends eval hook, no new SG-0 path).
+    // Census **+0 NON_TEST** (row on main since #4225; #4641 extends eval hook, no new Self-Generation-0 path).
     // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.
     "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
@@ -355,7 +355,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/enforced_lens_application.rs",
     // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
-    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
+    // row in INVARIANTS.md §Self-Generation-0 hand-authored compiler non-test paths).
     "src/v3/compiler/src/gunbc_ci.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
@@ -410,7 +410,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
 // rely on this list moving.
 // Slice 1 census reconciliation (2026-05-02): sorted path list; update when
-// adding/removing hand-authored integration tests (SG-0 ratchet).
+// adding/removing hand-authored integration tests (Self-Generation-0 ratchet).
 //
 // **Cementing-test discipline ratchet (gate #87 `lens_cementing_test_discipline_complete`).**
 // New cementing receipts must follow `TESTING.md` §4 "One claim per test": one structural
@@ -443,7 +443,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `python_cross_runtime_drift_*` (Python arbitrary precision vs Rust/Go fixed-width wrap);
     // host runner `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh`.
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
     // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
     // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
     // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
@@ -469,7 +469,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // The positive complement of the cross-runtime DRIFT boundary test: drift proves divergence at
     // the fixed-width boundary, parity proves agreement on the common domain.
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
     // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
     // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
     // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
@@ -496,7 +496,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
     // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r1-verify.sh`).
@@ -510,7 +510,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Phase 1 leaf-model R3-internal (post-SG-1 #3956): emit coupling receipt for Symbol row mutation;
     // boundary projection replay for `target_atom_type_spelling` + value kind until T-22 eval.
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
     // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r3-internal-verify.sh`).
@@ -529,7 +529,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // cycle over the Anthropic Messages wire surface using a deterministic mock.
     "src/v3/compiler/tests/integration/anthropic_messages_wire_demo_test.rs",
     // T-Ground services.dag PR-β anthropic_operations Phase 1 pilot
-    // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
+    // (#1252). Hand-authored ratchet entry added per Self-Generation-0 census discipline.
     "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
     "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
     // R3 coproduct slice 2: hermetic JSON for `tool_result.content` scalar vs block array.
@@ -574,7 +574,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
     // E6-G1.a Option 3 static lens mechanism (#1853 + #1857):
     // `find_list_empty_constructor_tag` helper for opaque-`Dag` harness tags
-    // (P5 receipt: SG-0 census membership for `e6_g1a_option3_static_lens_test.rs`).
+    // (P5 receipt: Self-Generation-0 census membership for `e6_g1a_option3_static_lens_test.rs`).
     "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
@@ -609,13 +609,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // coverage owns the same carrier and first-row projection.
     "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
-    // (#1853; witness-flow + TESTING.md split per #1857). SG-0 ratchet: hand-authored
+    // (#1853; witness-flow + TESTING.md split per #1857). Self-Generation-0 ratchet: hand-authored
     // integration test census membership.
     "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing
     // test (PR #1928). Per Director Q1(a) RATIFIED at gunbc#1739
-    // #issuecomment-4392562911. Hand-authored entry added per SG-0 census
+    // #issuecomment-4392562911. Hand-authored entry added per Self-Generation-0 census
     // discipline; integration-test home (matches `mini_lens` /
     // `e6_g1a_option3_static_lens_test` precedent for fixture-bound lens
     // instances).
@@ -623,7 +623,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Operator-directive 2026-05-29 / PR #3913 — E-5 multi-target emit verification:
     // `PROGRAM_FIXTURES` must pass each Shape-A `post_emit_verifier` (not only M1
     // self-host `src/v4` cargo-check). **P5 receipt (Mechanism (b)):** matching row
-    // in `_internal/INVARIANTS_OPS.md` § SG-0 hand-authored integration test receipts.
+    // in `_internal/INVARIANTS_OPS.md` § Self-Generation-0 hand-authored integration test receipts.
     // Dissolution: remove when obligations run as `.dag` `TestClaim` rows / T-38 runner
     // without this host harness (`src/v4/test/claim/manual/multi_target_emit_verification_gate.dag`).
     "src/v3/compiler/tests/integration/emit_verification_gates_test.rs",
@@ -638,7 +638,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Ctrl-Migration Emission-Targets Phase 3 HTTP/SQL extdeps: narrow host-side
     // parser receipt for `dsl/extdeps/transports/rest.dag` and
     // `dsl/extdeps/transports/sql.dag`. Explicit P5 receipt lives
-    // in INVARIANTS.md § "SG-0 hand-authored integration test receipts"; dissolves
+    // in INVARIANTS.md § "Self-Generation-0 hand-authored integration test receipts"; dissolves
     // when extdeps transport files are covered by a `.dag`-native parse/authority
     // suite or generated test harness.
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
@@ -651,7 +651,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // single ceiling that ratchets toward zero (no per-caller pinned ledger; E-10 /
     // #4633 by-execution lineage).
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** the
     // checkable receipt is this registration itself (per-PR mechanism (b)) — the
     // `EXPECTED_HAND_AUTHORED_TEST` census moves by exactly +1 now and must shrink by
     // 1 at dissolution; the sorted/unique and disk-vs-list census tests in this file
@@ -705,7 +705,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **P5 explicit deferral receipt**: lane = T-Tests-As-Data-Completeness /
     // T-PB-B test-census dissolution; concrete ROADMAP rows =
     // `ROADMAP.md` T-PB-B test subset row at `ROADMAP.md:170` (Rust-authored
-    // tests migrate to `.dag` `TestClaim` declarations) plus SG-0 PR-window
+    // tests migrate to `.dag` `TestClaim` declarations) plus Self-Generation-0 PR-window
     // discipline at `ROADMAP.md:177`. Gate authority = `docs/r3-program-plan.md`
     // row #70 (`cost_lens_demonstration`) and the T-CostLens worker brief's
     // same-slice acceptance bullet. This is a strict deferral of the test
@@ -798,7 +798,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     // ctrl#1476 B5: positional-Conj fold_list-by-construction detection on emit-path language models.
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
     // dissolves when modeled `TestClaim` exercises emit-path grammar-relation token encode without
     // this hand-Rust substring/parse ratchet.
@@ -843,7 +843,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
     // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
-    // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
+    // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; Self-Generation-0 P5 receipt.
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
     // R3 gate #62 `substrate_gap_file_ingestion_closed` negative-bridge audit
     // (supporting evidence; NOT a §Acceptance PASSING receipt — operator BLOCKING
@@ -879,11 +879,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
-    // R3 gate #8 (`sg0_non_test_zero`): host receipt proving the combined
+    // R3 gate #8 (`self_gen_non_test_zero`): host receipt proving the combined
     // `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS`
     // state-check executes through `.dag` `TestRunner` claims while the live
-    // SG-0 residual counts remain nonzero.
-    "src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs",
+    // Self-Generation-0 residual counts remain nonzero.
+    "src/v3/compiler/tests/integration/r3_self_gen_non_test_zero_test.rs",
     // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
     // non-canonical `.dag` residual-census receipt until the canonical
     // PB-Runtime reflection consumer lands. P5 test-subset deferral:
@@ -896,7 +896,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
     // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
     // + ignored end-to-end until v3 parses `compiler.dag` (T-FixedPoint promotion).
-    // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 SG-0 integration path;
+    // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 Self-Generation-0 integration path;
     // dissolution / deferral naming — ROADMAP.md § "Nine lanes" row `T-PB-B` /
     // `pb_rust_tests_outside_residual_zero` and `docs/r3-program-plan.md` §1.8 gate #71 /
     // `docs/r3-structure.md` §T-V2-Retirement; harness retires when equivalent obligations run as
@@ -916,15 +916,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (`fixtures/r3_l5_corpus/*.v3` vs embedded `TestClaim.source` — byte equality ratchet in
     // `tests/boundary/l5_cross_target_consistency.rs`).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
-    "src/v3/compiler/tests/integration/sg0_census_test.rs",
-    "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs",
-    "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
-    "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
-    "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
-    "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
+    "src/v3/compiler/tests/integration/self_gen_census_test.rs",
+    "src/v3/compiler/tests/integration/self_gen1_tokenize_authority_test.rs",
+    "src/v3/compiler/tests/integration/self_gen2_parse_authority_test.rs",
+    "src/v3/compiler/tests/integration/self_gen2c1_parse_tables_authority_test.rs",
+    "src/v3/compiler/tests/integration/self_gen2c5_soft_keyword_ident_test.rs",
+    "src/v3/compiler/tests/integration/self_gen3_lower_parse_surface_stack_test.rs",
+    "src/v3/compiler/tests/integration/self_gen3_surface_reflection_consumer_test.rs",
+    "src/v3/compiler/tests/integration/self_gen6_hand_authored_census_test.rs",
+    "src/v3/compiler/tests/integration/self_gen7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
     // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
     // T-CostLens-Composition): mechanical ratchet pinning the executable
@@ -935,14 +935,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // §1.8 gate #106 (`show_correct_code_diagnostic_coverage`): structural bootstrap locks on
     // `Correction` / substrate `Diagnostic` + one live-correction roundtrip anchor (`compile_to_dag`
     // → `apply_correction_and_reparse` → clean recompile). **P5 receipt:** matching INVARIANTS.md
-    // SG-0 integration-test table row + this census literal land in the same PR — see row for
+    // Self-Generation-0 integration-test table row + this census literal land in the same PR — see row for
     // `t_gate_106_show_correct_code_diagnostic_coverage_test.rs`.
     "src/v3/compiler/tests/integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
     // diagnostics (timing `EnforcedApplication` row in `t_ci_workflow_as_data_demo.dag`).
     //
-    // **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // **P5 receipt (INVARIANTS.md §P5 per-PR gate — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
     // `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test floor), same
     // structural class as co-listed `t_ci_workflow_as_data_demo_test.rs` and
@@ -951,7 +951,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // bootstrap facts without this file. Lane context: **T-Lens-Self-Application** /
     // `apply_lens_self_application_demonstrated` (`docs/r3-structure.md`, `docs/r3-program-plan.md`
     // §1.8 gate #58). Dissolution: delete this path from the census when the receipt ports to a
-    // `.dag` TestClaim (or a generated test) with no remaining SG-0 hand-authored test delta.
+    // `.dag` TestClaim (or a generated test) with no remaining Self-Generation-0 hand-authored test delta.
     "src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs",
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
@@ -964,7 +964,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
     // R1C-D/E runner receipts (co-located harness).
     //
-    // **P5(b) / SG-0 accounting (#2715 pilot — not gate #84 closure):** the merge-visible
+    // **P5(b) / Self-Generation-0 accounting (#2715 pilot — not gate #84 closure):** the merge-visible
     // receipt is **−3** paths removed from this list (deleted `r1c_*_gates*_test.rs` shims).
     // R1C-D/E **predicates** live in `.dag` (`tests/dag/t_r1c_d_pb_census_gates.dag`,
     // `r1c_e_emit_gates*.template.dag`); Rust here is runner-only (`compile_to_dag` +
@@ -976,7 +976,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
     // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
-    // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
+    // Self-Generation-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
     // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
     // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
@@ -1002,7 +1002,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `v4_bin_main_dag_smoke_test.rs` deleted (B-class decl-shape/source-grep duplicate of
     // t15 harness; parse rides `claim_t15_self_host_fixed_point.dag` import of v4.bin.main).
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
     // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
     // replaces host-runner receipts.
@@ -1013,17 +1013,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
-    // `scripts/v4-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-python-runtime-gate.sh` chained from acceptance gate.
     // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
-    // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
-    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
+    // for `l1_python_runtime.dag` coverage + six per-law runtime claim rows.
+    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_l1_compiler_slice`
     // compiler-slice claim parse surface; pairs with
-    // `scripts/v4-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-go-compiler-slice-gate.sh` chained from acceptance gate.
     // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
-    // the parent rung gate fails closed when
+    // the parent acceptance gate fails closed when
     // `V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT=1` and `go`/`gofmt` are missing.
     // Dissolve with the same generated/TestClaim host setup receipt as #4229.
-    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
+    // Self-Generation-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.7 React framework substrate single-file smoke deleted: the live v4 full-tree
@@ -1031,7 +1031,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // with a 0-diagnostic receipt, covering `src/v4/extdeps/frameworks/react.dag` without
     // a weaker v3 `compile_to_dag` oracle.
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
-    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
+    // v4_lens_cost_dag_smoke_test.rs ratchet). Self-Generation-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
     // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
@@ -1055,7 +1055,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
     // PR #4335 (+0 paths): `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` RR-A §5.2
     // bootstrap harness parse-surface ratchet (ROADMAP.md:43,63 T-PB-B deferral).
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
+    // Self-Generation-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
@@ -1100,7 +1100,7 @@ const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
 // by a named generator (an `#[ignore]`'d refresh test, a `regen_*`
 // binary, etc.) rather than hand-edited. Listed explicitly so the
 // fragments walker can partition without content sniffing (which the
-// `sg0_generated_partition_is_producer_owned` probe forbids for
+// `self_gen0_generated_partition_is_producer_owned` probe forbids for
 // `.rs`; the same discipline applies here).
 const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
@@ -1284,7 +1284,7 @@ fn compiler_dag_source() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 #[test]
-fn sg0_v3_hand_authored_census() {
+fn self_gen0_v3_hand_authored_census() {
     let ws = workspace_root();
     let census_root = ws.join(CENSUS_ROOT);
     assert!(
@@ -1315,7 +1315,7 @@ fn sg0_v3_hand_authored_census() {
         .collect();
 
     let mut msg = String::from(
-        "SG-0 census drift: observed hand-authored set does not match \
+        "Self-Generation-0 census drift: observed hand-authored set does not match \
          EXPECTED_HAND_AUTHORED_NON_TEST ∪ EXPECTED_HAND_AUTHORED_TEST.\n\n",
     );
     if !added.is_empty() {
@@ -1345,14 +1345,14 @@ fn sg0_v3_hand_authored_census() {
         msg.push_str(
             "\nFix: remove these entries from the matching EXPECTED_HAND_AUTHORED_* \
              sub-ratchet in\n\
-             src/v3/compiler/tests/integration/sg0_census_test.rs.\n",
+             src/v3/compiler/tests/integration/self_gen_census_test.rs.\n",
         );
     }
     panic!("{msg}");
 }
 
 #[test]
-fn sg0_expected_list_is_sorted_and_unique() {
+fn self_gen0_expected_list_is_sorted_and_unique() {
     for (label, list) in [
         (
             "EXPECTED_HAND_AUTHORED_NON_TEST",
@@ -1383,7 +1383,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
 }
 
 #[test]
-fn sg0_expected_rs_entries_match_test_partition() {
+fn self_gen0_expected_rs_entries_match_test_partition() {
     let misplaced_non_test: Vec<&str> = EXPECTED_HAND_AUTHORED_NON_TEST
         .iter()
         .copied()
@@ -1408,7 +1408,7 @@ fn sg0_expected_rs_entries_match_test_partition() {
 }
 
 #[test]
-fn sg0_v3_non_test_hand_authored_subratchet() {
+fn self_gen0_v3_non_test_hand_authored_subratchet() {
     let ws = workspace_root();
     let census_root = ws.join(CENSUS_ROOT);
 
@@ -1429,14 +1429,14 @@ fn sg0_v3_non_test_hand_authored_subratchet() {
 
     assert_eq!(
         observed, expected,
-        "T-PB-A non-test SG-0 sub-ratchet drifted. Retirements should be removed \
+        "T-PB-A non-test Self-Generation-0 sub-ratchet drifted. Retirements should be removed \
          from EXPECTED_HAND_AUTHORED_NON_TEST; new non-test hand-Rust needs director \
          sign-off."
     );
 }
 
 #[test]
-fn sg0_v3_test_hand_authored_subratchet() {
+fn self_gen0_v3_test_hand_authored_subratchet() {
     let ws = workspace_root();
     let census_root = ws.join(CENSUS_ROOT);
 
@@ -1457,7 +1457,7 @@ fn sg0_v3_test_hand_authored_subratchet() {
 
     assert_eq!(
         observed, expected,
-        "T-PB-B test SG-0 sub-ratchet drifted. Retirements should be removed from \
+        "T-PB-B test Self-Generation-0 sub-ratchet drifted. Retirements should be removed from \
          EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
          residual or wait for the testgen path."
     );
@@ -1499,7 +1499,7 @@ fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
 }
 
 #[test]
-fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
+fn self_gen0_tests_as_data_migration_audit_classifies_test_ratchet() {
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
     let mut unclassified = Vec::new();
 
@@ -1533,7 +1533,7 @@ fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
 }
 
 #[test]
-fn sg0_v3_non_test_fragment_subratchet() {
+fn self_gen0_v3_non_test_fragment_subratchet() {
     let misplaced_fragments: Vec<&str> = EXPECTED_HAND_AUTHORED_FRAGMENTS
         .iter()
         .copied()
@@ -1564,14 +1564,14 @@ fn sg0_v3_non_test_fragment_subratchet() {
 
     assert_eq!(
         observed, expected,
-        "T-PB-A non-test SG-0 fragment sub-ratchet drifted. Retirements should be \
+        "T-PB-A non-test Self-Generation-0 fragment sub-ratchet drifted. Retirements should be \
          removed from EXPECTED_HAND_AUTHORED_FRAGMENTS; new scaffold fragments must \
          name a dissolution trigger."
     );
 }
 
 #[test]
-fn sg0_expected_fragment_lists_are_sorted_and_unique() {
+fn self_gen0_expected_fragment_lists_are_sorted_and_unique() {
     for (label, list) in [
         (
             "EXPECTED_HAND_AUTHORED_FRAGMENTS",
@@ -1602,7 +1602,7 @@ fn sg0_expected_fragment_lists_are_sorted_and_unique() {
 }
 
 #[test]
-fn sg0_v3_hand_authored_txt_fragments() {
+fn self_gen0_v3_hand_authored_txt_fragments() {
     // Ratchet for non-`.rs` scaffold fragments under `src/v3/compiler/`.
     // Any `.txt` file found under the census root must be named in
     // either `EXPECTED_HAND_AUTHORED_FRAGMENTS` (scaffold, on the SG
@@ -1636,12 +1636,12 @@ fn sg0_v3_hand_authored_txt_fragments() {
         .collect();
 
     let mut msg = String::from(
-        "SG-0 fragment census drift: `.txt` files under src/v3/compiler/ \
+        "Self-Generation-0 fragment census drift: `.txt` files under src/v3/compiler/ \
          do not match EXPECTED_HAND_AUTHORED_FRAGMENTS ∪ EXPECTED_GENERATED_FRAGMENTS.\n\n",
     );
     if !added.is_empty() {
         msg.push_str(
-            "New scaffold fragment(s) (a `.txt` extension does NOT exempt it from SG-0):\n",
+            "New scaffold fragment(s) (a `.txt` extension does NOT exempt it from Self-Generation-0):\n",
         );
         for p in &added {
             msg.push_str("  + ");
@@ -1677,7 +1677,7 @@ impl Drop for TempDirGuard {
 }
 
 #[test]
-fn sg0_generated_partition_is_producer_owned() {
+fn self_gen0_generated_partition_is_producer_owned() {
     // Soundness: the manifest is the sole authority for the
     // generated/hand-authored partition. This test plants a
     // handwritten file whose first non-blank line is the most
@@ -1692,10 +1692,10 @@ fn sg0_generated_partition_is_producer_owned() {
     // and this assertion flips — catching the regression loudly.
     //
     // Isolation: the probe lives under `std::env::temp_dir()`, not
-    // inside `src/v3/compiler/`. The live `sg0_v3_hand_authored_census`
+    // inside `src/v3/compiler/`. The live `self_gen0_v3_hand_authored_census`
     // walker never sees it, so the tests are safe to run in parallel.
     let tmp = std::env::temp_dir().join(format!(
-        "sg0_soundness_probe_{}_{}",
+        "self_gen0_soundness_probe_{}_{}",
         std::process::id(),
         PROBE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
@@ -1735,7 +1735,7 @@ fn sg0_generated_partition_is_producer_owned() {
 }
 
 #[test]
-fn sg0_every_generated_file_is_present_on_disk() {
+fn self_gen0_every_generated_file_is_present_on_disk() {
     // The manifest is the authority for "which files are generated";
     // it must stay in lockstep with what producers actually write.
     // If a manifest entry points at a missing file, either the
@@ -1760,7 +1760,7 @@ fn sg0_every_generated_file_is_present_on_disk() {
 }
 
 #[test]
-fn sg0_stage0_copy_command_excludes_hand_maintained_root_files() {
+fn self_gen0_stage0_copy_command_excludes_hand_maintained_root_files() {
     let source = compiler_dag_source();
     let start = source
         .find("fn copy_generated_command(")
@@ -1790,7 +1790,7 @@ fn sg0_stage0_copy_command_excludes_hand_maintained_root_files() {
 }
 
 #[test]
-fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
+fn self_gen0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
     let source = compiler_dag_source();
     let start = source
         .find("hand_maintained_src: [")

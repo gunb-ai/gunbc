@@ -110,7 +110,7 @@ All four target-emission suites moved from `tests/integration/` into
 
 Mirrored in:
 - `tests/integration.rs` — `#[path]` entries updated.
-- `tests/integration/sg0_census_test.rs` — census entries updated for the
+- `tests/integration/self_gen_census_test.rs` — census entries updated for the
   Phase 0 path rename (net-zero; no new hand-authored files). Today the
   hand-authored test paths live under `EXPECTED_HAND_AUTHORED_TEST`; an
   inline comment in the census file explains the Phase 0 reorg.
@@ -139,7 +139,7 @@ file was touched):
 **None from the reorg itself.** Confirmed:
 - `cargo check -p v3-compiler --tests` clean.
 - `cargo fmt --all --check` clean.
-- `cargo test -p v3-compiler --test integration sg0_census_test::` — 6/6 pass.
+- `cargo test -p v3-compiler --test integration self_gen_census_test::` — 6/6 pass.
 - `cargo test -p v3-compiler --test integration -- m1_3_emit_go_test
   m1_3_emit_rust_test m1_4_emit_python_test
   m2_emit_multi_field_struct_variant_test` — 48 passed, 9 ignored,

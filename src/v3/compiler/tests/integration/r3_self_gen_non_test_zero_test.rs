@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
-//! R3 gate #8 — `sg0_non_test_zero` executable receipt.
+//! R3 gate #8 — `self_gen_non_test_zero` executable receipt.
 //!
-//! The gate is the conjunction of the SG-0 T-PB-A non-test Rust census and
+//! The gate is the conjunction of the Self-Generation-0 T-PB-A non-test Rust census and
 //! hand-authored scaffold-fragment census reaching zero. This receipt keeps the
 //! state-check load-bearing while residuals remain: it must execute through the
 //! `.dag` `TestRunner` path and consume the live census instead of remaining a
@@ -12,18 +12,18 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
-use crate::sg0_census_test::{
+use crate::self_gen_census_test::{
     expected_hand_authored_fragments_count, expected_hand_authored_non_test_count,
 };
 
-const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_sg0_non_test_zero.dag");
-const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_sg0_non_test_zero.dag";
-const SUITE_NAME: &str = "r3_sg0_non_test_zero_suite";
-const NON_TEST_CLAIM: &str = "sg0_non_test_zero_rust";
-const FRAGMENTS_CLAIM: &str = "sg0_non_test_zero_fragments";
+const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_self_gen_non_test_zero.dag");
+const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_self_gen_non_test_zero.dag";
+const SUITE_NAME: &str = "r3_self_gen_non_test_zero_suite";
+const NON_TEST_CLAIM: &str = "self_gen_non_test_zero_rust";
+const FRAGMENTS_CLAIM: &str = "self_gen_non_test_zero_fragments";
 
 #[test]
-fn r3_gate_8_sg0_non_test_zero_claims_execute_against_live_census() {
+fn r3_gate_8_self_gen_non_test_zero_claims_execute_against_live_census() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(
@@ -71,7 +71,7 @@ fn assert_live_census_result(
         ClaimResult::Pass => assert_eq!(
             expected_count, 0,
             "`{claim_name}` unexpectedly passed while `{list_constant}` still has \
-             {expected_count} live SG-0 entries"
+             {expected_count} live Self-Generation-0 entries"
         ),
         ClaimResult::Fail(reason) => {
             let expected_reason =
