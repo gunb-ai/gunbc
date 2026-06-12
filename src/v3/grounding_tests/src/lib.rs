@@ -1,7 +1,7 @@
 //! T-Ground-Tests — L4 routing-correctness verification.
 //!
 //! See `docs/briefs/t-ground-tests.md` (lane 10 / `routing_correctness_l4_verified` gate).
-//! This crate generalizes the pilot Stratum A pattern (`src/v3/grounding_pilot/src/lib.rs:408-460`)
+//! This crate generalizes the pilot Stratum A pattern (`src/v3/grounding_inhabitance_mirror/src/lib.rs:408-460`)
 //! onto Phase 1 `MethodTemplateContract` row authorities (`#1195` / `#1196` / `#1210`).
 //!
 //! **SG-0:** no `src/v3/compiler/` edits — consumers only.

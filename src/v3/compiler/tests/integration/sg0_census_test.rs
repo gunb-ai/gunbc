@@ -236,12 +236,12 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // T-Substrate cardinality subset for int literals (2026-04-25): the
 // range-comparison shim in `int_literal_ranges.rs` is host-side
 // reconciliation glue over already-declared String-decimal range facts
-// while `rust_pilot_primitives.value_body` remains an unparsed top-level
+// while `rust_grounding_primitives.value_body` remains an unparsed top-level
 // list. It intentionally compares only source literals that already fit
 // `LiteralBits::Int(i64)`; the declared u64 upper half is not reachable
 // until the deferred carrier-widening lane replaces that source-literal
 // carrier. Dissolution triggers: R2 T-Substrate's top-level aggregate
-// `ValueBody` sub-lane makes `rust_pilot_primitives` row values
+// `ValueBody` sub-lane makes `rust_grounding_primitives` row values
 // structurally walkable, and the carrier-widening lane makes the full
 // declared unsigned range parseable by source literals. At that point
 // this helper should consume those declared rows directly or move behind
@@ -498,7 +498,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     //
     // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r1-verify.sh`).
     // Dissolution: delete when modeled runner exercises
     // `src/v4/test/claim/language_model/rust_r1.dag` without this hand-Rust bridge.
@@ -512,7 +512,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     //
     // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
     // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // `pb_rust_tests_outside_residual_zero` + gunbc#4757/gunbc#4765 (Runtime/TestClaim
     // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r3-internal-verify.sh`).
     // Dissolution: delete when modeled runner exercises
     // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.
@@ -629,7 +629,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/emit_verification_gates_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
-    // `Dag::rust_pilot_primitives()` type-structure walk + the
+    // `Dag::rust_grounding_primitives()` type-structure walk + the
     // `ValueBody::Unparsed` boundary that flips when R2 T-Substrate's
     // 4th sub-lane lands top-level `ValueBody::List`/aggregate.
     // Dissolves into testgen authority when the testgen path covers
@@ -1013,15 +1013,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
-    // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-python-runtime-gate.sh` chained from rung gate.
     // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
     // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
-    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // `scripts/v4-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
     // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
     // the parent rung gate fails closed when
-    // `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` and `go`/`gofmt` are missing.
+    // `V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT=1` and `go`/`gofmt` are missing.
     // Dissolve with the same generated/TestClaim host setup receipt as #4229.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.

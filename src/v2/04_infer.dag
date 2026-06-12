@@ -723,7 +723,7 @@ fn type_node_is_callable(n: Node) -> Bool {
 // (Symbol/GeneratorId, ConfigPatchRecord/patch nodes) outside PD-3 brand scope.
 // Bound: prefix match v4.* and v2.compiler.* only — user modules run the hook.
 // Dissolution trigger: ROADMAP.md Active Deferrals row PD-3-DOGFOOD
-// (delete when v4-lens-ci + v4-m1-rust-emit-probe pass without this skip).
+// (delete when v4-lens-ci + v4-rust-full-tree-emit-probe pass without this skip).
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
   let is_compiler_substrate = string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v2.compiler."
@@ -1063,8 +1063,9 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternResolved { node: resolved_scrut_node } =>
           let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
           let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
+          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
-          if optional_cardinality_subject && (variant_name == "Present" || variant_name == "Absent") {
+          if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }
           } else if witness_container_subject {
             Present { value: "Witness" }

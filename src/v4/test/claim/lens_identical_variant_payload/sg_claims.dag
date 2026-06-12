@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag
-// Scope: Wave-A W2 — discriminating claim-run witness for L1.4 IdenticalVariantPayload
+// Scope: discriminating claim-run witness for L1.4 IdenticalVariantPayload
 // scaffold behavioral receipt migrated from v4_lens_identical_variant_payload_dag_smoke_test.rs.
 // Status: executes identical_variant_payload_fact_for_type; pos expects Unrealized verdict,
 // neg arm discriminates stored verdict identity (mutation-proven red-under-mutation).

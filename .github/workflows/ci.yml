@@ -577,11 +577,11 @@ jobs:
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
-        V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
-        V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
-        V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
-        V4_M1_RUST_EMIT_PROBE_STRICT: "0"
-      run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
+        V4_RUST_FULL_TREE_EMIT_PROBE_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_RUST_DAG_SHARED_CLOSURE_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_RUST_DAG_SHARED_CLOSURE_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
+        V4_RUST_FULL_TREE_EMIT_PROBE_STRICT: "0"
+      run: bash .github/ci-floor/v4-rust-full-tree-emit-probe.sh
   # Real lens-analysis CI gate (parallel lane). Each wired row is a Bool witness run through
   # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so the row proves
   # red-under-mutation before CI treats the green as coverage. Split out of `v4_lens_ci` so the

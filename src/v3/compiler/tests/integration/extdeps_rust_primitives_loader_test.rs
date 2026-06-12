@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! T-Ground-Engine Phase-1 unblock (Path 2): `dsl/extdeps/languages/rust/
-//! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_pilot_primitives`
+//! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_grounding_primitives`
 //! returns a walkable type-structure declaration. The Rust pilot
 //! enumeration is walkable as `ValueBody::List` after R2 T-Substrate's
 //! 4th sub-lane lands the top-level list extension.
@@ -9,7 +9,7 @@
 use v3_compiler::dag::{Dag, FieldValue, TypeConnective, ValueBody};
 
 #[test]
-fn dag_new_exposes_rust_pilot_primitives_type_structure() {
+fn dag_new_exposes_rust_grounding_primitives_type_structure() {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -18,13 +18,13 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
     );
 
     let decl = dag
-        .rust_pilot_primitives()
-        .expect("rust_pilot_primitives must be loaded from EXTDEPS_BOOTSTRAP_FIXTURES");
+        .rust_grounding_primitives()
+        .expect("rust_grounding_primitives must be loaded from EXTDEPS_BOOTSTRAP_FIXTURES");
 
     // Req 2: stable shape, walkable structurally.
     assert_eq!(
         decl.span.file, "dsl/extdeps/languages/rust/primitives.dag",
-        "rust_pilot_primitives span must point at the authority file"
+        "rust_grounding_primitives span must point at the authority file"
     );
 
     // Top-level declaration is `List<RustPrimitive>` — an Instantiation
@@ -34,12 +34,12 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
             assert_eq!(
                 arguments.len(),
                 1,
-                "rust_pilot_primitives: List<RustPrimitive> has exactly one template argument"
+                "rust_grounding_primitives: List<RustPrimitive> has exactly one template argument"
             );
             arguments[0].value
         }
         other => panic!(
-            "rust_pilot_primitives must lower to an Instantiation (List<RustPrimitive>), got {:?}",
+            "rust_grounding_primitives must lower to an Instantiation (List<RustPrimitive>), got {:?}",
             other
         ),
     };
@@ -98,12 +98,12 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
 }
 
 #[test]
-fn rust_pilot_primitives_value_body_is_structural_list() {
+fn rust_grounding_primitives_value_body_is_structural_list() {
     let dag = Dag::new();
-    let decl = dag.rust_pilot_primitives().expect("loaded");
+    let decl = dag.rust_grounding_primitives().expect("loaded");
     let rust_primitive_decl_id = match &decl.connective {
         TypeConnective::Instantiation { arguments, .. } => arguments[0].value,
-        other => panic!("rust_pilot_primitives must be List<RustPrimitive>, got {other:?}"),
+        other => panic!("rust_grounding_primitives must be List<RustPrimitive>, got {other:?}"),
     };
     let TypeConnective::Disj { variants } = &dag.declaration(rust_primitive_decl_id).connective
     else {
@@ -114,7 +114,7 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
         .as_ref()
         .expect("data declarations carry a value_body");
     let ValueBody::List(elements) = body else {
-        panic!("rust_pilot_primitives.value_body must lower to ValueBody::List, got {body:?}");
+        panic!("rust_grounding_primitives.value_body must lower to ValueBody::List, got {body:?}");
     };
     // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264)
     // + G2 Float candidate slice:
@@ -126,7 +126,7 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
         .iter()
         .map(|element| {
             let FieldValue::Variant { constructor, .. } = element else {
-                panic!("rust_pilot_primitives elements must be variants, got {element:?}");
+                panic!("rust_grounding_primitives elements must be variants, got {element:?}");
             };
             variants
                 .iter()

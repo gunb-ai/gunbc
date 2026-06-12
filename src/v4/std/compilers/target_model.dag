@@ -32,6 +32,7 @@ import v4.std.collection {
   empty_map,
   list_at_optional,
   map_get,
+  map_insert,
   optional_absent,
   optional_present
 }
@@ -114,6 +115,16 @@ import v4.std.type_expr_projection_row_schema {
 import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
+
+// NEGATIVE TRIPWIRE — do NOT add `import v4.std.runtime` (or any closure-widening import:
+// machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
+// generic-instantiation bug — Optional<T> variant lookup fails (62 "variant Present/Absent not
+// found in type Optional" across target_model + 06_value_expression). Reuse the runtime effect
+// vocabulary by DISCRIMINANT SYMBOL instead (TargetValueExprEffectApply stores the
+// EffectRequestKind discriminant); do the typed EffectRequestKind/Read|WriteResource decode at
+// the small-closure 06_value_expression projection boundary. Reintroducing this edge is caught
+// by ci_floor_emit + v4_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
+// separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
 
 type TargetModel {
   bundle: Node
@@ -489,6 +500,11 @@ type SourceAtomValue
 
 // 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
 // PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
+// EffectApply is the emit-side projection of an applied v4.std.runtime EffectRequest (M9: it
+// attaches to the existing runtime EffectRequestKind concept — no parallel emit effect vocabulary).
+// The carrier stores the effect kind as its discriminant Symbol; the typed runtime reuse
+// (EffectRequestKind ↔ discriminant, ReadResource|WriteResource) lives at the value-expression
+// projection boundary where effects are lowered, keeping this structural substrate import-free.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -499,6 +515,7 @@ type TargetValueExpressionKind
   | TargetValueExprReferenceBoxNew
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
+  | TargetValueExprEffectApply
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -516,6 +533,7 @@ type TargetValueTemplateKind
   | ValueStringLiteral
   | ValueBindingRef
   | ValuePrimitiveApply
+  | ValueEffectApply
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -564,10 +582,40 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
+// T6 — per-language applied-effect projection. The emit arm selects the host shim callee by the
+// carrier's stored effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource`
+// by identity (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as
+// the canonical-operation `id == discriminant(v: OpAdd {})` at the catalog lookup below).
+//
+// One descriptor catalog row: an effect-kind discriminant Symbol bound to the host shim callee
+// token that realizes that effect. Mirrors a `target_operator_realization` row — the catalog,
+// not a shape field, is the per-effect authority, so a new EffectRequestKind variant extends the
+// projection by exactly ONE row (Cost-of-Change = 1), never a new shape field or callee branch.
+type TargetEffectCalleeRow {
+  effect_kind: Symbol
+  callee: Symbol
+}
+
+// `callees` is a data catalog of `TargetEffectCalleeRow` (effect-kind discriminant -> host shim
+// callee token), mirroring `target_operator_realizations_catalog`. The emit arm resolves a
+// carrier's stored discriminant (`^ReadResource` / `^WriteResource` by identity) by folding the
+// catalog rows into a `Map<Symbol, Symbol>` and taking ONE fail-closed `map_get` — a miss is
+// rejected, never silently emitted (anti-cement gunbc#4623: the stage hard-codes no per-effect
+// callee). The catalog is a `List` (not an in-memory `Map`) so it round-trips through the wire
+// projection bundle, which a closure-backed `Map` cannot. Operand binding refs are framed exactly
+// like a primitive `CallIdent` apply (open / separator / close).
+type TargetEffectApplyShape {
+  callees: List<TargetEffectCalleeRow>
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
+  effect_apply_form: TargetEffectApplyShape
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
@@ -587,9 +635,14 @@ data target_model_edge_operator_realizations: Symbol = target_model_edge_operato
 data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
 data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
 data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
+data target_value_expr_field_effect_apply: Symbol = target_value_expr_field_effect_apply
+data target_value_expr_effect_callee_row_edge: Symbol = target_value_expr_effect_callee_row_edge
+data target_value_expr_field_effect_callee: Symbol = target_value_expr_field_effect_callee
+data target_value_expr_effect_callee_row_wire_malformed: Symbol = target_value_expr_effect_callee_row_wire_malformed
 data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
 data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
+data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
 data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
@@ -1108,6 +1161,110 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   )
 }
 
+// Serialize one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
+fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: target_value_expr_field_effect_kind,
+        target: target_model_type_atom_node(identity: row.effect_kind)
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_effect_callee,
+        target: target_model_type_atom_node(identity: row.callee)
+      )
+    ]
+  )
+}
+
+// Decode one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
+fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEffectCalleeRow> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_kind),
+    f: fn(effect_kind) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_callee),
+        f: fn(callee) {
+          outcome_accepted(
+            TargetEffectCalleeRow { effect_kind: effect_kind, callee: callee }
+          )
+        }
+      )
+    }
+  )
+}
+
+// Fold the effect-callee catalog rows off the wire bundle. Row edges carry
+// `target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
+// differently and are skipped here (decoded by `decode_effect_apply_shape_bundle`). A malformed row
+// fails the whole decode closed.
+fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
+  match fold(
+    bundle.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: rows, diagnostics: d } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_effect_callee_row_edge {
+                bind_outcome(
+                  o: target_value_expr_effect_callee_row_from_wire(row: edge.target),
+                  f: fn(row) {
+                    outcome_accepted(list_snoc_item(xs: rows, item: row))
+                  }
+                )
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Accepted { value: rows, diagnostics: d } => Accepted { value: rows, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplyShape> {
+  bind_outcome(
+    o: decode_effect_apply_callee_rows(bundle: bundle),
+    f: fn(callees) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_close
+            ),
+            f: fn(close) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: target_value_expr_field_separator
+                ),
+                f: fn(separator) {
+                  outcome_accepted(
+                    TargetEffectApplyShape {
+                      callees: callees,
+                      open: open,
+                      close: close,
+                      separator: separator
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn decode_value_expression_projection_bundle(
   bundle: Node
 ) -> Outcome<TargetValueExpressionProjection> {
@@ -1140,11 +1297,25 @@ fn decode_value_expression_projection_bundle(
                           bind_outcome(
                             o: decode_callable_apply_shape_bundle(bundle: callable_bundle),
                             f: fn(callable_apply_form) {
-                              outcome_accepted(
-                                TargetValueExpressionProjection {
-                                  binding_ref_form: binding_ref_form,
-                                  primitive_apply_form: primitive_apply_form,
-                                  callable_apply_form: callable_apply_form
+                              bind_outcome(
+                                o: projection_bundle_child(
+                                  bundle: bundle,
+                                  name: target_value_expr_field_effect_apply
+                                ),
+                                f: fn(effect_bundle) {
+                                  bind_outcome(
+                                    o: decode_effect_apply_shape_bundle(bundle: effect_bundle),
+                                    f: fn(effect_apply_form) {
+                                      outcome_accepted(
+                                        TargetValueExpressionProjection {
+                                          binding_ref_form: binding_ref_form,
+                                          primitive_apply_form: primitive_apply_form,
+                                          callable_apply_form: callable_apply_form,
+                                          effect_apply_form: effect_apply_form
+                                        }
+                                      )
+                                    }
+                                  )
                                 }
                               )
                             }
@@ -1949,6 +2120,8 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValuePrimitiveApply =>
       optional_absent()
+    ValueEffectApply =>
+      optional_absent()
   }
 }
 
@@ -2348,6 +2521,249 @@ fn target_value_expression_primitive_apply(
       occurrence_id: SyntheticOccurrence
     }
   }
+}
+
+// Emit-side constructor for an applied effect. `effect_kind_discriminant` is the discriminant
+// Symbol of a v4.std.runtime EffectRequestKind (e.g. discriminant(v: ReadResource)); the caller
+// at the value-expression projection boundary supplies it, so this structural substrate reuses
+// the runtime effect vocabulary by identity without importing runtime (M9; no parallel vocabulary).
+// Operand edges mirror primitive_apply — the lowered effect application carries its argument
+// value-expressions positionally for the projection arm (PR2) to emit through the host shim.
+fn target_value_expression_effect_apply(
+  effect_kind_discriminant: Symbol,
+  operands: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprEffectApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_effect_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: target_value_expr_field_effect_kind,
+            target: target_model_type_atom_node(identity: effect_kind_discriminant)
+          )
+        ],
+        right: target_value_expr_primitive_apply_operand_edges(operands: operands)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+// Carrier wire-schema guard for the effect-apply expression node — mirrors
+// `target_value_expr_primitive_apply_wire_schema_valid`: the atom must be the effect-apply atom,
+// the `effect_kind` discriminant edge must occur exactly once, and every child is either that
+// `effect_kind` edge or an `operand` edge. Fail-closed for any other shape.
+fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_effect_apply_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_effect_kind,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == target_value_expr_field_effect_kind
+                  || n == target_value_expr_field_operand
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+// Recover the stored effect-kind discriminant Symbol (== ^ReadResource / ^WriteResource by
+// identity) from the effect-apply carrier wire.
+fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_effect_kind {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: kind } => outcome_accepted(kind)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+// Operand binding refs of the effect-apply carrier — mirrors
+// `target_value_expr_primitive_apply_operand_bindings`, skipping the `effect_kind` edge instead
+// of the `operation` edge. Operands are binding refs (the host shim receives them as arguments).
+fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: target_value_expr_effect_apply_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match fold(
+        wire.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => acc
+            Accepted { value: bindings, diagnostics: d } =>
+              match edge.label {
+                Named { name: n } =>
+                  if n == target_value_expr_field_effect_kind {
+                    acc
+                  } else if n == target_value_expr_field_operand {
+                    bind_outcome(
+                      o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
+                      f: fn(binding) {
+                        outcome_accepted(
+                          list_snoc_item(xs: bindings, item: binding)
+                        )
+                      }
+                    )
+                  } else {
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                    )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+          }
+        }
+      ) {
+        Accepted { value: bindings, diagnostics: d } =>
+          Accepted { value: bindings, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
+// Resolve the host shim callee for the stored effect-kind discriminant from the descriptor
+// catalog: fold the `callees` rows into a `Map<Symbol, Symbol>`, then take ONE `map_get`. A miss
+// fails closed (unsupported-kind diagnostic), never silently emitted. No effect kind is branched on
+// or host token named here — the catalog is the sole per-effect authority, so a new
+// EffectRequestKind variant extends `callees` by one row and this resolver is untouched.
+fn target_value_expr_effect_apply_callee(
+  effect_kind: Symbol,
+  shape: TargetEffectApplyShape,
+  expr: TargetValueExpression
+) -> Outcome<Symbol> {
+  match map_get(
+    m: fold_list(
+      xs: shape.callees,
+      empty: empty_map(),
+      cons: fn(acc, row) { map_insert(acc, row.effect_kind, row.callee) }
+    ),
+    key: effect_kind
+  ) {
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: callee } => outcome_accepted(callee)
+        Absent =>
+          outcome_rejected(
+            target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+          )
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// Emit arm for an applied effect: `callee(operand-binding-refs...)` framed by the descriptor's
+// effect-apply shape (open / separator / close), with the callee chosen by the stored effect-kind
+// discriminant. Structurally mirrors the primitive `CallIdent` shape.
+fn target_value_expression_effect_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_effect_apply_kind_from_wire(wire: expr.node),
+    f: fn(effect_kind) {
+      bind_outcome(
+        o: target_value_expr_effect_apply_callee(
+          effect_kind: effect_kind,
+          shape: projection.effect_apply_form,
+          expr: expr
+        ),
+        f: fn(callee) {
+          bind_outcome(
+            o: target_value_expr_effect_apply_operand_bindings(wire: expr.node),
+            f: fn(bindings) {
+              // Host-call order: `callee ( args )` — callee precedes the open paren so the
+              // emitted text is a valid target-language call expression (not Lisp-prefix).
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: Cons {
+                      head: FixedToken { token_class: callee },
+                      tail: Cons {
+                        head: FixedToken { token_class: projection.effect_apply_form.open },
+                        tail: Empty
+                      }
+                    },
+                    right: target_value_expression_binding_refs_intersperse_separator(
+                      bindings: bindings,
+                      projection: projection,
+                      separator: projection.effect_apply_form.separator
+                    )
+                  ),
+                  right: Cons {
+                    head: FixedToken { token_class: projection.effect_apply_form.close },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
@@ -2755,6 +3171,11 @@ fn target_value_expression_to_concrete_tokens(
         projection: projection,
         catalog: catalog
       )
+    TargetValueExprEffectApply =>
+      target_value_expression_effect_apply_to_concrete_tokens(
+        expr: expr,
+        projection: projection
+      )
     _ =>
       outcome_rejected(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
@@ -2987,6 +3408,50 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             )
           ]
         )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_effect_apply,
+        target: target_model_type_conj_node(
+          // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
+          // followed by the shared open / close / separator framing. Decode inverts this in
+          // `decode_effect_apply_shape_bundle`. Wire symmetry is why `callees` is a `List` and not
+          // an in-memory closure-backed `Map` (which has no enumeration to serialize).
+          children: list_append(
+            left: fold_list(
+              xs: projection.effect_apply_form.callees,
+              empty: Empty,
+              cons: fn(acc, row) {
+                Cons {
+                  head: target_model_named_edge(
+                    name: target_value_expr_effect_callee_row_edge,
+                    target: target_value_expr_effect_callee_row_node(row: row)
+                  ),
+                  tail: acc
+                }
+              }
+            ),
+            right: [
+              target_model_named_edge(
+                name: target_value_expr_field_open,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.open
+                )
+              ),
+              target_model_named_edge(
+                name: target_value_expr_field_close,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.close
+                )
+              ),
+              target_model_named_edge(
+                name: target_value_expr_field_separator,
+                target: target_model_type_atom_node(
+                  identity: projection.effect_apply_form.separator
+                )
+              )
+            ]
+          )
+        )
       )
     ]
   )
@@ -3047,6 +3512,10 @@ fn target_value_template_apply(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
     ValuePrimitiveApply =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueEffectApply =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )

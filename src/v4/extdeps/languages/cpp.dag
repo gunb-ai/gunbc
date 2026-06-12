@@ -987,7 +987,7 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 }
 
 // Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,
