@@ -3282,7 +3282,7 @@ fn dag_mvp1_int_type_binding() -> Symbol {
 
 data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_atom_binding_miss
 
-fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagnostic {
+fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
   Diagnostic {
     reason: dag_mvp1_captured_flat_atom_binding_miss,
     at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
