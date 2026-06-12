@@ -188,25 +188,6 @@ fn dag_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_mvp1_pick_false_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_if },
-    FixedToken { token_class: ^dag_token_kw_false },
-    FixedToken { token_class: ^dag_token_kw_then },
-    FixedToken { token_class: ^dag_token_int_literal },
-    FixedToken { token_class: ^dag_token_kw_else },
-    FixedToken { token_class: ^dag_token_int_literal },
-    FixedToken { token_class: ^dag_token_rbrace }
-  ]
-}
-
 type DagLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
@@ -3375,14 +3356,6 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
 
 fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
   [^dag_binding_param_x, ^dag_binding_param_y]
-}
-
-fn dag_mvp1_pick_param_binding_ids() -> List<Symbol> {
-  Empty
-}
-
-fn dag_mvp1_bool_type_binding() -> Symbol {
-  ^dag_binding_type_bool
 }
 
 fn dag_mvp1_int_type_binding() -> Symbol {

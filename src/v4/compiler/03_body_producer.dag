@@ -488,20 +488,6 @@ fn arrow_has_body_edge(arrow: Node) -> Bool {
   }
 }
 
-fn body_producer_arrow_domain_conj_single_binding(binding: Symbol, type_binding: Symbol) -> Outcome<Node> {
-  outcome_accepted(
-    value: node_synthetic(
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Named { name: binding },
-          target: type_atom_node(identity: type_binding)
-        }
-      ]
-    )
-  )
-}
-
 fn body_producer_branch_if_body(
   condition: Node,
   then_arm: Node,
