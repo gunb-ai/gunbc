@@ -94,7 +94,6 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 }
 
 
-<<<<<<< HEAD
 // LexPatternFold<R>: algebra for fold_lex_pattern<R>. One handler per LexPattern variant.
 // Leaf handlers receive the raw payload; recursive handlers receive already-reduced R values
 // (EAGER catamorphism — children are reduced before the handler fires, same as fold_grammar_expr).
@@ -151,7 +150,10 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
         fold_lex_pattern(pattern: body, algebra: algebra),
         fold_lex_pattern(pattern: close, algebra: algebra)
       )
-=======
+  }
+}
+
+
 fn lex_empty_node() -> Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
@@ -175,6 +177,5 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
   match rules {
     VoidLexRules => lex_void_lex_rules_evidence_node()
     ModeledLexRules { root: _ } => lex_empty_node()
->>>>>>> origin/main
   }
 }
