@@ -4,15 +4,14 @@
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
 use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 pub use crate::v2_std_core::{
-    authored_name_at, empty_intern_table, error_type, intern, intern_find, intern_str,
-    merge_intern_tables, source_text_at,
+    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
+    source_text_at,
 };
-pub use crate::v2_std_core::{BindingId, InternTable, NewlineIndex, Node};
+pub use crate::v2_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -22,9 +21,6 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
-    pub carrier_bindings: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
-    pub decl_registry: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>,
-    pub duplicate_decl_ids: Rc<Vec<BindingId>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
@@ -37,91 +33,6 @@ pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeDeclBinding {
-    pub binding_id: BindingId,
-    pub authority: Rc<TypeDeclAuthority>,
-    pub binding_key: i64,
-    pub decl_arity: i64,
-    pub name: String,
-    pub provenance: Rc<SubValueRelation>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeDeclAuthority {
-    pub module_name: String,
-    pub decl_name: String,
-    pub decl_span: Rc<SourceSpan>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingIdAllocator {
-    pub next_id: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingIdAllocResult {
-    pub binding_id: BindingId,
-    pub allocator: BindingIdAllocator,
-}
-
-pub fn empty_binding_id_allocator() -> BindingIdAllocator {
-    BindingIdAllocator { next_id: 1 }
-}
-
-pub fn alloc_binding_id(allocator: BindingIdAllocator) -> Rc<BindingIdAllocResult> {
-    Rc::new(BindingIdAllocResult {
-        binding_id: BindingId::mint(allocator.next_id.clone()),
-        allocator: BindingIdAllocator {
-            next_id: (allocator.next_id.clone() + 1),
-        },
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DeclRegistryMergeState {
-    pub decl_registry: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>,
-    pub duplicate_decl_ids: Rc<Vec<BindingId>>,
-}
-
-pub fn merge_decl_registry_state(
-    state: Rc<DeclRegistryMergeState>,
-    incoming: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>,
-) -> Rc<DeclRegistryMergeState> {
-    Rc::new(v2_rt::map_keys(&incoming)).iter().cloned().fold(
-        state,
-        |acc: Rc<DeclRegistryMergeState>, binding_id: BindingId| match v2_rt::map_get(
-            &incoming,
-            binding_id.clone(),
-        ) {
-            Some(binding) => match v2_rt::map_get(&acc.decl_registry.clone(), binding_id.clone()) {
-                Some(existing) => {
-                    if (existing.authority.clone() == binding.authority.clone()) {
-                        acc.clone()
-                    } else {
-                        Rc::new(DeclRegistryMergeState {
-                            decl_registry: acc.decl_registry.clone(),
-                            duplicate_decl_ids: v2_rt::rc_list_push(
-                                acc.duplicate_decl_ids.clone(),
-                                binding_id.clone(),
-                            ),
-                        })
-                    }
-                }
-                None => Rc::new(DeclRegistryMergeState {
-                    decl_registry: v2_rt::rc_map_insert(
-                        acc.decl_registry.clone(),
-                        binding_id.clone(),
-                        binding.clone(),
-                    ),
-                    duplicate_decl_ids: acc.duplicate_decl_ids.clone(),
-                }),
-            },
-            None => acc.clone(),
-        },
-    )
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
@@ -152,108 +63,14 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
-pub fn lookup_decl_arity_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<i64> {
-    match node.binding_id.clone() {
-        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
-            Some(decl) => Some(decl.decl_arity.clone()),
-            None => None,
-        },
-        None => {
-            let node_name = authored_name(env.clone(), node.clone());
-            let by_ident = match node.ident.clone() {
-                Some(id) => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(None, |acc: _, decl: Rc<TypeDeclBinding>| {
-                        match acc.clone() {
-                            Some(_) => acc.clone(),
-                            None => {
-                                if (decl.binding_key.clone() == id.clone()) {
-                                    Some(decl.decl_arity.clone())
-                                } else {
-                                    None
-                                }
-                            }
-                        }
-                    }),
-                None => None,
-            };
-            match by_ident.clone() {
-                Some(_) => by_ident.clone(),
-                None => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(None, |acc: _, decl: Rc<TypeDeclBinding>| {
-                        match acc.clone() {
-                            Some(_) => acc.clone(),
-                            None => {
-                                if (decl.name.clone().as_str() == node_name.clone().as_str()) {
-                                    Some(decl.decl_arity.clone())
-                                } else {
-                                    None
-                                }
-                            }
-                        }
-                    }),
-            }
-        }
-    }
-}
-
-pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.binding_id.clone() {
-        Some(binding_id) => match v2_rt::map_get(&env.carrier_bindings.clone(), binding_id.clone())
-        {
-            Some(binding) => Some(binding.resolved.clone()),
-            None => None,
-        },
-        None => None,
-    }
-}
-
-pub fn node_has_binding_id(n: Rc<Node>, binding_id: BindingId) -> bool {
-    match n.binding_id.clone() {
-        Some(actual) => (actual.clone() == binding_id),
-        None => false,
-    }
-}
-
-pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.binding_id.clone() {
-        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
-            Some(decl) => match lookup_type(env.clone(), decl.binding_key.clone()) {
-                Some(resolved) => {
-                    if node_has_binding_id(resolved.clone(), binding_id.clone()) {
-                        Some(resolved.clone())
-                    } else {
-                        match lookup_carrier_type_for(env.clone(), node.clone()) {
-                            Some(carrier) => Some(carrier.clone()),
-                            None => Some(error_type()),
-                        }
-                    }
-                }
-                None => lookup_carrier_type_for(env.clone(), node.clone()),
-            },
-            None => lookup_carrier_type_for(env.clone(), node.clone()),
-        },
-        None => None,
-    }
-}
-
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     authored_name_at(env.source_indices.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.binding_id.clone() {
-        Some(_) => lookup_binding_id_type_for(env.clone(), node.clone()),
-        None => match node.ident.clone() {
-            Some(id) => match lookup_type(env.clone(), id.clone()) {
-                Some(resolved) => Some(resolved.clone()),
-                None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
-            },
-            None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
-        },
+    match node.ident.clone() {
+        Some(id) => lookup_type(env.clone(), id.clone()),
+        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
@@ -402,28 +219,6 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
                 v2_rt::rc_map_merge(acc, env.bindings.clone())
             },
         );
-        let merged_carrier_bindings = envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
-                v2_rt::rc_map_merge(acc, env.carrier_bindings.clone())
-            },
-        );
-        let merged_decl_state = envs.clone().iter().cloned().fold(
-            Rc::new(DeclRegistryMergeState {
-                decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
-                duplicate_decl_ids: Rc::new(vec![]),
-            }),
-            |acc: Rc<DeclRegistryMergeState>, env: Rc<TypeEnv>| {
-                let with_prior_duplicates = Rc::new(DeclRegistryMergeState {
-                    decl_registry: acc.decl_registry.clone(),
-                    duplicate_decl_ids: v2_rt::concat(
-                        acc.duplicate_decl_ids.clone(),
-                        env.duplicate_decl_ids.clone(),
-                    ),
-                });
-                merge_decl_registry_state(with_prior_duplicates.clone(), env.decl_registry.clone())
-            },
-        );
         let merged_recursive = envs
             .clone()
             .iter()
@@ -455,9 +250,6 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         };
         Rc::new(TypeEnv {
             bindings: merged_bindings,
-            carrier_bindings: merged_carrier_bindings,
-            decl_registry: merged_decl_state.decl_registry.clone(),
-            duplicate_decl_ids: merged_decl_state.duplicate_decl_ids.clone(),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,
