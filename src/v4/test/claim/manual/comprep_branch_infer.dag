@@ -7,6 +7,7 @@ module v4.test.claim.manual.comprep_branch_infer
 import v4.compiler.infer {
   infer,
   infer_branch_operand_resolved_type,
+  infer_branch_type_is_bool,
   inferred_facts_resolved_type,
   inferred_facts_witness_for_node,
   InferredTree
@@ -102,7 +103,9 @@ fn branch_infer_cond_child_is_bool(tree: InferredTree, body: Node) -> Bool {
   let cond = branch_infer_positional_target(body: body, index: 0)
   match inferred_facts_witness_for_node(tree: tree, node: cond) {
     Holds { value: facts } =>
-      infer_branch_operand_resolved_type(node: cond, facts: facts) == bool_node()
+      infer_branch_type_is_bool(
+        type_node: infer_branch_operand_resolved_type(node: cond, facts: facts)
+      )
     Violates { diagnostic: _ } => false
   }
 }
@@ -110,8 +113,18 @@ fn branch_infer_cond_child_is_bool(tree: InferredTree, body: Node) -> Bool {
 fn branch_infer_branch_result_is_int(tree: InferredTree, body: Node) -> Bool {
   match inferred_facts_witness_for_node(tree: tree, node: body) {
     Holds { value: facts } =>
-      inferred_facts_resolved_type(facts: facts) == branch_infer_int_binding_type_node()
+      infer_branch_type_atoms_equal(
+        a: inferred_facts_resolved_type(facts: facts),
+        b: branch_infer_int_binding_type_node()
+      )
     Violates { diagnostic: _ } => false
+  }
+}
+
+fn branch_infer_accepts_bool_if_else_holds() -> Bool {
+  match branch_infer_run(tree: branch_infer_resolved_tree(root: branch_infer_bool_if_else_body_node())) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

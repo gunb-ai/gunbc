@@ -434,6 +434,24 @@ fn infer_branch_canonical_grounding(node: Node, unified_type: Node) -> Canonical
   }
 }
 
+fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
+  match a.kind {
+    TypeNode { connective: Atom { identity: id_a } } =>
+      match b.kind {
+        TypeNode { connective: Atom { identity: id_b } } => id_a == id_b
+        _ => false
+      }
+    _ => a == b
+  }
+}
+
+fn infer_branch_type_is_bool(type_node: Node) -> Bool {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^bool_node_symbol
+    _ => false
+  }
+}
+
 fn infer_unify_branch_arm_types(
   then_node: Node,
   then_facts: InferredFacts,
@@ -442,7 +460,7 @@ fn infer_unify_branch_arm_types(
 ) -> Outcome<Node> {
   let then_type = infer_branch_operand_resolved_type(node: then_node, facts: then_facts)
   let else_type = infer_branch_operand_resolved_type(node: else_node, facts: else_facts)
-  if then_type == else_type {
+  if infer_branch_type_atoms_equal(a: then_type, b: else_type) {
     Accepted { value: then_type, diagnostics: None }
   } else {
     outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
@@ -480,7 +498,12 @@ fn infer_branch_bool_if_else(
                             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                               Rejected { diagnostics: r } => Rejected { diagnostics: r }
                               Accepted { value: _, diagnostics: cd } =>
-                                if infer_branch_operand_resolved_type(node: cond_target, facts: cond_facts) != bool_node() {
+                                if !infer_branch_type_is_bool(
+                                  type_node: infer_branch_operand_resolved_type(
+                                    node: cond_target,
+                                    facts: cond_facts
+                                  )
+                                ) {
                                   outcome_rejected(infer_branch_cond_not_bool_diagnostic(node: node))
                                 } else {
                                   match infer_unify_branch_arm_types(
