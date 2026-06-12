@@ -306,6 +306,14 @@ fn comprep_branch_context() -> EvalContext {
   )
 }
 
+fn comprep_branch_bool_arg_node(condition: Bool) -> Node {
+  if condition {
+    comprep_branch_bool_true_arg_node()
+  } else {
+    comprep_branch_bool_false_arg_node()
+  }
+}
+
 fn comprep_branch_pick_call(callee: Node, condition: Bool) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -314,12 +322,7 @@ fn comprep_branch_pick_call(callee: Node, condition: Bool) -> Node {
       Edge { label: Positional, target: callee },
       Edge {
         label: Positional,
-        target:
-          if condition {
-            comprep_branch_bool_true_arg_node()
-          } else {
-            comprep_branch_bool_false_arg_node()
-          }
+        target: comprep_branch_bool_arg_node(condition: condition)
       }
     ]
   }
