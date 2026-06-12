@@ -655,10 +655,10 @@ pub fn run_emit_host_go(
     })
 }
 
-/// Host python interpreter — override via `GUNBC_PYTHON` or `V4_PHASE1_NAT_SEMIRING_PYTHON`.
+/// Host python interpreter — override via `GUNBC_PYTHON` or `V4_NAT_SEMIRING_GATE_PYTHON`.
 pub fn python3_binary() -> String {
     std::env::var("GUNBC_PYTHON")
-        .or_else(|_| std::env::var("V4_PHASE1_NAT_SEMIRING_PYTHON"))
+        .or_else(|_| std::env::var("V4_NAT_SEMIRING_GATE_PYTHON"))
         .unwrap_or_else(|_| "python3".to_string())
 }
 

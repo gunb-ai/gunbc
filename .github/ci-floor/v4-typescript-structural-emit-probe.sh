@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# .github/ci-floor/v4-m0-ts-emit-probe.sh
+# .github/ci-floor/v4-typescript-structural-emit-probe.sh
 #
 # M0 measurement probe: v4 structural TypeScript emit for MVP-1 add-fn, then Node exercise
 # of the canonical emitted source. Documents the first real gap between translate-time emit
 # (green) and emit-host execute+eval wiring (missing typescript row).
 #
-# Authority: ctrl#1489 emit spine M0 lane; mirrors v4-m1-rust-emit-probe.sh receipt shape.
+# Authority: ctrl#1489 emit spine M0 lane; mirrors v4-rust-full-tree-emit-probe.sh receipt shape.
 #
 # Env:
 #   V2_COMPILER              — gunbc binary (default: target/release/gunbc)
-#   V4_M0_TS_EMIT_OUT        — probe summary dir (default: /tmp/v4-ts-emit-probe)
-#   V4_M0_TS_EMIT_LOG        — claim-run log (default: ${OUT}.claim-run.log)
+#   V4_TYPESCRIPT_STRUCTURAL_EMIT_PROBE_OUT        — probe summary dir (default: /tmp/v4-ts-emit-probe)
+#   V4_TYPESCRIPT_STRUCTURAL_EMIT_PROBE_LOG        — claim-run log (default: ${OUT}.claim-run.log)
 
 set -euo pipefail
 
@@ -18,12 +18,12 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
-if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M0_TS_EMIT_OUT:-}" ]]; then
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_TYPESCRIPT_STRUCTURAL_EMIT_PROBE_OUT:-}" ]]; then
   out="${RUNNER_TEMP:-/tmp}/v4-ts-emit-probe"
 else
-  out="${V4_M0_TS_EMIT_OUT:-/tmp/v4-ts-emit-probe}"
+  out="${V4_TYPESCRIPT_STRUCTURAL_EMIT_PROBE_OUT:-/tmp/v4-ts-emit-probe}"
 fi
-claim_log="${V4_M0_TS_EMIT_LOG:-${out}.claim-run.log}"
+claim_log="${V4_TYPESCRIPT_STRUCTURAL_EMIT_PROBE_LOG:-${out}.claim-run.log}"
 summary="${out}.m0-probe-summary.txt"
 node_log="${out}.node-run.log"
 

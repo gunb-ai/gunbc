@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/v4-phase1-nat-semiring-rung-gate.sh
+# scripts/v4-nat-semiring-rung-gate.sh
 #
 # Phase 1 rung gate: drives rungs 0–2 acceptance predicates over the ratified Phase 1
 # fixture phase1/nat_semiring on a single module path, not the corpus-wide src/v4 sweep.
@@ -17,17 +17,17 @@
 #
 # Env:
 #   V2_COMPILER                — v2-compiler binary (default: target/release/gunbc)
-#   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (default: /tmp/v4-phase1-nat-semiring)
-#   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure (implies L1 strict)
-#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — if 1, L1 runtime gate fail-closed even when
+#   V4_NAT_SEMIRING_RUNG_GATE_OUT — emit output dir (default: /tmp/v4-nat-semiring-rung-gate)
+#   V4_NAT_SEMIRING_RUNG_GATE_STRICT — if 1, exit non-zero on any rung failure (implies L1 strict)
+#   V4_NAT_SEMIRING_PYTHON_RUNTIME_GATE_STRICT — if 1, L1 runtime gate fail-closed even when
 #     parent STRICT=0 (merged into child export; parent exit honors either knob)
-#   V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT — if 1, L1 Go compiler-slice gate fail-closed
+#   V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT — if 1, L1 Go compiler-slice gate fail-closed
 #     even when parent STRICT=0 (merged into child export; parent exit honors either knob)
-#   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
-#   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
-#   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
-#   V4_PHASE1_NAT_SEMIRING_RUSTC  — rustc binary (default: rustc)
-#   V4_PHASE1_NAT_SEMIRING_GOFMT  — gofmt binary (default: gofmt)
+#   V4_NAT_SEMIRING_GATE_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
+#   V4_NAT_SEMIRING_GATE_PYTHON — python3 binary (default: python3)
+#   V4_NAT_SEMIRING_GATE_GO     — go binary (default: go)
+#   V4_NAT_SEMIRING_GATE_RUSTC  — rustc binary (default: rustc)
+#   V4_NAT_SEMIRING_GATE_GOFMT  — gofmt binary (default: gofmt)
 
 set -euo pipefail
 
@@ -38,24 +38,24 @@ fixture_module_path="src/v4/test/claim/algebra_laws/nat_semiring.dag"
 fixture_id="phase1/nat_semiring"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
-if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_PHASE1_NAT_SEMIRING_OUT:-}" ]]; then
-  out="${RUNNER_TEMP:-/tmp}/v4-phase1-nat-semiring"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_NAT_SEMIRING_RUNG_GATE_OUT:-}" ]]; then
+  out="${RUNNER_TEMP:-/tmp}/v4-nat-semiring-rung-gate"
 else
-  out="${V4_PHASE1_NAT_SEMIRING_OUT:-/tmp/v4-phase1-nat-semiring}"
+  out="${V4_NAT_SEMIRING_RUNG_GATE_OUT:-/tmp/v4-nat-semiring-rung-gate}"
 fi
 if [[ -x /opt/cargo/bin/cargo ]]; then
   cargo_bin="/opt/cargo/bin/cargo"
 else
   cargo_bin="${CARGO_BIN:-cargo}"
 fi
-python_bin="${V4_PHASE1_NAT_SEMIRING_PYTHON:-python3}"
-go_bin="${V4_PHASE1_NAT_SEMIRING_GO:-go}"
-rustc_bin="${V4_PHASE1_NAT_SEMIRING_RUSTC:-rustc}"
-gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
-timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
-strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
-l1_runtime_strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT:-0}"
-l1_go_compiler_slice_strict="${V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT:-0}"
+python_bin="${V4_NAT_SEMIRING_GATE_PYTHON:-python3}"
+go_bin="${V4_NAT_SEMIRING_GATE_GO:-go}"
+rustc_bin="${V4_NAT_SEMIRING_GATE_RUSTC:-rustc}"
+gofmt_bin="${V4_NAT_SEMIRING_GATE_GOFMT:-gofmt}"
+timeout_secs="${V4_NAT_SEMIRING_GATE_TIMEOUT_SECS:-300}"
+strict="${V4_NAT_SEMIRING_RUNG_GATE_STRICT:-0}"
+l1_runtime_strict="${V4_NAT_SEMIRING_PYTHON_RUNTIME_GATE_STRICT:-0}"
+l1_go_compiler_slice_strict="${V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT:-0}"
 if [[ "$strict" == "1" ]]; then
   l1_runtime_strict="1"
   l1_go_compiler_slice_strict="1"
@@ -368,12 +368,12 @@ rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 l1_python_runtime_pass="SKIP"
 # L1 runtime exec requires R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
 if [[ "${verdict[R2-python-compile]}" == "PASS" ]]; then
-  export V4_PHASE1_NAT_SEMIRING_OUT="$out"
-  export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
-  export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
-  export V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT="$l1_runtime_strict"
+  export V4_NAT_SEMIRING_RUNG_GATE_OUT="$out"
+  export V4_NAT_SEMIRING_GATE_PYTHON="$python_bin"
+  export V4_NAT_SEMIRING_GATE_TIMEOUT_SECS="$timeout_secs"
+  export V4_NAT_SEMIRING_PYTHON_RUNTIME_GATE_STRICT="$l1_runtime_strict"
   set +e
-  bash "${root}/scripts/v4-phase1-nat-semiring-python-runtime-gate.sh"
+  bash "${root}/scripts/v4-nat-semiring-python-runtime-gate.sh"
   l1_status=$?
   set -e
   if [[ -f "${out}.python-runtime-gate-summary.txt" ]]; then
@@ -394,12 +394,12 @@ fi
 l1_go_compiler_slice_pass="SKIP"
 # L1 Go compiler-slice requires R2-go-compile PASS (go build receipt); R0 alone is insufficient.
 if [[ "${verdict[R2-go-compile]}" == "PASS" ]]; then
-  export V4_PHASE1_NAT_SEMIRING_OUT="$out"
-  export V4_PHASE1_NAT_SEMIRING_GO="$go_bin"
-  export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
-  export V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT="$l1_go_compiler_slice_strict"
+  export V4_NAT_SEMIRING_RUNG_GATE_OUT="$out"
+  export V4_NAT_SEMIRING_GATE_GO="$go_bin"
+  export V4_NAT_SEMIRING_GATE_TIMEOUT_SECS="$timeout_secs"
+  export V4_NAT_SEMIRING_GO_COMPILER_SLICE_GATE_STRICT="$l1_go_compiler_slice_strict"
   set +e
-  bash "${root}/scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh"
+  bash "${root}/scripts/v4-nat-semiring-go-compiler-slice-gate.sh"
   l1_go_status=$?
   set -e
   if [[ -f "${out}.go-compiler-slice-gate-summary.txt" ]]; then

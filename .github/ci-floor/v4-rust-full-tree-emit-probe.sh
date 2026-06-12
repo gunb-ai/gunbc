@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# .github/ci-floor/v4-m1-rust-emit-probe.sh
+# .github/ci-floor/v4-rust-full-tree-emit-probe.sh
 #
 # M1 fail-closed gate: v2-compiler --target rust over full src/v4 must exit 0 and emit a
 # clean `compiled: N files emitted, 0 diagnostics` receipt. Missing compiler, v2 emit
@@ -11,10 +11,10 @@
 #
 # Env:
 #   V2_COMPILER              — v2-compiler binary (default: target/release/gunbc)
-#   V4_M1_RUST_EMIT_OUT       — rust emit output dir (default: /tmp/v4-rust-emit)
-#   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
-#   V4_M1_DAG_EMIT_OUT        — optional dag emit output dir for shared rust+dag closure
-#   V4_M1_DAG_EMIT_LOG        — dag compile receipt log (default: ${DAG_OUT}.compile.log)
+#   V4_RUST_FULL_TREE_EMIT_PROBE_OUT       — rust emit output dir (default: /tmp/v4-rust-emit)
+#   V4_RUST_FULL_TREE_EMIT_PROBE_LOG       — v2 compile log (default: ${OUT}.compile.log)
+#   V4_RUST_DAG_SHARED_CLOSURE_OUT        — optional dag emit output dir for shared rust+dag closure
+#   V4_RUST_DAG_SHARED_CLOSURE_LOG        — dag compile receipt log (default: ${DAG_OUT}.compile.log)
 
 set -euo pipefail
 
@@ -22,15 +22,15 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
-if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_RUST_FULL_TREE_EMIT_PROBE_OUT:-}" ]]; then
   out="${RUNNER_TEMP:-/tmp}/v4-rust-emit"
 else
-  out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
+  out="${V4_RUST_FULL_TREE_EMIT_PROBE_OUT:-/tmp/v4-rust-emit}"
 fi
-compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
+compile_log="${V4_RUST_FULL_TREE_EMIT_PROBE_LOG:-${out}.compile.log}"
 summary="${out}.m1-probe-summary.txt"
-dag_out="${V4_M1_DAG_EMIT_OUT:-}"
-dag_log="${V4_M1_DAG_EMIT_LOG:-}"
+dag_out="${V4_RUST_DAG_SHARED_CLOSURE_OUT:-}"
+dag_log="${V4_RUST_DAG_SHARED_CLOSURE_LOG:-}"
 shared_out=""
 if [[ -n "$dag_out" ]]; then
   shared_out="$(dirname "$out")/v4-shared-closure"
