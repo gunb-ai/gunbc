@@ -143,6 +143,37 @@ item closes" — those must be live. Provenance cites are history and are health
 - v2-side `B3` cites in `src/v2/tests/` bind **ctrl#1476** phases — different
   ledger (ctrl repo, still resolvable); out of scope for this sweep.
 
+## Complete pattern catalogue (operator round 2, 2026-06-12)
+
+Operator follow-up: catalogue **all** known codename patterns (the original brief
+named only the mvp1/comprep/task-ID families) and plan to rename/delete them all
+ASAP. Counts over code areas; "ids" = identifier-position occurrences (names,
+witnesses, types, env vars, file/crate names), which are the expensive ones.
+
+| Pattern | Scale | Exemplars | Couplings | Disposition |
+|---|---|---|---|---|
+| `mvp1_*` (+files, `fixtures/v4-mvp1/`) | 650 distinct ids | `mvp1_rust_emitted_root`, `mvp1_ts_emit_add_fn_accepts_holds` | ci-floor m0 probe pins path+witness; `ci_affected_components:133` path prefix; `pipeline.rs:868` | rename → content names (canonical add-fn corpus) |
+| `^dag_mvp1_*` atoms | ~60 distinct | `^dag_mvp1_pick_lit_one` | atoms are **values** — content hashes/witness expectations move | rename **last** |
+| `comprep_*` | 241 distinct ids | `comprep_eval_atom`, `comprep_eval_by_execution` | still growing in #4741/#4747 | rename → body/eval domain names; convention gate now |
+| `mvp2_` / `MVP-2` | 338 hits / 22 files | `eval_mvp2_add_subgraph`, `MVP2_RUNTIME_VALUE_FIVE_BYTES` | five-byte runtime-value contract comments in emit_host | rename → contract names (`runtime_value_five_bytes_*`) |
+| `pilot` / `Pilot*` | 356 hits + a whole crate | `src/v3/grounding_pilot/` crate, `PilotRustPrimitive`, `rust_pilot_primitives` | workspace member; "T-Ground-Pilot toy probe" per its own header | **delete-candidate**: if the probe's question is answered, retire the crate; else rename to what it validates (inhabitance-search parity) |
+| `wave[0-9]` / `wave2a` | 1429 hits / 100 files | `rust_language_model_wave1`, `ts_production_wave2a_type_annotation`, `dag_wave1_lex_token_symbol` | wave = grammar/coverage tier; lens-ci claim names | rename → coverage-descriptive tiers (e.g. `_core`, `_literals`) — **needs a naming table sign-off** |
+| `sg[0-9]` | 1250 hits / 62 files (sg2 ×887, sg8 ×286, sg1/sg0 ×~110 each) | `sg0_census_test`, `sg2_pass_node`, `sg8_def/use/proxy` | `sg0_census_test` is the hand-Rust census gate (CI-wired) | expansion of "SG" not recorded anywhere greppable — **needs operator/parent definition before renaming** |
+| `rung*` / `rung[0-9]+` | 711 hits / 37 files | `rung56_emit_vs_eval_run`, `BlockingForRung`, `nat_semiring_rung34_*` | ladder vocabulary is **live** in ROADMAP/design docs | needs operator decision: either the ladder vocabulary is blessed (then ids citing it are fine) or it renames everywhere incl. docs — don't rename ids unilaterally |
+| `phase1` / `Phase-1` | 675 hits / 117 files | `V4_PHASE1_NAT_SEMIRING_*` env vars, `Rustc_ErrorCode_Phase1` | `scripts/v4-phase1-nat-semiring-*-gate.sh` (3 gate scripts) + env-var contract | rename ids+scripts+env vars together, per gate |
+| task-IDs `T-NN`/`W-T-*`/`IRT-4` | T-22 ×297, T-4 ×142, … | `feature:T22-EVAL-CACHE-HASHES`, `feature:W-T-10-mvp1-exact-zip-closure` | 119 marks bind deleted TASKS.md | repoint/rewrite (F1a below) |
+| `_b[0-9]_` / `_pr[0-9]_` | 190 hits / 9 files | `comprep_b3_*`, `mvp1_ts_pr3_*` (a PR number as a name) | nested inside mvp1/comprep families | rename with parent family |
+| `W1`/`W2`/`W3` | 140 hits / 64 files | `emit_host_bridge.rs` "W3 bridge", `Cargo.toml` "W3 / T-38" | comments only | comment rewrite pass |
+| `Tranche-N` | 26 hits / 11 files | `go/primitives.dag` "TRANCHE 1" | comments only | comment rewrite pass |
+| `Lane X` / `Theme-A` | 33 hits | "Lane C format slice", "Theme-A #9" | comments only | comment rewrite pass |
+| `m0`/`m1` probe names | 2 scripts | `.github/ci-floor/v4-m{0,1}-*-emit-probe.sh` | ci.yml job wiring | rename with workflow update |
+| `T6`/`B3` phase names in comments | ~30 | `06_translate.dag:3661/3699` | comments only | comment rewrite pass |
+| Borderline: `r[123][ab]?` leaf-model rows, `stage0/1/2` | `claim_rust_leaf_r2b_*`; `src/v2/stage0/` | R-rows defined by live design docs; stage-N is standard bootstrap terminology | — | **keep** stage-N; R-rows rename only if their design doc vocabulary changes |
+
+Rough total: ~7,000 jargon-token hits in code areas; the identifier-position
+subset (the real work) is on the order of 1,200 distinct names plus 25+ file/
+script/crate names.
+
 ## In-flight collision map (why renames wait)
 
 Open PRs touching census files as of 2026-06-12:
