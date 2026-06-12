@@ -9,6 +9,7 @@ import v4.compiler.eval {
   TestClaimRun,
   eval,
   eval_context_with_semantics,
+  eval_with_context,
   inputs_root_only,
   runtime_value_eq,
   run_test_claim,
@@ -299,9 +300,9 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
 fn loop_eval_body_direct_accepts_holds() -> Bool {
   let body = loop_eval_loop_node(body: loop_eval_lit_one())
   let tree = loop_eval_admitted_tree(root: body)
-  match eval(
+  match eval_with_context(
     tree: tree,
-    interpretation: loop_eval_interpretation(),
+    context: loop_eval_context(),
     inputs: inputs_root_only(root: body)
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -316,9 +317,9 @@ fn loop_eval_call_accepts_holds() -> Bool {
   let tree = loop_eval_admitted_tree(
     root: loop_eval_tree_root(call: call, expected: loop_eval_lit_one())
   )
-  match eval(
+  match eval_with_context(
     tree: tree,
-    interpretation: loop_eval_interpretation(),
+    context: loop_eval_context(),
     inputs: inputs_root_only(root: call)
   ) {
     Accepted { value: _, diagnostics: _ } => true
