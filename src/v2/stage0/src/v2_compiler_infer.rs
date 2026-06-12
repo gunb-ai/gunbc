@@ -2852,18 +2852,11 @@ pub fn infer_expr(
                     })
                 } else {
                     {
-                        let field_type_lookup = match lookup_applied_field_type_node(
-                            base_rt.clone(),
+                        let field_type_lookup = lookup_field_type_node(
+                            resolved_base.clone(),
                             field_name.clone(),
-                            scope.clone(),
-                        ) {
-                            Some(ft) => Some(ft.clone()),
-                            None => lookup_field_type_node(
-                                resolved_base.clone(),
-                                field_name.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                        };
+                            scope.type_env.clone().source_indices.clone(),
+                        );
                         match field_type_lookup {
                             Some(field_type) => {
                                 let field_summary = field_summary_for_type(
