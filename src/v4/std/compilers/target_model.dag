@@ -1389,6 +1389,8 @@ fn decode_value_expression_projection_bundle(
                                   )
                                 }
                               )
+                            }
+                          )
                         }
                       )
                     }
