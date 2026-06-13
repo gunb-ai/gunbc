@@ -1,6 +1,6 @@
 // src/v4/lens/fact_density.dag
-// Scope: T-30 fact-density lens — classifies each type carrier by the spec facts it records; structural gate that fails closed on hollow aliases (NoFact carriers).
-// Status: T-30 structural Node -> Outcome gate — enforcement adapter runs via run_required_lens_gates (mechanism ratified 2026-05-25).
+// Scope: fact-density lens — classifies each type carrier by the spec facts it records; structural gate that fails closed on hollow aliases (NoFact carriers).
+// Status: structural Node -> Outcome gate — enforcement adapter runs via run_required_lens_gates (mechanism ratified 2026-05-25).
 
 module v4.lens.fact_density
 
