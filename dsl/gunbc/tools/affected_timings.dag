@@ -16,19 +16,18 @@ module gunbc.tools.affected_timings
 
 import extdeps.github.actions_runs
 
-// OPEN SEAM: run_id is hardcoded pending the shell-free env-read primitive (a native
-// env(name) builtin backing a std ReadResource-effect declaration, routed for
-// operator+coordinator sign). Once it lands, replace this literal with the
-// GITHUB_RUN_ID env read. owner/repo are this repo's fixed identity, not a per-run
-// input, so they stay literals.
-data probe_run_id: Int = 27454321323
-
-fn collect_run_job_windows() -> String {
+// run_id is a PARAMETER bound by the embedding Rust host (Option B: the
+// ci_timings_collector bin reads GITHUB_RUN_ID via std::env::var natively and binds it
+// as this arg, then evaluates the function -- the REST call still fires shell-free
+// through .dag -> dispatch_rest -> ureq). This is the v4 host-handler boundary and the
+// claim_batch precedent. owner/repo are this repo's fixed identity, not a per-run input,
+// so they stay literals.
+fn collect_run_job_windows(run_id: Int) -> String {
   result = github.Actions.ListWorkflowRunJobs(
     auth_token: "",
     owner: "gunb-ai",
     repo: "gunbc",
-    run_id: probe_run_id
+    run_id: run_id
   )
   result.jobs |> fold(init: "", f: (acc, j) =>
     concat(acc,

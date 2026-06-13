@@ -1044,6 +1044,32 @@ pub fn run_in_context(
     call_function(ctx, &item_node, &[], &env)
 }
 
+/// Run an entry function with bound arguments, returning its `Value`. This is the
+/// embedding seam for a Rust HOST that drives a `.dag` function with inputs read from
+/// the native environment — e.g. the CI timings collector reads `GITHUB_RUN_ID` via
+/// `std::env::var` and binds it as the `run_id` arg of `collect_run_job_windows`, which
+/// then fires its REST call shell-free through `dispatch_rest`. It adds NO language
+/// primitive: it only exposes the arg-bound `call_function` that `run_in_context`
+/// already performs with an empty arg list. Args are `(Option<name>, Value)` — `None`
+/// binds positionally, `Some(name)` binds by parameter name.
+pub fn run_in_context_with_args(
+    ctx: &InterpContext,
+    entry_fn: &str,
+    args: &[(Option<String>, Value)],
+    eager_data_env: bool,
+) -> InterpResult<Value> {
+    let item_node = ctx
+        .lookup_fn(entry_fn)
+        .ok_or(InterpError::NoMainFunction)?
+        .clone();
+    let env = if eager_data_env {
+        build_initial_env(ctx)?
+    } else {
+        Env::empty()
+    };
+    call_function(ctx, &item_node, args, &env)
+}
+
 /// Evaluate all `data` items to build the initial environment.
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
