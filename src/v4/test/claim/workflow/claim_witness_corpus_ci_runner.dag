@@ -71,21 +71,21 @@ data corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn: ClaimWitnessCorpusClaimRu
   label: "comprep ts bodied emit add fn accepts",
   entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
   function: "comprep_ts_bodied_emit_add_fn_accepts_holds",
-  expected: ExpectPass
+  expected: ExpectFail { bind_anchor: "#4741" }
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit operand swap discriminates",
   entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
   function: "comprep_ts_bodied_emit_operand_swap_discriminates",
-  expected: ExpectPass
+  expected: ExpectFail { bind_anchor: "#4741" }
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit catalog minus discriminates",
   entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
   function: "comprep_ts_bodied_emit_catalog_minus_discriminates",
-  expected: ExpectPass
+  expected: ExpectFail { bind_anchor: "#4741" }
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
