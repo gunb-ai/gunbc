@@ -20,7 +20,6 @@ import std.cpu {
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads
 }
-import std.memory.types { HostRamSupplyFacts }
 import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
@@ -510,12 +509,12 @@ data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
   network: [],
 }
 
-fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts, ram: HostRamSupplyFacts) -> ComputeHost {
+// RAM authority: supply_srv{1,2}_ram + placement_supply_row (not ComputeHost.memory[]) until
+// P-CF-BYTESIZE / Measure value-typing lands.
+fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts) -> ComputeHost {
   ComputeHost {
     identity: identity,
     processors: [CpuProcessor { cpu: cpu }],
-    // P-CF-BYTESIZE: RAM authority via ram.observed_usable_bytes (operator_fleet); shared
-    // raw-Int stopgap — ComputeHost.memory [] until Measure value-typing lands (hetzner too).
     memory: [],
     storage: [],
     network_interfaces: [],
@@ -532,7 +531,7 @@ data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
   provider: operator_fleet_provider,
   supply: ComputeSupplyFacts {
-    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
+    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu),
     execution: operator_fleet_execution_surface,
     cost: Some { value: operator_fleet_owned_cost },
     observed_performance: [],
