@@ -511,7 +511,7 @@ Each module is graded on how well it implements the upstream spec:
 | `os/ubuntu.dag` | 30 | A | Cited | Ubuntu 24.04 LTS: `UbuntuDistribution` identity + cited catalog row; surface derived in `std.os` |
 | `os/windows.dag` | 30 | A | Cited | Windows 11 24H2: `WindowsDistribution` identity + cited catalog row; surface derived in `std.os` |
 | `os/macos.dag` | 30 | A | Cited | macOS 15 Sequoia: `MacosDistribution` identity + cited catalog row; surface derived in `std.os` |
-| `os/os.dag` | 26 | A | Cited (dispatch) | `OperatingSystemProduct` coproduct → per-distro catalog dispatch → `std.os` projection |
+| `os/os.dag` | 42 | A | Cited (dispatch) | `OperatingSystemProduct` coproduct → per-distro catalog dispatch → `std.os` row projections |
 
 ### Rendering (internal, not external specs)
 
