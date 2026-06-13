@@ -8,7 +8,7 @@
 
 module std.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, Option }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize }
@@ -18,8 +18,9 @@ import std.cpu {
   CpuFacts,
   CpuArchitecture,
   cpu_facts_sustained_per_thread_hz,
-  cpu_facts_threads,
+  cpu_facts_threads
 }
+import std.memory.types { HostRamSupplyFacts }
 import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
@@ -61,6 +62,7 @@ type LatencyClass = UltraLow | Low | Medium | High
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
+// Lens: tiered-access cost — owned marginal vs metered vs attention-priced axes.
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
 type Bandwidth = Measure<DataRate, One>
@@ -72,6 +74,7 @@ type ComputeArtifactLocality
   | PerRunnerColocation
   | PerHostColocation
   | CrossHostFetch
+// Lens: memory-hierarchy distance — register/process → runner → host → remote fetch.
 
 // --- §1.4 supply records -----------------------------------------------------
 
@@ -172,6 +175,7 @@ type ProviderConstraint
   | OomBehavior { signal: OomSignalClass }
 
 type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
+// Lens: RAII borrow window — open acquires scope; close is optional early release.
 type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
 
 type ComputeOffer {
@@ -360,6 +364,7 @@ fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> 
 // Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
 // helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
 // only the dimensions actually proven.
+// Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
 fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
   if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
     Eligible {
@@ -502,11 +507,11 @@ data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
   network: [],
 }
 
-fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts) -> ComputeHost {
+fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts, ram: HostRamSupplyFacts) -> ComputeHost {
   ComputeHost {
     identity: identity,
     processors: [CpuProcessor { cpu: cpu }],
-    // RAM authority: supply_srv{1,2}_ram + placement_supply_row (ByteSize inhabitants deferred).
+    // RAM authority: ram.observed_usable_bytes (std.memory.operator_fleet); ByteSize list deferred.
     memory: [],
     storage: [],
     network_interfaces: [],
@@ -523,7 +528,7 @@ data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
   provider: operator_fleet_provider,
   supply: ComputeSupplyFacts {
-    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu),
+    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
     execution: operator_fleet_execution_surface,
     cost: Some { value: operator_fleet_owned_cost },
     observed_performance: [],
@@ -536,7 +541,7 @@ data supply_srv1_offer: ComputeOffer = ComputeOffer {
 data supply_srv2_offer: ComputeOffer = ComputeOffer {
   provider: operator_fleet_provider,
   supply: ComputeSupplyFacts {
-    physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu),
+    physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu, supply_srv2_ram),
     execution: operator_fleet_execution_surface,
     cost: Some { value: operator_fleet_owned_cost },
     observed_performance: [],
@@ -546,7 +551,8 @@ data supply_srv2_offer: ComputeOffer = ComputeOffer {
   constraints: [],
 }
 
-// Hetzner CAX41 — ephemeral VM, per-second billed (hourly rate, monthly cap per vendor docs).
+// Hetzner CAX41 — ephemeral VM, per-second billed (hourly rate + monthly cap per vendor docs).
+// Shared/fractional Ampere vCPUs: ground vcpu + RAM from cax41_catalog only — no AltraMax Hz claim.
 data hetzner_cax41_host_identity: HostIdentity = "hetzner:cax41"
 
 data hetzner_linux_os_surface: OperatingSystemSurface = OperatingSystemSurface {
