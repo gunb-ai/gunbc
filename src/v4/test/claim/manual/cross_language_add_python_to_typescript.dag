@@ -220,11 +220,20 @@ data claim_cross_language_parse_tree_bridge_fails_closed: TestClaim = CompilesCl
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `cross_language_add_python_to_typescript_chain_status_holds` so glob
-// discovery finds the witness without the central roster.
-data unified_claim_cross_language_add_python_to_typescript: UnifiedTestClaim = BoolWitnessClaim {
+//
+// The registered executable witness is the FAST, novel assertion this file uniquely adds —
+// `parse_tree_to_target_model_bridge_fails_closed` (sub-second): the fail-closed typed check
+// at the named missing bridge. It is NOT the composed `…chain_status_holds`, which runs the
+// Python `parse_production_tree` end (~627s wall) and would be perturbed-and-re-run by the
+// affected-set lens gate (~2x), blowing the per-PR lens-gate time budget. This matches the
+// existing convention for heavy parse fixtures: `python_mvp1_grammar_claim` /
+// `go_mvp1_grammar_claim` likewise do NOT BoolWitness their heavy parse fns ("T-22 runner
+// deferred"). The full end-to-end chain (`…chain_status_holds` = true, 627s) is a documented
+// by-execution receipt in the PR body and is reported — not self-excluded — for the #4785
+// corpus-gate slow-lane enrollment decision.
+data unified_claim_cross_language_parse_tree_bridge_fails_closed: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag",
-    function: cross_language_add_python_to_typescript_chain_status_holds
+    function: parse_tree_to_target_model_bridge_fails_closed
   }
 }
