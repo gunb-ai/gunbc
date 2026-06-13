@@ -44,6 +44,7 @@ import v4.extdeps.languages.typescript {
 }
 import v4.std.algebra { Cons, Empty, list_append }
 import v4.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v4.std.model_core { std_projection_additive_numeric }
 import v4.std.compilers.target_model {
   InfixToken,
   TargetModel,
@@ -307,7 +308,7 @@ fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
         algebra: comprep_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_std_projection_float64) {
+  } else if node == ts_inhabitant_atom(id: std_projection_additive_numeric) {
     Holds {
       value: comprep_ts_canonical_grounding(
         node: node,

@@ -72,7 +72,9 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   PartialitySemanticsDecl,
-  PrimitiveFactBundle
+  PrimitiveFactBundle,
+  facts_field_std_projection,
+  std_projection_additive_numeric
 }
 import v4.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v4.std.node {
@@ -205,7 +207,7 @@ fn python_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
 data python_facts_int: PythonIntegerPrimitiveFacts = PythonIntegerPrimitiveFacts {
   surface_spelling: ^python_surface_spelling_int,
   encoding: ^python_repr_int_arbitrary_precision,
-  std_projection: ^python_std_projection_int
+  std_projection: std_projection_additive_numeric
 }
 
 data python_facts_float: PythonFloatPrimitiveFacts = PythonFloatPrimitiveFacts {
@@ -294,7 +296,7 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -315,7 +317,7 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -336,7 +338,7 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.component_machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -357,7 +359,7 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -378,7 +380,7 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: discriminant(v: facts.kind))
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -774,7 +776,7 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -795,7 +797,7 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -816,7 +818,7 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -971,7 +973,7 @@ fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
     ),
     python_named_edge(
       name: ^python_coercion_field_int_std_projection,
-      target: python_inhabitant_atom(id: ^python_std_projection_int)
+      target: python_inhabitant_atom(id: std_projection_additive_numeric)
     )
   ]
 }
