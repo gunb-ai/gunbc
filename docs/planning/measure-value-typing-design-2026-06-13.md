@@ -1,8 +1,7 @@
 # Measure value-typing — design (scope / dual-representation dissolution)
 
-**Status:** Investigation complete (2026-06-13). Design targets `count: Nat`.
-PR #4812 kernel commit (`count: Int`) must be revised before merge — operator rejected
-Int-now/Nat-later. Implementation blocked on manager dispatch.
+**Status:** HOLD — dispatch blocked pending operator Path-X go (manager relay).
+#4812 draft has `count: Nat` kernel census (reference only; do not advance).
 **Work item:** `node://adhoc-4523b7d2-967`
 **Session:** zesty-otter-413 · **Manager:** snappy-stag-903 (compute fabric)
 **Authority:** `dsl/std/measure.dag` (Q-Unit-1..5 + option (c) ratified at gunbc#828)
