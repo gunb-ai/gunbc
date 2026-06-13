@@ -2,7 +2,7 @@
 
 module v2.compiler.infer
 
-import std.types { SourceSpan, container_param_name, is_optional_coproduct_type_name }
+import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
@@ -1062,13 +1062,11 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
           let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
-          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && !is_optional_coproduct_type_name(name: scrutinee_name)
-          let optional_coproduct_subject = is_optional_coproduct_type_name(name: scrutinee_name) && (variant_name == "Present" || variant_name == "Absent")
+          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
+          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
-          if optional_cardinality_subject && (variant_name == "Present" || variant_name == "Absent") {
+          if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }
-          } else if optional_coproduct_subject && (variant_name == "Present" || variant_name == "Absent") {
-            Present { value: scrutinee_name }
           } else if witness_container_subject {
             Present { value: "Witness" }
           } else {
@@ -2756,10 +2754,8 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Present { value: tn } => tn
       Absent => error_type
     }
-    let is_present_ctor = type_name.value == "Present" && match local_variant_parent {
-      Present { value: parent } => is_optional_coproduct_type_name(name: parent)
-      Absent => false
-    }
+    let expected_optional_parent = Present { value: "Optional" }
+    let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
     let resolved_node = if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       match val_field {
