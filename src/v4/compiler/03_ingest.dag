@@ -266,25 +266,23 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
 // Cross-language compile (optional matrix convenience, signed signature #4821).
 //
 //   cross_language_compile(parse_tree, source_model, target_model)
-//     = bridge(parse_tree, source_model)            // ParseTree -> SOURCE-grounded canonical core
-//       |> coerce_grounded_node(_, target_model)    // re-ground that core onto the TARGET's inhabitants
-//       |> emit(_, target_model)                    // serialize the target-grounded core to surface
+//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model), emit(_, target_model))
 //
-// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model (its
-// coerce ran against source_model). For a SAME-language target that core already emits; for a
-// DIFFERENT target it carries the source language's inhabitants (e.g. python `int`), which the
-// target's translation rows (keyed on the target's own inhabitants, e.g. TypeScript `number`) do
-// not match — emit fails closed. The cross-language step is therefore a GENERIC re-grounding of the
-// core onto the target via the SAME `coerce_grounded_node` the bridge uses (canonical grounding ->
-// target candidate fold): python `int` and TypeScript `number` share canonical std facts, so the
-// fold lands the core on the target's inhabitant. This is the N+M-not-N×M heart — re-grounding is
-// parameterised by target_model only, NO per-(source,target) pair arm. `infer` supplies the
-// InferredTree both coerce and emit require, GENERICALLY (CoreNode = Node = ResolvedTree).
+// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model. emit
+// then serializes it into `target_model`'s surface — proven WHERE source and target share the core
+// inhabitant flavor (e.g. dag->dag, and any source whose grounded core the target's rows key on).
 //
-// NOTE (deviation from the literal signed `bind(bridge, emit(_, target))`): the elided coerce is
-// the analogue of the bridge's own elided `infer` — emit alone cannot translate a source-grounded
-// core to a different target; the re-grounding is the load-bearing generic step, surfaced as a
-// Finding for the by-execution sign, not a per-language shim.
+// SCOPE / KNOWN GAP (cross-language inhabitant neutralization — surfaced as a Finding, NOT shimmed):
+// when source and target are DIFFERENT languages, the bridge core carries the SOURCE language's
+// inhabitants (e.g. python `int`) but the target's translation rows are keyed on the TARGET's own
+// inhabitants (e.g. TypeScript `number`), and `emit` fails closed at row lookup. `coerce_grounded_node`
+// does NOT bridge this — it grounds a node against a model's OWN candidates and REJECTS a foreign
+// inhabitant (verified by execution: coerce(python core, target: ts) -> Rejected). No generic
+// language-neutralization step (source inhabitant -> canonical std fact -> target inhabitant) exists
+// yet; it is downstream of this bridge and lives in EMIT-surface territory. So this fn realizes the
+// SAME-flavor composition and fails closed (named) on the cross-flavor step — see the matrix cell
+// `cross_language_emit_inhabitant_neutralization_not_realized` in the python->ts consumer claim.
+// `infer` supplies emit's InferredTree GENERICALLY (CoreNode = Node = ResolvedTree).
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
@@ -295,17 +293,7 @@ fn cross_language_compile(
     f: fn(core) {
       bind_outcome(
         o: infer(tree: core),
-        f: fn(core_inferred) {
-          bind_outcome(
-            o: coerce_grounded_node(source: core, tree: core_inferred, target: target_model),
-            f: fn(coerced) {
-              bind_outcome(
-                o: infer(tree: coerced.target),
-                f: fn(target_inferred) { emit(tree: target_inferred, target: target_model) }
-              )
-            }
-          )
-        }
+        f: fn(inferred) { emit(tree: inferred, target: target_model) }
       )
     }
   )

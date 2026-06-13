@@ -1,47 +1,52 @@
 // src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag
-// Scope: end-to-end cross-language matrix claim — the executable form of the
-//   N+M-not-N×M thesis. Composes machinery into one claim that walks the add slice from Python
-//   source through the language-neutral Node core out to TypeScript — now PROVEN end-to-end (#4801).
+// Scope: end-to-end cross-language matrix claim — the executable form of the N+M-not-N×M thesis.
+//   Walks the add slice from Python source through the canonical Node core toward TypeScript. The
+//   ingest BRIDGE is realized (#4801); the chain break has MOVED downstream to a newly-named
+//   cross-language emit-neutralization gap, fail-closed and named (never hidden).
 //
 // Chain (Python source IN -> TypeScript source OUT):
 //   1. Python source text -> ParseTree            (PROVEN: python_mvp1_grammar_parse_accepted)
 //   2. ParseTree -> emit-side core node           ┐ REALIZED (#4801): v4.compiler.ingest
-//   3. core node -> canonical IR                  ├ parse_tree_to_target_model_bridge — FRONTIER-keyed
-//   4. canonical IR -> TS source (emit)           ┘ forward selection + infer + coerce + emit.
+//   3. core node -> canonical IR (source-grounded)┘ parse_tree_to_target_model_bridge — FRONTIER-keyed
+//                                                    forward selection (no stamp trust) + infer + coerce.
+//   4. core -> TS source (cross-language emit)      NOT REALIZED: the source-grounded core carries
+//                                                    python `int`; TS rows key on `number`; no generic
+//                                                    inhabitant neutralization (int -> std fact ->
+//                                                    number) exists yet. Fails closed (named).
 //   5. TS emit -> executable real-IO receipt      (PROVEN: ts_effect_io_emit_holds, #4778 path)
 //
-// Links 2-4 are the forward interpreter bridge: parse produces `Outcome<ParseTree>` (= Node), and
-// the bridge selects the source-model row whose production token-spine matches the parse FRONTIER
-// (never trusting the stamped emitted), grounds it through infer/coerce to canonical IR, and emits
-// to the target. Proven by execution: the typed bridge check Holds (hermetic, sub-second) and the
-// full python->ts chain `…chain_status_holds` = true (~627s documented receipt, matrix ChainProven).
+// Links 2-3 are the forward interpreter bridge: it selects the source-model row whose production
+// token-spine matches the parse FRONTIER (never trusting the stamped emitted), and grounds it through
+// infer/coerce to the canonical core. Proven by execution: the typed bridge check Holds (hermetic) +
+// the bridge accepts the real nested python tree (~627s receipt). Link 4 is the discovered downstream
+// gap — `coerce_grounded_node` grounds against a model's OWN candidates and rejects a foreign
+// inhabitant, so it is not a cross-language translator; neutralization lives in EMIT-surface territory.
 //
-// The bridge machinery lives in v4.compiler.ingest (small closure, #4801); this file composes it
-// with the existing parse/emit ends and declares claim-local matrix data — no language-model row
-// and no per-(source,target) arm: a new language greens by authoring rows, not by editing here.
+// The bridge machinery lives in v4.compiler.ingest (small closure, #4801); this file composes it with
+// the existing parse/emit ends and declares claim-local matrix data — no language-model row and no
+// per-(source,target) arm: a new language greens by authoring rows, not by editing here.
 
 module v4.test.claim.manual.cross_language_add_python_to_typescript
 
 // Link 1 (Python source -> ParseTree), proven by execution in this module's twin claim.
 import v4.test.claim.manual.python_mvp1_grammar_claim {
-  python_mvp1_grammar_parse_accepted,
-  python_mvp1_grammar_parse_fixture
+  python_mvp1_grammar_parse_accepted
 }
 // Link 5 (TS emit -> executable real-IO receipt), the #4778 effect-emit path.
 import v4.test.claim.manual.typescript_effect_io_emit {
   ts_effect_io_emit_holds
 }
-// Links 2-4 (ParseTree -> emit-side core node -> canonical IR), now REALIZED (#4801). The bridge fn
-// is exercised hermetically (real bridge applied, sub-second) by ingest_bridge_realized; the heavy
-// nested-python instance is the documented by-execution receipt below.
+// Links 2-3 (ParseTree -> emit-side core node -> canonical IR), now REALIZED (#4801). The bridge fn
+// is exercised hermetically (real bridge applied, sub-second) by ingest_bridge_realized.
 import v4.test.claim.manual.ingest_bridge {
   ingest_bridge_realized
 }
-import v4.compiler.ingest { cross_language_compile }
-import v4.extdeps.languages.python { python_mvp1_target_model }
+// Link 4 cross-language neutralization probe (emit the python core to TS) — the newly-named gap.
+import v4.compiler.infer { infer }
+import v4.compiler.emit { emit }
+import v4.extdeps.languages.python { python_mvp1_emitted_add_fn_node }
 import v4.extdeps.languages.typescript { ts_mvp1_target_model }
 
-import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
@@ -92,6 +97,16 @@ type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
 
 data parse_tree_to_target_model_bridge_not_realized: Symbol = parse_tree_to_target_model_bridge_not_realized
 data cross_language_bridge_port: Symbol = cross_language_bridge_port
+
+// Newly-named DOWNSTREAM gap (#4801 discovery): the bridge realizes ParseTree -> SOURCE-grounded
+// canonical core, but emitting that core to a DIFFERENT target language fails closed — the core
+// carries the source language's inhabitants (python `int`) and the target's translation rows are
+// keyed on the target's own inhabitants (TypeScript `number`). No generic cross-language inhabitant
+// neutralization (source inhabitant -> canonical std fact -> target inhabitant) exists yet; it is
+// downstream of the ingest bridge and lives in EMIT-surface territory. Verified by execution:
+// emit(python add core, target: ts) -> Rejected; coerce_grounded_node(python core, target: ts) ->
+// Rejected (coerce grounds against a model's OWN candidates, it is not a cross-language translator).
+data cross_language_emit_inhabitant_neutralization_not_realized: Symbol = cross_language_emit_inhabitant_neutralization_not_realized
 
 // Named break point for the go cell: go's grammar validates but its add-fn parse
 // production currently rejects (go_mvp1_grammar_validates_fixture=true,
@@ -161,26 +176,20 @@ fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Heavy by-execution receipt (links 2-4 on the REAL nested python tree, ~627s wall): parse the
-// python add source, carry it through the bridge to canonical IR and emit to TypeScript via
-// cross_language_compile, and require non-empty TS source out. Documented receipt for the
-// by-execution sign — NOT a registered fast witness (the python parse_production_tree end would be
-// perturb-re-run by the lens gate and blow its budget; same convention as the heavy parse fixtures).
+// The newly-named DOWNSTREAM gap, fails closed — HERMETIC (no parse). The python add core node is
+// available directly (python_mvp1_emitted_add_fn_node, the row's `emitted`); it emits to PYTHON
+// (same-language, proven by mvp1_python_add_translate) but NOT to TypeScript: the python `int`
+// inhabitants do not match the TS rows keyed on `number`. emit fails closed at the named gap. This
+// is the "no silent skip" marker — the chain break MOVED downstream from "bridge not realized"
+// (now closed) to "cross-language emit inhabitant neutralization not realized".
 // ─────────────────────────────────────────────────────────────────────────────
-fn cross_language_python_to_typescript_chain_proven() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cross_language_compile(
-        parse_tree: tree,
-        source_model: python_mvp1_target_model(),
-        target_model: ts_mvp1_target_model()
-      ) {
-        Accepted { value: source, diagnostics: _ } =>
-          match source {
-            Cons { head: _, tail: _ } => true
-            Empty => false
-          }
-        Rejected { diagnostics: _ } => false
+fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match emit(tree: inferred, target: ts_mvp1_target_model()) {
+        // Cross-language emit fails closed: no neutralizer maps python `int` -> TS `number`.
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -189,18 +198,22 @@ fn cross_language_python_to_typescript_chain_proven() -> Bool {
 // ─────────────────────────────────────────────────────────────────────────────
 // Composed end-to-end status witness.
 //
-// Returns true iff the FULL chain is proven by execution end-to-end: python source parses to a
-// ParseTree (link 1), the bridge + cross_language_compile carry that ParseTree to canonical IR and
-// emit non-empty TypeScript source (links 2-4, the now-realized bridge — ~627s on the real nested
-// tree), and the TypeScript emit real-IO receipt path holds (link 5). This is the heavy documented
-// by-execution receipt; the fast continuously-gated protection is the hermetic
-// `parse_tree_to_target_model_bridge_realized` + ingest_bridge_realized witnesses.
+// Returns true iff the chain is in its DOCUMENTED state: the python source parses (link 1, ~627s),
+// the ingest bridge is realized so ParseTree -> canonical IR holds (links 2-3, hermetic), the
+// cross-language emit step fails closed at the NEWLY-NAMED neutralization gap (link 4, hermetic),
+// and the TypeScript emit real-IO receipt path holds (link 5). This is honest progress, not a full
+// ChainProven: the bridge gap is CLOSED and a downstream emit-neutralization gap is named, never
+// hidden. When neutralization lands, link 4 flips and the python->ts cell becomes ChainProven.
+// (Heavy because of link 1's parse; the continuously-gated fast protection is
+// `parse_tree_to_target_model_bridge_realized` + `…neutralization_fails_closed` + ingest_bridge_realized.)
 // ─────────────────────────────────────────────────────────────────────────────
 fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
   // Link 1: Python source -> ParseTree accepts.
   python_mvp1_grammar_parse_accepted()
-    // Links 2-4: ParseTree -> emit-side core node -> canonical IR -> TypeScript source, by execution.
-    && cross_language_python_to_typescript_chain_proven()
+    // Links 2-3: ParseTree -> emit-side core node -> canonical IR (ingest bridge realized, hermetic).
+    && parse_tree_to_target_model_bridge_realized()
+    // Link 4: cross-language emit fails closed at the named neutralization gap (hermetic).
+    && cross_language_emit_inhabitant_neutralization_fails_closed()
     // Link 5: TypeScript emit -> executable real-IO receipt source (#4778 path).
     && ts_effect_io_emit_holds()
 }
@@ -236,14 +249,16 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     target_language: ^typescript,
     status: ChainProven {}
   },
-  // python -> ts: PROVEN (#4801). The forward interpreter bridge carries the python add ParseTree
-  //   to the language-neutral core node (frontier-keyed forward selection) and emit serializes it to
-  //   TypeScript. Proven by execution: cross_language_add_python_to_typescript_chain_status_holds=true
-  //   (~627s, documented receipt) — links 1+5 already proven; links 2-4 are the realized bridge.
+  // python -> ts: bridge REALIZED, emit-neutralization PENDING. The forward interpreter bridge
+  //   carries the python add ParseTree to the canonical (source-grounded) core by execution (#4801,
+  //   frontier-keyed forward selection — the original "ParseTree -> emit-side core node" gap is now
+  //   CLOSED). The chain break MOVED downstream: emitting that python-grounded core to TypeScript
+  //   fails closed because no cross-language inhabitant neutralization (python `int` -> TS `number`)
+  //   exists yet. Named, not hidden — see cross_language_emit_inhabitant_neutralization_not_realized.
   CrossLanguageEmitMatrixRow {
     source_language: ^python,
     target_language: ^typescript,
-    status: ChainProven {}
+    status: ChainFailsClosedAtCheck { check: cross_language_emit_inhabitant_neutralization_not_realized }
   },
   // go -> ts: FAILS CLOSED earlier than python — at go's own add-fn parse production,
   //   which currently rejects (validate=true, parse_accepted=false by execution). The
