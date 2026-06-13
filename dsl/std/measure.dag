@@ -182,22 +182,3 @@ type ByteSize = Measure<Memory, One>
 // v2 execution-layer carriers use bare Int hertz at projection sites until
 // value-typed Measure inhabitants land (same pattern as ByteSize).
 type Hertz = Measure<Frequency, One>
-
-// --- Byte magnitude carriers (catalog / projection layer) --------------------
-//
-// Value-typed byte counts for data-authority rows until ByteSize inhabitants
-// land on Measure<Memory, One>. Single Int authority per carrier; projects to
-// ByteSize when P-CF-BYTESIZE value typing arrives (same pattern as placement
-// supply ram_bytes vs ComputeHost.memory ByteSize fields).
-
-type MemoryByteMagnitude { bytes: Int }
-
-type StorageByteMagnitude { bytes: Int }
-
-fn memory_byte_magnitude(bytes: Int) -> MemoryByteMagnitude {
-  MemoryByteMagnitude { bytes: bytes }
-}
-
-fn storage_byte_magnitude(bytes: Int) -> StorageByteMagnitude {
-  StorageByteMagnitude { bytes: bytes }
-}

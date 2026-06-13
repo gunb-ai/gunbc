@@ -1197,14 +1197,6 @@ mod parse_stage4_prep {
     }
 
     #[test]
-    fn handwritten_parser_accepts_cloud_compute_dag() {
-        parse_file(
-            include_str!("../../../../dsl/extdeps/cloud/compute.dag"),
-            "dsl/extdeps/cloud/compute.dag",
-        );
-    }
-
-    #[test]
     fn handwritten_parser_accepts_hetzner_cloud_dag() {
         // P5 receipt: extdeps.cloud.hetzner catalog authority for compute_fabric CAX41 supply.
         parse_file(

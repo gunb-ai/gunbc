@@ -7,7 +7,6 @@
 //   extdeps/cloud/gcp/core.dag   -- GCP-specific identity, endpoints
 //   extdeps/cloud/aws/core.dag   -- AWS-specific ARNs, SigV4
 //   extdeps/cloud/azure/core.dag -- Azure-specific tenants, subscriptions
-//   extdeps/cloud/compute.dag    -- Cross-provider VM catalog vocabulary
 
 module extdeps.cloud.cloud
 

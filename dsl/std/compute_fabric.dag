@@ -514,7 +514,8 @@ fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts, ram: HostR
   ComputeHost {
     identity: identity,
     processors: [CpuProcessor { cpu: cpu }],
-    // RAM authority: ram.observed_usable_bytes (std.memory.operator_fleet); ByteSize list deferred.
+    // P-CF-BYTESIZE: RAM authority via ram.observed_usable_bytes (operator_fleet); shared
+    // raw-Int stopgap — ComputeHost.memory [] until Measure value-typing lands (hetzner too).
     memory: [],
     storage: [],
     network_interfaces: [],
@@ -577,7 +578,7 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
-  // vCPU/RAM/disk: cax41_catalog.vm.shape (shared Ampere; no per-thread Hz).
+  // P-CF-BYTESIZE: vCPU/RAM/disk via cax41_catalog raw Int fields; shared stopgap (no AltraMax Hz).
   processors: [],
   memory: [],
   storage: [],
@@ -591,9 +592,9 @@ data hetzner_per_second_cost: CostModel = CostModel {
 
 data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
   model: hetzner_per_second_cost,
-  // expected_units carries billing.hourly_micros (1e-6 EUR) until Float literals land.
-  expected_units: cax41_catalog.vm.billing.hourly_micros,
-  currency: cax41_catalog.vm.billing.currency,
+  // P-CF-BYTESIZE: hourly_eur_micros raw Int until Measure<Currency,_> value typing lands.
+  expected_units: cax41_catalog.hourly_eur_micros,
+  currency: "EUR",
 }
 
 data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"

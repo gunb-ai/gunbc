@@ -33,6 +33,8 @@ type HostMemoryPopulation {
 }
 
 // Nominal stick population vs observed usable bytes (srv1 degraded case).
+// P-CF-BYTESIZE: raw Int bytes — shared stopgap with Hetzner catalog; dissolves when
+// Measure value-typing lands (ByteSize inhabitants), converting operator_fleet + cloud rows.
 type HostRamSupplyFacts {
   nominal_bytes: Int
   observed_usable_bytes: Int
