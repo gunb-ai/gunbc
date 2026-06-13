@@ -179,8 +179,6 @@ jobs:
       run: python3 scripts/check_ci_timeout_budgets.py
     - name: Timeout budget gate detects a planted raise
       run: python3 scripts/check_ci_timeout_budgets.py --perturb-check
-  # Affected-set component host transport -- live fail-closed receipt.
-  # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   # Per-run CI wall-clock TIMING LEDGER (latency monitoring for the CI-latency profilers).
   # NON-GATING: after the floor/lens jobs finish, read THIS run's per-job wall-clock via the Actions
   # API (the shell-free .dag github.Actions extdep) and write the `affected-set-ci-receipt-timed`
