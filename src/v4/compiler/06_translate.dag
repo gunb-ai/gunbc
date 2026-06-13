@@ -3698,7 +3698,7 @@ fn translate_type_expression_tree(
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if arrow_has_transform_body(arrow: node) {
-    translate_node_mvp1_fold(node: node, tree: tree, target: target)
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     bind_outcome(
       o: fold_node(
@@ -3834,7 +3834,7 @@ fn translate_node_mvp1(
   target: TargetModel
 ) -> Outcome<Node> {
   if arrow_has_transform_body(arrow: node) {
-    translate_node_mvp1_fold(node: node, tree: tree, target: target)
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     translate_node_mvp1_fold(node: node, tree: tree, target: target)
   }
