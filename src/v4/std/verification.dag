@@ -8,7 +8,7 @@ module v4.std.verification
 import v4.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Node, NodeFold, Symbol, fold_node }
+import v4.std.node { Node, Symbol, node_subtree_nodes }
 import v4.std.compilers.target_model { TargetModel }
 import v4.std.diagnostic {
   Accepted,
@@ -362,19 +362,6 @@ fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
     RoundTripClaim { input: n, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: Empty, item: n)
   }
-}
-
-
-fn node_subtree_nodes(root: Node) -> List<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(self) { list_snoc_item(xs: Empty, item: self) },
-      step: fn(acc, edge, sub) {
-        list_snoc_item(xs: list_append(left: acc, right: sub), item: edge.target)
-      }
-    }
-  )
 }
 
 

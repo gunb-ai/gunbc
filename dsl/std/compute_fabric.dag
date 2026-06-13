@@ -324,8 +324,53 @@ type ComputeLease {
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
-// 🟡 P-CF-WITNESS — `satisfies` signature + body land with supply row proofs (cases 7–8).
-// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> ComputeWitness<ComputeLeaseEligibility>
+// 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
+// stays a forward Node for v4.std.witness). Isolation is an ordered lattice (chain below),
+// honored iff ordinal(supply) >= ordinal(demand) — rationale in PR #4805 / commit message.
+//   SharedHostHome < PerJobFilesystem < ContainerHermetic < Vm
+fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
+  match boundary {
+    SharedHostHome   => 0
+    PerJobFilesystem => 1
+    ContainerHermetic => 2
+    Vm               => 3
+  }
+}
+
+fn isolation_boundary_label(boundary: IsolationBoundary) -> NonEmptyStr {
+  match boundary {
+    SharedHostHome   => "Vm/ContainerHermetic/PerJobFilesystem/SharedHostHome"
+    PerJobFilesystem => "Vm/ContainerHermetic/PerJobFilesystem"
+    ContainerHermetic => "Vm/ContainerHermetic"
+    Vm               => "Vm"
+  }
+}
+
+// supply isolation honors a demand iff it is at least as strong on the chain.
+fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> Bool {
+  isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
+}
+
+// Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
+// helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
+// only the dimensions actually proven.
+fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
+  if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
+    Eligible {
+      witness: ComputeLeaseWitness {
+        provider: offer.provider,
+        satisfied: [DemandIsolation],
+      },
+    }
+  } else {
+    Rejected {
+      reason: MissingDemandFact {
+        dimension: DemandIsolation,
+        required: isolation_boundary_label(boundary: demand.isolation.boundary),
+      },
+    }
+  }
+}
 
 // --- §1.1 executable unit + ingress --------------------------------------------
 
@@ -425,3 +470,22 @@ data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
   supply_srv2_cpu,
   supply_srv2_ram.observed_usable_bytes,
 )
+
+// §7 cases 7–8: isolation-lattice witnesses on grounded fleet values (srv1/srv2 = SharedHostHome).
+// Typed+reviewed, not executed (no dsl/std interpreter yet) — zero-arg Bool for `--claim-run`.
+// Full ComputeOffer inhabitation deferred; see PR #4805.
+
+// Case 7 — #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
+fn witness_shared_host_home_rejects_vm() -> Bool {
+  !isolation_satisfies(supply: SharedHostHome, demand: Vm)
+}
+
+// Case 8 — a SharedHostHome-tolerant (trusted in-fleet) job IS honored by SharedHostHome supply.
+fn witness_shared_host_home_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: SharedHostHome, demand: SharedHostHome)
+}
+
+// Monotonicity: stronger supply honors a weaker demand (Vm admits SharedHostHome), never reverse.
+fn witness_vm_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: Vm, demand: SharedHostHome)
+}
