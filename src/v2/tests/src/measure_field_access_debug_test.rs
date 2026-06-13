@@ -52,9 +52,7 @@ fn bytesize_alias_binding_with_resolved_rhs_expands_for_field_access() {
     use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
     use v2_compiler::v2_compiler_infer_lookup::lookup_field_type_node;
     use v2_compiler::v2_compiler_infer_resolve::resolve_node;
-    use v2_compiler::v2_std_core::{
-        default_ident_span, make_span, Connective, InferredNode, Node,
-    };
+    use v2_compiler::v2_std_core::{default_ident_span, make_span, Connective, InferredNode, Node};
 
     let src = r#"
 module m
@@ -91,12 +89,9 @@ fn byte_size_count(b: ByteSize) -> Nat {
             .newline_indices
             .iter()
             .cloned()
-            .fold(
-                Rc::new(std::collections::HashMap::new()),
-                |acc, index| {
-                    v2_compiler::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
-                },
-            );
+            .fold(Rc::new(std::collections::HashMap::new()), |acc, index| {
+                v2_compiler::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+            });
         let norm = normalize_graph(graph, source_indices.clone());
         reconcile(
             norm.graph.clone(),
@@ -106,8 +101,8 @@ fn byte_size_count(b: ByteSize) -> Nat {
     };
     let module = resolved.modules.first().expect("module");
     let env = module.type_env.clone();
-    let binding = lookup_type_by_name(env.clone(), "ByteSize".to_string())
-        .expect("ByteSize binding");
+    let binding =
+        lookup_type_by_name(env.clone(), "ByteSize".to_string()).expect("ByteSize binding");
     let sp = make_span(0, 0);
     let base_rt = Rc::new(Node {
         name: "ByteSize".to_string(),

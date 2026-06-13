@@ -5174,9 +5174,7 @@ pub fn infer_variant_constructor_call(
 }
 
 pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if ((n.connective.clone() == Connective::Conj)
-        || (n.connective.clone() == Connective::Disj))
-    {
+    if ((n.connective.clone() == Connective::Conj) || (n.connective.clone() == Connective::Disj)) {
         false
     } else if (((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
