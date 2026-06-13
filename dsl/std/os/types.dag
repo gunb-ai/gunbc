@@ -56,7 +56,7 @@ type WindowsDistributionCatalogRow {
 type MacosDistributionCatalogRow {
   distribution: MacosDistribution
   release_label: NonEmptyStr
-  darwin_version: NonEmptyStr
+  darwin_version: Option<NonEmptyStr>
   package_manager: OsPackageManager
   libc: LibcFamily
   libc_version: Option<NonEmptyStr>

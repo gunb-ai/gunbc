@@ -15,7 +15,9 @@ import std.os.types {
 data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogRow {
   distribution: Sequoia15,
   release_label: "macOS 15 Sequoia",
-  darwin_version: "24",
+  // M5: none — cited Apple macOS 15 release-notes page documents OS/SDK, not Darwin kernel version.
+  darwin_version: none,
+  // Anchor (de-facto dev PM; Apple ships no official CLI PM): https://docs.brew.sh/
   package_manager: HomebrewDeFacto,
   libc: LibSystem,
   libc_version: none,
