@@ -116,16 +116,10 @@ type NetworkInterface {
   locality: NetworkLocality
 }
 
-// 🟡 P-CF-OS-GROUNDING — distro_or_product/version relaxed to Option: our first real
-// provider (srv1/srv2) cannot ground them — the fleet host config lives OUTSIDE this repo,
-// and ci.yml grounds only kernel=Linux/arm64 + ghrunner de-priv + shared $HOME. This REMOVES
-// an over-assertion the exploration worksheet made (required strings no provider can fill),
-// not speculative breadth. Pin via a one-line `Some { value: ... }` data change when the
-// operator confirms the fleet distro/version.
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: Option<NonEmptyStr>
-  version: Option<NonEmptyStr>
+  distro_or_product: NonEmptyStr
+  version: NonEmptyStr
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
@@ -333,8 +327,10 @@ type ComputeLease {
 // P-CF-WITNESS (dissolved): `satisfies` returns the concrete ComputeLeaseEligibility
 // coproduct directly — the witness/diagnostic carrier `ComputeWitness<C>` stays a
 // forward Node (v4.std.witness, used by ReducerLaws / ComputeLease) and is NOT what
-// eligibility flows through. Decision flows through the real sum type so the falsification
-// rows (§7 cases 7–8) prove against actual inhabitants, not an opaque Node.
+// eligibility flows through. Decision flows through the real sum type. The load-bearing
+// security rule is proven now at the lattice level on grounded enum values (§7 cases 7–8);
+// full srv1/srv2 ComputeOffer inhabitation that would exercise satisfies end-to-end is a
+// documented deferred follow-up (blocked on ungroundable OperatingSystemSurface fields).
 //
 // satisfies takes the ComputeOffer, not bare ComputeSupplyFacts as the stub sketched:
 // the Eligible branch must name a ProviderIdentity in its ComputeLeaseWitness, and provider
@@ -511,3 +507,30 @@ data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
   supply_srv2_cpu,
   supply_srv2_ram.observed_usable_bytes,
 )
+
+// --- §7 cases 7–8: isolation-lattice falsification witnesses (real fleet enum values) -------
+//
+// The operator's real fleet (srv1/srv2) is IsolationBoundary::SharedHostHome — de-privileged
+// ghrunner processes that nonetheless SHARE $HOME across jobs (ci.yml `infra_isolation` guard +
+// shared-$HOME isolation steps are the external authority for that fact). SharedHostHome and Vm
+// are GROUNDED enum facts, so the load-bearing security rule is proven here directly on the
+// lattice — no fabricated OS/host strings required. Zero-arg Bool witnesses, shaped to run
+// unchanged under `gunbc run --claim-run --function <name>` once an interpreter for this dialect
+// lands (see the typed-not-executed note below). Full srv1/srv2 ComputeOffer inhabitation is a
+// documented deferred follow-up (blocked on ungroundable OperatingSystemSurface.distro/version).
+
+// Case 7 — the #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
+fn witness_shared_host_home_rejects_vm() -> Bool {
+  !isolation_satisfies(supply: SharedHostHome, demand: Vm)
+}
+
+// Case 8 — a SharedHostHome-tolerant (trusted in-fleet) job IS honored by SharedHostHome supply.
+fn witness_shared_host_home_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: SharedHostHome, demand: SharedHostHome)
+}
+
+// Lattice monotonicity spot-checks on grounded boundaries: stronger supply honors a weaker
+// demand (Vm supply admits a SharedHostHome job), never the reverse.
+fn witness_vm_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: Vm, demand: SharedHostHome)
+}
