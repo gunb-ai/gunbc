@@ -116,13 +116,27 @@ So the producer should **not** mint a parallel enumerator: it should reuse / mir
 glob-discovery enumeration and emit a discovery-receipt-shaped scalar coverage summary (the
 fail-closed/OOM guard below reads that scalar, not the full provenance list).
 
-**Home question (for the coordinator):** the discovery enumeration + receipt currently live under
-`test/claim/workflow`, but the producer wants them at the **compiler/source-authority layer** (where
-`source_ir_*` minting lives). Cleanest single-authority outcome: *promote* the whole-tree
-enumeration + discovery-receipt shape from `test/claim/workflow` toward the compiler layer so the
-discovery lane **and** the producer share one enumeration authority, rather than two whole-tree
-walks. This is a substrate-relocation decision, not a producer-local one — flagged for
-snappy-crab-849.
+**Home question — RULED (snappy-crab-849, 2026-06-13): promotion approved, one enumeration
+authority, attach-don't-mint.** The whole-tree enumeration + discovery-receipt shape promotes from
+`test/claim/workflow` to the **compiler/source-authority layer** so the discovery lane **and** the
+producer share one enumeration authority (one walk, not two). Approved with **four binding
+conditions** (implementation gated; design refinement in-doc allowed now):
+
+1. **Sequencing.** `affects_v4` tripwire first (already GO) → **#4785 corpus gate MERGES** (in final
+   sign verification; re-raise if it stalls past **2026-06-14 EOD**) → *then* the relocation model
+   PR. Producer implementation lands strictly **after** the relocation. No implementation here until
+   tripwire **and** #4785 both clear.
+2. **Shape.** A **standalone model PR** that declares the promoted types at the
+   compiler/source-authority layer **and migrates the discovery-lane consumers in the same PR** —
+   never a window with two live enumerators. M9 obligation: the PR description must DFS from `std/`
+   and justify the chosen home file (P2-style, as in #4792's `program_partition.dag`).
+3. **Load-bearing.** This rewires what the `v4_lens_gate` equivalence law witnesses, so:
+   **design-sign before the ready-flip**, authority through snappy-crab-849, with by-execution
+   receipts — **including a perturb receipt** (the equivalence law must go RED when the walk is
+   deliberately broken).
+4. **Frozen surface.** If the home or the consumer migration would touch any of the **#4741-frozen
+   five** (`target_model.dag`, `06_value_expression.dag`, `05_eval.dag`, v4 `04_infer.dag`,
+   `dag.dag`) — **STOP**; that slice holds until #4741 merges.
 
 ### Fail-closed law (load-bearing — this is the kill criterion)
 
