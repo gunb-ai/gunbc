@@ -1,0 +1,27 @@
+module v4.test.claim.manual.probe_cap
+import v4.std.algebra { Cons, Empty }
+import v4.compiler.parse { grammar_validate_for_parse, parse_production, parse_stage_locus_port }
+import v4.std.grammar { GrammarProduction, GrammarRoot, Terminal, grammar_empty_sync_tokens }
+import v4.std.node_query { find_named_child }
+import v4.std.compilers.lexing { Token }
+import v4.std.diagnostic { Accepted, Rejected, port_locus }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, TypeNode }
+data pcap_tok: Symbol = ^pcap_tok
+data pcap_start: Symbol = ^pcap_start
+fn pcap_root() -> GrammarRoot { GrammarRoot { start: pcap_start, productions: Cons { head: GrammarProduction { name: pcap_start, expression: Terminal { token_class: pcap_tok }, emitted: Node { kind: TypeNode { connective: Atom { identity: ^pcap_emit } }, children: [], occurrence_id: SyntheticOccurrence } }, tail: Empty }, sync_tokens: grammar_empty_sync_tokens() } }
+fn pcap_captured_is_atom() -> Bool {
+  let at = port_locus(port: parse_stage_locus_port)
+  match grammar_validate_for_parse(root: pcap_root(), at: at) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: v, diagnostics: _ } =>
+      match parse_production(tokens: Cons { head: Token { class: pcap_tok, lexeme: Empty, file: ^f, start: 0, end: 1 }, tail: Empty }, validated: v, production_name: pcap_start) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: a, diagnostics: _ } =>
+          match find_named_child(root: a.tree, name: ^grammar_production_captured_node_projection) {
+            Accepted { value: cap, diagnostics: _ } => match cap.kind { TypeNode { connective: Atom { identity: id } } => id == pcap_tok _ => false }
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
