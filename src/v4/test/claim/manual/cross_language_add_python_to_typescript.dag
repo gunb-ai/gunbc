@@ -310,9 +310,11 @@ data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim 
 // (~627s wall) and would be perturbed-and-re-run by the affected-set lens gate (~2x), blowing the
 // per-PR lens-gate time budget. This matches the existing convention for heavy parse fixtures:
 // `python_mvp1_grammar_claim` / `go_mvp1_grammar_claim` likewise do NOT BoolWitness their heavy
-// parse fns. The full end-to-end chain (`…chain_status_holds` = true, ~627s, ChainProven) is a
-// documented by-execution receipt in the PR body — reported, not self-excluded — for the #4785
-// corpus-gate slow-lane enrollment decision (a parent-coordinated, add-only policy call).
+// parse fns. The heavy chain (`…chain_status_holds` = true, ~627s) proves the HONEST
+// fail-closed-at-neutralization state by execution (it REQUIRES emit to reject cross-language); it
+// is NOT ChainProven and becomes so only when neutralization lands. It is a documented by-execution
+// receipt — reported, not self-excluded — for the #4785 corpus-gate slow-lane enrollment decision
+// (a parent-coordinated, add-only policy call).
 data unified_claim_cross_language_parse_tree_bridge_realized: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag",
