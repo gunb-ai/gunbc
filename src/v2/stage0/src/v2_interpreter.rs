@@ -975,11 +975,7 @@ impl InterpContext {
     }
 
     /// Lookup a named field in an intern-keyed field map.
-    pub fn field<'a>(
-        &self,
-        fields: &'a HashMap<Symbol, Value>,
-        name: &str,
-    ) -> Option<&'a Value> {
+    pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
         fields.get(&self.sym(name))
     }
     /// Snapshot of the copy-work counters accumulated by evaluations in this
@@ -1683,10 +1679,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     );
 
     let mut diagnostic_fields = HashMap::new();
-    diagnostic_fields.insert(
-        ctx.sym("reason"),
-        Value::Str("map_key_absent".to_string()),
-    );
+    diagnostic_fields.insert(ctx.sym("reason"), Value::Str("map_key_absent".to_string()));
     diagnostic_fields.insert(
         ctx.sym("at"),
         Value::Variant {
@@ -2245,13 +2238,15 @@ fn extract_field(
 ) -> InterpResult<Value> {
     let field_sym = ctx.sym(field);
     match value {
-        Value::Record { type_name, fields } => fields
-            .get(&field_sym)
-            .cloned()
-            .ok_or_else(|| InterpError::NoSuchField {
-                type_name: ctx.resolve(*type_name).to_string(),
-                field: field.to_string(),
-            }),
+        Value::Record { type_name, fields } => {
+            fields
+                .get(&field_sym)
+                .cloned()
+                .ok_or_else(|| InterpError::NoSuchField {
+                    type_name: ctx.resolve(*type_name).to_string(),
+                    field: field.to_string(),
+                })
+        }
         Value::Variant {
             type_name, fields, ..
         } => fields
@@ -3641,9 +3636,7 @@ fn eval_builtin(
             Some(Value::Variant { variant_name, .. }) => {
                 Ok(Some(Value::Str(resolve_sym(*variant_name))))
             }
-            Some(Value::Record { type_name, .. }) => {
-                Ok(Some(Value::Str(resolve_sym(*type_name))))
-            }
+            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(resolve_sym(*type_name)))),
             _ => Ok(None),
         },
 
@@ -4165,9 +4158,11 @@ fn raw_map_lookup(
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            let lookup = fields.get(&lookup_sym).ok_or_else(|| InterpError::TypeError {
-                msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
-            })?;
+            let lookup = fields
+                .get(&lookup_sym)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+                })?;
             match lookup {
                 Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
                 Value::Fn { node } => {

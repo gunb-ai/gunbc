@@ -79,10 +79,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
                         if ctx.sym_eq(variant_name, "Cons") {
                             let head = ctx.field(&fields, "head").expect("Cons.head");
                             out.push(codepoint(head));
-                            cur = ctx
-                                .field(&fields, "tail")
-                                .expect("Cons.tail")
-                                .clone();
+                            cur = ctx.field(&fields, "tail").expect("Cons.tail").clone();
                             continue;
                         }
                         panic!(
