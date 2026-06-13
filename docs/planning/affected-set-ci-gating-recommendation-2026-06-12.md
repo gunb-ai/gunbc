@@ -16,8 +16,8 @@ The data **supports moving toward affected-set gating of the `ci_floor` bootstra
 not support a blanket flip today.** Two preconditions must close first:
 
 1. **Coverage gap (safety):** the affected-set `affects_v4` allowlist is *narrower* than the
-   floor's actual compile closure (`v2-compiler compile --source-root src/v4`). Four real
-   `src/v4/**/*.dag` files in the floor's closure are classified skip-all. This is the only
+   floor's actual compile closure (`v2-compiler compile --source-root src/v4`). Three real
+   on-main `src/v4/**/*.dag` files in the floor's closure are classified skip-all. This is the only
    structural false-negative class in the corpus and must be closed (made fail-closed) before
    gating. It is a one-predicate semantic correction, specified below.
 2. **Savings unmeasured (value):** `saved_minutes` is structurally `0` in the v1 receipt
@@ -101,16 +101,19 @@ specific prefixes (`compiler/`, `std/`, `extdeps/`, `lens/`, `bin/main.dag`,
 `workflow/bootstrap.dag`, specific test paths). Real `src/v4` `.dag` files fall *outside* it and are
 therefore classified skip-all:
 
-| unclassified `src/v4/*.dag` in the floor closure | seen in would-skip runs |
+| unclassified `src/v4/*.dag` on main, in the floor closure | seen in would-skip runs |
 |---|---|
-| `src/v4/program.dag` | yes |
-| `src/v4/program/program.dag` | yes |
-| `src/v4/workflow/runtime_run.dag` | yes |
-| `src/v4/workflow/lens_ci_gate.dag` | yes |
+| `src/v4/program.dag` | yes (3) |
+| `src/v4/workflow/runtime_run.dag` | yes (4) |
+| `src/v4/workflow/lens_ci_gate.dag` | yes (1) |
 
-**8 would-skip runs** actually touched one of these. None happened to break the full-tree emit, so
-it never bit — but **gating the floor today would risk skipping a v4-emit regression on exactly
-these paths.** This is the gap that must close before any flip.
+**8 would-skip runs** actually touched one of these three on-main paths. (A fourth path,
+`src/v4/program/program.dag`, also appeared in the receipts but only on the unmerged
+`royal-ferret-510-s4-runnable-io` branch — it is *not* in main's `--source-root src/v4` closure, so
+it is excluded here; every run that touched it also touched `workflow/runtime_run.dag`, so the count
+of 8 is unchanged.) None happened to break the full-tree emit, so it never bit — but **gating the
+floor today would risk skipping a v4-emit regression on exactly these paths.** This is the gap that
+must close before any flip.
 
 **Fix (specified, fail-closed, turnkey — but deliberately NOT applied in this PR; see scope note):**
 make the v4 predicate default-*include* any `src/v4` `.dag` so the detector closure ⊇ the
@@ -171,4 +174,3 @@ populating `actual_run_minutes`** via the follow-up aggregator job (the bin alre
   `tools/ci_affected_components/src/lib.rs::ci_changed_path_affects_v4`.
 - `cancelled` floor jobs are excluded from both the pass and the false-negative tallies (they are
   superseded/aborted, not signal).
-</content>

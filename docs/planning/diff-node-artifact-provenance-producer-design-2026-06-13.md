@@ -243,4 +243,3 @@ trustworthy on real input.
    lands after the gap patch. Safe-slice gating canary/enforce is HELD at operator level — this lane
    stays design-only; only zero-behavior-change shadow prep that falls out of Part 3 naturally is in
    scope.
-</content>
