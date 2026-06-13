@@ -54,6 +54,7 @@ CEILINGS = {
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
         "v4_lens_ci": 35,
+        "v4_claim_witness_corpus": 35,  # uncontended ~8.7m (7.7m base + ~1m spot); 2.6× ≈ 22.6m
         "timeout_budgets": 5,
         "ci": 5,
     },

@@ -1,0 +1,198 @@
+// src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag
+// Scope: compiler-semantics claim-witness corpus CI enrollment (baseline-pinned expectations).
+// Status: host gate scripts/v4-claim-witness-corpus-gate.sh (v4_claim_witness_corpus job,
+//   parallel to v4_lens_ci). CI: --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
+//   rotation); uncontended ~7.7m base + ~1m spot ≈ 8.7m (2.6× ≈ 22.6m ≤ 35m ceiling).
+//
+// Design-sign notes (alternatives rejected):
+// - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (MODELING.md); one-row
+//   enrollment must stay a single .dag data binding.
+// - Reuse LensCiClaimRunRow (must-pass only): rejected — no field for ExpectFail + bind_anchor;
+//   extending lens_ci_gate.dag would mix lens-analysis receipts with compiler-semantics keystones.
+// - Reuse AffectedSetNodeFrontierClaimRunRow: rejected — same must-pass-only shape; this roster is
+//   a distinct enrollment family with pinned ExpectFail baselines.
+// - ExpectPass | ExpectFail { bind_anchor } coproduct: chosen — fail-closed bind anchor is required
+//   on every expected-red row at authoring time (shell gate also enforces non-empty bind_anchor).
+
+module v4.test.claim.workflow.claim_witness_corpus_ci_runner
+
+import v4.std.collection { List }
+import v4.std.text { String }
+
+type ClaimWitnessCorpusExpectation
+  = ExpectPass
+  | ExpectFail { bind_anchor: String }
+
+type ClaimWitnessCorpusClaimRunRow {
+  label: String
+  entry: String
+  function: String
+  expected: ClaimWitnessCorpusExpectation
+}
+
+data corpus_ci_gate_row_mvp1_emit_matches_serialize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "mvp1 emit matches serialize",
+  entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
+  function: "mvp1_dag_emit_matches_serialize_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_mvp1_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "mvp1 emit ingest round trip",
+  entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
+  function: "mvp1_dag_add_emit_ingest_round_trip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_comprep_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep eval by execution keystone",
+  entry: "src/v4/test/claim/manual/comprep_eval_by_execution.dag",
+  function: "comprep_eval_by_execution_keystone_holds",
+  expected: ExpectFail { bind_anchor: "#4741" }
+}
+
+data corpus_ci_gate_row_comprep_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep branch eval by execution keystone",
+  entry: "src/v4/test/claim/manual/comprep_branch_eval_by_execution.dag",
+  function: "comprep_branch_eval_by_execution_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "lazy arm eval acceptance keystone",
+  entry: "src/v4/test/claim/manual/comprep_branch_lazy_arm_eval_acceptance.dag",
+  function: "lazy_arm_eval_acceptance_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep ts bodied emit add fn accepts",
+  entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+  function: "comprep_ts_bodied_emit_add_fn_accepts_holds",
+  expected: ExpectFail { bind_anchor: "#4741" }
+}
+
+data corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep ts bodied emit operand swap discriminates",
+  entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+  function: "comprep_ts_bodied_emit_operand_swap_discriminates",
+  expected: ExpectFail { bind_anchor: "#4741" }
+}
+
+data corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep ts bodied emit catalog minus discriminates",
+  entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+  function: "comprep_ts_bodied_emit_catalog_minus_discriminates",
+  expected: ExpectFail { bind_anchor: "#4741" }
+}
+
+data corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "comprep ts bodied emit missing catalog rejects",
+  entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+  function: "comprep_ts_bodied_emit_missing_catalog_rejects",
+  expected: ExpectPass
+}
+
+// Re-anchored from closed #4761 (F1a cite repoint landed; dissolve-on still open).
+// Live tracker: #4801 (ingest bridge — ParseTree→TargetModel; witness red until bridge lands).
+data corpus_ci_gate_row_witness_sg2_arrow: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-gen arrow type-expression projection",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_arrow_holds",
+  expected: ExpectFail { bind_anchor: "#4801" }
+}
+
+data corpus_ci_gate_row_witness_sg2_projection_falsification: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-gen projection falsification",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_projection_falsification_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_witness_sg2_fold_row_delimiter: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-gen fold row delimiter discriminates",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_fold_row_delimiter_discriminates_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_pure_file: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io pure file roundtrip",
+  entry: "src/v4/test/claim/runtimes/effect_io_handler_claims.dag",
+  function: "effect_io_pure_file_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_pure_http: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io pure http roundtrip",
+  entry: "src/v4/test/claim/runtimes/effect_io_handler_claims.dag",
+  function: "effect_io_pure_http_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_pure_storage: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io pure storage roundtrip",
+  entry: "src/v4/test/claim/runtimes/effect_io_handler_claims.dag",
+  function: "effect_io_pure_storage_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_host_read_fail_closed: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io host read fail closed",
+  entry: "src/v4/test/claim/runtimes/effect_io_handler_claims.dag",
+  function: "effect_io_host_read_fail_closed_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_host_http_backend: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io host http backend routes",
+  entry: "src/v4/test/claim/runtimes/effect_io_handler_claims.dag",
+  function: "effect_io_host_http_backend_routes_http_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_ts_effect_io_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "typescript effect io emit",
+  entry: "src/v4/test/claim/manual/typescript_effect_io_emit.dag",
+  function: "ts_effect_io_emit_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_eval_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io eval roundtrip",
+  entry: "src/v4/test/claim/manual/effect_io_eval_by_execution.dag",
+  function: "effect_io_eval_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect io eval unbound fail closed",
+  entry: "src/v4/test/claim/manual/effect_io_eval_by_execution.dag",
+  function: "effect_io_eval_unbound_fail_closed_holds",
+  expected: ExpectPass
+}
+
+data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
+  corpus_ci_gate_row_mvp1_emit_matches_serialize,
+  corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_comprep_eval_keystone,
+  corpus_ci_gate_row_comprep_branch_eval_keystone,
+  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog,
+  corpus_ci_gate_row_witness_sg2_arrow,
+  corpus_ci_gate_row_witness_sg2_projection_falsification,
+  corpus_ci_gate_row_witness_sg2_fold_row_delimiter,
+  corpus_ci_gate_row_effect_io_pure_file,
+  corpus_ci_gate_row_effect_io_pure_http,
+  corpus_ci_gate_row_effect_io_pure_storage,
+  corpus_ci_gate_row_effect_io_host_read_fail_closed,
+  corpus_ci_gate_row_effect_io_host_http_backend,
+  corpus_ci_gate_row_ts_effect_io_emit,
+  corpus_ci_gate_row_effect_io_eval_roundtrip,
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+]
+
+data claim_witness_corpus_claim_run_row_count: String = "20"
