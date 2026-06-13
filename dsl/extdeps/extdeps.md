@@ -508,10 +508,10 @@ Each module is graded on how well it implements the upstream spec:
 
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
-| `os.dag` | 45 | A | Cited (per-row) | Dispatch hub: `OperatingSystemProduct` enum → per-OS `extdeps/os/*` catalog rows → `std.os.operating_system_surface` projection. Operator fleet (`operator_fleet_os_surface`) wired to Ubuntu 24.04 LTS |
-| `os/ubuntu_24_04.dag` | 16 | A | Cited | Ubuntu 24.04 LTS (Noble Numbat) `OperatingSystemCatalogRow` |
-| `os/windows_11.dag` | 16 | A | Cited | Windows 11 24H2 (build 26100) `OperatingSystemCatalogRow` |
-| `os/macos_15_sequoia.dag` | 16 | A | Cited | macOS 15 Sequoia `OperatingSystemCatalogRow` |
+| `ubuntu.dag` | 28 | A | Cited | Ubuntu 24.04 LTS (Noble Numbat): `UbuntuDistribution` identity + `UbuntuDistributionCatalogRow` (kernel 6.8, APT, glibc 2.39, security maintenance until 2029-05-31) |
+| `windows.dag` | 34 | A | Cited | Windows 11 24H2 (build 26100): `WindowsDistribution` identity + `WindowsDistributionCatalogRow` (winget, UCRT, end-of-servicing 2026-10-13) |
+| `macos.dag` | 34 | A | Cited | macOS 15 Sequoia: `MacosDistribution` identity + `MacosDistributionCatalogRow` (Darwin 24, libSystem, Homebrew de-facto dev PM per extdeps/brew.dag) |
+| `os.dag` | 43 | A | Cited (dispatch) | Hub: `OperatingSystemProduct` → per-distro catalog rows → `std.os` surface projection; operator fleet wired to Noble Numbat 24.04 |
 
 ### Rendering (internal, not external specs)
 

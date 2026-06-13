@@ -3,9 +3,9 @@
 
 module extdeps.os
 
-import extdeps.macos { macos_distribution_catalog_row, sequoia_15_catalog }
-import extdeps.ubuntu { noble_numbat_2404_catalog, ubuntu_distribution_catalog_row }
-import extdeps.windows { windows_11_24h2_catalog, windows_distribution_catalog_row }
+import extdeps.macos { sequoia_15_catalog }
+import extdeps.ubuntu { noble_numbat_2404_catalog }
+import extdeps.windows { windows_11_24h2_catalog }
 import std.compute_fabric { OperatingSystemSurface }
 import std.list { List }
 import std.os {
@@ -14,32 +14,17 @@ import std.os {
   operating_system_surface_windows,
 }
 import std.os.types {
-  MacosDistributionCatalogRow,
   NobleNumbat2404Lts,
   OperatingSystemProduct,
   Sequoia15,
-  UbuntuDistributionCatalogRow,
   Windows1124H2Build26100,
-  WindowsDistributionCatalogRow,
-}
-
-fn ubuntu_surface(product: NobleNumbat2404Lts) -> OperatingSystemSurface {
-  operating_system_surface_ubuntu(ubuntu_distribution_catalog_row(product))
-}
-
-fn windows_surface(product: Windows1124H2Build26100) -> OperatingSystemSurface {
-  operating_system_surface_windows(windows_distribution_catalog_row(product))
-}
-
-fn macos_surface(product: Sequoia15) -> OperatingSystemSurface {
-  operating_system_surface_macos(macos_distribution_catalog_row(product))
 }
 
 fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {
   match product {
-    NobleNumbat2404Lts => ubuntu_surface(product)
-    Windows1124H2Build26100 => windows_surface(product)
-    Sequoia15 => macos_surface(product)
+    NobleNumbat2404Lts => operating_system_surface_ubuntu(noble_numbat_2404_catalog)
+    Windows1124H2Build26100 => operating_system_surface_windows(windows_11_24h2_catalog)
+    Sequoia15 => operating_system_surface_macos(sequoia_15_catalog)
   }
 }
 
