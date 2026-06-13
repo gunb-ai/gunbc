@@ -1,0 +1,20 @@
+// TEMPORARY probe — verifies frontier-keyed forward selection accepts the real (nested) python
+// add parse tree. Delete after the acceptance flip lands.
+module v4.test.claim.manual.ingest_python_probe
+
+import v4.compiler.ingest { parse_tree_to_target_model_bridge }
+import v4.test.claim.manual.python_mvp1_grammar_claim { python_mvp1_grammar_parse_fixture }
+import v4.extdeps.languages.python { python_mvp1_target_model }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+
+fn python_bridge_accepts() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_target_model_bridge(parse_tree: tree, source_model: python_mvp1_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
