@@ -1,7 +1,7 @@
-// extdeps/ubuntu.dag — Ubuntu distribution catalog (cited facts).
+// extdeps/os/ubuntu.dag — Ubuntu distribution catalog (cited facts).
 // Scope: Noble Numbat 24.04 LTS.
 
-module extdeps.ubuntu
+module extdeps.os.ubuntu
 
 import std.os.types {
   Apt,
