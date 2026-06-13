@@ -17,11 +17,17 @@ import v4.std.collection {
   optional_present
 }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
+  Rejected,
   Unavailable,
-  node_locus
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
 }
+import v4.std.node_query { find_named_child }
 import v4.std.compilers.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
@@ -1443,5 +1449,54 @@ fn grammar_relation_row_backward_selection(
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #g-bidir G.3 — forward interpreter: parse tree -> emit-side core node.
+//
+// `parse_tree_to_target_model` realizes the single missing bridge of the
+// cross-language emit matrix (`cross_language_add_python_to_typescript.dag`
+// links 2-4: ParseTree -> grammar-relation row -> emit-side core node). It is the
+// structural dual of `grammar_relation_row_backward_selection`: the backward
+// (emit) direction selects a production from an emitted core node; this forward
+// (parse) direction recovers the emit-side core node the parse committed to.
+//
+// No parser is re-implemented and `02_parse` is NOT edited (Mgr-CONSOLIDATION owns
+// parse-stage wiring per #g-bidir worksheet gate 2). The parse stage already stamps
+// `GrammarProduction.emitted` onto every production tree under the
+// `grammar_production_identity_node_projection` named edge
+// (`02_parse.parse_wrap_production_captured`); the forward interpreter projects that
+// stamped core node back out via `find_named_child`. The projection-edge symbol is
+// referenced by its interned identity (`^…`), introducing no import dependency on the
+// compiler stage. (Symbol-home migration of the parse-tree carrier projections into
+// this substrate module is a follow-on item gated on a Mgr-CONSOLIDATION sync.)
+//
+// The recovered core node is admissible to the landed semantic dual
+// `coerce_grounded_node` (06_translate) — composing the two gives the full
+// ParseTree -> canonical-IR ingest, the forward consumer the emit fold's inverse
+// proof was waiting on.
+//
+// Fail-closed: a node that is not a stamped production tree (identity projection
+// absent or non-unique) yields Rejected at the named reason
+// `parse_tree_to_target_model_no_emitted_core` — the gap is located, never a silent
+// shim or fallback node.
+// ─────────────────────────────────────────────────────────────────────────────
+
+data parse_tree_to_target_model_no_emitted_core: Symbol = ^parse_tree_to_target_model_no_emitted_core
+
+fn parse_tree_to_target_model(parse_tree: ParseTree) -> Outcome<Node> {
+  match find_named_child(
+    root: parse_tree,
+    name: ^grammar_production_identity_node_projection
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => outcome_accepted(value: emitted)
+    Rejected { diagnostics: _ } =>
+      outcome_rejected(d: Diagnostic {
+        reason: parse_tree_to_target_model_no_emitted_core,
+        at: node_locus(node: parse_tree),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
   }
 }
