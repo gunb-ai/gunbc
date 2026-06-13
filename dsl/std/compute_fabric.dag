@@ -577,7 +577,7 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
-  // vCPU/RAM/disk: extdeps.cloud.hetzner.cax41_catalog (shared Ampere; no per-thread Hz).
+  // vCPU/RAM/disk: cax41_catalog.vm.shape (shared Ampere; no per-thread Hz).
   processors: [],
   memory: [],
   storage: [],
@@ -591,9 +591,9 @@ data hetzner_per_second_cost: CostModel = CostModel {
 
 data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
   model: hetzner_per_second_cost,
-  // expected_units carries vendor hourly_eur_micros (1e-6 EUR) until Float literals land.
-  expected_units: cax41_catalog.hourly_eur_micros,
-  currency: "EUR",
+  // expected_units carries billing.hourly_micros (1e-6 EUR) until Float literals land.
+  expected_units: cax41_catalog.vm.billing.hourly_micros,
+  currency: cax41_catalog.vm.billing.currency,
 }
 
 data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"

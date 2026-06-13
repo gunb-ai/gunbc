@@ -1,0 +1,37 @@
+// extdeps/cloud/compute.dag — Cross-provider cloud VM catalog vocabulary (Layer 1).
+//
+// Shared shape for provider instance catalogs (Hetzner CAX, future GCP/AWS SKUs).
+// Provider modules attach vendor-specific server-type enums + cited pricing rows.
+//
+// Consumers:
+//   extdeps/cloud/hetzner.dag
+
+module extdeps.cloud.compute
+
+import std.cpu.types { CpuArchitecture }
+import std.measure { MemoryByteMagnitude, StorageByteMagnitude }
+import std.types { Int, NonEmptyStr }
+
+// Shared/fractional vCPU count (hypervisor-scheduled); not 1:1 with physical core Hz.
+type VirtualCpuCount { count: Int }
+
+// VM resource shape — memory/disk use std.measure byte magnitudes; architecture from std.cpu.
+type CloudVmShape {
+  vcpus: VirtualCpuCount
+  memory: MemoryByteMagnitude
+  disk: StorageByteMagnitude
+  cpu_architecture: CpuArchitecture
+}
+
+// Per-second billed cloud pricing with vendor citation (micro-units: 1e-6 currency).
+type CloudPerSecondPrice {
+  hourly_micros: Int
+  monthly_cap_micros: Int
+  currency: NonEmptyStr
+  pricing_citation: NonEmptyStr
+}
+
+type CloudVmCatalogRow {
+  shape: CloudVmShape
+  billing: CloudPerSecondPrice
+}
