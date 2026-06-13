@@ -101,7 +101,7 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "src/v3/std/go_method_template_contracts.dag",
     "src/v3/std/anthropic_operations.dag",
     "src/v3/std/cross_target_coverage.dag",
-    "dsl/extdeps/cron_schedule_model.dag",
+    "dsl/extdeps/cron/schedule_model.dag",
     "dsl/extdeps/github/github.dag",
     "dsl/extdeps/github/actions.dag",
     "dsl/extdeps/github/ci.dag",

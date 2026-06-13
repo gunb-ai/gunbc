@@ -1,4 +1,4 @@
-// extdeps/cron_schedule_model.dag — POSIX crontab schedule field grammar (carriers + wire render).
+// extdeps/cron/schedule_model.dag — POSIX crontab schedule field grammar (carriers + wire render).
 //
 // Fidelity — `dsl/extdeps/extdeps.md` invariant (cite source + declare version):
 //   Spec: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html
@@ -14,8 +14,8 @@
 // `Step` carrier and `render_cron_field` slash rendering model that wire shape — cite deployment
 // docs for consumers that require strict POSIX-only schedules.
 //
-// Split from `cron.dag` so v3 bootstrap loads schedule carriers without parsing `service` blocks
-// (`cron.Tab` shell transport remains in `cron.dag`).
+// Split from `cron/cron.dag` so v3 bootstrap loads schedule carriers without parsing `service` blocks
+// (`cron.Tab` shell transport remains in `cron/cron.dag`).
 //
 // Consumers:
 //   dsl/extdeps/github/actions.dag — `WorkflowTrigger::Schedule`

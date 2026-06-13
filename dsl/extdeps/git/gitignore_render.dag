@@ -1,6 +1,6 @@
-// extdeps/gitignore_render.dag -- Gitignore rendering functions.
+// extdeps/git/gitignore_render.dag -- Gitignore rendering functions.
 //
-// Rendering fns extracted from extdeps/gitignore.dag to separate
+// Rendering fns extracted from extdeps/git/gitignore.dag to separate
 // domain model from serialization (same pattern as markdown.dag +
 // markdown_render.dag).
 

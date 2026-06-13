@@ -97,7 +97,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/compiler/regen.dag": CompilerAuthority,
 
     "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority,
-    "dsl/extdeps/cron_schedule_model.dag": ExtdepsFixtureAuthority,
+    "dsl/extdeps/cron/schedule_model.dag": ExtdepsFixtureAuthority,
     "dsl/extdeps/github/github.dag": ExtdepsFixtureAuthority,
     "dsl/extdeps/github/actions.dag": ExtdepsFixtureAuthority,
     "dsl/extdeps/github/ci.dag": ExtdepsFixtureAuthority

@@ -1,4 +1,4 @@
-// extdeps/gitignore.dag -- "What is .gitignore?"
+// extdeps/git/gitignore.dag -- "What is .gitignore?"
 //
 // Stable domain model of .gitignore files. Tautological definitions:
 // categories group exclusion patterns with provenance and rationale.

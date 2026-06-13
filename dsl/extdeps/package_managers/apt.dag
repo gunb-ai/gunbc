@@ -1,4 +1,4 @@
-// extdeps/apt.dag — APT package manager (Debian/Ubuntu).
+// extdeps/package_managers/apt.dag — APT package manager (Debian/Ubuntu).
 //
 // Spec: https://manpages.debian.org/testing/apt/apt.8.en.html
 // Version: APT 2.x+
