@@ -156,7 +156,11 @@ trustworthy on real input.
 2. `SourceRootIngest` enumeration: is there an existing ingest-set carrier to fold over, or does the
    enumerator itself need design? (This is the residual tidy-wolf question — needs the
    `adhoc-bc4d39de-88f` / `adhoc-9bb1e6fb-9ba` detail to answer precisely.)
-3. Sequencing of the `affects_v4` fail-closed patch vs the producer: patch first (immediate safety,
-   throwaway) then producer (durable), or producer-only? Patch-first is lower-risk for an earlier
-   gating canary; coordinator's call.
+3. Sequencing of the `affects_v4` fail-closed patch vs the producer: **resolved by the dep-graph
+   coordinator (snappy-crab-849, 2026-06-13)** — the one-predicate widening-only patch is dispatched
+   as a *separate* leaf (immediate safety, by-execution receipt + tripwire); the producer here is the
+   *durable* follow-up that makes the allowlist unnecessary. Job-timings aggregator (measurement-only)
+   lands after the gap patch. Safe-slice gating canary/enforce is HELD at operator level — this lane
+   stays design-only; only zero-behavior-change shadow prep that falls out of Part 3 naturally is in
+   scope.
 </content>
