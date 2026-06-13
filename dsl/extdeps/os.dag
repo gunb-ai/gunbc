@@ -6,7 +6,6 @@ module extdeps.os
 import extdeps.macos { macos_distribution_catalog_row }
 import extdeps.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.windows { windows_distribution_catalog_row }
-import std.compute_fabric { OperatingSystemSurface }
 import std.list { List }
 import std.os {
   operating_system_surface_macos,
@@ -17,6 +16,7 @@ import std.os.types {
   MacosOs,
   NobleNumbat2404Lts,
   OperatingSystemProduct,
+  OperatingSystemSurface,
   Sequoia15,
   UbuntuOs,
   Windows1124H2Build26100,

@@ -11,6 +11,15 @@ module std.compute_fabric
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.os.operator_fleet { operator_fleet_os_surface }
+import std.os.types {
+  FileSystemSemantics,
+  KernelFamily,
+  Linux,
+  OperatingSystemSurface,
+  Posix,
+  PosixProcess,
+  ProcessSemantics,
+}
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize, hertz }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
@@ -49,9 +58,6 @@ type InstructionSet = Node
 
 // --- §1.7 supporting enums + measure carriers --------------------------------
 
-type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
-type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
-type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 type NetworkLocality = Loopback | Lan | Internet | WslNat | WslBridged
 type NetworkAddressability = Unicast | Multicast | Broadcast
 type NetworkEgressClass = None | CratesIo | InternalMirror | Unrestricted
@@ -119,17 +125,6 @@ type NetworkInterface {
   bandwidth: Option<Bandwidth>
   latency_class: Option<LatencyClass>
   locality: NetworkLocality
-}
-
-type OperatingSystemSurface {
-  kernel: KernelFamily
-  // P-CF-OS: distro/version relaxed to Option. srv1/srv2 grounded via
-  // std.os.operator_fleet.operator_fleet_os_surface (Ubuntu 24.04 LTS). Hetzner OS is
-  // bound at provision time, so stays None on the offer surface.
-  distro_or_product: Option<NonEmptyStr>
-  version: Option<NonEmptyStr>
-  filesystem_semantics: FileSystemSemantics
-  process_semantics: ProcessSemantics
 }
 
 type ExecutionSurface {

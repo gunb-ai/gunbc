@@ -1,9 +1,25 @@
-// std/os/types.dag — OS distribution taxonomy (no cited catalog data).
+// std/os/types.dag — OS surface + distribution taxonomy (no cited catalog data).
 
 module std.os.types
 
 import std.types { NonEmptyStr, Option }
 
+type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
+type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
+type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
+
+// P-CF-OS: distro/version relaxed to Option. srv1/srv2 grounded via
+// std.os.operator_fleet.operator_fleet_os_surface (Ubuntu 24.04 LTS). Hetzner OS is
+// bound at provision time, so stays None on the offer surface.
+type OperatingSystemSurface {
+  kernel: KernelFamily
+  distro_or_product: Option<NonEmptyStr>
+  version: Option<NonEmptyStr>
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+// Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
 type UbuntuDistribution = NobleNumbat2404Lts
 type WindowsDistribution = Windows1124H2Build26100
 type MacosDistribution = Sequoia15

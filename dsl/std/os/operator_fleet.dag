@@ -6,8 +6,7 @@ module std.os.operator_fleet
 
 import extdeps.ubuntu { noble_numbat_2404_catalog }
 import std.os { operating_system_surface_ubuntu }
-import std.os.types { NobleNumbat2404Lts, OperatingSystemProduct, UbuntuOs }
-import std.compute_fabric { OperatingSystemSurface }
+import std.os.types { NobleNumbat2404Lts, OperatingSystemProduct, OperatingSystemSurface, UbuntuOs }
 
 data operator_fleet_os_product: OperatingSystemProduct = UbuntuOs { distro: NobleNumbat2404Lts }
 

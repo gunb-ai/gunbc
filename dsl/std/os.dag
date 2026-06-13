@@ -2,21 +2,19 @@
 
 module std.os
 
-import std.compute_fabric {
+import std.os.types {
   Apfs,
   Darwin,
   Linux,
+  MacosDistributionCatalogRow,
   Ntfs,
   OperatingSystemSurface,
   Posix,
   PosixProcess,
-  WindowsNt,
-  WindowsProcess,
-}
-import std.os.types {
-  MacosDistributionCatalogRow,
   UbuntuDistributionCatalogRow,
   WindowsDistributionCatalogRow,
+  WindowsNt,
+  WindowsProcess,
 }
 import std.primitives { concat }
 
