@@ -6,6 +6,7 @@ module v4.test.claim.manual.inhabitant_neutralization
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer }
+import v4.extdeps.languages.go { go_mvp1_target_model }
 import v4.extdeps.languages.python {
   python_int_inhabitant_node,
   python_mvp1_emitted_add_fn_node
@@ -49,6 +50,20 @@ fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
+  inhabitant_neutralization_go_int64_target_lookup_holds()
+}
+
 fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_mvp1_emitted_add_fn_node(),
@@ -84,6 +99,13 @@ data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim 
   input: python_mvp1_emitted_add_fn_node(),
   expected_value: python_mvp1_emitted_add_fn_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data unified_claim_inhabitant_neutralization_third_inhabitant_falsifier_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_third_inhabitant_falsifier_holds
+  }
 }
 
 data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = BoolWitnessClaim {

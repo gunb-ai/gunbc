@@ -54,23 +54,21 @@ fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Di
 }
 
 fn inhabitant_neutralization_no_target_diagnostic(
-  std_projection: Symbol,
-  target: TargetModel
+  std_projection: Symbol
 ) -> Diagnostic {
   Diagnostic {
     reason: inhabitant_neutralization_no_target_inhabitant,
-    at: node_locus(node: target.bundle),
+    at: Textual { file: std_projection, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn inhabitant_neutralization_ambiguous_target_diagnostic(
-  std_projection: Symbol,
-  target: TargetModel
+  std_projection: Symbol
 ) -> Diagnostic {
   Diagnostic {
     reason: inhabitant_neutralization_ambiguous_target_inhabitant,
-    at: node_locus(node: target.bundle),
+    at: Textual { file: std_projection, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -159,8 +157,7 @@ fn target_inhabitant_for_std_projection(
         NoPassingCandidate =>
           outcome_rejected(
             inhabitant_neutralization_no_target_diagnostic(
-              std_projection: std_projection,
-              target: target
+              std_projection: std_projection
             )
           )
         OnePassingCandidate { candidate: c } =>
@@ -168,8 +165,7 @@ fn target_inhabitant_for_std_projection(
         ManyPassingCandidates =>
           outcome_rejected(
             inhabitant_neutralization_ambiguous_target_diagnostic(
-              std_projection: std_projection,
-              target: target
+              std_projection: std_projection
             )
           )
       }
