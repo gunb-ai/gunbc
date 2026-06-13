@@ -1,6 +1,6 @@
 // extdeps/os.dag — Operating-system distribution/product catalog (cited facts).
 // Scope: 3 cited OS rows inhabiting std.compute_fabric.OperatingSystemSurface.
-// Reuse: the 5 facts a real OS asserts == OperatingSystemSurface's 5 fields (Practice 8).
+// Reuse: OperatingSystemSurface field bundle.
 
 module extdeps.os
 
