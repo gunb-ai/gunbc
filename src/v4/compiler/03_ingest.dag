@@ -267,16 +267,19 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
 // Cross-language compile (optional matrix convenience, signed signature #4821).
 //
 //   cross_language_compile(parse_tree, source_model, target_model)
-//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model), emit(_, target_model))
+//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model),
+//         bind(neutralize_core_for_target(_, target_model),
+//           bind(infer, emit(_, target_model))))
 //
-// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model. emit
-// then serializes it into `target_model`'s surface — proven WHERE source and target share the core
-// inhabitant flavor (e.g. dag->dag, and any source whose grounded core the target's rows key on).
+// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model.
+// neutralize_core_for_target (std/inhabitant_neutralization.dag: source inhabitant -> canonical
+// std_projection -> target inhabitant) rewrites inhabitants when flavors differ; same-flavor paths
+// are identity when std_projection already matches. emit then serializes into `target_model`'s surface.
 //
-// SCOPE: cross-language inhabitant neutralization is realized in std/inhabitant_neutralization.dag
-// (source inhabitant -> canonical std_projection fact -> target inhabitant). When source and target
-// differ, neutralize_core_for_target rewrites inhabitants before emit; same-flavor paths are
-// identity when std_projection already matches.
+// SCOPE: combinator realized + wired; hermetic receipt in manual/inhabitant_neutralization.dag.
+// python→ts cross_language_emit_matrix row is ChainProven when
+// cross_language_add_python_to_typescript_chain_status_holds exercises this full composition on the
+// real parse tree (~627s by-execution receipt).
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
