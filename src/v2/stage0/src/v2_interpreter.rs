@@ -1012,6 +1012,12 @@ impl InterpContext {
     pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
         let mut visited = std::collections::HashSet::new();
         let mut acc = MemoryAccounting::default();
+        account_interner(
+            self as *const Self as usize,
+            &self.symbols.borrow(),
+            &mut visited,
+            &mut acc,
+        );
         for value in self.data_cache.borrow().values() {
             account_value(value, &mut visited, &mut acc);
         }
@@ -1025,7 +1031,6 @@ impl InterpContext {
         for value in extra_roots {
             account_value(value, &mut visited, &mut acc);
         }
-        acc.add_unique("(interner)", self.symbols.borrow().heap_bytes());
         acc
     }
 
