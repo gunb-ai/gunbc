@@ -55,6 +55,74 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
+    ((variant.children.clone().len() as i64) == 0)
+}
+
+pub fn unit_variant_in_coproduct(
+    env: Rc<TypeEnv>,
+    ty: Rc<Node>,
+    variant_name: String,
+) -> Option<Rc<Node>> {
+    match ty.connective.clone() {
+        Connective::Disj => {
+            ty.children
+                .clone()
+                .iter()
+                .cloned()
+                .fold(None, |acc: _, v: Rc<Node>| {
+                    if (acc.clone() != None) {
+                        acc.clone()
+                    } else {
+                        if ((authored_name_at(env.source_indices.clone(), v.clone()).as_str()
+                            == variant_name.clone().as_str())
+                            && is_unit_variant_node(v.clone()))
+                        {
+                            Some(v.clone())
+                        } else {
+                            None
+                        }
+                    }
+                })
+        }
+        _ => None,
+    }
+}
+
+pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<Node> {
+    if ((ty.connective.clone() == Connective::NoConnective) && (ty.inferred.clone() != None)) {
+        match ty.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => ty.clone(),
+        }
+    } else {
+        ty.clone()
+    }
+}
+
+pub fn lookup_unit_variant_phantom_type(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Option<Rc<Node>> {
+    Rc::new(v2_rt::map_keys(&env.bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(None, |acc: _, ident: i64| {
+            if (acc.clone() != None) {
+                acc.clone()
+            } else {
+                match lookup_type(env.clone(), ident.clone()) {
+                    Some(ty_node) => unit_variant_in_coproduct(
+                        env.clone(),
+                        structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
+                        variant_name.clone(),
+                    ),
+                    None => None,
+                }
+            }
+        })
+}
+
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. } => {
@@ -1397,21 +1465,19 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: n.clone(),
-                                                    diagnostics: Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnresolvedType {
-                                                                name: authored_name(
-                                                                    env.clone(),
-                                                                    n.clone(),
-                                                                ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )]),
-                                                })
+                                                match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
+    Some(phantom) => Rc::new(NodeResolveResult {
+    resolved: phantom.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+    None => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())]),
+}),
+}
                                             }
                                         }
                                     }
