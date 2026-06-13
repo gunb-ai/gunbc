@@ -51,7 +51,12 @@ type WorkflowRunJob {
 
 service github.Actions {
   config {
-    endpoint: default_api_base
+    // Inlined literal, NOT `default_api_base`: the runtime endpoint resolver
+    // (find_service_config_string) only reads a string LITERAL or falls back to
+    // the authored identifier name -- a `data` constant reference resolves to the
+    // bare name "default_api_base", producing a base-less URL. default_api_base
+    // (extdeps.github.github) remains the documented authority for this value.
+    endpoint: "https://api.github.com"
     auth: Bearer
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
     // GitHub API rate limits: 5000 requests/hour for authenticated users.
@@ -75,16 +80,15 @@ service github.Actions {
       jobs: List<WorkflowRunJob>
     }
     readonly
-    // HEADERS: set each as an INDIVIDUAL transport property (non-reserved props
-    // become headers; the map form sets one bogus header literally named
-    // "headers"). Authorization is auto-injected from auth_source (Bearer) --
-    // do NOT hand-set it here.
+    // Authorization is auto-injected from auth_source (Bearer) -- do NOT hand-set
+    // it. The Accept / X-GitHub-Api-Version best-practice headers are omitted: the
+    // parser rejects string-literal property keys (only identifiers parse) and
+    // header names with hyphens are not identifiers, so they cannot be expressed as
+    // individual transport props today. GitHub returns JSON without them.
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
-      query: { per_page: per_page },
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28"
+      query: { per_page: per_page }
     }
     response {
       200 => List<WorkflowRunJob>

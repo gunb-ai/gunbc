@@ -15,5 +15,5 @@ fn gate0_probe() -> Bool {
   )
   // True iff we got real job records back with non-empty names — proves the
   // wrapper-object response parsed into typed WorkflowRunJob records.
-  any(result.jobs, j => j.name != "")
+  any(result.jobs, j => j.name == "affected_timings")
 }
