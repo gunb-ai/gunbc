@@ -1,0 +1,34 @@
+// extdeps/windows.dag — Windows distribution catalog (cited facts).
+// Scope: Windows 11 24H2 (OS build 26100).
+
+module extdeps.windows
+
+import std.compute_fabric { Ntfs, WindowsNt, WindowsProcess }
+import std.os.types {
+  Ucrt,
+  Windows1124H2Build26100,
+  WindowsDistribution,
+  WindowsDistributionCatalogRow,
+  Winget,
+}
+
+// Anchor: https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
+data windows_11_24h2_catalog: WindowsDistributionCatalogRow = WindowsDistributionCatalogRow {
+  distribution: Windows1124H2Build26100,
+  release_label: "24H2",
+  os_build: "26100",
+  package_manager: Winget,
+  libc: Ucrt,
+  end_of_servicing: "2026-10-13",
+  kernel: WindowsNt,
+  distro_or_product: "Windows 11",
+  version: "24H2 (OS build 26100)",
+  filesystem_semantics: Ntfs,
+  process_semantics: WindowsProcess,
+}
+
+fn windows_distribution_catalog_row(distro: WindowsDistribution) -> WindowsDistributionCatalogRow {
+  match distro {
+    Windows1124H2Build26100 => windows_11_24h2_catalog
+  }
+}

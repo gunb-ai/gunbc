@@ -1,15 +1,56 @@
-// std/os/types.dag — operating-system product taxonomy (no cited catalog data).
+// std/os/types.dag — OS distribution taxonomy (no cited catalog data).
 
 module std.os.types
 
 import std.compute_fabric { KernelFamily, FileSystemSemantics, ProcessSemantics }
 import std.types { NonEmptyStr }
 
-// Product-line variants — enum tag is stable id; extdeps catalog row is cited authority.
-type OperatingSystemProduct = Ubuntu2404Lts | Windows1124H2 | Macos15Sequoia
+// Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
+type UbuntuDistribution = NobleNumbat2404Lts
+type WindowsDistribution = Windows1124H2Build26100
+type MacosDistribution = Sequoia15
 
-type OperatingSystemCatalogRow {
-  product: OperatingSystemProduct
+type OperatingSystemProduct = NobleNumbat2404Lts | Windows1124H2Build26100 | Sequoia15
+
+type OsPackageManager = Apt | Winget | HomebrewDeFacto
+
+type LibcFamily = GnuGlibc | Ucrt | LibSystem
+
+type UbuntuDistributionCatalogRow {
+  distribution: UbuntuDistribution
+  release_label: NonEmptyStr
+  kernel_version: NonEmptyStr
+  package_manager: Apt
+  libc_version: NonEmptyStr
+  security_maintenance_until: NonEmptyStr
+  kernel: KernelFamily
+  distro_or_product: NonEmptyStr
+  version: NonEmptyStr
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+type WindowsDistributionCatalogRow {
+  distribution: WindowsDistribution
+  release_label: NonEmptyStr
+  os_build: NonEmptyStr
+  package_manager: Winget
+  libc: Ucrt
+  end_of_servicing: NonEmptyStr
+  kernel: KernelFamily
+  distro_or_product: NonEmptyStr
+  version: NonEmptyStr
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+type MacosDistributionCatalogRow {
+  distribution: MacosDistribution
+  release_label: NonEmptyStr
+  darwin_version: NonEmptyStr
+  package_manager: HomebrewDeFacto
+  libc: LibSystem
+  annual_release_label: NonEmptyStr
   kernel: KernelFamily
   distro_or_product: NonEmptyStr
   version: NonEmptyStr

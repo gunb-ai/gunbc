@@ -1,0 +1,28 @@
+// extdeps/ubuntu.dag — Ubuntu distribution catalog (cited facts).
+// Scope: Noble Numbat 24.04 LTS.
+
+module extdeps.ubuntu
+
+import std.compute_fabric { Linux, Posix, PosixProcess }
+import std.os.types { Apt, NobleNumbat2404Lts, UbuntuDistribution, UbuntuDistributionCatalogRow }
+
+// Anchor: https://documentation.ubuntu.com/release-notes/24.04/
+data noble_numbat_2404_catalog: UbuntuDistributionCatalogRow = UbuntuDistributionCatalogRow {
+  distribution: NobleNumbat2404Lts,
+  release_label: "24.04 LTS (Noble Numbat)",
+  kernel_version: "6.8",
+  package_manager: Apt,
+  libc_version: "2.39",
+  security_maintenance_until: "2029-05-31",
+  kernel: Linux,
+  distro_or_product: "Ubuntu",
+  version: "24.04 LTS (Noble Numbat)",
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+fn ubuntu_distribution_catalog_row(distro: UbuntuDistribution) -> UbuntuDistributionCatalogRow {
+  match distro {
+    NobleNumbat2404Lts => noble_numbat_2404_catalog
+  }
+}

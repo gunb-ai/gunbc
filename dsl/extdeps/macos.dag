@@ -1,0 +1,34 @@
+// extdeps/macos.dag — macOS distribution catalog (cited facts).
+// Scope: macOS 15 Sequoia.
+
+module extdeps.macos
+
+import std.compute_fabric { Apfs, Darwin, PosixProcess }
+import std.os.types {
+  HomebrewDeFacto,
+  LibSystem,
+  MacosDistribution,
+  MacosDistributionCatalogRow,
+  Sequoia15,
+}
+
+// Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
+data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogRow {
+  distribution: Sequoia15,
+  release_label: "macOS 15 Sequoia",
+  darwin_version: "24",
+  package_manager: HomebrewDeFacto,
+  libc: LibSystem,
+  annual_release_label: "15",
+  kernel: Darwin,
+  distro_or_product: "macOS Sequoia",
+  version: "15",
+  filesystem_semantics: Apfs,
+  process_semantics: PosixProcess,
+}
+
+fn macos_distribution_catalog_row(distro: MacosDistribution) -> MacosDistributionCatalogRow {
+  match distro {
+    Sequoia15 => sequoia_15_catalog
+  }
+}
