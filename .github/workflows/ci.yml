@@ -31,8 +31,8 @@ env:
   # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
   # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
-# Required on every PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + v3 bootstrap snapshot freshness + get-off-v3 census ratchet, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Required on every PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity + v3 bootstrap freshness (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
   # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
@@ -580,6 +580,13 @@ jobs:
     # fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
+    # v3 bootstrap snapshot freshness: committed `bootstrap_*_generated.rs` must match a fresh
+    # compile from on-disk `.dag` authorities (PB-1-e / #4825 root-cause). Authority:
+    # `regen_bootstrap --verify` in `src/v3/compiler/src/bin/regen_bootstrap.rs`; not on every
+    # `cargo test` (see pb1_bootstrap_full_snapshot_test.rs).
+    - name: v3 bootstrap snapshot freshness receipt
+      timeout-minutes: 30
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
     # get-off-v3 census ratchet: every direct compile_to_dag( call site must stay at or below the
     # ceiling defined in get_off_v3_compile_to_dag_census_test.rs (PR #4652). Running under
     # ci_floor_parity for infra reuse (shared Cargo cache, sccache). CI-enforcement authority:
@@ -1054,7 +1061,7 @@ jobs:
           echo "::error::timeout_budgets gate did not succeed (result=${{ needs.timeout_budgets.result }}); a workflow timeout-minutes exceeds its declared ceiling -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity + v3 bootstrap freshness in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (node-frontier) + v4_claim_witness_corpus_{a,b} (compiler-semantics enrollment shards)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + v3 bootstrap freshness + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (node-frontier) + v4_claim_witness_corpus_{a,b} (compiler-semantics enrollment shards)"
