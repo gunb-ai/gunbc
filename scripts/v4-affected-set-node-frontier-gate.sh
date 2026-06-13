@@ -85,6 +85,17 @@ fi
 gate_model="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 affected_testgen_gate_model="src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
 
+# Per-phase wall-time notices (same pattern as v4-substrate-equivalence-gate.sh;
+# added by #4837 for the CI latency attack). claim_batch's own
+# [resolve]/[witness]/[resolve-summary] lines give the per-witness breakdown
+# within each green phase. Helper takes the phase label + start SECONDS. The
+# perturb-shard path uses it too, so each matrix leg emits its own wall — that
+# is the on-wave per-shard receipt the perturb split is measured by.
+phase_notice() {
+  local label="$1" started="$2"
+  echo "::notice title=gate timing::${label} took $((SECONDS - started))s"
+}
+
 dag_string_data() {
   local name="$1"
   grep -E "^data ${name}: String = \"" "$root/$gate_model" \
@@ -406,6 +417,7 @@ if [[ "$shard_n" -gt 0 ]]; then
     exit 2
   fi
 
+  shard_started=$SECONDS
   ran=0
   for ((i = 0; i < total; i++)); do
     (( i % shard_n == shard_k )) || continue
@@ -419,21 +431,27 @@ if [[ "$shard_n" -gt 0 ]]; then
     exit 1
   fi
 
+  # On-wave per-shard receipt: this leg's wall for its ${ran} perturb rows.
+  phase_notice "perturb shard ${shard_k}/${shard_n} (${ran} rows)" "$shard_started"
   echo "::notice title=affected-set lens perturb shard::shard ${shard_k}/${shard_n} verified ${ran}/${total} discriminating witness(es) red-under-perturb"
   exit 0
 fi
 
 # ---- (default / --green-only) or --perturb-check mode ----
 # GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+nf_green_started=$SECONDS
 printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
   | batch_green_pass "affected-set node-frontier"
+phase_notice "node-frontier green pass" "$nf_green_started"
 
 # PERTURB pass (full --perturb-check only): one mutated resolve per row.
 if [[ "$perturb" -eq 1 ]]; then
+  nf_perturb_started=$SECONDS
   for row in "${node_frontier_rows[@]}"; do
     IFS=$'\t' read -r label entry function <<< "$row"
     perturb_one_row "$label" "$entry" "$function" "affected-set node-frontier"
   done
+  phase_notice "node-frontier perturb pass (${#node_frontier_rows[@]} rows)" "$nf_perturb_started"
 fi
 
 echo "::notice title=affected-set node-frontier::${#node_frontier_rows[@]} discriminating witness(es) passed"
@@ -441,15 +459,19 @@ echo "::notice title=affected-set node-frontier::${#node_frontier_rows[@]} discr
 print_affected_testgen_real_diff_evidence
 
 # GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+atg_green_started=$SECONDS
 printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
   | batch_green_pass "affected-testgen"
+phase_notice "affected-testgen green pass" "$atg_green_started"
 
 # PERTURB pass (full --perturb-check only): one mutated resolve per row.
 if [[ "$perturb" -eq 1 ]]; then
+  atg_perturb_started=$SECONDS
   for row in "${affected_testgen_rows[@]}"; do
     IFS=$'\t' read -r label entry function <<< "$row"
     perturb_one_row "$label" "$entry" "$function" "affected-testgen"
   done
+  phase_notice "affected-testgen perturb pass (${#affected_testgen_rows[@]} rows)" "$atg_perturb_started"
 fi
 
 echo "::notice title=affected-testgen::${#affected_testgen_rows[@]} discriminating witness(es) passed"
