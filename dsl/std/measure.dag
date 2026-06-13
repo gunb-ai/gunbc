@@ -206,8 +206,14 @@ type HardwareThreadCount = Measure<Count, One>
 //
 // The currency *identity* (which currency) is carried alongside as a
 // `std.currency.CurrencyCode`, not in the phantom `<Q>` (which is the
-// dimension `Currency`, shared by all currencies). Consumers that need to
-// fix a currency pair `(CurrencyCode, MoneyAmount<S>)` (e.g. `CostEstimate`).
+// dimension `Currency`, shared by all currencies). A consumer that needs a
+// specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
+// e.g. `std.compute_fabric.CostEstimate { unit_price, currency }`.
+//
+// Like every `Measure` alias here, constructing/reading a `MoneyAmount` value
+// on the v2 interpreter is gated by G1–G3 (see the carrier note above);
+// `std.currency` (a plain enum) evaluates on v2 today, the money VALUE does
+// not until G1 identifier-variant type args land (#4826).
 type MoneyAmount<S> = Measure<Currency, S>
 
 // Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
