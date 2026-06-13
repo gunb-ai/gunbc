@@ -14,7 +14,10 @@ import v4.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 import v4.compiler.translate { grammar_relation_row_for_emitted }
-import v4.extdeps.languages.dag { dag_mvp1_target_model }
+import v4.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_target_model
+}
 import v4.extdeps.languages.python {
   python_grammar_relation_row_node,
   python_mvp1_emitted_add_fn_node,
@@ -26,7 +29,7 @@ import v4.extdeps.languages.python {
 import v4.test.claim.manual.python_mvp1_grammar_claim {
   python_mvp1_grammar_parse_fixture
 }
-import v4.std.algebra { Empty, list_append }
+import v4.std.algebra { Cons, Empty, list_append }
 import v4.std.collection { List }
 import v4.std.compilers.target_model {
   concrete_syntax_token_class,
@@ -84,6 +87,9 @@ fn emit_ingest_python_canonical_row() -> Node {
 fn emit_ingest_python_canonical_emitted() -> Node {
   python_mvp1_emitted_add_fn_node()
 }
+
+// Hermetic perturb token: not on the python_mvp1 add-fn production spine.
+data emit_ingest_python_off_frontier_tok: Symbol = emit_ingest_python_off_frontier_tok
 
 // Backward selector (emit/serialize): keys on grammar_relation_field_emitted.
 fn emit_python_backward_selects_canonical_row_holds() -> Bool {
@@ -159,12 +165,36 @@ fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   }
 }
 
+// Hermetic perturb-RED: a frontier that matches no python_mvp1 row -> fail closed (not vacuous accept).
+fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
+  match grammar_relation_row_forward_selection(
+    frontier: Cons { head: emit_ingest_python_off_frontier_tok, tail: Empty },
+    rules: emit_ingest_python_shared_rules()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// Hermetic perturb-RED: backward selection on a foreign (dag) emitted against python rules -> fail closed.
+fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_python_shared_rules(),
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 // Fast BoolWitness: python_mvp1 grammar-relation selector bijectivity (hermetic, sub-second).
 fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
   emit_python_backward_selects_canonical_row_holds()
     && ingest_python_forward_selects_canonical_emitted_holds()
     && emit_then_ingest_python_selector_identity_holds()
     && ingest_then_emit_python_selector_identity_holds()
+    && ingest_python_forward_fails_closed_off_frontier_holds()
+    && emit_python_backward_fails_closed_on_foreign_emitted_holds()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
