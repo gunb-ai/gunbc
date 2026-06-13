@@ -373,8 +373,12 @@ mod tests {
         assert!(ci_changed_path_affects_v4("src/v4/program.dag"));
         assert!(ci_changed_path_affects_v4("src/v4/program/program.dag"));
         // workflow/ files (runtime_run.dag and lens_ci_gate.dag) are in the compile closure
-        assert!(ci_changed_path_affects_v4("src/v4/workflow/runtime_run.dag"));
-        assert!(ci_changed_path_affects_v4("src/v4/workflow/lens_ci_gate.dag"));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/workflow/runtime_run.dag"
+        ));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/workflow/lens_ci_gate.dag"
+        ));
         // bootstrap.dag still covered by the prefix
         assert!(ci_changed_path_affects_v4("src/v4/workflow/bootstrap.dag"));
     }
