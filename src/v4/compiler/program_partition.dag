@@ -127,8 +127,8 @@ fn partition_closure_nodes(root: Node) -> List<Node> {
     n: root,
     algebra: NodeFold {
       init: fn(self) { list_snoc_item(xs: Empty, item: self) },
-      step: fn(acc, edge, sub) {
-        list_snoc_item(xs: list_append(left: acc, right: sub), item: edge.target)
+      step: fn(acc, _edge, sub) {
+        list_append(left: acc, right: sub)
       }
     }
   )
