@@ -9,13 +9,14 @@
 //!
 //! The transform returns raw per-job timestamp windows; this host projects them into the
 //! receipt's timing inputs via the single-authority `job_windows_to_timings`
-//! (`ci_affected_components::receipt`) and writes the SAME two artifacts the Python
-//! collector wrote, so the emit bin's `--job-timings` / `--actual-run-minutes` contract is
-//! unchanged (the emit bin stays the sole authority for the `saved_minutes` formula).
+//! (`ci_affected_components::receipt`) and writes the final `TimedCiReceipt` latency ledger
+//! (the `affected-set-ci-receipt-timed` artifact) directly. The Axis-A uniform consolidation
+//! retired the separate selection emit bin, so this host is now the sole writer of the timed
+//! receipt — a pure wall-clock ledger, no affected-set selection.
 //!
 //! FAIL-SAFE: any error (missing run id/token, resolve failure, REST/HTTP error, parse
-//! failure) warns and writes an empty timings map + `0` minutes — the receipt keeps its
-//! zeros and the CI run is never failed, exactly as the Python collector did.
+//! failure) warns and writes a receipt with an empty timings map + `0` minutes — the run is
+//! never failed, exactly as the Python collector did.
 
 // Binary entrypoint: `eprintln!` is the GitHub Actions `::warning::` annotation channel
 // (fail-safe diagnostics), not library logging.
@@ -24,7 +25,7 @@
 use std::collections::BTreeMap;
 use std::process::ExitCode;
 
-use ci_affected_components::receipt::job_windows_to_timings;
+use ci_affected_components::receipt::{job_windows_to_timings, timed_ci_receipt};
 use v2_compiler::cli_run::{build_multi_entry_index, make_eval_context, resolve_entry_with_index};
 use v2_compiler::v2_interpreter::{run_in_context_with_args, Value};
 
@@ -82,13 +83,11 @@ fn collect() -> Result<(BTreeMap<String, u64>, f64), String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        eprintln!(
-            "usage: collect-affected-set-timings <out_job_timings_json> <out_actual_minutes_file>"
-        );
+    if args.len() != 2 {
+        eprintln!("usage: collect-affected-set-timings <out_timed_receipt_json>");
         return ExitCode::from(2);
     }
-    let (out_timings, out_actual) = (&args[1], &args[2]);
+    let out_receipt = &args[1];
 
     let (job_timings, actual_run_minutes) = match collect() {
         Ok(v) => v,
@@ -100,17 +99,14 @@ fn main() -> ExitCode {
         }
     };
 
-    // Best-effort writes; a write failure also fails safe (empty/zero downstream).
-    let timings_json = serde_json::to_string(&job_timings).unwrap_or_else(|_| "{}".to_string());
-    if let Err(e) = std::fs::write(out_timings, timings_json) {
-        warn(&format!("could not write {out_timings}: {e}"));
+    let job_count = job_timings.len();
+    let receipt = timed_ci_receipt(job_timings, actual_run_minutes);
+    // Best-effort write; a write failure also fails safe (no downstream consumer hard-depends).
+    let receipt_json =
+        serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string());
+    if let Err(e) = std::fs::write(out_receipt, receipt_json) {
+        warn(&format!("could not write {out_receipt}: {e}"));
     }
-    if let Err(e) = std::fs::write(out_actual, format!("{actual_run_minutes}")) {
-        warn(&format!("could not write {out_actual}: {e}"));
-    }
-    eprintln!(
-        "collected {} job timings; actual_run_minutes={actual_run_minutes}",
-        job_timings.len()
-    );
+    eprintln!("collected {job_count} job timings; actual_run_minutes={actual_run_minutes}");
     ExitCode::SUCCESS
 }
