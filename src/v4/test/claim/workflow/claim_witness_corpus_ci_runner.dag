@@ -234,7 +234,7 @@ data claim_witness_corpus_claim_run_row_count: String = "24"
 // Sharded enrollment: two parallel CI jobs (~10 rows each). Partition rebalanced by
 // measured wall-cost (sign runner): swap slow shard-a rows (lazy_arm, witness_sg2_arrow)
 // for fast shard-b rows (sg2 projection/falsification pair) — target ~6.4m/shard vs
-// first-half split (a 617s / b 149s). Completeness unchanged: 22 rows, same expecteds.
+// first-half split (a 617s / b 149s). Completeness unchanged: 24 rows, same expecteds.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
