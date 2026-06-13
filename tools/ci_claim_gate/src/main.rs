@@ -334,7 +334,7 @@ fn main() -> ExitCode {
     }
 
     println!(
-        "::notice title={}::{} discriminating witness(es) passed",
+        "::notice title={}::{} discriminating lens witness(es) passed",
         cfg.notice_title,
         rows.len()
     );

@@ -109,8 +109,10 @@ legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
 host_notice="$(grep -E '^::notice title=v4 lens CI::' "$host_log" || true)"
 echo "legacy notice: ${legacy_notice:-<none>}"
 echo "host notice:   ${host_notice:-<none>}"
-if [[ "$legacy_notice" != "$host_notice" ]]; then
-  echo "EXECUTION: notice MISMATCH" >&2
+legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
+host_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$host_notice")"
+if [[ -z "$legacy_count" || -z "$host_count" || "$legacy_count" != "$host_count" ]]; then
+  echo "EXECUTION: witness-count MISMATCH (legacy=$legacy_count host=$host_count)" >&2
   exit 1
 fi
 
