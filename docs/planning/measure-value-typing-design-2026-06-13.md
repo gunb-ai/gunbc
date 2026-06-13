@@ -1,41 +1,88 @@
 # Measure value-typing — design (scope / dual-representation dissolution)
 
-**Status:** Phase 1–2 kernel landed (2026-06-13, PR #4812). `compute_fabric.dag`
-conversion deferred to manager (#4810 sequencing). v2 claim-run still gated (G1–G3).
+**Status:** Investigation complete (2026-06-13). Design targets `count: Nat`.
+PR #4812 kernel commit (`count: Int`) must be revised before merge — operator rejected
+Int-now/Nat-later. Implementation blocked on manager dispatch.
 **Work item:** `node://adhoc-4523b7d2-967`
 **Session:** zesty-otter-413 · **Manager:** snappy-stag-903 (compute fabric)
 **Authority:** `dsl/std/measure.dag` (Q-Unit-1..5 + option (c) ratified at gunbc#828)
 
 ---
 
-## 0. Feasibility finding (BLOCKING — read first)
+## 0. Feasibility findings (updated 2026-06-13 — operator override)
 
-**Verdict: INTERPRETER/COMPILER-GATED for the v2 claim-run path; modeling-only for v3
-bootstrap typecheck.**
+### 0.A Measure `count: Nat` (design target — NOT Int)
 
-The recurring mark *"not yet value-typed on the v2 interpreter"* is accurate. Three
-independent v2 gaps were reproduced with `/tmp` spike modules (not committed):
+Per operator: **`Measure<Q, S> { count: Nat }`** is the only acceptable shape.
+`Nanoseconds { count: Nat }` in `v3.std.timing_lens` is the substrate precedent.
+Int-literal inhabitants in `Nat` fields type-check on v2 (spike-verified).
 
-| Gap | Symptom (v2) | Spike |
-|-----|----------------|-------|
-| **G1 — phantom type args** | `Measure<Memory, One>` → `unresolved type 'Memory'` / `'One'` | `gunbc run --entry dsl/std/measure.dag` fails today on alias lines 179/184 |
-| **G2 — alias field access** | `ByteSize.count` → `no field 'count' on type 'ByteSize'` when `ByteSize = Box<Int>` and `Box { value: Int }` | infer `lookup_field_type_node` returns `None` for `NoConnective` alias nodes (does not chase to target record) |
-| **G3 — parametric record literals** | `Box<Int> { value: 42 }` in `data` rows → `undefined variable 'Box'` | non-parametric `type ByteSize { count: Int }` **does** claim-run green |
+### 0.B Nat-in-v2 — CORRECTED: import chain is already v2-green
 
-**Control (v2 works):** non-parametric `type ByteSize { count: Int }` with `data` rows +
-field access + `let` constructors — both witnesses return `true`.
+**Prior diagnosis was wrong.** Spike 2026-06-13:
 
-**Implication:**
+| Module | v2 `gunbc run --source-root dsl` |
+|--------|----------------------------------|
+| `magnitude.dag` | ✅ resolves (1 source) |
+| `algebra.dag` | ✅ resolves (2 sources) |
+| `nat.dag` | ✅ resolves (4 sources) |
+| `count: Nat` record field | ✅ type-checks (6 sources) |
+| `Box { count: 42 }` with `count: Nat` | ✅ type-checks |
 
-- **Kernel modeling** (widen `Measure<Q,S>` to `{ count: Int }`, add aliases/constructors) is
-  **tractable for v3 bootstrap** — dsl/std already participates in v3 generated DAG; no spike
-  blocker on the modeling shape itself.
-- **Dissolving the "not yet value-typed on v2 interpreter" marks** requires a **v2
-  substrate/interpreter lane** (G1–G3) before `placement_supply` witnesses can claim-run with
-  typed fields. Do **not** fake this with parallel non-parametric record types (M2 / Q-Unit
-  violation).
-- **Recommended sequencing:** (A) land kernel model for v3 typecheck + ratchet; (B) escalate
-  G1–G3; (C) migrate std consumers; (D) manager lands `compute_fabric.dag` after #4810.
+**The `nat → algebra → magnitude` chain does NOT need an import-graph fix** for
+`placement_supply` to depend on `std.nat`. The tracked deferral under compute-fabric
+manager should be reframed: **Nat value-typing for Measure is not blocked by the Nat
+import chain.**
+
+**Remaining Nat-adjacent blockers** (separate from Nat import):
+
+| ID | Blocker | Layer |
+|----|---------|-------|
+| G1 | `Measure<Memory, One>` — Quantity/Scale variant labels unresolved as type params | v2 infer |
+| G2 | `ByteSize.count` — alias field access does not chase to `Measure` record | v2 infer |
+| G3 | Parametric record literals in `data` rows | v2 parse/infer |
+
+G1–G3 are **Measure-parametric** gaps, not Nat-chain gaps. Constructors/projections
+remain required until G2 lands.
+
+**Minimal path (Nat):** no import-chain work. Sequence: (1) revise PR to `count: Nat`;
+(2) land kernel + census with `import std.nat { Nat }`; (3) dispatch G1–G3 v2 lane for
+claim-run on typed `placement_supply`.
+
+**Effort (Nat):** kernel revision ~1 PR (swap Int→Nat, add `std.nat` import) — **small**.
+G1–G3 v2 lane — **medium** (~3–5 days interpreter/infer; see §0.D).
+
+### 0.C Float-in-v2 — scoped breakage + fix path
+
+`compute_fabric.dag` v2 load fails on transitive `float.dag` → `integer.dag`:
+
+```
+dsl/std/integer.dag:48:39: error: expected type expression   // MachineWidth<8>
+dsl/std/float.dag:37:42: error: expected type expression     // MachineWidth<32>
+```
+
+**Root causes (two, ordered):**
+
+| # | Failure | Fix class | Effort |
+|---|---------|-----------|--------|
+| F1 | `Compose<…> = Phantom` — `Phantom` unresolved in `machine_constraints.dag:112` | **Modeling:** land terminal `Phantom` opaque in `dsl/std/` (sibling to `Product`/`Coproduct` in `constructors.dag`) | **~2h** |
+| F2 | `MachineWidth<8>` — v2 `parse_type_expr` rejects `LitInt` in type-arg position (only `ShIdent` accepted after `<`) | **v2 parser:** extend `finish_type_expr_from_name` / type-arg collection to accept literal-Nat indices per R3 gate #60 | **~1–2 days** + regression tests |
+
+**Not blocking float v2 load in current spike:** `v3.std.approximate_field` resolves when
+present in module index (7 sources loaded); primary v2 failure is F2 via `integer.dag`.
+
+**Minimal path (Float):** F1 then F2 in one v2 substrate PR → `integer.dag` +
+`float.dag` + `compute_fabric.dag` parse/type-check on v2. No `ApproximateField`
+migration needed for v2 entry.
+
+**Effort (Float):** **small–medium** (2–3 days total). F2 is bounded parser work, not a
+full interpreter rewrite. **Escalate** only if F2 reveals wider literal-type-arg semantics
+gaps across the grammar.
+
+### 0.D Measure on v2 (unchanged — interpreter-gated for claim-run)
+
+G1–G3 still block v2 `claim-run` on typed `placement_supply` even after Nat correction.
+v3 bootstrap typecheck path is unaffected.
 
 ---
 
