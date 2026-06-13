@@ -1,4 +1,4 @@
-// extdeps/shell.dag -- Host shell utilities (POSIX utilities + bash-compatible Exec).
+// extdeps/shell/shell.dag -- Host shell utilities (POSIX utilities + bash-compatible Exec).
 //
 // find, printenv: POSIX.1 utilities.
 // which: common extension (not POSIX; POSIX uses `command -v`).

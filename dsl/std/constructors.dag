@@ -71,5 +71,9 @@ type Product
 // The type of "or" composition.
 type Coproduct
 
+// Terminal: zero-factor composition. Single-inhabitant phantom witness.
+// Used by type-level phantom composition carriers (e.g. Compose<Algebra, MachineConstraint>).
+type Phantom
+
 // Cardinality: presence annotation on binding sites.
 type Cardinality = Required | Optional

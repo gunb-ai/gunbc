@@ -208,7 +208,7 @@ fn ct_gist_sources() -> String {
     "            \"dsl/extdeps/cloud/cloud.dag\",\n",
     "            \"dsl/extdeps/cloud/gcp/errors.dag\",\n",
     "            \"dsl/extdeps/cloud/gcp/gcp.dag\",\n",
-    "            \"dsl/extdeps/git.dag\",\n",
+    "            \"dsl/extdeps/git/git.dag\",\n",
     "            \"dsl/extdeps/github/auth.dag\",\n",
     "            \"dsl/extdeps/github/errors.dag\",\n",
     "            \"dsl/extdeps/github/gists.dag\",\n",
