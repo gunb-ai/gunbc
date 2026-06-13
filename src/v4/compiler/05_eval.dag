@@ -1453,6 +1453,26 @@ fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
             Absent => false
           }
       }
+    ComputationNode { behavior: Bind } =>
+      // Demand-driven Bind: [key, value, body] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+    ComputationNode { behavior: Loop } =>
+      // Demand-driven Loop: [body] — reject positional-1+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
     _ => false
   }
 }
@@ -2120,6 +2140,160 @@ fn eval_fold_init(
   }
 }
 
+fn eval_fold_control_transfer_state(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_is_callee_reference_edge(
+  parent: Node,
+  progress: EvalProgress,
+  edge: Edge
+) -> Bool {
+  if eval_transform_has_callee_reference(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } => p == 0 && is_positional(e: edge)
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else {
+    false
+  }
+}
+
+fn eval_fold_callee_reference_child_state(
+  edge: Edge,
+  tree: InferredTree
+) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_pending_children, node: edge.target)
+    )
+  }
+}
+
+fn eval_fold_child_for_edge(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_fold_is_callee_reference_edge(
+    parent: acc.node,
+    progress: acc.progress,
+    edge: edge
+  ) {
+    eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+  } else {
+    eval_fold_tree(
+      n: edge.target,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_child_edge_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  eval_fold_step(
+    acc: acc,
+    edge: edge,
+    child: eval_fold_child_for_edge(
+      acc: acc,
+      edge: edge,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    ),
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_runtime_node_is_control_transfer(node: n) {
+    eval_fold_control_transfer_state(
+      node: n,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    fold_list(
+      xs: n.children,
+      empty: eval_fold_init(
+        node: n,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      ),
+      cons: fn(acc, e) {
+        eval_fold_child_edge_step(
+          acc: acc,
+          edge: e,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      }
+    )
+  }
+}
+
 fn eval_maybe_complete_node(
   node: Node,
   progress: EvalProgress,
@@ -2300,32 +2474,13 @@ fn eval_runtime_node_via_data_flow_fold(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  let folded = fold_node(
+  let folded = eval_fold_tree(
     n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        eval_fold_init(
-          node: n0,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      },
-      step: fn(acc, e, child) {
-        eval_fold_step(
-          acc: acc,
-          edge: e,
-          child: child,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      }
-    }
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
   )
   eval_fold_state_value(state: folded)
 }

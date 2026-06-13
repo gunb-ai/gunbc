@@ -172,6 +172,7 @@ import v4.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetEffectCalleeRow,
+  TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -625,6 +626,17 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       close: ^ts_token_rparen,
       separator: ^ts_token_comma
+    },
+    // 🟡 stub — TypeScript has no `then` keyword; this conditional_form would emit
+    // `if cond then T else E`, which is invalid TypeScript (TS uses the `?:` ternary). No test wires
+    // the TS conditional path yet (M0). The ternary realization is deferred as a §12.9(B) Optional-token
+    // refinement (functional, out of #4807 scope) — recorded here, not silently shipped as canonical.
+    // dissolve-on: TS ternary lowering lands (replace the if/then/else token shape with `?:`).
+    // (durably records jolly-wren-365's old F4.)
+    conditional_form: TargetConditionalShape {
+      if_token: ^ts_token_kw_if,
+      then_token: ^ts_token_kw_then,
+      else_token: ^ts_token_kw_else
     }
   }
 }

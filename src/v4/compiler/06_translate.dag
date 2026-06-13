@@ -12,19 +12,23 @@
 module v4.compiler.translate
 
 
-import v4.compiler.value_expression {
-  arrow_has_transform_body,
-  project_arrow_body_to_value_expression,
-  value_expression_projection_from_target,
-  value_expression_to_concrete_tokens
-}
+import v4.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.compilers.target_model {
+  CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
   TargetModel,
+  TargetValueExpression,
+  TargetValueExpressionProjection,
   bodied_arrow_scaffold_from_grammar_relation_row,
   target_bodied_arrow_compose_statement_tokens,
-  target_model_edge_translation_rules
+  target_model_edge_translation_rules,
+  target_project_arrow_body_to_value_expression,
+  target_project_transform_primitive_apply_in_arrow_scope,
+  target_transform_surface_op_atom,
+  target_value_expr_arrow_has_value_expression_body,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
 }
 import v4.compiler.infer {
   InferredTree,
@@ -928,6 +932,30 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
+// Surface-decode shim (§1.5): decodes ^dag_token_plus surface token → CanonicalOperation, then
+// delegates the structural Transform projection to target_model. Keeps target_model extdep-free.
+fn translate_project_transform_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_surface_op_atom(node: body),
+    f: fn(op_sym) {
+      match dag_surface_operator_canonicalization_member(surface_token: op_sym) {
+        Accepted { value: canonical_op, diagnostics: _ } =>
+          target_project_transform_primitive_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            canonical_op: canonical_op,
+            target: target
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    }
+  )
+}
+
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
@@ -939,13 +967,19 @@ fn target_serialize_bodied_arrow_from_model(
         o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
         f: fn(scaffold) {
           bind_outcome(
-            o: value_expression_projection_from_target(target: target),
+            o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
               bind_outcome(
-                o: project_arrow_body_to_value_expression(arrow: emitted, target: target),
+                o: target_project_arrow_body_to_value_expression(
+                  arrow: emitted,
+                  target: target,
+                  handle_transform: fn(a, b, t) {
+                    translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+                  }
+                ),
                 f: fn(expr) {
                   bind_outcome(
-                    o: value_expression_to_concrete_tokens(
+                    o: target_value_expression_tokens_from_target(
                       expr: expr,
                       target: target,
                       projection: projection
@@ -979,7 +1013,7 @@ fn target_serialize_relation_row_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
-  } else if arrow_has_transform_body(arrow: emitted) {
+  } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
@@ -1162,7 +1196,7 @@ fn target_serialize_source_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
-  } else if arrow_has_transform_body(arrow: emitted) {
+  } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
@@ -3647,7 +3681,7 @@ fn translate_mvp1_fold_init(
   match node.kind {
     TypeNode { connective: Arrow } =>
       // Bodied Arrow: fold signature children through coercion; body folds structurally (E-9).
-      if arrow_has_transform_body(arrow: node) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_type_fold_init(node: node)
       } else {
         match coerce_grounded_node(source: node, tree: tree, target: target) {
@@ -3697,7 +3731,7 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if arrow_has_transform_body(arrow: node) {
+  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
     translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     bind_outcome(
@@ -3833,7 +3867,7 @@ fn translate_node_mvp1(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  if arrow_has_transform_body(arrow: node) {
+  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
     translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     translate_node_mvp1_fold(node: node, tree: tree, target: target)

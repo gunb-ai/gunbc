@@ -1,7 +1,7 @@
 // src/v4/std/program_segment.dag
 // Scope: program-segment selection for in-language emit / partition (design-in-language-emission-program-partition.md §4.1).
-// Status: DESIGN scaffold — segment coproduct + boundary policy + fail-closed reason symbols;
-//   closure projection and boundary-free-ref checks land with Wave A consumer (§6.1).
+// Status: segment coproduct + boundary policy + fail-closed reason symbols; closure projection
+//   and boundary-free-ref checks live in v4.compiler.program_partition (Wave A §6.1).
 
 module v4.std.program_segment
 
@@ -30,6 +30,7 @@ data partition_empty_segment: Symbol = partition_empty_segment
 data partition_boundary_free_ref: Symbol = partition_boundary_free_ref
 data partition_facts_miss: Symbol = partition_facts_miss
 data partition_facts_not_closed: Symbol = partition_facts_not_closed
+data partition_section_adapter_unavailable: Symbol = partition_section_adapter_unavailable
 
 fn program_segment_whole_program() -> ProgramSegment {
   WholeProgram

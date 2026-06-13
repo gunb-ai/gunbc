@@ -91,6 +91,7 @@ Mapping:
 - Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
 - Practice 11 (Parameterize, don't duplicate; respect concept-home boundaries) — implements **P2: Boundary Discipline** + M2 (no duplicate type authorities). The design-time meta-practice that catches duplication and boundary-crossing *before* a downstream worker authors them; upstream of Practice 4 / 5 / 10.
 - Practice 12 (A finished stage is a fold; non-fold residue measures unmodeled decision) — implements **P1: Modeling Faithfulness** at **stage scale**; the whole-stage lift of Practice 10. Home of record MODELING.md M11.
+- Practice 13 (Encountered concepts are modeled, not deferred — JIT) — implements **P1: Modeling Faithfulness** + **P5: Progress Is Dissolution** (a change that ships an un-dissolved scaffold is not progress). Merge-blocking trigger: a diff that *touches or introduces* a concept it leaves unmodeled (raw `Int`/`String` for a domain quantity, stringly closed-set, bare alias, homeless reference). Home of record MODELING.md M12.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -1324,6 +1325,26 @@ For each relevant principle and its implementing practices:
     line count grows, or that grafts a fold beside surviving arms, is the
     cementation anti-pattern — BLOCKING; the deletion ratchet (file
     shrinks, `_go`/`_bounded` down) is the enforcement.
+13. For **any** PR (Practice 13 — [MODELING.md](../MODELING.md) M12, *JIT
+    modeling*): does the diff **touch or introduce** a concept it leaves
+    unmodeled? Trigger shapes — a raw `Int`/`String` standing in for a
+    domain quantity (bytes, hertz, price, duration), a stringly value for
+    a closed set (M4), a bare alias asserting zero facts (M1), or a
+    reference to a concept with no proper home (M10). For each, the
+    author must **model it in this PR** (identity + cited facts / catalog,
+    per M3/M9/M10). A `P-*` / TODO / "dissolve later" mark that ships the
+    raw placeholder is **NOT an acceptable disposition** — it is the
+    deferral M12 forbids, and it is **BLOCKING**. The only non-modeling
+    dispositions that pass: (a) the value is a genuine modeled *fact*
+    (e.g. an `Option` that is really `None` — absence grounded, not
+    fabricated, per M5), or (b) modeling is gated on upstream
+    compiler/interpreter capability that does not yet exist — in which
+    case the correct action is to **escalate the blocker**, not merge the
+    placeholder. "Tracked for a follow-up PR" does not satisfy (b).
+    Distinguish from *scope* deferral (minimal-slice, consumer-triggered):
+    deferring unbuilt **breadth** is fine; deferring the **modeling of a
+    concept the diff already touches** is the violation. Cite M12 /
+    Practice 13 in the failing review so the obligation is unambiguous.
 
 This document is the distilled version of modeling principles. For the
 full analysis and additional worked examples, see
