@@ -3,12 +3,12 @@
 #
 # Reuses the lens CI machinery: claim_batch for ExpectPass rows (one resolve per shared
 # entry), gunbc --claim-run for ExpectFail baseline rows.
-# CI uses --spot-perturb-check (1–2 rotating ExpectPass rows keyed on GITHUB_RUN_NUMBER);
-# full --perturb-check remains for local audit. ExpectFail rows skip perturb.
+# CI uses --shard a|b --spot-perturb-check (1–2 rotating ExpectPass rows keyed on
+# GITHUB_RUN_NUMBER); full --perturb-check remains for local audit (run both shards).
 #
-# Uncontended baselines (sign runner, CARGO_BUILD_JOBS=2): Phase A green+fail ~7.7m;
-# spot perturb (1–2 rows) ~1m; total ~8.7m → 2.6× merge-wave ≈ 22.6m ≤ 35m ceiling.
-#
+# Sign runner receipt (2026-06-13, CARGO_BUILD_JOBS=2): monolith 20-row
+# --spot-perturb-check measured 1108s (~18.5m) — exceeds 13m uncontended gate.
+# Sharded ~10-row jobs are the recorded recovery path (~10m/shard ×2 ≤ 20m ceiling).
 # Fails closed on:
 #   ExpectPass + actual false  → regression
 #   ExpectFail + actual true   → stale manifest (flip row to ExpectPass in same PR)
@@ -22,6 +22,7 @@ cd "$root"
 bin="${V2_COMPILER:-target/release/gunbc}"
 bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 perturb_mode="none"
+shard=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,15 +34,24 @@ while [[ $# -gt 0 ]]; do
       perturb_mode="full"
       shift
       ;;
+    --shard)
+      shard="$2"
+      shift 2
+      ;;
     "")
       shift
       ;;
     *)
-      echo "usage: $0 [--spot-perturb-check | --perturb-check]" >&2
+      echo "usage: $0 --shard a|b [--spot-perturb-check | --perturb-check]" >&2
       exit 2
       ;;
   esac
 done
+
+if [[ ! "$shard" =~ ^[ab]$ ]]; then
+  echo "error: --shard a|b is required" >&2
+  exit 2
+fi
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
@@ -54,8 +64,8 @@ if [[ ! -x "$bin_batch" ]]; then
 fi
 
 gate_model="src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag"
-rows_data="claim_witness_corpus_claim_run_rows"
-count_data="claim_witness_corpus_claim_run_row_count"
+rows_data="claim_witness_corpus_shard_${shard}_rows"
+count_data="claim_witness_corpus_shard_${shard}_row_count"
 
 dag_string_data() {
   local name="$1"

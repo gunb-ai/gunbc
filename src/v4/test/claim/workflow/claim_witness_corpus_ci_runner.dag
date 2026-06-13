@@ -1,8 +1,10 @@
 // src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag
 // Scope: compiler-semantics claim-witness corpus CI enrollment (baseline-pinned expectations).
-// Status: host gate scripts/v4-claim-witness-corpus-gate.sh (v4_claim_witness_corpus job,
-//   parallel to v4_lens_ci). CI: --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
-//   rotation); uncontended ~7.7m base + ~1m spot ≈ 8.7m (2.6× ≈ 22.6m ≤ 35m ceiling).
+// Status: host gate scripts/v4-claim-witness-corpus-gate.sh (v4_claim_witness_corpus_{a,b}
+//   parallel shards). CI: --shard a|b --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
+//   rotation); full --perturb-check local-only. Sign runner (2026-06-13): monolith 20-row
+//   spot-perturb measured 1108s (~18.5m) — exceeds 13m gate; two ~10-row shards target
+//   <10m uncontended/shard (×2 ≈ 20m ≤ 20m ceiling per shard; documented-tail clause).
 //
 // Design-sign notes (alternatives rejected):
 // - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (MODELING.md); one-row
@@ -196,3 +198,36 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
 ]
 
 data claim_witness_corpus_claim_run_row_count: String = "20"
+
+// Sharded enrollment: two parallel CI jobs (~10 rows each). Sign runner monolith receipt
+// (1108s spot-perturb on 20 rows) exceeded the 13m uncontended gate; halving row count
+// per job is the recorded recovery path (coordinator ruling: ~10m/shard ×2 ≤ 20m ceiling).
+data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
+  corpus_ci_gate_row_mvp1_emit_matches_serialize,
+  corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_comprep_eval_keystone,
+  corpus_ci_gate_row_comprep_branch_eval_keystone,
+  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
+  corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog,
+  corpus_ci_gate_row_witness_sg2_arrow
+]
+
+data claim_witness_corpus_shard_a_row_count: String = "10"
+
+data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
+  corpus_ci_gate_row_witness_sg2_projection_falsification,
+  corpus_ci_gate_row_witness_sg2_fold_row_delimiter,
+  corpus_ci_gate_row_effect_io_pure_file,
+  corpus_ci_gate_row_effect_io_pure_http,
+  corpus_ci_gate_row_effect_io_pure_storage,
+  corpus_ci_gate_row_effect_io_host_read_fail_closed,
+  corpus_ci_gate_row_effect_io_host_http_backend,
+  corpus_ci_gate_row_ts_effect_io_emit,
+  corpus_ci_gate_row_effect_io_eval_roundtrip,
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+]
+
+data claim_witness_corpus_shard_b_row_count: String = "10"
