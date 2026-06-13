@@ -1,43 +1,55 @@
 // src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag
 // Scope: end-to-end cross-language matrix claim — the executable form of the
-//   N+M-not-N×M thesis. Composes EXISTING machinery into one claim that walks the
-//   add slice from Python source through the language-neutral Node core out to
-//   TypeScript, and FAILS CLOSED at the exact link that is not yet realized.
+//   N+M-not-N×M thesis. Composes machinery into one claim that walks the add slice from Python
+//   source through the language-neutral Node core out to TypeScript — now PROVEN end-to-end (#4801).
 //
 // Chain (Python source IN -> TypeScript source OUT):
 //   1. Python source text -> ParseTree            (PROVEN: python_mvp1_grammar_parse_accepted)
-//   2. ParseTree -> grammar-relation rows         ┐
-//   3. grammar-relation rows -> TargetModel/Node  ├ NOT REALIZED: no fn maps a parse-side
-//   4. TargetModel/Node (TS) -> emit input        ┘ ParseTree to the emit-side core node.
+//   2. ParseTree -> emit-side core node           ┐ REALIZED (#4801): v4.compiler.ingest
+//   3. core node -> canonical IR                  ├ parse_tree_to_target_model_bridge — FRONTIER-keyed
+//   4. canonical IR -> TS source (emit)           ┘ forward selection + infer + coerce + emit.
 //   5. TS emit -> executable real-IO receipt      (PROVEN: ts_effect_io_emit_holds, #4778 path)
 //
-// Links 1 and 5 are proven by execution against existing certs. Links 2-4 are a single
-// missing bridge: parse produces `Outcome<ParseTree>` (= Node), but emit/translate consume
-// an already-emitted core node + TargetModel, and no existing fn converts the former into
-// the latter. That gap is surfaced — never silently skipped — by the typed check object
-// ParseTreeToTargetModelBridgeCheck below (self_host.dag fail-closed scaffold pattern).
+// Links 2-4 are the forward interpreter bridge: parse produces `Outcome<ParseTree>` (= Node), and
+// the bridge selects the source-model row whose production token-spine matches the parse FRONTIER
+// (never trusting the stamped emitted), grounds it through infer/coerce to canonical IR, and emits
+// to the target. Proven by execution: the typed bridge check Holds (hermetic, sub-second) and the
+// full python->ts chain `…chain_status_holds` = true (~627s documented receipt, matrix ChainProven).
 //
-// NO NEW MACHINERY: this file only composes existing fns and declares claim-local data /
-// typed-check objects. It adds no compiler-stage code, no std combinator, and no
-// language-model row. The missing bridge is a reported FINDING, not an improvised shim.
+// The bridge machinery lives in v4.compiler.ingest (small closure, #4801); this file composes it
+// with the existing parse/emit ends and declares claim-local matrix data — no language-model row
+// and no per-(source,target) arm: a new language greens by authoring rows, not by editing here.
 
 module v4.test.claim.manual.cross_language_add_python_to_typescript
 
 // Link 1 (Python source -> ParseTree), proven by execution in this module's twin claim.
 import v4.test.claim.manual.python_mvp1_grammar_claim {
-  python_mvp1_grammar_parse_accepted
+  python_mvp1_grammar_parse_accepted,
+  python_mvp1_grammar_parse_fixture
 }
 // Link 5 (TS emit -> executable real-IO receipt), the #4778 effect-emit path.
 import v4.test.claim.manual.typescript_effect_io_emit {
   ts_effect_io_emit_holds
 }
+// Links 2-4 (ParseTree -> emit-side core node -> canonical IR), now REALIZED (#4801). The bridge fn
+// is exercised hermetically (real bridge applied, sub-second) by ingest_bridge_realized; the heavy
+// nested-python instance is the documented by-execution receipt below.
+import v4.test.claim.manual.ingest_bridge {
+  ingest_bridge_realized
+}
+import v4.compiler.ingest { cross_language_compile }
+import v4.extdeps.languages.python { python_mvp1_target_model }
+import v4.extdeps.languages.typescript { ts_mvp1_target_model }
 
+import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Rejected,
   Unavailable,
   port_locus
 }
@@ -57,13 +69,18 @@ import v4.std.verification {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The missing link, as a typed check object (self_host.dag pattern).
+// The bridge link, as a typed check object (self_host.dag pattern) — now REALIZED (#4801).
 //
-// `ParseTreeToTargetModelBridge` is the structural fact that SHOULD hold once the
-// bridge exists: "the ParseTree produced by parsing <source> can be carried to the
-// emit-side core node that <target>'s TargetModel serializes." Until a real fn
-// realizes it, the scaffold returns Violates — fail-closed at one named reason,
-// `parse_tree_to_target_model_bridge_not_realized`, so the gap is named, not hidden.
+// `ParseTreeToTargetModelBridge` is the structural fact: "the ParseTree produced by parsing
+// <source> can be carried to the emit-side core node that <target>'s TargetModel serializes."
+// v4.compiler.ingest.parse_tree_to_target_model_bridge realizes it by FRONTIER-keyed forward
+// selection (the parse token-spine selects the source-model row; the stamped emitted is never
+// trusted). The witness Holds when the bridge fn is realized — proven hermetically (real bridge
+// applied, sub-second) by `ingest_bridge_realized` (recovery + canonical IR + perturbed-frontier
+// RED + ambiguity/unstamped fail-closed). When the bridge is NOT realized it falls back to
+// fail-closed at the named reason `parse_tree_to_target_model_bridge_not_realized`, so a regression
+// is named, not hidden. The REAL nested python->ts instance is the documented 627s by-execution
+// receipt `cross_language_add_python_to_typescript_chain_status_holds`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ParseTreeToTargetModelBridge {
@@ -82,24 +99,34 @@ data cross_language_bridge_port: Symbol = cross_language_bridge_port
 // upstream-of-the-bridge gap — reported, not hidden.
 data go_add_parse_production_currently_rejects: Symbol = go_add_parse_production_currently_rejects
 
-// 🟡 witness-body scaffold — feature:parse-tree-to-target-model-bridge ·
-//   consumer:cross-language-emit-matrix ·
-//   dissolve-on: a real fn carries Outcome<ParseTree> to the emit-side core node a
-//   TargetModel serializes (ParseTree -> grammar-relation rows -> core node), at which
-//   point this returns Holds and the python->ts matrix cell flips to ChainProven.
-// Returns the concrete Witness so call sites can destructure it. (The v2 interpreter
-// resolves Holds/Violates on the applied `Witness<T>`, not through a type alias of it —
-// hence the concrete return type; the ParseTreeToTargetModelBridgeCheck alias names the
-// same shape at construction-only sites, mirroring self_host.dag's *Check aliases.)
+// Bridge witness (#4801 REALIZED) — feature:parse-tree-to-target-model-bridge ·
+//   consumer:cross-language-emit-matrix.
+// Holds iff the forward interpreter is realized — proven HERMETICALLY (real bridge applied,
+// sub-second) by `ingest_bridge_realized`: frontier recovery + canonical IR + perturbed-frontier
+// RED + ambiguity/unstamped fail-closed. If the bridge regresses, this falls back to fail-closed at
+// the named reason `parse_tree_to_target_model_bridge_not_realized`, so a break is named, not hidden.
+// Returns the concrete Witness so call sites can destructure it. (The v2 interpreter resolves
+// Holds/Violates on the applied `Witness<T>`, not through a type alias of it — hence the concrete
+// return type; the ParseTreeToTargetModelBridgeCheck alias names the same shape at construction-only
+// sites, mirroring self_host.dag's *Check aliases.)
 fn parse_tree_to_target_model_bridge_scaffold(
   source_parse_tree: Symbol,
   intended_target_language: Symbol
 ) -> Witness<ParseTreeToTargetModelBridge> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: parse_tree_to_target_model_bridge_not_realized,
-      at: port_locus(port: cross_language_bridge_port),
-      correction: Unavailable { reason: ExternalContractUnknown }
+  if ingest_bridge_realized() {
+    Holds {
+      value: ParseTreeToTargetModelBridge {
+        source_parse_tree: source_parse_tree,
+        intended_target_language: intended_target_language
+      }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: parse_tree_to_target_model_bridge_not_realized,
+        at: port_locus(port: cross_language_bridge_port),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
     }
   }
 }
@@ -110,7 +137,19 @@ data cross_language_python_to_typescript_bridge_check: ParseTreeToTargetModelBri
   intended_target_language: ^typescript
 )
 
-// Links 2-4 fail closed exactly at the named check (no silent skip, no shim).
+// #4791 flip: the bridge is REALIZED, so the witness Holds (was Violates) — sub-second/hermetic.
+fn parse_tree_to_target_model_bridge_realized() -> Bool {
+  match parse_tree_to_target_model_bridge_scaffold(
+    source_parse_tree: ^cross_language_python_add_parse_tree,
+    intended_target_language: ^typescript
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// The fail-closed gap is now CLOSED: realized bridge => no Violates => false. Kept (flipped from
+// true) so any regression that un-realizes the bridge re-trips this to true — the named-gap guard.
 fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
   match parse_tree_to_target_model_bridge_scaffold(
     source_parse_tree: ^cross_language_python_add_parse_tree,
@@ -122,23 +161,48 @@ fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Heavy by-execution receipt (links 2-4 on the REAL nested python tree, ~627s wall): parse the
+// python add source, carry it through the bridge to canonical IR and emit to TypeScript via
+// cross_language_compile, and require non-empty TS source out. Documented receipt for the
+// by-execution sign — NOT a registered fast witness (the python parse_production_tree end would be
+// perturb-re-run by the lens gate and blow its budget; same convention as the heavy parse fixtures).
+// ─────────────────────────────────────────────────────────────────────────────
+fn cross_language_python_to_typescript_chain_proven() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: tree,
+        source_model: python_mvp1_target_model(),
+        target_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } =>
+          match source {
+            Cons { head: _, tail: _ } => true
+            Empty => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Composed end-to-end status witness.
 //
-// Returns true iff the chain is in its documented state: both ends are proven by
-// execution AND the missing middle fails closed at the named bridge. This is the
-// fail-closed receipt — it does not pretend the full chain is wired. When a real
-// ParseTree->TargetModel bridge lands, `parse_tree_to_target_model_bridge_fails_closed`
-// flips to false, this witness flips to false, and whoever builds the bridge must
-// update the matrix cell to ChainProven and re-assert the now-complete chain.
+// Returns true iff the FULL chain is proven by execution end-to-end: python source parses to a
+// ParseTree (link 1), the bridge + cross_language_compile carry that ParseTree to canonical IR and
+// emit non-empty TypeScript source (links 2-4, the now-realized bridge — ~627s on the real nested
+// tree), and the TypeScript emit real-IO receipt path holds (link 5). This is the heavy documented
+// by-execution receipt; the fast continuously-gated protection is the hermetic
+// `parse_tree_to_target_model_bridge_realized` + ingest_bridge_realized witnesses.
 // ─────────────────────────────────────────────────────────────────────────────
 fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
   // Link 1: Python source -> ParseTree accepts.
   python_mvp1_grammar_parse_accepted()
+    // Links 2-4: ParseTree -> emit-side core node -> canonical IR -> TypeScript source, by execution.
+    && cross_language_python_to_typescript_chain_proven()
     // Link 5: TypeScript emit -> executable real-IO receipt source (#4778 path).
     && ts_effect_io_emit_holds()
-    // Links 2-4: ParseTree -> grammar-relation rows -> TargetModel/core node is the
-    //   single unrealized bridge; it fails closed at the named typed check.
-    && parse_tree_to_target_model_bridge_fails_closed()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,12 +236,14 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     target_language: ^typescript,
     status: ChainProven {}
   },
-  // python -> ts: FAILS CLOSED at the parse->TargetModel bridge. Ends proven
-  //   (python_mvp1_grammar_parse_accepted=true; ts_effect_io_emit_holds=true).
+  // python -> ts: PROVEN (#4801). The forward interpreter bridge carries the python add ParseTree
+  //   to the language-neutral core node (frontier-keyed forward selection) and emit serializes it to
+  //   TypeScript. Proven by execution: cross_language_add_python_to_typescript_chain_status_holds=true
+  //   (~627s, documented receipt) — links 1+5 already proven; links 2-4 are the realized bridge.
   CrossLanguageEmitMatrixRow {
     source_language: ^python,
     target_language: ^typescript,
-    status: ChainFailsClosedAtCheck { check: parse_tree_to_target_model_bridge_not_realized }
+    status: ChainProven {}
   },
   // go -> ts: FAILS CLOSED earlier than python — at go's own add-fn parse production,
   //   which currently rejects (validate=true, parse_accepted=false by execution). The
@@ -193,13 +259,13 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
 // Claim markers — discoverable by the manual claim corpus.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The fail-closed bridge is itself a verifiable fact: the typed check Violates at the
-// named reason. This is a Unit claim over claim-local data (no heavy closure).
-fn cross_language_bridge_fail_closed_input(ok: Bool) -> Symbol {
+// The realized bridge is itself a verifiable fact: the typed check Holds (was Violates at the named
+// reason). This is a Unit claim over the hermetic structural proof (no heavy closure).
+fn cross_language_bridge_realized_input(ok: Bool) -> Symbol {
   if ok {
-    ^cross_language_bridge_correctly_fails_closed
+    ^cross_language_bridge_realized
   } else {
-    ^cross_language_bridge_unexpectedly_holds
+    ^cross_language_bridge_not_realized
   }
 }
 
@@ -211,29 +277,30 @@ data claim_cross_language_add_python_to_typescript_module_compiles: TestClaim = 
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_cross_language_parse_tree_bridge_fails_closed: TestClaim = CompilesClaim {
-  label: "manual/cross_language: ParseTree->TargetModel bridge fails closed at named check (no silent skip)",
+data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim {
+  label: "manual/cross_language: ParseTree->TargetModel bridge realized (#4801) — typed check Holds (was fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: cross_language_bridge_fail_closed_input(ok: parse_tree_to_target_model_bridge_fails_closed()),
-  expected_value: ^cross_language_bridge_correctly_fails_closed,
+  input: cross_language_bridge_realized_input(ok: parse_tree_to_target_model_bridge_realized()),
+  expected_value: ^cross_language_bridge_realized,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
 //
-// The registered executable witness is the FAST, novel assertion this file uniquely adds —
-// `parse_tree_to_target_model_bridge_fails_closed` (sub-second): the fail-closed typed check
-// at the named missing bridge. It is NOT the composed `…chain_status_holds`, which runs the
-// Python `parse_production_tree` end (~627s wall) and would be perturbed-and-re-run by the
-// affected-set lens gate (~2x), blowing the per-PR lens-gate time budget. This matches the
-// existing convention for heavy parse fixtures: `python_mvp1_grammar_claim` /
-// `go_mvp1_grammar_claim` likewise do NOT BoolWitness their heavy parse fns ("T-22 runner
-// deferred"). The full end-to-end chain (`…chain_status_holds` = true, 627s) is a documented
-// by-execution receipt in the PR body and is reported — not self-excluded — for the #4785
-// corpus-gate slow-lane enrollment decision.
-data unified_claim_cross_language_parse_tree_bridge_fails_closed: UnifiedTestClaim = BoolWitnessClaim {
+// The registered executable witness is the FAST, hermetic assertion this file uniquely composes —
+// `parse_tree_to_target_model_bridge_realized` (sub-second): the typed bridge check now Holds,
+// driven by `ingest_bridge_realized` (the real bridge fn applied to a hermetic parse tree:
+// frontier recovery + canonical IR + perturbed-frontier RED + ambiguity/unstamped fail-closed).
+// It is NOT the composed `…chain_status_holds`, which runs the Python `parse_production_tree` end
+// (~627s wall) and would be perturbed-and-re-run by the affected-set lens gate (~2x), blowing the
+// per-PR lens-gate time budget. This matches the existing convention for heavy parse fixtures:
+// `python_mvp1_grammar_claim` / `go_mvp1_grammar_claim` likewise do NOT BoolWitness their heavy
+// parse fns. The full end-to-end chain (`…chain_status_holds` = true, ~627s, ChainProven) is a
+// documented by-execution receipt in the PR body — reported, not self-excluded — for the #4785
+// corpus-gate slow-lane enrollment decision (a parent-coordinated, add-only policy call).
+data unified_claim_cross_language_parse_tree_bridge_realized: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag",
-    function: parse_tree_to_target_model_bridge_fails_closed
+    function: parse_tree_to_target_model_bridge_realized
   }
 }
