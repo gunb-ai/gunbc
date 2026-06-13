@@ -89,8 +89,6 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_complexity_gate_budget_roster_completeness
 ]
 
-data lens_ci_claim_run_row_count: String = "8"
-
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
 // Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
 // hand-maintained awk/grep roster projection in the shell gate scripts.
