@@ -91,6 +91,23 @@ project_list_member_row() {
   ' "$root/$ci_model"
 }
 
+# Per-phase wall-time notices (same pattern as v4-substrate-equivalence-gate.sh):
+# the CI latency attack (2026-06-13) needs the lens job's 32m broken into its
+# green vs perturb phases, visible in the job summary instead of timestamp
+# archaeology. claim_batch's own [resolve]/[witness]/[resolve-summary] lines give
+# the per-witness breakdown WITHIN the green phase.
+phase_name=""
+phase_started=0
+phase_begin() {
+  phase_name="$1"
+  phase_started=$SECONDS
+  echo "::group::${phase_name}"
+}
+phase_end() {
+  echo "::endgroup::"
+  echo "::notice title=gate timing::${phase_name} took $((SECONDS - phase_started))s"
+}
+
 run_row() {
   local source_root="$1" entry="$2" function="$3"
   "$bin" run --source-root "$source_root" --entry "$entry" --function "$function" --claim-run
@@ -161,11 +178,12 @@ for row in "${lens_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
   green_args+=(--entry "$entry" --function "$function")
 done
-echo "::group::v4 lens CI green pass (batch)"
+phase_begin "v4 lens CI green pass (batch)"
 "$bin_batch" "${green_args[@]}" --claim-run
-echo "::endgroup::"
+phase_end
 
 # PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+perturb_phase_started=$SECONDS
 row_count=0
 for row in "${lens_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
@@ -188,6 +206,10 @@ for row in "${lens_rows[@]}"; do
   fi
   row_count=$((row_count + 1))
 done
+
+if [[ "$perturb" -eq 1 ]]; then
+  echo "::notice title=gate timing::v4 lens CI perturb pass (${row_count} rows) took $((SECONDS - perturb_phase_started))s"
+fi
 
 if [[ "$row_count" -ne "$expected_count" ]]; then
   echo "error: lens CI transport projected ${row_count} rows; modeled count is ${expected_count}" >&2
