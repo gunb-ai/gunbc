@@ -305,7 +305,7 @@ elif [[ "$perturb_mode" == spot ]]; then
   for idx in "${spot_indices[@]}"; do
     perturb_one_row "${pass_rows[$idx]}"
   done
-  echo "::notice title=claim witness corpus spot perturb::perturbed ${#spot_indices[@]}/${#pass_rows[@]} ExpectPass row(s) (run_number=${GITHUB_RUN_NUMBER:-local})"
+  echo "::notice title=claim witness corpus spot perturb::shard=${shard} perturbed ${#spot_indices[@]}/${#pass_rows[@]} ExpectPass row(s) (run_number=${GITHUB_RUN_NUMBER:-local})"
 fi
 
 row_count="${#all_rows[@]}"
@@ -319,4 +319,4 @@ if [[ "$failures" -ne 0 ]]; then
   exit 1
 fi
 
-echo "::notice title=claim witness corpus::${row_count} manifest row(s) matched (${#pass_rows[@]} ExpectPass, ${#fail_rows[@]} ExpectFail; perturb=${perturb_mode})"
+echo "::notice title=claim witness corpus::shard=${shard} ${row_count} manifest row(s) matched (${#pass_rows[@]} ExpectPass, ${#fail_rows[@]} ExpectFail; perturb=${perturb_mode})"

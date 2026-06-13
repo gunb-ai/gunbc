@@ -2,8 +2,10 @@
 
 The gate at `scripts/v4-claim-witness-corpus-gate.sh` enrolls rows from
 `src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag` (substrate authority).
-CI uses `--spot-perturb-check` (1–2 ExpectPass rows/run, `GITHUB_RUN_NUMBER` rotation);
-full `--perturb-check` is local-only. Uncontended ~8.7m (7.7m base + ~1m spot).
+CI uses `--shard a|b --spot-perturb-check` (1–2 ExpectPass rows/run/shard, `GITHUB_RUN_NUMBER`
+rotation); full `--perturb-check` is local-only (run both shards). Sign runner (2026-06-13):
+monolith 20-row spot-perturb measured 1108s (~18.5m) — exceeds 13m gate; sharded ~10-row
+jobs are the recorded recovery path (~10m/shard uncontended ×2 ≤ 20m ceiling/shard).
 The following witness families are **not** enrolled (each with a one-line reason):
 
 | Excluded family | Reason |
