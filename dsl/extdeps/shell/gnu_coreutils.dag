@@ -1,4 +1,4 @@
-// extdeps/gnu_coreutils.dag — GNU coreutils we actually depend on.
+// extdeps/shell/gnu_coreutils.dag — GNU coreutils we actually depend on.
 //
 // Spec: https://www.gnu.org/software/coreutils/manual/coreutils.html
 // Version: GNU coreutils 8.x+

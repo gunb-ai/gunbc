@@ -1,4 +1,4 @@
-// extdeps/tools.dag — Holistic CLI tool modeling.
+// extdeps/tools/tools.dag — Holistic CLI tool modeling.
 //
 // Every .dag program that shells out depends on external CLI binaries
 // (cargo, grep, diff, cp, ...). This file models those binaries as
@@ -33,10 +33,10 @@ import extdeps.apt
 // Closed set of install paths. Each variant references its backing
 // extdeps file. Adding a new variant means modeling that source first.
 //
-//   SourceCoreutils → extdeps/gnu_coreutils.dag (cp, rm, grep, diff, ...)
-//   SourceRustup    → extdeps/rustup.dag    (cargo, rustc)
-//   SourceBrew      → extdeps/brew.dag      (macOS Homebrew)
-//   SourceApt       → extdeps/apt.dag       (Debian/Ubuntu APT)
+//   SourceCoreutils → extdeps/shell/gnu_coreutils.dag (cp, rm, grep, diff, ...)
+//   SourceRustup    → extdeps/rust/rustup.dag    (cargo, rustc)
+//   SourceBrew      → extdeps/package_managers/brew.dag      (macOS Homebrew)
+//   SourceApt       → extdeps/package_managers/apt.dag       (Debian/Ubuntu APT)
 type InstallSource
   = SourceCoreutils
   | SourceRustup

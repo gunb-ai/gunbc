@@ -1,11 +1,11 @@
-// extdeps/rustup.dag — The Rust toolchain installer.
+// extdeps/rust/rustup.dag — The Rust toolchain installer.
 //
 // Spec: https://rust-lang.github.io/rustup/
 // Version: rustup 1.27+ (current stable as of 2026)
 //
 // This is a STUB. It documents the rustup-managed dependencies our
 // workflows actually rely on. Cargo itself is modeled separately in
-// extdeps/cargo.dag — this file describes how cargo gets onto a
+// extdeps/rust/cargo.dag — this file describes how cargo gets onto a
 // system in the first place.
 //
 // What we actually depend on from rustup:
