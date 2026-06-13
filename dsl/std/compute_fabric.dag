@@ -471,18 +471,11 @@ data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
   supply_srv2_ram.observed_usable_bytes,
 )
 
-// --- §7 cases 7–8: isolation-lattice falsification witnesses (real fleet enum values) -------
-//
-// The operator's real fleet (srv1/srv2) is IsolationBoundary::SharedHostHome — de-privileged
-// ghrunner processes that nonetheless SHARE $HOME across jobs (ci.yml `infra_isolation` guard +
-// shared-$HOME isolation steps are the external authority for that fact). SharedHostHome and Vm
-// are GROUNDED enum facts, so the load-bearing security rule is proven here directly on the
-// lattice — no fabricated OS/host strings required. Zero-arg Bool witnesses, shaped to run
-// unchanged under `gunbc run --claim-run --function <name>` once an interpreter for this dialect
-// lands (see the typed-not-executed note below). Full srv1/srv2 ComputeOffer inhabitation is a
-// documented deferred follow-up (blocked on ungroundable OperatingSystemSurface.distro/version).
+// §7 cases 7–8: isolation-lattice witnesses on grounded fleet values (srv1/srv2 = SharedHostHome).
+// Typed+reviewed, not executed (no dsl/std interpreter yet) — zero-arg Bool for `--claim-run`.
+// Full ComputeOffer inhabitation deferred; see PR #4805.
 
-// Case 7 — the #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
+// Case 7 — #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
 fn witness_shared_host_home_rejects_vm() -> Bool {
   !isolation_satisfies(supply: SharedHostHome, demand: Vm)
 }
@@ -492,8 +485,7 @@ fn witness_shared_host_home_admits_shared_host_home() -> Bool {
   isolation_satisfies(supply: SharedHostHome, demand: SharedHostHome)
 }
 
-// Lattice monotonicity spot-checks on grounded boundaries: stronger supply honors a weaker
-// demand (Vm supply admits a SharedHostHome job), never the reverse.
+// Monotonicity: stronger supply honors a weaker demand (Vm admits SharedHostHome), never reverse.
 fn witness_vm_admits_shared_host_home() -> Bool {
   isolation_satisfies(supply: Vm, demand: SharedHostHome)
 }
