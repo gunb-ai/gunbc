@@ -91,6 +91,7 @@ Mapping:
 - Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
 - Practice 11 (Parameterize, don't duplicate; respect concept-home boundaries) — implements **P2: Boundary Discipline** + M2 (no duplicate type authorities). The design-time meta-practice that catches duplication and boundary-crossing *before* a downstream worker authors them; upstream of Practice 4 / 5 / 10.
 - Practice 12 (A finished stage is a fold; non-fold residue measures unmodeled decision) — implements **P1: Modeling Faithfulness** at **stage scale**; the whole-stage lift of Practice 10. Home of record MODELING.md M11.
+- Practice 13 (Encountered concepts are modeled, not deferred — JIT) — implements **P1: Modeling Faithfulness** + **P5: Progress Is Dissolution** (a change that ships an un-dissolved scaffold is not progress). Merge-blocking trigger: a diff that *touches or introduces* a concept it leaves unmodeled (raw `Int`/`String` for a domain quantity, stringly closed-set, bare alias, homeless reference). Home of record MODELING.md M12.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
