@@ -38,6 +38,7 @@ import v4.extdeps.languages.typescript {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
+import v4.std.model_core { std_projection_additive_numeric }
 import v4.std.compilers.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
@@ -248,7 +249,7 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_std_projection_float64) {
+  } else if node == ts_inhabitant_atom(id: std_projection_additive_numeric) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,

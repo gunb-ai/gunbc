@@ -1,0 +1,156 @@
+// src/v4/test/claim/manual/inhabitant_neutralization.dag
+// Scope: generic cross-language inhabitant neutralization — python int -> std_projection -> ts number.
+// Status: hermetic receipt for std/inhabitant_neutralization.dag (emit-surface §3 critical path).
+
+module v4.test.claim.manual.inhabitant_neutralization
+
+import v4.compiler.emit { emit }
+import v4.compiler.infer { infer }
+import v4.extdeps.languages.go { go_mvp1_target_model }
+import v4.extdeps.languages.python {
+  python_int_inhabitant_node,
+  python_mvp1_emitted_add_fn_node,
+  python_mvp1_target_model
+}
+import v4.test.claim.manual.ingest_bridge { ingest_cross_language_compile_holds }
+import v4.extdeps.languages.typescript { ts_mvp1_target_model }
+import v4.std.inhabitant_neutralization {
+  inhabitant_std_projection_symbol,
+  neutralize_core_for_target,
+  target_inhabitant_for_std_projection
+}
+import v4.std.model_core { std_projection_additive_numeric }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  UnifiedTestClaim,
+  manual_claim_anchor
+}
+
+fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: ts_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
+  inhabitant_neutralization_go_int64_target_lookup_holds()
+}
+
+fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: ts_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match emit(tree: inferred, target: ts_mvp1_target_model()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Regression guard for surgical 03_ingest.dag edit: same-flavor cross_language_compile path
+// (dag fixture → dag target via bridge + neutralize + infer + emit) unchanged after neutralize insert.
+fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
+  ingest_cross_language_compile_holds()
+}
+
+// Same-flavor python→python: neutralize is std_projection-keyed lookup identity; emit still accepts.
+fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: python_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: python_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
+  inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
+    && inhabitant_neutralization_same_flavor_python_emit_holds()
+    && inhabitant_neutralization_raw_emit_still_fails_closed()
+}
+
+data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/inhabitant_neutralization: module compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: python_mvp1_emitted_add_fn_node(),
+  expected_value: python_mvp1_emitted_add_fn_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data unified_claim_inhabitant_neutralization_third_inhabitant_falsifier_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_third_inhabitant_falsifier_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_03_ingest_regression_guard_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_03_ingest_regression_guard_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_emit_after_neutralize_holds
+  }
+}

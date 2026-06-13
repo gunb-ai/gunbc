@@ -56,6 +56,8 @@ import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  facts_field_std_projection,
+  std_projection_additive_numeric,
   primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.grounding {
@@ -308,7 +310,7 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int64,
   width: SignedBits64,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: ^go_std_projection_int64,
+  std_projection: std_projection_additive_numeric,
 }
 
 data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
@@ -1470,11 +1472,59 @@ fn go_int_inhabitant_node() -> Node {
 }
 }
 
+// Third-inhabitant falsifier slice: int64 wired to shared std_projection_additive_numeric via
+// facts_field_std_projection (design-sign cond 3) — zero new combinator arms.
+fn go_int64_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: ^go_facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int64.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int64.encoding)
+            ),
+            go_named_edge(
+              name: facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int64.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
 fn go_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node())
+      go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
