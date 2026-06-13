@@ -589,11 +589,18 @@ jobs:
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
     runs-on: [self-hosted, linux, arm64]
-    # 20m is the pre-#4633 ceiling, restored after batched discovery
-    # (discover_owned_data --max-resolves, see v4-discover-owned-data.sh)
-    # removed the ~15m per-entry resolve fan-out. Do not raise this to absorb
-    # a slow step; root-cause it (enforced by the timeout_budgets gate).
-    timeout-minutes: 20
+    # INTERIM 30m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
+    # job's UNCONTENDED wall structurally outgrew 20m via witness-row and
+    # perturb-closure growth (~2min/resolve over 73-source closures; jobs ran
+    # all witnesses GREEN then died at 20m22s mid-perturb; a third rerun also
+    # timed out, so reruns cannot recover a structural overrun). Sized by the
+    # lane rule: uncontended wall (~15m) x2 headroom for the canary-measured
+    # 1.5-2.6x merge-wave DRAM-bandwidth contention multiplier.
+    # Dissolve-on: perturb-phase split (parallel job, precedent: this very
+    # gate/ci split) and/or #4783 parse-cache adoption shrink the uncontended
+    # wall back under the 20m shape -- restore 20 then. Do not raise further
+    # to absorb a slow step; root-cause it (enforced by timeout_budgets).
+    timeout-minutes: 30
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
