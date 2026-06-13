@@ -44,6 +44,8 @@ mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
+mod money_carrier_cost_witness_test;
+#[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod parse;
@@ -73,5 +75,7 @@ mod typescript_effect_io_receipt_test;
 mod v2_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
+#[cfg(test)]
+mod width_nat_type_arg_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
