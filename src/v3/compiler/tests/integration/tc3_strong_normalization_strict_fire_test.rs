@@ -20,7 +20,7 @@
 //! (`succ(succ(0))`) — a multi-step evaluation whose baseline eval-step trace and
 //! termination-evidence projection diverge in step structure (Pattern-A TC3 worker brief).
 //!
-//! **INVARIANTS P5:** The §P5(b) **single checkable per-PR receipt** (SG-0 census / pairing /
+//! **INVARIANTS P5:** The §P5(b) **single checkable per-PR receipt** (Self-Generation-0 census / pairing /
 //! `ROADMAP.md` deferral) lives on **the PR description**, not in this file — see GitHub PR
 //! body for authoritative dissolution bookkeeping (`INVARIANTS.md` §P5 Dispatch-Discipline
 //! mechanism (b)).

@@ -652,26 +652,43 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
+    - name: Restore gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
-        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
-        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        # claim_batch is now required by v4-lens-ci-gate.sh (multi-entry green pass).
+        # Substrate-equivalence (C9) needs discover_owned_data. Use a distinct key
+        # namespace ('gunbc-lens-gate2-bin-') so caches from before claim_batch was
+        # added (namespace 'gunbc-lens-gate-bin-') never restore and skip its build.
         path: |
           target/release/gunbc
+          target/release/claim_batch
           target/release/discover_owned_data
-        key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure claim_batch binary (v4 lens gate)
+      run: |
+        if [[ ! -x target/release/claim_batch ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin claim_batch
+        fi
     - name: Ensure discover_owned_data binary (v4 lens gate C9)
       run: |
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/discover_owned_data
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
     - name: v4 glob-discovery substrate equivalence (C9)

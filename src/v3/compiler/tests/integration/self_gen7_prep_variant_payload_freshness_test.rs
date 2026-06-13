@@ -1,6 +1,6 @@
 //! SG-7 prep — freshness ratchet for `variant_payload_generated.rs`.
 //!
-//! Mirrors `sg4_prep_infer_helpers_freshness_test.rs`: recompile the `.dag`
+//! Mirrors `self_gen4_prep_infer_helpers_freshness_test.rs`: recompile the `.dag`
 //! authority, render through `emit_rust_module`, rustfmt the result, and
 //! compare against the checked-in projection.
 

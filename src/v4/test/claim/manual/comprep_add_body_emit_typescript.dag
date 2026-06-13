@@ -4,6 +4,7 @@
 //   discriminating mutates; they do NOT execute TypeScript on Node. Runtime add(2,3)=5 for the
 //   produced DAG body is `comprep_eval_by_execution.dag`; Node exercise of emitted TS awaits
 //   emit-host wiring (typescript execute+eval row still missing on emit_host.dag).
+//   Bodied emit greens via value-expression projection + grammar scaffold (#4623).
 
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 

@@ -16,7 +16,7 @@ use v3_compiler::emit_rust::emit_rust_module;
 use crate::common::{HarnessLinkMode, RustcHarness};
 
 const SURFACE_CONSUMER_SOURCE: &str = r#"
-module tests.sg3_surface_reflection
+module tests.self_gen3_surface_reflection
 
 import v3.std.parse_surface { SurfaceModule, SurfaceItem }
 import std.list { List, length }
@@ -42,14 +42,14 @@ fn module_item_count(m: SurfaceModule) -> Int =
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 
 fn harness() -> &'static RustcHarness {
-    HARNESS.get_or_init(|| RustcHarness::new("sg3_surface_reflection_consumer"))
+    HARNESS.get_or_init(|| RustcHarness::new("self_gen3_surface_reflection_consumer"))
 }
 
 fn consumer_fixture_path() -> String {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("integration")
-        .join("sg3_surface_reflection_consumer_fixture.dag")
+        .join("self_gen3_surface_reflection_consumer_fixture.dag")
         .display()
         .to_string()
 }
@@ -77,9 +77,9 @@ mod emitted {{
 
 fn main() {{
     let source = "module demo.core\nimport foo.bar {{ Baz }}\nlet x: Int = 1\nfn id<T>(x: T) -> T = x\nlet y = x";
-    let tokens = v3_compiler::tokenize_for_test(source, "sg3_surface_reflection_consumer.v3")
+    let tokens = v3_compiler::tokenize_for_test(source, "self_gen3_surface_reflection_consumer.v3")
         .expect("tokenize fixture");
-    let parsed = v3_compiler::parse_for_test(&tokens, "sg3_surface_reflection_consumer.v3")
+    let parsed = v3_compiler::parse_for_test(&tokens, "self_gen3_surface_reflection_consumer.v3")
         .expect("parse fixture");
     let mirrored: &v3_compiler::parse_surface::SurfaceModule = &parsed;
     let item_count = emitted::module_item_count(&mirrored);
@@ -89,7 +89,7 @@ fn main() {{
     );
     harness().compile(
         &wrapped,
-        "sg3_surface_consumer",
+        "self_gen3_surface_consumer",
         HarnessLinkMode::WithV3Compiler,
     )
 }
