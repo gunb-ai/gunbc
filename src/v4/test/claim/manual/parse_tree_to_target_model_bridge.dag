@@ -1,0 +1,226 @@
+// src/v4/test/claim/manual/parse_tree_to_target_model_bridge.dag
+// Scope: #g-bidir G.3 — executable proof of the realized forward interpreter
+//   `parse_tree_to_target_model` (std/grammar.dag): the single missing bridge of the
+//   cross-language emit matrix (ParseTree -> grammar-relation row -> emit-side core node,
+//   links 2-4). Composes the bridge with the LANDED semantic dual `coerce_grounded_node`
+//   (RTADD, mvp1_dag_add_round_trip) to walk a parsed source token all the way to canonical
+//   IR by execution — the forward consumer the emit fold's inverse proof was waiting on.
+//
+// Proof shape (all by execution, hermetic, sub-second — a 1-token local grammar, NOT the
+//   ~627s real-language parse fixtures):
+//   1. Parse a token through a local production whose `emitted` IS the add type node;
+//      the parse stage stamps that node onto the tree (02_parse parse_wrap_production_captured).
+//   2. `parse_tree_to_target_model` recovers exactly that emit-side core node.
+//   3. The recovered node coerces faithfully to the canonical add IR (`coerce_grounded_node`).
+//   4. Fail-closed: an unstamped node yields Rejected at the named bridge reason — no shim.
+//   5. Discrimination: a production whose `emitted` is the int inhabitant (not the add fn)
+//      makes the bridge recover the int node, so the structural canonical assertion goes red —
+//      the bridge reflects WHICH core node parse committed to, never a constant.
+//
+// NO NEW MACHINERY beyond the std bridge under test: this file composes the bridge, the
+// existing parse stage, and RTADD's proven coerce fixtures. `02_parse` is not touched.
+
+module v4.test.claim.manual.parse_tree_to_target_model_bridge
+
+import v4.std.algebra { Cons, Empty }
+import v4.std.collection { List }
+import v4.std.grammar {
+  GrammarProduction,
+  GrammarRoot,
+  ParseTree,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  parse_tree_to_target_model,
+  parse_tree_to_target_model_no_emitted_core
+}
+import v4.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production,
+  parse_stage_locus_port
+}
+import v4.compiler.translate { coerce_grounded_node }
+import v4.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_fixture_int_inhabitant
+}
+import v4.test.claim.manual.mvp1_dag_add_round_trip {
+  mvp1_dag_coercion_quality_is_faithful,
+  mvp1_dag_inferred_tree,
+  mvp1_dag_target_model
+}
+import v4.std.compilers.lexing { Token }
+import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Conj,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v4.std.witness { Holds, Violates }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  Unit,
+  UnifiedTestClaim,
+  manual_claim_anchor
+}
+
+data bridge_fixture_file: Symbol = ^bridge_fixture_file
+data bridge_fixture_tok: Symbol = ^bridge_fixture_tok
+data bridge_fixture_start: Symbol = ^bridge_fixture_start
+
+fn bridge_fixture_token() -> Token {
+  Token {
+    class: bridge_fixture_tok,
+    lexeme: Empty,
+    file: bridge_fixture_file,
+    start: 0,
+    end: 1
+  }
+}
+
+// A local single-terminal grammar whose production `emitted` IS the supplied core node.
+// Parsing one token stamps that core node onto the tree — exactly what the real dag/python
+// `add` productions do with `<lang>_mvp1_emitted_add_fn_node()`.
+fn bridge_fixture_root(emitted: Node) -> GrammarRoot {
+  GrammarRoot {
+    start: bridge_fixture_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: bridge_fixture_start,
+        expression: Terminal { token_class: bridge_fixture_tok },
+        emitted: emitted
+      },
+      tail: Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+// Parse one token through the local grammar carrying `emitted`, then run the forward
+// interpreter to recover the stamped emit-side core node. Returns the recovered node
+// under Holds, or Violates when parse or recovery fails closed.
+fn bridge_parse_then_recover(emitted: Node) -> Outcome<Node> {
+  let at = port_locus(port: parse_stage_locus_port)
+  match grammar_validate_for_parse(root: bridge_fixture_root(emitted: emitted), at: at) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: validated, diagnostics: _ } =>
+      match parse_production(
+        tokens: Cons { head: bridge_fixture_token(), tail: Empty },
+        validated: validated,
+        production_name: bridge_fixture_start
+      ) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          parse_tree_to_target_model(parse_tree: artifact.tree)
+      }
+  }
+}
+
+// (2) The forward interpreter recovers EXACTLY the emit-side core node the parse committed to.
+fn bridge_recovers_emitted_holds() -> Bool {
+  match bridge_parse_then_recover(emitted: dag_mvp1_fixture_emitted_add_fn) {
+    Accepted { value: recovered, diagnostics: _ } =>
+      recovered == dag_mvp1_fixture_emitted_add_fn
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (3) End-to-end: parsed source token -> bridge -> recovered core node -> coerce_grounded_node
+//     -> canonical add IR, faithful quality. This is the ParseTree -> canonical-IR ingest.
+fn bridge_ingest_to_canonical_holds() -> Bool {
+  match bridge_parse_then_recover(emitted: dag_mvp1_fixture_emitted_add_fn) {
+    Accepted { value: recovered, diagnostics: _ } =>
+      match coerce_grounded_node(
+        source: recovered,
+        tree: mvp1_dag_inferred_tree,
+        target: mvp1_dag_target_model
+      ) {
+        Accepted { value: result, diagnostics: _ } =>
+          (result.target == dag_mvp1_fixture_emitted_add_fn)
+            && mvp1_dag_coercion_quality_is_faithful(q: result.quality)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (4) Fail-closed: a bare node that is NOT a stamped production tree yields Rejected at the
+//     named bridge reason — the gap is located, never a silent fallback core node.
+fn bridge_unstamped_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bridge_fails_closed_on_unstamped_holds() -> Bool {
+  match parse_tree_to_target_model(parse_tree: bridge_unstamped_node()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      ds.head.reason == parse_tree_to_target_model_no_emitted_core
+  }
+}
+
+// (5) Discrimination: when the production `emitted` is the int inhabitant (not the add fn),
+//     the bridge recovers the int node, so the canonical add assertion must NOT hold. Proves
+//     the bridge reflects WHICH core node parse stamped, not a constant.
+fn bridge_discriminates_wrong_emitted_holds() -> Bool {
+  match bridge_parse_then_recover(emitted: dag_mvp1_fixture_int_inhabitant) {
+    Accepted { value: recovered, diagnostics: _ } =>
+      (recovered == dag_mvp1_fixture_int_inhabitant)
+        && (recovered != dag_mvp1_fixture_emitted_add_fn)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Composed realization witness: the bridge is realized iff it recovers the stamped core node,
+// ingests it to canonical IR end-to-end, fails closed on an unstamped node, and discriminates
+// distinct stamped core nodes.
+fn parse_tree_to_target_model_bridge_realized() -> Bool {
+  bridge_recovers_emitted_holds()
+    && bridge_ingest_to_canonical_holds()
+    && bridge_fails_closed_on_unstamped_holds()
+    && bridge_discriminates_wrong_emitted_holds()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Claim markers — discoverable by the manual claim corpus.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn bridge_realized_input(ok: Bool) -> Symbol {
+  if ok { ^parse_tree_to_target_model_bridge_realized } else { ^parse_tree_to_target_model_bridge_not_realized }
+}
+
+data claim_parse_tree_to_target_model_bridge_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/parse_tree_to_target_model_bridge: forward interpreter ingest claim compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ^bridge_fixture_start,
+  expected_value: ^bridge_fixture_start,
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_parse_tree_to_target_model_bridge_realized: TestClaim = CompilesClaim {
+  label: "manual/parse_tree_to_target_model_bridge: ParseTree -> emit-side core node -> canonical IR by execution (forward interpreter realized, discriminating, fail-closed)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: bridge_realized_input(ok: parse_tree_to_target_model_bridge_realized()),
+  expected_value: ^parse_tree_to_target_model_bridge_realized,
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+// The registered executable witness is the composed realization — sub-second, hermetic.
+data unified_claim_parse_tree_to_target_model_bridge_realized: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/parse_tree_to_target_model_bridge.dag",
+    function: parse_tree_to_target_model_bridge_realized
+  }
+}
