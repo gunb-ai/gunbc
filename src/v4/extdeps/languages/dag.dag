@@ -3292,6 +3292,12 @@ fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
   )
 }
 
+// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_terminal above: the pick-arm
+// literal-binding whitelist. It hard-lists the two mvp1 pick-lit bindings (pick_lit_one/_two) that the
+// emit round-trip re-ingests as idents at the arm positions. WHY stopgap: same as the terminal — no
+// value_expression grammar production exists in dag.dag yet, so accepted arm bindings are enumerated
+// rather than derived from that production. dissolve-on: replace with the value_expression production
+// when it lands in dag.dag (both the terminal widening and this binding whitelist go away together).
 fn dag_grammar_pick_arm_literal_binding(binding: Symbol) -> Bool {
   (binding == ^dag_binding_mvp1_pick_lit_one)
     || (binding == ^dag_binding_mvp1_pick_lit_two)
