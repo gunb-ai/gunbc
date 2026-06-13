@@ -1,4 +1,4 @@
-// extdeps/git.dag -- "What is Git?"
+// extdeps/git/git.dag -- "What is Git?"
 //
 // Core Git object model: commits, branches, refs, diffs, merge strategies.
 // Facts about Git's data model, not how we invoke it (that's services/git.dag).
