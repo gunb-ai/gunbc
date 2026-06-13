@@ -98,7 +98,14 @@ if [[ "${SKIP_LEGACY_EXEC:-}" == "1" ]]; then
   legacy_perturb=8
   legacy_count=8
 else
-  bash "$legacy_script" --perturb-check >"$legacy_log" 2>&1 || legacy_ec=$?
+  # Frozen origin/main shell expects the pre-transport dag shape (incl. row_count binding).
+  legacy_model="$tmpdir/legacy_lens_ci_gate.dag"
+  git show origin/main:src/v4/workflow/lens_ci_gate.dag >"$legacy_model"
+  legacy_script_patched="$tmpdir/legacy-v4-lens-ci-gate.sh"
+  sed "s|^ci_model=\"src/v4/workflow/lens_ci_gate.dag\"|ci_model=\"$legacy_model\"|" \
+    "$legacy_script" >"$legacy_script_patched"
+  chmod +x "$legacy_script_patched"
+  bash "$legacy_script_patched" --perturb-check >"$legacy_log" 2>&1 || legacy_ec=$?
   legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
   legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
   legacy_perturb="$(grep -c '^::group::.*perturb' "$legacy_log" || true)"
@@ -115,11 +122,6 @@ if [[ "$host_ec" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ "${SKIP_LEGACY_EXEC:-}" != "1" ]]; then
-  legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
-  legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
-  legacy_perturb="$(grep -c '^::group::.*perturb' "$legacy_log" || true)"
-fi
 host_notice="$(grep -E '^::notice title=v4 lens CI::' "$host_log" || true)"
 host_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$host_notice")"
 host_perturb="$(grep -c '^::group::perturb:' "$host_log" || true)"
