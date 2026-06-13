@@ -783,6 +783,9 @@ fn classify_exit(val: &v2_interpreter::Value, ctx: &v2_interpreter::InterpContex
 // ---------------------------------------------------------------------------
 // discover_owned_data — host transport for Consolidation #4553 resolved-type glob
 // ---------------------------------------------------------------------------
+// These structs serde-mirror the modeled types in v4.compiler.discovery_enumeration
+// (promoted there from v4.test.claim.workflow.discovery_types; the emitted manifest below
+// imports that module). Keep the field shapes in lockstep with that .dag authority.
 
 /// Resolved declaration identity from the typed graph (not authored surface names).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1556,7 +1559,7 @@ pub fn emit_owned_data_manifest(
     out.push_str("import v4.std.collection { List }\n");
     out.push_str("import v4.std.logic { Bool }\n");
     out.push_str(
-        "import v4.test.claim.workflow.discovery_types {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
+        "import v4.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
     );
     out.push_str("data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {\n");
     out.push_str(&format!(
