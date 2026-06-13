@@ -144,6 +144,10 @@ classify_stdout() {
   echo error
 }
 
+# GREEN pass: group functions by entry, then one multi-entry claim_batch call so the
+# module source index is built once (same pattern as v4-lens-ci-gate.sh). The prior
+# per-entry loop spawned a new process per distinct entry and paid a full index scan
+# each time (~90s recoverable overhead on shard a at CI uncontended).
 batch_green_pass() {
   local title="$1"
   local -A entry_fns=()
@@ -156,13 +160,15 @@ batch_green_pass() {
     fi
     entry_fns[$entry]+="${function},"
   done
+  local args=(--source-root src/v4)
   local e fns
   for e in "${entry_order[@]}"; do
     fns="${entry_fns[$e]%,}"
-    echo "::group::${title} (batch green): ${e}"
-    "$bin_batch" --source-root src/v4 --entry "$e" --functions "$fns" --claim-run
-    echo "::endgroup::"
+    args+=(--entry "$e" --functions "$fns")
   done
+  echo "::group::${title} (batch green)"
+  "$bin_batch" "${args[@]}" --claim-run
+  echo "::endgroup::"
 }
 
 perturb_function_to_false() {
