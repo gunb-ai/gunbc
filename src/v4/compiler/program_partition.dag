@@ -42,7 +42,6 @@ import v4.std.diagnostic {
 }
 import v4.std.node {
   ComputationNode,
-  Edge,
   Node,
   Transform,
   well_formed
@@ -306,7 +305,12 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   }
 }
 
-// 🟡 SCAFFOLD — Arrow.body Behavior segments route through value-expression projection until translate/serialize admits ComputationNode roots directly (#4741 / ROADMAP §1.5, 06_value_expression dissolve).
+// 🟡 gated — feature:program-partition-arrow-body-behavior-emit-seam — consumer:emit_partition_arrow_body_behavior_source —
+// bind: #4741 / ROADMAP §1.5 (06_value_expression → translate_algebra dissolve) — dissolve-on-arrival: repoint
+// this seam onto translate/serialize when ComputationNode roots are admitted directly; delete
+// emit_partition_arrow_body_behavior_source and value-expression/serialize imports here — forbidden:
+// steady-state parallel body-emit path after §1.5 lands (cementation risk).
+// Wave A interim: Arrow.body Behavior segments route through value-expression projection (design §6.1 keystone).
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: TargetModel
