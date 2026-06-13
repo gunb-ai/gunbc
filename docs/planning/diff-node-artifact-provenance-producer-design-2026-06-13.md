@@ -46,6 +46,20 @@ function that enumerates the source-root ingest set and folds the per-read prove
 `FreeMonoid<NodeArtifactProvenance>`. So every consumer that needs real provenance hand-builds it
 (fixtures), and the host transport reinvents it as a path allowlist that drifts (Part 1).
 
+**Crucially, the per-read → affected-set wire is already PROVEN** (verified 2026-06-13 in
+`src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag`):
+
+- `edit_locus_source_provenance_affected_set_wire_holds` (`:192`) takes a *single*
+  `source_ir_node_artifact_provenance(source_read)`, builds the graph, and drives
+  `affected_set_reading_from_git_diff_provenance(graph, git_diff, provenance: [provenance])` to the
+  expected frontier. End-to-end, on one read.
+- `edit_locus_source_provenance_producer_rejects_malformed_source_holds` (`:259`) proves a malformed
+  source → `Rejected` (the fail-closed reject the coverage law lifts).
+
+So the producer is **mostly assembly of proven parts, not new minting** — which keeps the minting
+authority single (MODELING M9). The only genuinely new design is the *closure* layer: a
+source-root ingest carrier and the monoid fold over it.
+
 ## Part 2 — producer design
 
 ### Contract
@@ -69,7 +83,12 @@ fn node_artifact_provenance_from_source_root(
 - **Implementation is a fold of the existing per-read producer** over the ingest set:
   `source_ir_node_artifact_provenance` per `DagSourceReadWitness`, monoid-concatenated. The only
   *new* API is the whole-ingest enumerator + fold; the per-read minting stays where it is
-  (no second authority).
+  (no second authority). The new pieces are exactly two:
+  1. a **`SourceRootIngest` carrier** = `FreeMonoid<DagSourceReadWitness>` (the source-root closure
+     as a set of reads — the same set `--source-root src/v4` walks);
+  2. the **fold** `node_artifact_provenance_from_source_root` that maps each read through the
+     already-proven `source_ir_node_artifact_provenance` and concatenates, short-circuiting to
+     `reject` on the first `Rejected` read (lifting the proven per-read fail-closed to the closure).
 
 ### Fail-closed law (load-bearing — this is the kill criterion)
 
@@ -153,9 +172,12 @@ trustworthy on real input.
 
 1. Producer home: `src/v4/compiler/source_authority.dag` (where the per-read minter lives) vs a new
    `src/v4/lens/` module that imports it. Leaning source_authority (keeps minting authority single).
-2. `SourceRootIngest` enumeration: is there an existing ingest-set carrier to fold over, or does the
-   enumerator itself need design? (This is the residual tidy-wolf question — needs the
-   `adhoc-bc4d39de-88f` / `adhoc-9bb1e6fb-9ba` detail to answer precisely.)
+2. `SourceRootIngest` enumeration: **answered 2026-06-13 by tree inspection** — no source-root
+   ingest set-carrier exists yet; only the per-read `DagSourceReadWitness` and its proven
+   per-read producer. So the enumerator + `FreeMonoid<DagSourceReadWitness>` carrier **is** new
+   design (above). The residual tidy-wolf detail (`adhoc-bc4d39de-88f` / `adhoc-9bb1e6fb-9ba`) is
+   only needed to confirm whether the *host* side already enumerates the source-root file set for
+   the floor compile (so the carrier can be produced by transport, not recomputed).
 3. Sequencing of the `affects_v4` fail-closed patch vs the producer: **resolved by the dep-graph
    coordinator (snappy-crab-849, 2026-06-13)** — the one-predicate widening-only patch is dispatched
    as a *separate* leaf (immediate safety, by-execution receipt + tripwire); the producer here is the
