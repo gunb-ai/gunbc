@@ -96,7 +96,11 @@ fn parse_args() -> Config {
     }
 }
 
-fn evaluate_rows_tsv(gate_entry: &str, rows_fn: &str, source_roots: &[String]) -> Result<String, String> {
+fn evaluate_rows_tsv(
+    gate_entry: &str,
+    rows_fn: &str,
+    source_roots: &[String],
+) -> Result<String, String> {
     let index = build_multi_entry_index(source_roots);
     let (graph, si) = resolve_entry_with_index(&index, gate_entry)?;
     let ctx = make_eval_context(&graph, si);
@@ -254,15 +258,14 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     fs::create_dir_all(to).map_err(|e| format!("mkdir {}: {e}", to.display()))?;
     for entry in fs::read_dir(from).map_err(|e| format!("read_dir {}: {e}", from.display()))? {
         let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
-        let ft = entry
-            .file_type()
-            .map_err(|e| format!("file_type: {e}"))?;
+        let ft = entry.file_type().map_err(|e| format!("file_type: {e}"))?;
         let dest = to.join(entry.file_name());
         if ft.is_dir() {
             copy_dir_all(&entry.path(), &dest)?;
         } else {
-            fs::copy(entry.path(), &dest)
-                .map_err(|e| format!("copy {} -> {}: {e}", entry.path().display(), dest.display()))?;
+            fs::copy(entry.path(), &dest).map_err(|e| {
+                format!("copy {} -> {}: {e}", entry.path().display(), dest.display())
+            })?;
         }
     }
     Ok(())
@@ -285,11 +288,18 @@ fn main() -> ExitCode {
 
     let rows = parse_rows_tsv(&tsv);
     if rows.is_empty() {
-        eprintln!("ci-claim-gate: {rows_fn} produced no rows", rows_fn = cfg.rows_fn);
+        eprintln!(
+            "ci-claim-gate: {rows_fn} produced no rows",
+            rows_fn = cfg.rows_fn
+        );
         return ExitCode::from(2);
     }
 
-    println!("::group::{} green pass ({} witness(es))", cfg.notice_title, rows.len());
+    println!(
+        "::group::{} green pass ({} witness(es))",
+        cfg.notice_title,
+        rows.len()
+    );
     let green_ok = match run_green_pass(&cfg.source_roots, &rows) {
         Ok(ok) => ok,
         Err(e) => {
