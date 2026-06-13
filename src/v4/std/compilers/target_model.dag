@@ -7627,6 +7627,14 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   }
 }
 
+fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_token_kw_true || id == ^dag_token_kw_false
+    _ => false
+  }
+}
+
 // ^dag_token_kw_true / ^dag_token_kw_false are symbol literals (no extdep import required).
 // These inline the dag_mvp1_node_is_kw_true_atom / dag_mvp1_node_is_kw_false_atom predicates.
 fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
@@ -7635,11 +7643,7 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   } else {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: cond } =>
-        match cond.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            id == ^dag_token_kw_true || id == ^dag_token_kw_false
-          _ => false
-        }
+        target_value_expr_cond_is_bool_atom(node: cond)
       Absent => false
     }
   }
