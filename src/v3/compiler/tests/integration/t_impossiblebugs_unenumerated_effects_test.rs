@@ -71,7 +71,7 @@ fn generated_effect_enumeration_lens_is_exported_and_consumed() {
 fn github_auth_no_longer_derives_network_from_ambient_uses() {
     let resources = read_workspace_file("dsl/std/resources.dag");
     let primitives = read_workspace_file("dsl/std/primitives.dag");
-    let shell = read_workspace_file("dsl/extdeps/shell.dag");
+    let shell = read_workspace_file("dsl/extdeps/shell/shell.dag");
     let github_auth = read_workspace_file("dsl/extdeps/github/auth.dag");
 
     assert!(

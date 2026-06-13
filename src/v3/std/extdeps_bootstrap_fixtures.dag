@@ -64,7 +64,7 @@ data bootstrap_fixture_authority: BootstrapFixtureSet = {
     virtual_path: "src/v3/std/cross_target_coverage.dag"
   },
   extdeps_cron: {
-    virtual_path: "dsl/extdeps/cron_schedule_model.dag"
+    virtual_path: "dsl/extdeps/cron/schedule_model.dag"
   },
   extdeps_github_github: {
     virtual_path: "dsl/extdeps/github/github.dag"

@@ -1,4 +1,4 @@
-// extdeps/gunbc.dag -- "What is gunbc?"
+// extdeps/gunbc/gunbc.dag -- "What is gunbc?"
 //
 // Meta model of this repo's workspace structure. Technically an
 // internal system, but modeled as an extdep because:

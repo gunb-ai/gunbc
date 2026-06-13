@@ -1,4 +1,4 @@
-// extdeps/docker.dag -- "What is Docker?" (the container-runtime surface
+// extdeps/docker/docker.dag -- "What is Docker?" (the container-runtime surface
 // we consume: images, mounts).
 //
 // Spec: https://docs.docker.com/engine/storage/ (mounts) and

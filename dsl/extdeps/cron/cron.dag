@@ -1,6 +1,6 @@
-// extdeps/cron.dag — crontab shell transport (`cron.Tab` operations).
+// extdeps/cron/cron.dag — crontab shell transport (`cron.Tab` operations).
 //
-// Typed schedule carriers + render helpers live in `cron_schedule_model.dag`
+// Typed schedule carriers + render helpers live in `cron/schedule_model.dag`
 // (`module extdeps.cron.schedule_model`) so v3 bootstrap can depend on schedule
 // shapes without parsing `service` blocks.
 //

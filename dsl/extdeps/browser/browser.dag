@@ -1,4 +1,4 @@
-// extdeps/browser.dag -- Playwright browser automation transport.
+// extdeps/browser/browser.dag -- Playwright browser automation transport.
 //
 // Models headless/headed browser interaction for web automation.
 // Primary consumer: chatgpt_reviewer.dag (ChatGPT Pro browser automation).
