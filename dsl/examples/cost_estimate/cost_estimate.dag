@@ -7,9 +7,11 @@
 // from `std.currency`.
 //
 // WHY A STANDALONE WITNESS (not the real `std.compute_fabric.CostEstimate`):
-//   - `compute_fabric.dag` does NOT resolve on v2 today: its import closure
-//     pulls `Option` from `std.types` via `std.cpu.types` / `std.os.types`,
-//     and `Option` is not a v2 named export yet (owned by #4831, in flight).
+//   - `compute_fabric.dag` does NOT resolve on v2 today: its closure's
+//     `std.cpu.types` / `std.os.types` import `Option`, which has no v2
+//     resolution yet. #4831 (in flight) lands it as an explicit `std.option`
+//     module (`Option = Absent | Present{value}`) and repoints those
+//     consumers to `import std.option { Option }`.
 //   - The real `CostEstimate.unit_price: MoneyMicros` is a `Measure<Currency,
 //     Micro>` value; Measure VALUE eval on v2 is blocked by G1 (identifier-
 //     variant type args, #4826) -- the same gap that blocks `ByteSize`/`Hertz`

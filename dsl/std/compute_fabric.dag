@@ -445,13 +445,13 @@ type AmortizationScope
 type CostReceipt {
   provider: ProviderIdentity
   cost_class: CostClass
-  // 🟡 consumer-gated dissolution — `amount: Option<Float>` is the same
-  // money-as-Float defect dissolved on `CostEstimate.unit_price`. It stays
-  // `Float` only because `CostReceipt` is currently uninhabited (no `data`
-  // row / observed-bill consumer yet). Dissolve to `Option<MoneyMicros>` when
-  // the first `CostReceipt` consumer lands (`feedback_construction_over_ratchets`
-  // — do not migrate an uninhabited field ahead of its consumer).
-  amount: Option<Float>
+  // Money is fixed-point: the observed-bill amount is `MoneyMicros`, not
+  // `Float` (same money-as-Float defect dissolved on `CostEstimate.unit_price`).
+  // The type is corrected here regardless of inhabitation — fixing a
+  // known-wrong field type is type-correctness, not abstraction ahead of
+  // demand. `CostReceipt` stays uninhabited (no fabricated `data` rows until a
+  // real observed-bill consumer lands).
+  amount: Option<MoneyMicros>
   pricing_source: PricingSource
   amortization_scope: Option<AmortizationScope>
 }
