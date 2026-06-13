@@ -1,4 +1,4 @@
-// extdeps/cargo_build.dag -- the `cargo` command service (shell transport).
+// extdeps/rust/cargo_build.dag -- the `cargo` command service (shell transport).
 //
 // Split out of `extdeps.cargo` (the pure Cargo model) so the model can be
 // imported by compiler modules / the bootstrap seed without pulling a

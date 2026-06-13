@@ -1,0 +1,64 @@
+// std/os/types.dag — OS surface + distribution taxonomy (no cited catalog data).
+
+module std.os.types
+
+import std.types { NonEmptyStr, Option }
+
+type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
+type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
+type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
+
+// P-CF-OS: distro/version relaxed to Option. Operator-fleet distro/version binding
+// (srv1/srv2) is operator-private — lives in gunb-ai/ctrl, not gunbc std/. Hetzner OS
+// is bound at provision time, so stays None on the offer surface.
+type OperatingSystemSurface {
+  kernel: KernelFamily
+  distro_or_product: Option<NonEmptyStr>
+  version: Option<NonEmptyStr>
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+// Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
+type UbuntuDistribution = NobleNumbat2404Lts
+type WindowsDistribution = Windows1124H2Build26100
+type MacosDistribution = Sequoia15
+
+type OperatingSystemProduct
+  = UbuntuOs { distro: UbuntuDistribution }
+  | WindowsOs { distro: WindowsDistribution }
+  | MacosOs { distro: MacosDistribution }
+
+type OsPackageManager = Apt | Winget | HomebrewDeFacto
+
+type LibcFamily = GnuGlibc | Ucrt | LibSystem
+
+type UbuntuDistributionCatalogRow {
+  distribution: UbuntuDistribution
+  release_label: NonEmptyStr
+  kernel_version: NonEmptyStr
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
+  security_maintenance_until: NonEmptyStr
+}
+
+type WindowsDistributionCatalogRow {
+  distribution: WindowsDistribution
+  release_label: NonEmptyStr
+  os_build: NonEmptyStr
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
+  end_of_servicing: NonEmptyStr
+}
+
+type MacosDistributionCatalogRow {
+  distribution: MacosDistribution
+  release_label: NonEmptyStr
+  darwin_version: Option<NonEmptyStr>
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
+  annual_release_label: NonEmptyStr
+}

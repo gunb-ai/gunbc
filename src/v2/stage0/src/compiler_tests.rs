@@ -183,7 +183,7 @@ mod compiler_tests {
             "dsl/extdeps/cloud/cloud.dag",
             "dsl/extdeps/cloud/gcp/errors.dag",
             "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/git.dag",
+            "dsl/extdeps/git/git.dag",
             "dsl/extdeps/github/auth.dag",
             "dsl/extdeps/github/errors.dag",
             "dsl/extdeps/github/gists.dag",

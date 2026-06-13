@@ -882,7 +882,7 @@ fn gist_transitive_closure_parse() {
         "dsl/extdeps/github/github.dag",
         "dsl/extdeps/github/auth.dag",
         "dsl/extdeps/github/gists.dag",
-        "dsl/extdeps/git.dag",
+        "dsl/extdeps/git/git.dag",
         "dsl/gunbc/auth/credentials.dag",
         "dsl/gunbc/tools/gist.dag",
     ];
