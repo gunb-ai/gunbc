@@ -2,8 +2,6 @@
 // Scope: generic cross-language inhabitant neutralization — source inhabitant -> canonical
 //   std_projection fact -> target inhabitant, via shared facts_field_std_projection DATA.
 // Status: emit-surface §3 critical path; one generic fold, no per-language arms.
-// Design-sign artifact: facts_field_std_projection edge name is claim-local here until
-// substrate design-sign lands (not model_core.dag — unsigned substrate out of impl).
 
 module v4.std.inhabitant_neutralization
 
@@ -28,6 +26,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.grammar { node_atom_identity_optional }
+import v4.std.model_core { facts_field_std_projection }
 import v4.std.node {
   Edge,
   Node,
@@ -45,12 +44,6 @@ import v4.std.passing_candidate_fold {
 data inhabitant_neutralization_std_projection_missing: Symbol = inhabitant_neutralization_std_projection_missing
 data inhabitant_neutralization_no_target_inhabitant: Symbol = inhabitant_neutralization_no_target_inhabitant
 data inhabitant_neutralization_ambiguous_target_inhabitant: Symbol = inhabitant_neutralization_ambiguous_target_inhabitant
-
-// Claim-local edge name for std_projection field reads — cond-4 deferred; no model_core substrate.
-data inhabitant_neutralization_facts_field_std_projection: Symbol = inhabitant_neutralization_facts_field_std_projection
-
-// Claim-local bridge key for MVP1 additive numeric slice — shared by falsifier inhabitants only.
-data inhabitant_neutralization_std_projection_additive_numeric: Symbol = inhabitant_neutralization_std_projection_additive_numeric
 
 fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -80,7 +73,7 @@ fn inhabitant_neutralization_ambiguous_target_diagnostic(
   }
 }
 
-// Locate the facts conj on an inhabitant carrier by probing for inhabitant_neutralization_facts_field_std_projection.
+// Locate the facts conj on an inhabitant carrier by probing for facts_field_std_projection.
 fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
   fold(
     node_labeled_child_edges(node: inhabitant),
@@ -91,7 +84,7 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
-          match find_named_child(root: edge.target, name: inhabitant_neutralization_facts_field_std_projection) {
+          match find_named_child(root: edge.target, name: facts_field_std_projection) {
             Accepted { value: _, diagnostics: _ } =>
               Accepted { value: edge.target, diagnostics: None }
             Rejected { diagnostics: _ } => acc
@@ -106,7 +99,7 @@ fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<Symbol> {
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
       bind_outcome(
-        o: find_named_child(root: facts, name: inhabitant_neutralization_facts_field_std_projection),
+        o: find_named_child(root: facts, name: facts_field_std_projection),
         f: fn(atom_node) {
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>

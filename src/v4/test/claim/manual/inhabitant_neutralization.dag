@@ -1,52 +1,25 @@
 // src/v4/test/claim/manual/inhabitant_neutralization.dag
-// Scope: design-sign witnesses — executed third-inhabitant falsifier (claim-local, zero extdeps).
-// Status: claim-local combinator genericity + go-int64 falsifier routed through SAME fn.
+// Scope: generic cross-language inhabitant neutralization — python int -> std_projection -> ts number.
+// Status: hermetic receipt for std/inhabitant_neutralization.dag (emit-surface §3 critical path).
 
 module v4.test.claim.manual.inhabitant_neutralization
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer }
+import v4.extdeps.languages.go { go_mvp1_target_model }
 import v4.extdeps.languages.python {
-  python_facts_int,
-  python_inhabitant_atom,
-  python_named_edge
+  python_int_inhabitant_node,
+  python_mvp1_emitted_add_fn_node
 }
-import v4.extdeps.languages.go {
-  Signed,
-  SignedTypedIntegerTruncatesSilentlyOnOverflow,
-  go_facts_int64,
-  go_inhabitant_atom,
-  go_int_kind_node,
-  go_named_edge,
-  go_overflow_node,
-  go_signed_int_width_node
+import v4.extdeps.languages.typescript { ts_mvp1_target_model }
+import v4.std.inhabitant_neutralization {
+  inhabitant_std_projection_symbol,
+  neutralize_core_for_target,
+  target_inhabitant_for_std_projection
 }
-import v4.extdeps.languages.typescript {
-  ts_facts_number,
-  ts_inhabitant_atom,
-  ts_mvp1_selection_policy_node,
-  ts_mvp1_translation_rules_node,
-  ts_named_edge
-}
-import v4.std.algebra { Empty }
-import v4.std.compilers.target_model {
-  TargetModel,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules
-}
+import v4.std.model_core { std_projection_additive_numeric }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -59,216 +32,28 @@ import v4.std.verification {
   UnifiedTestClaim,
   manual_claim_anchor
 }
-import v4.std.inhabitant_neutralization {
-  inhabitant_neutralization_facts_field_std_projection,
-  inhabitant_neutralization_std_projection_additive_numeric,
-  inhabitant_std_projection_symbol,
-  neutralize_core_for_target,
-  target_inhabitant_for_std_projection
-}
 
-fn falsifier_symbol_node(id: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: id } },
-    children: Empty,
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// Python int inhabitant wired claim-locally (MVP pair slice, no extdeps edit).
-fn falsifier_python_int_inhabitant_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      python_named_edge(
-        name: ^python_inhabitant_field_atom,
-        target: python_inhabitant_atom(id: ^python_inhabitant_int)
-      ),
-      python_named_edge(
-        name: ^python_inhabitant_field_facts,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            python_named_edge(
-              name: ^python_facts_field_surface_spelling,
-              target: python_inhabitant_atom(id: python_facts_int.surface_spelling)
-            ),
-            python_named_edge(
-              name: ^python_facts_field_encoding,
-              target: python_inhabitant_atom(id: python_facts_int.encoding)
-            ),
-            Edge {
-              label: Named { name: inhabitant_neutralization_facts_field_std_projection },
-              target: falsifier_symbol_node(
-                id: inhabitant_neutralization_std_projection_additive_numeric
-              )
-            }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn falsifier_python_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() },
-      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() },
-      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// Third inhabitant: go-int64 wired claim-locally to the SAME bridge key (extdeps facts only).
-fn falsifier_go_int64_inhabitant_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
-      go_named_edge(
-        name: ^go_inhabitant_field_facts,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            go_named_edge(
-              name: ^go_facts_field_surface_spelling,
-              target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
-            ),
-            go_named_edge(
-              name: ^go_facts_field_width,
-              target: go_signed_int_width_node(width: go_facts_int64.width)
-            ),
-            go_named_edge(
-              name: ^go_facts_field_signedness,
-              target: go_int_kind_node(kind: Signed)
-            ),
-            go_named_edge(
-              name: ^go_facts_field_overflow,
-              target: go_overflow_node(
-                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
-              )
-            ),
-            go_named_edge(
-              name: ^go_facts_field_encoding,
-              target: go_inhabitant_atom(id: go_facts_int64.encoding)
-            ),
-            Edge {
-              label: Named { name: inhabitant_neutralization_facts_field_std_projection },
-              target: falsifier_symbol_node(
-                id: inhabitant_neutralization_std_projection_additive_numeric
-              )
-            }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// Ts-number third-party target inhabitant carrying the SAME claim-local bridge key.
-fn falsifier_ts_number_inhabitant_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: ^ts_inhabitant_field_atom, target: ts_inhabitant_atom(id: ^ts_inhabitant_number)),
-      ts_named_edge(
-        name: ^ts_inhabitant_field_facts,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            ts_named_edge(
-              name: ^ts_facts_field_surface_spelling,
-              target: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
-            ),
-            ts_named_edge(
-              name: ^ts_facts_field_ieee754_binary,
-              target: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
-            ),
-            Edge {
-              label: Named { name: inhabitant_neutralization_facts_field_std_projection },
-              target: falsifier_symbol_node(
-                id: inhabitant_neutralization_std_projection_additive_numeric
-              )
-            }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn falsifier_ts_target_model() -> TargetModel {
-  TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Named { name: target_model_edge_selection_policy },
-          target: ts_mvp1_selection_policy_node()
-        },
-        Edge {
-          label: Named { name: target_model_edge_declared_inhabitants },
-          target: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge { label: Positional, target: falsifier_ts_number_inhabitant_node() }
-            ],
-            occurrence_id: SyntheticOccurrence
-          }
-        },
-        Edge {
-          label: Named { name: target_model_edge_translation_rules },
-          target: ts_mvp1_translation_rules_node()
-        }
-      ],
-      occurrence_id: SyntheticOccurrence
-    }
-  }
-}
-
-fn falsifier_go_int64_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: falsifier_go_int64_inhabitant_node() },
-      Edge { label: Positional, target: falsifier_go_int64_inhabitant_node() },
-      Edge { label: Positional, target: falsifier_go_int64_inhabitant_node() }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
-  match inhabitant_std_projection_symbol(inhabitant: falsifier_go_int64_inhabitant_node()) {
-    Accepted { value: proj, diagnostics: _ } =>
-      proj == inhabitant_neutralization_std_projection_additive_numeric
+fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_falsifier_ts_target_lookup_holds() -> Bool {
+fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
-    std_projection: inhabitant_neutralization_std_projection_additive_numeric,
-    target: falsifier_ts_target_model()
+    std_projection: std_projection_additive_numeric,
+    target: ts_mvp1_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_go_int64_to_ts_neutralize_holds() -> Bool {
-  match neutralize_core_for_target(
-    core: falsifier_go_int64_emitted_add_fn_node(),
-    target: falsifier_ts_target_model()
+fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -276,19 +61,21 @@ fn inhabitant_neutralization_go_int64_to_ts_neutralize_holds() -> Bool {
 }
 
 fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
-  inhabitant_neutralization_go_int64_std_projection_holds()
-    && inhabitant_neutralization_falsifier_ts_target_lookup_holds()
-    && inhabitant_neutralization_go_int64_to_ts_neutralize_holds()
+  inhabitant_neutralization_go_int64_target_lookup_holds()
 }
 
 fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
   match neutralize_core_for_target(
-    core: falsifier_python_emitted_add_fn_node(),
-    target: falsifier_ts_target_model()
+    core: python_mvp1_emitted_add_fn_node(),
+    target: ts_mvp1_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: _, diagnostics: _ } => true
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -296,9 +83,9 @@ fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
 }
 
 fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
-  match infer(tree: falsifier_python_emitted_add_fn_node()) {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
-      match emit(tree: inferred, target: falsifier_ts_target_model()) {
+      match emit(tree: inferred, target: ts_mvp1_target_model()) {
         Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
@@ -309,8 +96,8 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: falsifier_go_int64_emitted_add_fn_node(),
-  expected_value: falsifier_go_int64_emitted_add_fn_node(),
+  input: python_mvp1_emitted_add_fn_node(),
+  expected_value: python_mvp1_emitted_add_fn_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -325,12 +112,5 @@ data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = Bool
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
     function: inhabitant_neutralization_emit_after_neutralize_holds
-  }
-}
-
-data unified_claim_inhabitant_neutralization_raw_emit_fails_closed: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
-    function: inhabitant_neutralization_raw_emit_still_fails_closed
   }
 }

@@ -65,6 +65,15 @@ type PrimitiveFactBundle {
 }
 
 
+// Shared cross-language primitive-facts edge names (G.1 substrate). Language models use these
+// for fields that generic std combinators (e.g. inhabitant neutralization) must read without
+// per-language arms.
+data facts_field_std_projection: Symbol = facts_field_std_projection
+
+// Canonical std_projection bridge keys — language-neutral facts that source and target
+// inhabitants carry in PrimitiveFacts.std_projection for cross-language neutralization.
+data std_projection_additive_numeric: Symbol = std_projection_additive_numeric
+
 data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
 
 
