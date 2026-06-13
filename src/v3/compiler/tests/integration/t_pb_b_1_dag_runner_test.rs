@@ -15,9 +15,9 @@
 //! **R3 Cluster M #84 — R1C-D/E tests-as-data pilot:** R1C-D (`t_r1c_d_pb_census_gates.dag`)
 //! and R1C-E (`r1c_e_emit_gates.template.dag` + omni template) integration receipts
 //! live here with gate #74 (`t_r3_tests_as_data_demonstration.dag`), replacing dedicated
-//! `r1c_*_test.rs` shims. **Accounting:** SG-0 progress for #2715 is the **−3** census paths
+//! `r1c_*_test.rs` shims. **Accounting:** Self-Generation-0 progress for #2715 is the **−3** census paths
 //! plus `.dag`-native predicates — not gate #84 / facet-3 'zero hand-Rust tests' closure; see
-//! `sg0_census_test.rs` on `t_pb_b_1_dag_runner_test.rs` (remaining obligation cites ROADMAP
+//! `self_gen0_census_test.rs` on `t_pb_b_1_dag_runner_test.rs` (remaining obligation cites ROADMAP
 //! T-PB-B until the test census is empty).
 //!
 //! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
@@ -245,8 +245,8 @@ const R1C_D_PB_CENSUS_SUITE: &str = "r1_pb_census_gates_suite";
 /// R1C-D integration receipt: the six PB census gates are `TestClaim` + predicate **data** in
 /// `t_r1c_d_pb_census_gates.dag` (path: `R1C_D_PB_CENSUS_GATES_PATH`), not in this Rust body. This
 /// `#[test]` only lowers the module and runs the suite through `TestRunner` (runner-only, same
-/// class as gate #74). **P5(b):** merge-visible SG-0 receipt is **−3** deleted census paths; **not**
-/// gate #84 / facet-3 closure — see `sg0_census_test.rs` on this file's `EXPECTED_HAND_AUTHORED_TEST`
+/// class as gate #74). **P5(b):** merge-visible Self-Generation-0 receipt is **−3** deleted census paths; **not**
+/// gate #84 / facet-3 closure — see `self_gen0_census_test.rs` on this file's `EXPECTED_HAND_AUTHORED_TEST`
 /// line and the module doc above.
 #[test]
 fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {

@@ -16,7 +16,7 @@ import std.verification {
 }
 
 type Sg0CensusAuthority {}
-data sg0_census_test_authority: Sg0CensusAuthority = {}
+data self_gen0_census_test_authority: Sg0CensusAuthority = {}
 
 type R1GateMarker {}
 data pb_hand_rust_at_shim_floor_gate_marker: R1GateMarker = {}

@@ -589,11 +589,29 @@ jobs:
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
     runs-on: [self-hosted, linux, arm64]
-    # 20m is the pre-#4633 ceiling, restored after batched discovery
-    # (discover_owned_data --max-resolves, see v4-discover-owned-data.sh)
-    # removed the ~15m per-entry resolve fan-out. Do not raise this to absorb
-    # a slow step; root-cause it (enforced by the timeout_budgets gate).
-    timeout-minutes: 20
+    # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
+    # job's UNCONTENDED wall structurally outgrew 20m. Per-step baseline: the
+    # must-pass witnesses step passes well inside budget (~5.5-8m); the
+    # overrun is the 'v4 glob-discovery substrate equivalence (C9)' step
+    # (~8m+ uncontended and growing with perturb-closure size, ~2min/resolve
+    # over 73-source closures). Jobs ran all witnesses GREEN then died at
+    # 20m22s mid-perturb; a third rerun also timed out -- structural, not
+    # contention-recoverable. Budget rule: documented uncontended wall
+    # (~16m = witnesses ~8m + C9 ~8m) x2 contention headroom = 32, rounded
+    # to 35. Multiplier justification: merge-wave DRAM-bandwidth contention
+    # measured 1.5-2.6x (canary 2026-06-12; 2.5x observed on both lens phases
+    # and the #4785 corpus job); x2 covers typical waves, the 2.0-2.6x tail is
+    # accepted as rare manual-rerun territory and shrinks with the 2026-06-12
+    # 8-channel DIMM upgrade (+33% peak bandwidth).
+    # Dissolve-on: perturb-phase split (parallel job, precedent: this very
+    # gate/ci split) and/or #4783 parse-cache adoption shrink the uncontended
+    # wall back under the 20m shape -- re-derive under the budget rule then.
+    # NOTE: C9 witnesses the same substrate-equivalence law the discovery-type
+    # promotion model PR re-homes (single enumeration authority); its receipts
+    # re-measure C9 and may recover the perf via the single-walk -- re-derive
+    # at that point too. Do not raise further to absorb a slow step;
+    # root-cause it (enforced by timeout_budgets).
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -634,26 +652,43 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
+    - name: Restore gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
-        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
-        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        # claim_batch is now required by v4-lens-ci-gate.sh (multi-entry green pass).
+        # Substrate-equivalence (C9) needs discover_owned_data. Use a distinct key
+        # namespace ('gunbc-lens-gate2-bin-') so caches from before claim_batch was
+        # added (namespace 'gunbc-lens-gate-bin-') never restore and skip its build.
         path: |
           target/release/gunbc
+          target/release/claim_batch
           target/release/discover_owned_data
-        key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure claim_batch binary (v4 lens gate)
+      run: |
+        if [[ ! -x target/release/claim_batch ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin claim_batch
+        fi
     - name: Ensure discover_owned_data binary (v4 lens gate C9)
       run: |
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/discover_owned_data
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
     - name: v4 glob-discovery substrate equivalence (C9)
@@ -662,7 +697,11 @@ jobs:
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 20
+    # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
+    # as v4_lens_gate above (uncontended wall ~16m x2 = 32, rounded to 35;
+    # #4786 ran 9/9 witnesses green and was killed mid-perturb on a third
+    # rerun -- structural overrun, not contention-recoverable).
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
