@@ -294,7 +294,7 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   match partition.segment {
     SubtreeRoot { root: segment_root } =>
       (segment_root != partition.ambient.root)
-        && arrow_has_transform_body(arrow: partition.ambient.root)
+        && target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
         && node_in_subtree_by_identity(
           root: partition.ambient.root,
           needle: segment_root
@@ -315,16 +315,19 @@ fn emit_partition_arrow_body_behavior_source(
   target: TargetModel
 ) -> Outcome<TargetSource> {
   bind_outcome(
-    o: project_arrow_body_to_value_expression(
+    o: target_project_arrow_body_to_value_expression(
       arrow: partition.ambient.root,
-      target: target
+      target: target,
+      handle_transform: fn(a, b, t) {
+        translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+      }
     ),
     f: fn(expr) {
       bind_outcome(
-        o: value_expression_projection_from_target(target: target),
+        o: target_value_expression_projection_from_target(target: target),
         f: fn(projection) {
           bind_outcome(
-            o: value_expression_to_concrete_tokens(
+            o: target_value_expression_tokens_from_target(
               expr: expr,
               target: target,
               projection: projection
