@@ -878,18 +878,6 @@ fn account_named_fields(
     }
 }
 
-fn account_interner(
-    ctx_ptr: usize,
-    interner: &SymbolInterner,
-    visited: &mut std::collections::HashSet<usize>,
-    acc: &mut MemoryAccounting,
-) {
-    if !accounting_first_visit(ctx_ptr, "(interner)", visited, acc) {
-        return;
-    }
-    acc.add_unique("(interner)", interner.heap_bytes());
-}
-
 fn account_value(
     value: &Value,
     visited: &mut std::collections::HashSet<usize>,
