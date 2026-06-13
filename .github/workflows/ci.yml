@@ -874,8 +874,16 @@ jobs:
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-    - name: affected-set node-frontier selection must-pass discriminating witnesses
-      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
+    # GREEN-only here: the must-pass batched (claim_batch) witnesses + modeled
+    # row-count guard for both row-sets (node-frontier + affected-testgen). The
+    # per-row PERTURB fan-out (the 15-row red-under-mutation receipts) moved to
+    # the parallel `v4_lens_ci_perturb` matrix below — each perturb row is an
+    # independent cold full-tree resolve, so fanning them out (capped) cuts the
+    # serial wall without changing gate semantics. Coverage stays whole: the
+    # matrix's union covers all 15 rows and the `ci` aggregator requires every
+    # matrix leg to succeed (fail-closed-on-skip).
+    - name: affected-set node-frontier + testgen GREEN must-pass witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
@@ -883,6 +891,95 @@ jobs:
     # executor's ordering gates execution (false gating claim -> batch 2 skipped).
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
+  # §11.7.1 Class A safety floor (parallel matrix lane) -- the per-row PERTURB
+  # fan-out split out of v4_lens_ci. The 15 red-under-mutation receipts (9
+  # node-frontier + 6 affected-testgen) each require an independent cold full-tree
+  # resolve, which serialized into the v4_lens_ci wall. Profiler E measured
+  # DRAM-bandwidth contention at 2.2-3x and UNCHANGED post-DIMM, so concurrency is
+  # CAPPED (max-parallel, default 4, env-tunable via the
+  # V4_LENS_CI_PERTURB_MAX_PARALLEL repo variable): 3-4 concurrent captures most of
+  # the wall-clock win without saturating bandwidth for every other concurrent job.
+  # Shard count N = matrix leg count = strategy.job-total; this leg is K =
+  # strategy.job-index. The script perturbs the combined-15 rows where i % N == K,
+  # asserts its slice is non-empty and fully run, and the `ci` aggregator requires
+  # EVERY leg to succeed -- a skipped/cancelled shard fails the gate closed (no
+  # pass-by-omission). GREEN witnesses + the executor dogfood STAY in v4_lens_ci.
+  # Enforced via the `ci` aggregator. dissolve-on: PR3 (uniform ci_claim_gate
+  # single-process perturb) re-absorbs this split.
+  v4_lens_ci_perturb:
+    runs-on: [self-hosted, linux, arm64]
+    # Per-shard budget rule (documented uncontended wall x2): with N=4 the
+    # heaviest shard owns 4 of 15 rows; ~108s cold resolve/row + per-row src/v4
+    # copy + checkout/setup/cache-restore ~= 8m uncontended; x2 -> 16, rounded to
+    # 20m (matches the corpus shards). Re-derive once an on-wave per-shard wall
+    # receipt exists; do NOT raise without one.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ vars.V4_LENS_CI_PERTURB_MAX_PARALLEL || 4 }}
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v4 lens CI perturb)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + claim_batch binaries (v4 lens CI perturb)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        # Same binary set + key namespace as v4_lens_ci ('gunbc-lens-bin-') so a
+        # shard restores the artifacts v4_lens_ci built rather than cold-building.
+        # The perturb pass only needs gunbc (per-row `gunbc run --claim-run`), but
+        # the cache stores the trio produced by the one `cargo build -p
+        # v2-compiler --release` so the key matches v4_lens_ci exactly.
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/claim_executor
+        key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens CI perturb)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: affected-set lens PERTURB shard (red-under-mutation receipts)
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard "${{ strategy.job-index }}" "${{ strategy.job-total }}"
   # Compiler-semantics claim-witness corpus enrollment — two parallel shards (~10 rows
   # each, deterministic first-half/second-half partition in substrate .dag).
   # Sign runner (2026-06-13): monolith Phase A ~880s (~14.7m) + spot-perturb → 1108s
@@ -1008,7 +1105,7 @@ jobs:
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
   ci:
     if: always()
-    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, infra_isolation, doc_refs, layering_imports, timeout_budgets]
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_lens_ci_perturb, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, infra_isolation, doc_refs, layering_imports, timeout_budgets]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -1037,6 +1134,10 @@ jobs:
         fi
         if [[ "${{ needs.v4_lens_ci.result }}" != "success" ]]; then
           echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_lens_ci_perturb.result }}" != "success" ]]; then
+          echo "::error::v4_lens_ci_perturb matrix did not succeed (result=${{ needs.v4_lens_ci_perturb.result }}); a perturb shard was skipped, cancelled, or failed -- red-under-mutation coverage incomplete, ci aggregator fails closed."
           exit 1
         fi
         if [[ "${{ needs.v4_claim_witness_corpus_a.result }}" != "success" ]]; then
