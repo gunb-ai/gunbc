@@ -11,6 +11,21 @@
 // vendors (kernel / filesystem / process semantics), which is what justifies the
 // abstraction's shape in the first place.
 //
+// REUSE evidence (INVARIANTS.md §P1 line 142 / modeling-discipline Practice 8 —
+// extdeps defaults to SEPARATE types; reuse of a std/ carrier is allowed only
+// with cited evidence the two coincide): the five facts a real OS distribution
+// asserts at this layer ARE exactly the five fields of OperatingSystemSurface,
+// with zero residue and zero lossy squeezing —
+//   kernel family            <-> kernel:               KernelFamily
+//   distribution/product name<-> distro_or_product:    NonEmptyStr
+//   release/version string   <-> version:              NonEmptyStr
+//   on-disk filesystem model <-> filesystem_semantics: FileSystemSemantics
+//   process/exec model       <-> process_semantics:    ProcessSemantics
+// The carrier was purpose-built (and, until these rows, uninhabited) for this
+// exact concept; the coincidence is structural and total, so reuse is correct
+// and minting a separate `OperatingSystem` type would create a duplicate
+// authority (MODELING.md M2).
+//
 // Each row cites the vendor's own release documentation (extdeps fidelity
 // invariant: real names, real versions, real spec URLs — see extdeps.md).
 //
