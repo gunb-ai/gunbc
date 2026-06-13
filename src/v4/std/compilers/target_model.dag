@@ -2667,55 +2667,6 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
   }
 }
 
-// Carrier wire-schema guard for the effect-apply expression node — mirrors
-// `target_value_expr_primitive_apply_wire_schema_valid`: the atom must be the effect-apply atom,
-// the `effect_kind` discriminant edge must occur exactly once, and every child is either that
-// `effect_kind` edge or an `operand` edge. Fail-closed for any other shape.
-fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
-  match wire.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id != ^target_value_expression_effect_apply_atom {
-        outcome_rejected(
-          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
-        )
-      } else if name_occurrences(
-        name: target_value_expr_field_effect_kind,
-        children: wire.children
-      ) != 1 {
-        outcome_rejected(
-          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
-        )
-      } else {
-        match fold(
-          wire.children,
-          init: true,
-          f: fn(acc, edge) {
-            if acc {
-              match edge.label {
-                Named { name: n } =>
-                  n == target_value_expr_field_effect_kind
-                  || n == target_value_expr_field_operand
-                Positional => false
-              }
-            } else {
-              false
-            }
-          }
-        ) {
-          true => outcome_accepted(true)
-          false =>
-            outcome_rejected(
-              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
-            )
-        }
-      }
-    _ =>
-      outcome_rejected(
-        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
-      )
-  }
-}
-
 // Recover the stored effect-kind discriminant Symbol (== ^ReadResource / ^WriteResource by
 // identity) from the effect-apply carrier wire.
 fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> {
