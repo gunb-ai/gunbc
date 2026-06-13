@@ -8,7 +8,8 @@ import v4.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body_swapped_arms
 }
 import v4.test.claim.manual.branch_if_then_else_round_trip {
-  branch_if_then_else_inferred_facts_for
+  branch_if_then_else_inferred_facts_for,
+  branch_if_then_else_inferred_tree
 }
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -244,6 +245,16 @@ fn branch_if_then_else_emit_diag_authority_serialize_accepts() -> Bool {
 
 fn branch_if_then_else_emit_diag_translate_accepts() -> Bool {
   match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_fixture_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_inferred_tree,
+    target: dag_mvp1_pick_target_model()
+  ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
