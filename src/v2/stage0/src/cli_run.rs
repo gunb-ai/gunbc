@@ -21,8 +21,8 @@ use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
     field_init_node_value, has_child_named, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode,
-    InternTable, NewlineIndex, Node,
+    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
+    NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -362,8 +362,7 @@ fn resolve_entry_with_parse_cache(
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
-                let parsed =
-                    v2_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                let parsed = v2_compiler_parse::parse_with_table(tokens, single_si, current_table);
                 // Advance the global intern table with tokens from this file.
                 *index.intern_table.borrow_mut() = parsed.intern_table.clone();
                 let entry = (parsed.result.clone(), nl_index);
@@ -415,7 +414,8 @@ fn resolve_entry_with_parse_cache(
         return Err(format_error_nodes(&norm.diagnostics, &source_indices));
     }
 
-    let typed = v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), global_table);
+    let typed =
+        v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), global_table);
 
     let has_type_errors = typed
         .diagnostics
