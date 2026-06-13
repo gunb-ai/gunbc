@@ -2,6 +2,7 @@
 // Not generated — survives stage0 regeneration.
 // The generated main.rs calls handle_run() for the Run subcommand.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -20,7 +21,7 @@ use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
     field_init_node_value, has_child_named, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, pre_intern_tokens, ErrorNode, ExprData, InferredNode,
+    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode,
     InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
@@ -268,62 +269,25 @@ pub fn resolve_entry_graph(
 /// the filesystem per entry. Used by the `claim_batch` multi-entry green pass.
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
-    global_intern_table: Rc<InternTable>,
-    /// file path → (ParseResult, NewlineIndex); populated during index build so
-    /// each entry resolve skips tokenize+parse for shared std/ files.
-    parse_cache: HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    /// Lazily-accumulated intern table. Starts empty; grows as new files are
+    /// parsed for the first time. `parse_with_table` advances it via its
+    /// returned `intern_table` field, so every token string gets a stable ID
+    /// regardless of which entry first triggers its parse.
+    intern_table: RefCell<Rc<InternTable>>,
+    /// Lazily-populated parse cache: file path → (ParseResult, NewlineIndex).
+    /// Populated on first access for each file; shared across all entry resolves.
+    parse_cache: RefCell<HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
 }
 
-/// Scan the given source roots once and return a `MultiEntryIndex`. Tokenises
-/// and parses every `.dag` file exactly once; subsequent `resolve_entry_with_index`
-/// calls reuse those cached parse trees instead of repeating the front-end work
-/// per entry.
+/// Scan the given source roots once and return a `MultiEntryIndex`. Only the
+/// filesystem scan happens here; tokenise+parse work is deferred to the first
+/// `resolve_entry_with_index` call that needs each file, so the index build cost
+/// is proportional to the number of .dag files on disk — not to their parse time.
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    let source_files = build_module_index(source_roots);
-
-    // Sort all indexed files by path for deterministic intern-table ordering.
-    // Shared std/ files sort before test/ entry files, so every entry closure
-    // sees the same IDs for shared identifiers.
-    let mut ordered: Vec<&Rc<v2_compiler_compile::SourceFile>> = source_files.values().collect();
-    ordered.sort_by(|a, b| a.path.cmp(&b.path));
-
-    // Tokenise every file; build the global intern table in one pass.
-    let tokenized: Vec<_> = ordered
-        .iter()
-        .map(|sf| {
-            let tokens = v2_compiler_tokenize::tokenize(sf.content.clone(), sf.path.clone());
-            let nl_index = build_newline_index(sf.path.clone(), sf.content.clone());
-            (sf.path.clone(), tokens, nl_index)
-        })
-        .collect();
-
-    let global_intern_table = tokenized
-        .iter()
-        .fold(empty_intern_table(), |acc, (_, toks, _)| {
-            pre_intern_tokens(toks.clone(), acc)
-        });
-
-    // Parse each file once with the global intern table; cache results.
-    let mut parse_cache: HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)> =
-        HashMap::new();
-    for (path, tokens, nl_index) in &tokenized {
-        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-            let mut m = HashMap::new();
-            m.insert(path.clone(), nl_index.clone());
-            m
-        });
-        let parsed = v2_compiler_parse::parse_with_table(
-            tokens.clone(),
-            single_si,
-            global_intern_table.clone(),
-        );
-        parse_cache.insert(path.clone(), (parsed.result.clone(), nl_index.clone()));
-    }
-
     MultiEntryIndex {
-        source_files,
-        global_intern_table,
-        parse_cache,
+        source_files: build_module_index(source_roots),
+        intern_table: RefCell::new(empty_intern_table()),
+        parse_cache: RefCell::new(HashMap::new()),
     }
 }
 
