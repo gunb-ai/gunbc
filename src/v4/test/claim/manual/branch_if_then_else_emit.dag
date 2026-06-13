@@ -184,6 +184,13 @@ fn branch_if_then_else_emit_diag_branch_gate_on_post_translate_body() -> Bool {
   }
 }
 
+fn branch_if_then_else_emit_node_is_bare_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
 fn branch_if_then_else_emit_diag_then_arm_bare_atom_on_post_translate() -> Bool {
   match branch_if_then_else_emit_post_translate_root() {
     Accepted { value: translated, diagnostics: d } =>
@@ -191,11 +198,9 @@ fn branch_if_then_else_emit_diag_then_arm_bare_atom_on_post_translate() -> Bool 
         Accepted { value: body, diagnostics: bd } =>
           match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
             Present { value: then_arm } =>
-              match then_arm.kind {
-                TypeNode { connective: Atom { identity: _ } } =>
-                  (d == None) && (bd == None)
-                _ => false
-              }
+              branch_if_then_else_emit_node_is_bare_atom(node: then_arm)
+                && (d == None)
+                && (bd == None)
             Absent => false
           }
         Rejected { diagnostics: _ } => false
