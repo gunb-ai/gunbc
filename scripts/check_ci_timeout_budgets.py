@@ -53,7 +53,10 @@ CEILINGS = {
         # parse-cache adoption land -- both shrink the uncontended wall back
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
-        "v4_lens_ci": 35,
+        # Green pass only (perturb moved to v4_lens_ci_perturb shards).
+        "v4_lens_ci": 20,
+        # 5 shards × 3 perturb rows; ~6m uncontended/shard ×2 → 15m ceiling/shard.
+        "v4_lens_ci_perturb": 15,
         # Non-gating Wave-1 §11.7 timings aggregator: mirrors the `affected` setup
         # (checkout + rust + sccache bin build) + the shell-free .dag github.Actions fetch
         # (collect-affected-set-timings, which embeds v2-compiler) + one emit. Budget rule

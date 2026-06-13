@@ -1,7 +1,8 @@
 // src/v4/test/claim/workflow/affected_set_ci_runner.dag
 // Scope: T-21/T-24 receipt — CI runner narrows TestClaim roster via RerunNodeSet node frontier.
 // Status: node-frontier selection claim-run witnesses (affected-set-3a); host gate
-// scripts/v4-affected-set-node-frontier-gate.sh with --perturb-check.
+// scripts/v4-affected-set-node-frontier-gate.sh (`--green-only` in v4_lens_ci;
+// perturb shards 0–2 here, 3–4 in affected_testgen_ci_runner.dag, matrix job v4_lens_ci_perturb).
 
 module v4.test.claim.workflow.affected_set_ci_runner
 

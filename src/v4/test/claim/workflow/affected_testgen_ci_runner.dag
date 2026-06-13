@@ -1,6 +1,7 @@
 // src/v4/test/claim/workflow/affected_testgen_ci_runner.dag
 // Scope: affected-set → generated TestClaim → run_test_claim CI receipt.
-// Status: first executable fusion slice; host gate is scripts/v4-affected-set-node-frontier-gate.sh.
+// Status: first executable fusion slice; host gate is scripts/v4-affected-set-node-frontier-gate.sh
+// (perturb shards 3–4; green pass + shards 0–2 in affected_set_ci_runner.dag).
 
 module v4.test.claim.workflow.affected_testgen_ci_runner
 

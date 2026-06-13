@@ -4,6 +4,11 @@
 # Each row is a Bool witness run through `gunbc run --claim-run`. `--perturb-check`
 # rewrites the wired witness body to `false` in a temp source-root and requires
 # the same row to fail, so every wired green has a red-under-perturb receipt.
+#
+# CI splits green vs perturb: `v4_lens_ci` runs `--green-only`; the 15-row perturb
+# fan-out (9 node-frontier + 6 testgen) runs in matrix job `v4_lens_ci_perturb`
+# via `--perturb-check --shard 0|1|2|3|4`. Full `--perturb-check` (no --shard) is
+# local-only across all five shards.
 
 set -euo pipefail
 
@@ -16,27 +21,56 @@ bin="${V2_COMPILER:-target/release/gunbc}"
 # stays per-row through `$bin` (each row mutates a different function).
 bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 perturb=0
+green_only=0
+perturb_shard=""
 
-case "${1:-}" in
-  --perturb-check)
-    perturb=1
-    ;;
-  "")
-    ;;
-  *)
-    echo "usage: $0 [--perturb-check]" >&2
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --green-only)
+      green_only=1
+      shift
+      ;;
+    --perturb-check)
+      perturb=1
+      shift
+      ;;
+    --shard)
+      perturb_shard="$2"
+      shift 2
+      ;;
+    "")
+      shift
+      ;;
+    *)
+      echo "usage: $0 [--green-only | --perturb-check [--shard 0|1|2|3|4]]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$green_only" -eq 1 && "$perturb" -eq 1 ]]; then
+  echo "error: --green-only and --perturb-check are mutually exclusive" >&2
+  exit 2
+fi
+
+if [[ -n "$perturb_shard" ]]; then
+  perturb=1
+  if [[ ! "$perturb_shard" =~ ^[0-4]$ ]]; then
+    echo "error: --shard must be 0|1|2|3|4 (got ${perturb_shard})" >&2
     exit 2
-    ;;
-esac
+  fi
+fi
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
   exit 2
 fi
 
-if [[ ! -x "$bin_batch" ]]; then
-  echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
-  exit 2
+if [[ "$green_only" -eq 1 || ( "$perturb" -eq 0 && -z "$perturb_shard" ) ]]; then
+  if [[ ! -x "$bin_batch" ]]; then
+    echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
+    exit 2
+  fi
 fi
 
 gate_model="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
@@ -53,8 +87,9 @@ phase_notice() {
 }
 
 dag_string_data() {
-  local name="$1"
-  grep -E "^data ${name}: String = \"" "$root/$gate_model" \
+  local model="$1"
+  local name="$2"
+  grep -E "^data ${name}: String = \"" "$root/$model" \
     | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
     | head -1
 }
@@ -69,6 +104,34 @@ list_claim_run_row_members() {
       print
     }
   ' "$root/$gate_model"
+}
+
+list_perturb_shard_members() {
+  local shard="$1"
+  local list_name
+  if [[ "$shard" -le 2 ]]; then
+    list_name="ci_runner_perturb_shard_${shard}_rows"
+    awk -v list="$list_name" '
+      $0 ~ "^data " list ": " { in_list = 1; next }
+      in_list && /^\]/ { in_list = 0 }
+      in_list && /^  ci_runner_gate_row_/ {
+        gsub(/^  /, "")
+        gsub(/,.*/, "")
+        print
+      }
+    ' "$root/$gate_model"
+  else
+    list_name="affected_testgen_perturb_shard_${shard}_rows"
+    awk -v list="$list_name" '
+      $0 ~ "^data " list ": " { in_list = 1; next }
+      in_list && /^\]/ { in_list = 0 }
+      in_list && /^  affected_testgen_gate_row_/ {
+        gsub(/^  /, "")
+        gsub(/,.*/, "")
+        print
+      }
+    ' "$root/$affected_testgen_gate_model"
+  fi
 }
 
 project_list_member_row() {
@@ -101,6 +164,50 @@ project_list_member_row() {
       in_row = 0
     }
   ' "$root/$gate_model"
+}
+
+project_affected_testgen_row() {
+  local name="$1"
+  awk -v n="$name" '
+    $0 ~ "^data " n ": AffectedTestgenClaimRunRow" { in_row = 1; label = ""; entry = ""; fn = "" }
+    in_row && /label: "/ {
+      sub(/.*label: "/, "")
+      sub(/".*/, "")
+      label = $0
+    }
+    in_row && /entry: / {
+      if ($0 ~ /entry: affected_testgen_gate_entry/) {
+        entry = "src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
+      } else if ($0 ~ /entry: "/) {
+        sub(/.*entry: "/, "")
+        sub(/".*/, "")
+        entry = $0
+      }
+    }
+    in_row && /function: "/ {
+      sub(/.*function: "/, "")
+      sub(/".*/, "")
+      fn = $0
+    }
+    in_row && /\}/ {
+      if (label != "" && entry != "" && fn != "") {
+        print label "\t" entry "\t" fn
+      }
+      in_row = 0
+    }
+  ' "$root/$affected_testgen_gate_model"
+}
+
+list_affected_testgen_row_members() {
+  awk '
+    /data affected_testgen_claim_run_rows:/ { in_list = 1; next }
+    in_list && /^\]/ { in_list = 0 }
+    in_list && /^  affected_testgen_gate_row_/ {
+      gsub(/^  /, "")
+      gsub(/,.*/, "")
+      print
+    }
+  ' "$root/$affected_testgen_gate_model"
 }
 
 run_row() {
@@ -167,120 +274,111 @@ path.write_text(text[:brace] + "{\n  false\n}" + text[end:], encoding="utf-8")
 PY
 }
 
-expected_count="$(dag_string_data ci_runner_node_frontier_claim_run_row_count)"
-if [[ -z "$expected_count" ]]; then
-  echo "error: missing ci_runner_node_frontier_claim_run_row_count in $gate_model" >&2
-  exit 2
-fi
-
-# Collect every row first so the GREEN pass can resolve each shared entry once.
-node_frontier_rows=()
-while IFS= read -r member; do
-  [[ -z "$member" ]] && continue
-  row="$(project_list_member_row "$member")"
-  if [[ -z "$row" ]]; then
-    echo "error: list member $member missing AffectedSetNodeFrontierClaimRunRow binding in $gate_model" >&2
-    exit 2
-  fi
-  node_frontier_rows+=("$row")
-done < <(list_claim_run_row_members)
-
-if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
-  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
-  exit 2
-fi
-
-# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
-nf_green_started=$SECONDS
-printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
-  | batch_green_pass "affected-set node-frontier"
-phase_notice "node-frontier green pass" "$nf_green_started"
-
-# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
-nf_perturb_started=$SECONDS
-row_count=0
-for row in "${node_frontier_rows[@]}"; do
-  IFS=$'\t' read -r label entry function <<< "$row"
-
-  if [[ "$perturb" -eq 1 ]]; then
+perturb_rows() {
+  local shard_label="$1"
+  shift
+  local rows=("$@")
+  local row_count=0
+  local row label entry function
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r label entry function <<< "$row"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
     mkdir -p "$tmp"
     cp -a src/v4 "$tmp/src"
     perturbed_entry="$tmp/src/${entry#src/v4/}"
     perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-set node-frontier perturb: ${label}"
+    echo "::group::${shard_label} perturb: ${label}" >&2
     if run_row "$tmp/src" "$perturbed_entry" "$function"; then
-      echo "::error::perturbed witness still passed: ${label}"
+      echo "::error::perturbed witness still passed: ${label}" >&2
       exit 1
     fi
-    echo "::endgroup::"
+    echo "::endgroup::" >&2
     rm -rf "$tmp"
     trap - EXIT
+    row_count=$((row_count + 1))
+  done
+  echo "$row_count"
+}
+
+collect_node_frontier_rows() {
+  local -n _out=$1
+  local member row
+  _out=()
+  while IFS= read -r member; do
+    [[ -z "$member" ]] && continue
+    row="$(project_list_member_row "$member")"
+    if [[ -z "$row" ]]; then
+      echo "error: list member $member missing AffectedSetNodeFrontierClaimRunRow binding in $gate_model" >&2
+      exit 2
+    fi
+    _out+=("$row")
+  done
+}
+
+collect_testgen_rows() {
+  local -n _out=$1
+  local member row
+  _out=()
+  while IFS= read -r member; do
+    [[ -z "$member" ]] && continue
+    row="$(project_affected_testgen_row "$member")"
+    if [[ -z "$row" ]]; then
+      echo "error: list member $member missing AffectedTestgenClaimRunRow binding in $affected_testgen_gate_model" >&2
+      exit 2
+    fi
+    _out+=("$row")
+  done
+}
+
+run_perturb_shard() {
+  local shard="$1"
+  local count_data model project_fn shard_label
+  local -a shard_rows=()
+  local member row expected_count row_count
+
+  if [[ "$shard" -le 2 ]]; then
+    model="$gate_model"
+    count_data="ci_runner_perturb_shard_${shard}_row_count"
+    project_fn=project_list_member_row
+    shard_label="affected-set node-frontier shard ${shard}"
+  else
+    model="$affected_testgen_gate_model"
+    count_data="affected_testgen_perturb_shard_${shard}_row_count"
+    project_fn=project_affected_testgen_row
+    shard_label="affected-testgen shard ${shard}"
   fi
-  row_count=$((row_count + 1))
-done
 
-if [[ "$perturb" -eq 1 ]]; then
-  phase_notice "node-frontier perturb pass (${row_count} rows)" "$nf_perturb_started"
-fi
+  expected_count="$(dag_string_data "$model" "$count_data")"
+  if [[ -z "$expected_count" ]]; then
+    echo "error: missing ${count_data} in $model" >&2
+    exit 2
+  fi
 
-if [[ "$row_count" -ne "$expected_count" ]]; then
-  echo "error: node-frontier gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
-  exit 2
-fi
+  while IFS= read -r member; do
+    [[ -z "$member" ]] && continue
+    row="$($project_fn "$member")"
+    if [[ -z "$row" ]]; then
+      echo "error: shard ${shard} member $member missing row binding in $model" >&2
+      exit 2
+    fi
+    shard_rows+=("$row")
+  done < <(list_perturb_shard_members "$shard")
 
-echo "::notice title=affected-set node-frontier::${row_count} discriminating witness(es) passed"
+  if [[ "${#shard_rows[@]}" -eq 0 ]]; then
+    echo "error: perturb shard ${shard} has no members" >&2
+    exit 2
+  fi
 
-affected_testgen_dag_string_data() {
-  local name="$1"
-  grep -E "^data ${name}: String = \"" "$root/$affected_testgen_gate_model" \
-    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
-    | head -1
-}
+  perturb_started=$SECONDS
+  row_count="$(perturb_rows "$shard_label" "${shard_rows[@]}")"
+  if [[ "$row_count" -ne "$expected_count" ]]; then
+    echo "error: perturb shard ${shard} projected ${row_count} rows; modeled count is ${expected_count}" >&2
+    exit 2
+  fi
 
-list_affected_testgen_row_members() {
-  awk '
-    /data affected_testgen_claim_run_rows:/ { in_list = 1; next }
-    in_list && /^\]/ { in_list = 0 }
-    in_list && /^  affected_testgen_gate_row_/ {
-      gsub(/^  /, "")
-      gsub(/,.*/, "")
-      print
-    }
-  ' "$root/$affected_testgen_gate_model"
-}
-
-project_affected_testgen_row() {
-  local name="$1"
-  awk -v n="$name" '
-    $0 ~ "^data " n ": AffectedTestgenClaimRunRow" { in_row = 1; label = ""; entry = ""; fn = "" }
-    in_row && /label: "/ {
-      sub(/.*label: "/, "")
-      sub(/".*/, "")
-      label = $0
-    }
-    in_row && /entry: / {
-      if ($0 ~ /entry: affected_testgen_gate_entry/) {
-        entry = "src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
-      } else if ($0 ~ /entry: "/) {
-        sub(/.*entry: "/, "")
-        sub(/".*/, "")
-        entry = $0
-      }
-    }
-    in_row && /function: "/ {
-      sub(/.*function: "/, "")
-      sub(/".*/, "")
-      fn = $0
-    }
-    in_row && /\}/ {
-      if (label != "" && entry != "" && fn != "") {
-        print label "\t" entry "\t" fn
-      }
-      in_row = 0
-    }
-  ' "$root/$affected_testgen_gate_model"
+  phase_notice "${shard_label} perturb pass (${row_count} rows)" "$perturb_started"
+  echo "::notice title=${shard_label}::${row_count} perturb witness(es) passed"
 }
 
 print_affected_testgen_real_diff_evidence() {
@@ -338,66 +436,72 @@ print_affected_testgen_real_diff_evidence() {
   echo "::endgroup::"
 }
 
+if [[ "$perturb" -eq 1 && -n "$perturb_shard" ]]; then
+  run_perturb_shard "$perturb_shard"
+  exit 0
+fi
+
+if [[ "$perturb" -eq 1 ]]; then
+  expected_shard_count="$(dag_string_data "$gate_model" ci_runner_perturb_shard_count)"
+  if [[ -z "$expected_shard_count" ]]; then
+    echo "error: missing ci_runner_perturb_shard_count in $gate_model" >&2
+    exit 2
+  fi
+  for shard in $(seq 0 $((expected_shard_count - 1))); do
+    run_perturb_shard "$shard"
+  done
+  exit 0
+fi
+
+expected_count="$(dag_string_data "$gate_model" ci_runner_node_frontier_claim_run_row_count)"
+if [[ -z "$expected_count" ]]; then
+  echo "error: missing ci_runner_node_frontier_claim_run_row_count in $gate_model" >&2
+  exit 2
+fi
+
+node_frontier_rows=()
+collect_node_frontier_rows node_frontier_rows < <(list_claim_run_row_members)
+
+if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
+  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
+  exit 2
+fi
+
+nf_green_started=$SECONDS
+printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
+  | batch_green_pass "affected-set node-frontier"
+phase_notice "node-frontier green pass" "$nf_green_started"
+
+row_count="${#node_frontier_rows[@]}"
+if [[ "$row_count" -ne "$expected_count" ]]; then
+  echo "error: node-frontier gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
+  exit 2
+fi
+
+echo "::notice title=affected-set node-frontier::${row_count} discriminating witness(es) passed"
+
 print_affected_testgen_real_diff_evidence
 
-expected_affected_testgen_count="$(affected_testgen_dag_string_data affected_testgen_claim_run_row_count)"
+expected_affected_testgen_count="$(dag_string_data "$affected_testgen_gate_model" affected_testgen_claim_run_row_count)"
 if [[ -z "$expected_affected_testgen_count" ]]; then
   echo "error: missing affected_testgen_claim_run_row_count in $affected_testgen_gate_model" >&2
   exit 2
 fi
 
-# Collect every row first so the GREEN pass can resolve each shared entry once.
 affected_testgen_rows=()
-while IFS= read -r member; do
-  [[ -z "$member" ]] && continue
-  row="$(project_affected_testgen_row "$member")"
-  if [[ -z "$row" ]]; then
-    echo "error: list member $member missing AffectedTestgenClaimRunRow binding in $affected_testgen_gate_model" >&2
-    exit 2
-  fi
-  affected_testgen_rows+=("$row")
-done < <(list_affected_testgen_row_members)
+collect_testgen_rows affected_testgen_rows < <(list_affected_testgen_row_members)
 
 if [[ "${#affected_testgen_rows[@]}" -eq 0 ]]; then
   echo "error: affected_testgen_claim_run_rows has no members in $affected_testgen_gate_model" >&2
   exit 2
 fi
 
-# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
 atg_green_started=$SECONDS
 printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
   | batch_green_pass "affected-testgen"
 phase_notice "affected-testgen green pass" "$atg_green_started"
 
-# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
-atg_perturb_started=$SECONDS
-affected_testgen_count=0
-for row in "${affected_testgen_rows[@]}"; do
-  IFS=$'\t' read -r label entry function <<< "$row"
-
-  if [[ "$perturb" -eq 1 ]]; then
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp"
-    cp -a src/v4 "$tmp/src"
-    perturbed_entry="$tmp/src/${entry#src/v4/}"
-    perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-testgen perturb: ${label}"
-    if run_row "$tmp/src" "$perturbed_entry" "$function"; then
-      echo "::error::perturbed witness still passed: ${label}"
-      exit 1
-    fi
-    echo "::endgroup::"
-    rm -rf "$tmp"
-    trap - EXIT
-  fi
-  affected_testgen_count=$((affected_testgen_count + 1))
-done
-
-if [[ "$perturb" -eq 1 ]]; then
-  phase_notice "affected-testgen perturb pass (${affected_testgen_count} rows)" "$atg_perturb_started"
-fi
-
+affected_testgen_count="${#affected_testgen_rows[@]}"
 if [[ "$affected_testgen_count" -ne "$expected_affected_testgen_count" ]]; then
   echo "error: affected-testgen gate projected ${affected_testgen_count} rows; modeled count is ${expected_affected_testgen_count}" >&2
   exit 2
