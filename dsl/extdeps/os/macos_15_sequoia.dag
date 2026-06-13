@@ -1,0 +1,16 @@
+// extdeps/os/macos_15_sequoia.dag — macOS 15 Sequoia cited catalog row.
+
+module extdeps.os.macos_15_sequoia
+
+import std.compute_fabric { Apfs, Darwin, PosixProcess }
+import std.os.types { Macos15Sequoia, OperatingSystemCatalogRow }
+
+// Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
+data macos_15_sequoia_catalog: OperatingSystemCatalogRow = OperatingSystemCatalogRow {
+  product: Macos15Sequoia,
+  kernel: Darwin,
+  distro_or_product: "macOS Sequoia",
+  version: "15",
+  filesystem_semantics: Apfs,
+  process_semantics: PosixProcess,
+}

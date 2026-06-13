@@ -1,0 +1,18 @@
+// std/os/types.dag — operating-system product taxonomy (no cited catalog data).
+
+module std.os.types
+
+import std.compute_fabric { KernelFamily, FileSystemSemantics, ProcessSemantics }
+import std.types { NonEmptyStr }
+
+// Product-line variants — enum tag is stable id; extdeps catalog row is cited authority.
+type OperatingSystemProduct = Ubuntu2404Lts | Windows1124H2 | Macos15Sequoia
+
+type OperatingSystemCatalogRow {
+  product: OperatingSystemProduct
+  kernel: KernelFamily
+  distro_or_product: NonEmptyStr
+  version: NonEmptyStr
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}

@@ -1,0 +1,16 @@
+// extdeps/os/ubuntu_24_04.dag — Ubuntu 24.04 LTS cited catalog row.
+
+module extdeps.os.ubuntu_24_04
+
+import std.compute_fabric { Linux, Posix, PosixProcess }
+import std.os.types { OperatingSystemCatalogRow, Ubuntu2404Lts }
+
+// Anchor: https://documentation.ubuntu.com/release-notes/24.04/
+data ubuntu_24_04_catalog: OperatingSystemCatalogRow = OperatingSystemCatalogRow {
+  product: Ubuntu2404Lts,
+  kernel: Linux,
+  distro_or_product: "Ubuntu",
+  version: "24.04 LTS (Noble Numbat)",
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}

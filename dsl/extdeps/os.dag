@@ -1,46 +1,45 @@
-// extdeps/os.dag — Operating-system distribution/product catalog (cited facts).
-// Scope: 3 cited OS rows inhabiting std.compute_fabric.OperatingSystemSurface.
-// Reuse: OperatingSystemSurface field bundle.
+// extdeps/os.dag — cited OS catalog dispatch (per-product rows in extdeps/os/*).
+// Scope: Ubuntu 24.04 LTS / Windows 11 24H2 / macOS 15 Sequoia.
+// Reuse: std.os.types.OperatingSystemCatalogRow + std.os.operating_system_surface.
 
 module extdeps.os
 
-import std.compute_fabric {
-  OperatingSystemSurface,
-  KernelFamily,
-  FileSystemSemantics,
-  ProcessSemantics,
-}
+import extdeps.os.macos_15_sequoia { macos_15_sequoia_catalog }
+import extdeps.os.ubuntu_24_04 { ubuntu_24_04_catalog }
+import extdeps.os.windows_11 { windows_11_catalog }
+import std.compute_fabric { OperatingSystemSurface }
 import std.list { List }
-
-// Anchor: https://documentation.ubuntu.com/release-notes/24.04/
-data ubuntu_24_04: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: Linux,
-  distro_or_product: "Ubuntu",
-  version: "24.04 LTS (Noble Numbat)",
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
+import std.os { operating_system_surface }
+import std.os.types {
+  Macos15Sequoia,
+  OperatingSystemCatalogRow,
+  OperatingSystemProduct,
+  Ubuntu2404Lts,
+  Windows1124H2,
 }
 
-// Anchor: https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
-data windows_11: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: WindowsNt,
-  distro_or_product: "Windows 11",
-  version: "24H2 (OS build 26100)",
-  filesystem_semantics: Ntfs,
-  process_semantics: WindowsProcess,
+fn os_catalog_row(product: OperatingSystemProduct) -> OperatingSystemCatalogRow {
+  match product {
+    Ubuntu2404Lts => ubuntu_24_04_catalog
+    Windows1124H2 => windows_11_catalog
+    Macos15Sequoia => macos_15_sequoia_catalog
+  }
 }
 
-// Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
-data macos_15_sequoia: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: Darwin,
-  distro_or_product: "macOS Sequoia",
-  version: "15",
-  filesystem_semantics: Apfs,
-  process_semantics: PosixProcess,
+fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {
+  operating_system_surface(os_catalog_row(product))
 }
+
+data ubuntu_24_04: OperatingSystemSurface = cited_operating_system_surface(Ubuntu2404Lts)
+data windows_11: OperatingSystemSurface = cited_operating_system_surface(Windows1124H2)
+data macos_15_sequoia: OperatingSystemSurface = cited_operating_system_surface(Macos15Sequoia)
 
 data os_catalog: List<OperatingSystemSurface> = [
   ubuntu_24_04,
   windows_11,
   macos_15_sequoia,
 ]
+
+// Operator fleet authority (srv1/srv2 run Ubuntu 24.04 LTS).
+data operator_fleet_os_product: OperatingSystemProduct = Ubuntu2404Lts
+data operator_fleet_os_surface: OperatingSystemSurface = cited_operating_system_surface(operator_fleet_os_product)

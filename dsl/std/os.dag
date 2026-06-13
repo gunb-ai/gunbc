@@ -1,0 +1,16 @@
+// std/os.dag — operating-system catalog projections (no cited rows).
+
+module std.os
+
+import std.compute_fabric { OperatingSystemSurface }
+import std.os.types { OperatingSystemCatalogRow }
+
+fn operating_system_surface(row: OperatingSystemCatalogRow) -> OperatingSystemSurface {
+  OperatingSystemSurface {
+    kernel: row.kernel,
+    distro_or_product: Some { value: row.distro_or_product },
+    version: Some { value: row.version },
+    filesystem_semantics: row.filesystem_semantics,
+    process_semantics: row.process_semantics,
+  }
+}

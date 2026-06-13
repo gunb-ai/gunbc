@@ -508,7 +508,10 @@ Each module is graded on how well it implements the upstream spec:
 
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
-| `os.dag` | 46 | A | Cited (per-row) | Ubuntu 24.04 LTS / Windows 11 24H2 / macOS 15 Sequoia as cited rows inhabiting `std.compute_fabric.OperatingSystemSurface` (kernel/fs/process facts). No new abstraction minted (M2) — grounds the previously-uninhabited surface |
+| `os.dag` | 45 | A | Cited (per-row) | Dispatch hub: `OperatingSystemProduct` enum → per-OS `extdeps/os/*` catalog rows → `std.os.operating_system_surface` projection. Operator fleet (`operator_fleet_os_surface`) wired to Ubuntu 24.04 LTS |
+| `os/ubuntu_24_04.dag` | 16 | A | Cited | Ubuntu 24.04 LTS (Noble Numbat) `OperatingSystemCatalogRow` |
+| `os/windows_11.dag` | 16 | A | Cited | Windows 11 24H2 (build 26100) `OperatingSystemCatalogRow` |
+| `os/macos_15_sequoia.dag` | 16 | A | Cited | macOS 15 Sequoia `OperatingSystemCatalogRow` |
 
 ### Rendering (internal, not external specs)
 
@@ -542,8 +545,8 @@ Each module is graded on how well it implements the upstream spec:
 ## Aggregate
 
 ```
-Total extdeps modules: 80
-  Grade A:   43  (54%)
+Total extdeps modules: 83
+  Grade A:   46  (55%)
   Grade B+:   9  (11%)
   Grade B:   13  (16%)
   Grade B-:   2   (3%)
@@ -551,9 +554,9 @@ Total extdeps modules: 80
   Grade C:    1   (1%)
   Ungraded:  11  (14%)  (rendering internals)
 
-Modules citing spec URLs:  ~9 of 80 (11%)
-Modules with inline endpoint URLs: ~12 of 80 (15%)
-Modules with no external reference: ~59 of 80 (74%)
+Modules citing spec URLs:  ~12 of 83 (14%)
+Modules with inline endpoint URLs: ~12 of 83 (14%)
+Modules with no external reference: ~59 of 83 (71%)
 ```
 
 ## Priority Fixes

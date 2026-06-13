@@ -10,6 +10,7 @@ module std.compute_fabric
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import extdeps.cloud.hetzner { cax41_catalog }
+import extdeps.os { operator_fleet_os_surface }
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize, hertz }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
@@ -122,10 +123,9 @@ type NetworkInterface {
 
 type OperatingSystemSurface {
   kernel: KernelFamily
-  // P-CF-OS: distro/version relaxed to Option. srv1/srv2 run Ubuntu 24.04; to be
-  // grounded via a forthcoming extdeps OS catalog + shared OS abstraction (next chunk)
-  // rather than inlined here — no dual representation. Hetzner OS is bound at provision
-  // time, so stays None on the offer surface.
+  // P-CF-OS: distro/version relaxed to Option. srv1/srv2 grounded via
+  // extdeps.os.operator_fleet_os_surface (Ubuntu 24.04 LTS catalog row). Hetzner OS is
+  // bound at provision time, so stays None on the offer surface.
   distro_or_product: Option<NonEmptyStr>
   version: Option<NonEmptyStr>
   filesystem_semantics: FileSystemSemantics
@@ -493,14 +493,6 @@ data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
 // --- §7 supply inhabitation (operator fleet + Hetzner CAX41) -------------------
 
 data operator_fleet_provider: ProviderIdentity = "operator-fleet"
-
-data operator_fleet_os_surface: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: Linux,
-  distro_or_product: none,
-  version: none,
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
-}
 
 data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
   os: operator_fleet_os_surface,
