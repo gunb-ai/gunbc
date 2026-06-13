@@ -15,6 +15,7 @@ module v4.test.claim.manual.ingest_bridge
 
 import v4.std.algebra { Cons, Empty }
 import v4.compiler.ingest {
+  cross_language_compile,
   parse_tree_to_emitted_node,
   parse_tree_to_target_model_bridge
 }
@@ -39,6 +40,7 @@ import v4.extdeps.languages.dag {
   dag_mvp1_selection_policy_node,
   dag_mvp1_serialize_source_node,
   dag_mvp1_source_text,
+  dag_mvp1_target_model,
   dag_wave1_lex
 }
 import v4.std.compilers.lexing { Token }
@@ -285,12 +287,38 @@ fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
+// (6) Cross-language compile (optional matrix convenience): the parsed source carried through the
+//     bridge to canonical IR, then EMITTED into a target model. Source = custom 1-row model; target
+//     = dag — so the recovered add core node serializes to dag surface. This asserts the full
+//     parse -> bridge -> infer -> emit composition runs and yields target source (exact surface
+//     fidelity is proven by RTADD / mvp1_dag_add_translate; here the composition's liveness is the
+//     claim). The off-row/ambiguous discriminations above already pin selection correctness.
+fn ingest_cross_language_compile_holds() -> Bool {
+  match ingest_parse() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: tree,
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok),
+        target_model: dag_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } =>
+          match source {
+            Cons { head: _, tail: _ } => true
+            Empty => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn ingest_bridge_realized() -> Bool {
   ingest_recovers_emitted_holds()
     && ingest_bridge_to_canonical_holds()
     && ingest_fails_closed_off_frontier_holds()
     && ingest_fails_closed_ambiguous_holds()
     && ingest_fails_closed_on_unstamped_holds()
+    && ingest_cross_language_compile_holds()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
