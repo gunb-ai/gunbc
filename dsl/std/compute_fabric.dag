@@ -195,7 +195,7 @@ fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
 fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
   // Label from execution surface when grounded; else host identity (Worksheet A §1.4).
   match surface.os.distro_or_product {
-    Some { value: distro } => distro
+    Present { value: distro } => distro
     None => host.identity
   }
 }
@@ -533,7 +533,7 @@ data supply_srv1_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
     execution: operator_fleet_execution_surface,
-    cost: Some { value: operator_fleet_owned_cost },
+    cost: Present { value: operator_fleet_owned_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
@@ -546,7 +546,7 @@ data supply_srv2_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu, supply_srv2_ram),
     execution: operator_fleet_execution_surface,
-    cost: Some { value: operator_fleet_owned_cost },
+    cost: Present { value: operator_fleet_owned_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
@@ -607,11 +607,11 @@ data supply_hetzner_cax41_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: hetzner_cax41_compute_host,
     execution: hetzner_cax41_execution_surface,
-    cost: Some { value: hetzner_per_second_cost },
+    cost: Present { value: hetzner_per_second_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: hetzner_api_availability_open, close: none },
-  cost_quote: Some { value: hetzner_cax41_cost_quote },
+  cost_quote: Present { value: hetzner_cax41_cost_quote },
   constraints: [],
 }
 

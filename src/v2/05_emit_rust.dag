@@ -3439,7 +3439,10 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
 fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent, field_bindings: fbs } =>
-      if n == "Present" && parent == Present { value: "Optional" } && fbs |> count == 1 {
+      if n == "Present" && match parent {
+        Present { value: p } => is_optional_coproduct_type_name(name: p)
+        Absent => false
+      } && fbs |> count == 1 {
         match fbs |> first {
           Present { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
@@ -4051,7 +4054,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
-        let qualified = if is_optional_variant_name(name: name) && enum_name == "Optional" {
+        let qualified = if is_optional_variant_name(name: name) && is_optional_coproduct_type_name(name: enum_name) {
           if name == "Present" { "Some" } else { "None" }
         } else {
           concat(enum_name, "::", name)
@@ -4106,7 +4109,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
         match variant_parent {
           Present { value: enum_name } =>
-            let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
+            let qualified = if is_optional_variant_name(name: n) && is_optional_coproduct_type_name(name: enum_name) {
               if n == "Present" { "Some" } else { "None" }
             } else {
               concat(enum_name, "::", n)
@@ -5556,7 +5559,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
     ExprVar { binding_kind: binding_kind } =>
-      if (n == "Present" || n == "Absent") && variant_parent_from_binding_kind(binding_kind: binding_kind) == Present { value: "Optional" } {
+      if (n == "Present" || n == "Absent") && is_optional_parent(parent_enum: variant_parent_from_binding_kind(binding_kind: binding_kind)) {
         true
       } else if n == "none" || n == "None" {
         true
@@ -5572,7 +5575,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     ExprRecordLit { parent_enum: parent } =>
       match tn {
-        Present { value: name } => parent == Present { value: "Optional" } && (name == "Present" || name == "Absent")
+        Present { value: type_name } => is_optional_parent(parent_enum: parent) && (type_name == "Present" || type_name == "Absent")
         Absent => false
       }
     ExprFieldAccess { summary: fa_summary } =>
