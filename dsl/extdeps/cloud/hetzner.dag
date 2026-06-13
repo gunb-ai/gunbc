@@ -12,7 +12,7 @@ import extdeps.cloud.compute {
   CloudPerSecondPrice,
   CloudVmCatalogRow,
   CloudVmShape,
-  VirtualCpuCount,
+  VirtualCpuCount
 }
 import std.cpu.types { CpuArchitecture }
 import std.measure { MemoryByteMagnitude, StorageByteMagnitude }
