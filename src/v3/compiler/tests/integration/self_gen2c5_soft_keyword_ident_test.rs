@@ -7,10 +7,10 @@ fn parser_accepts_kw_type_as_generated_soft_keyword_name_alias() {
     let source = "\
 type Example = Plain | type { type: Int }\n\
 data resource: Example = { type: 1 }\n";
-    let tokens = v3_compiler::tokenize_for_test(source, "sg2c5_soft_keyword_ident.v3")
+    let tokens = v3_compiler::tokenize_for_test(source, "self_gen2c5_soft_keyword_ident.v3")
         .expect("tokenize fixture");
-    let parsed =
-        v3_compiler::parse_for_test(&tokens, "sg2c5_soft_keyword_ident.v3").expect("parse fixture");
+    let parsed = v3_compiler::parse_for_test(&tokens, "self_gen2c5_soft_keyword_ident.v3")
+        .expect("parse fixture");
 
     match &parsed.items[0] {
         SurfaceItem::TypeSum { variants, .. } => {

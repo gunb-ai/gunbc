@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
-    // Same contract as `sg0_census_test::workspace_root`: `CARGO_MANIFEST_DIR` is
+    // Same contract as `self_gen0_census_test::workspace_root`: `CARGO_MANIFEST_DIR` is
     // `src/v3/compiler/`; the repo root is the third ancestor.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
