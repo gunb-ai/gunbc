@@ -33,6 +33,7 @@ struct Config {
     gate_entry: String,
     rows_fn: String,
     perturb: bool,
+    print_tsv_only: bool,
     notice_title: String,
 }
 
@@ -40,7 +41,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: ci-claim-gate --source-root <dir> [--source-root <dir> ...] \\\n\
          \x20       --gate-entry <file.dag> --rows-fn <function> \\\n\
-         \x20       [--perturb-check] [--notice-title <title>]"
+         \x20       [--perturb-check] [--print-tsv-only] [--notice-title <title>]"
     );
     std::process::exit(2);
 }
@@ -51,6 +52,7 @@ fn parse_args() -> Config {
     let mut gate_entry = None;
     let mut rows_fn = None;
     let mut perturb = false;
+    let mut print_tsv_only = false;
     let mut notice_title = "v4 CI claim gate".to_string();
 
     let mut i = 0;
@@ -69,6 +71,7 @@ fn parse_args() -> Config {
                 rows_fn = Some(args.get(i).cloned().unwrap_or_else(|| usage()));
             }
             "--perturb-check" => perturb = true,
+            "--print-tsv-only" => print_tsv_only = true,
             "--notice-title" => {
                 i += 1;
                 notice_title = args.get(i).cloned().unwrap_or_else(|| usage());
@@ -92,6 +95,7 @@ fn parse_args() -> Config {
             usage();
         }),
         perturb,
+        print_tsv_only,
         notice_title,
     }
 }
@@ -285,6 +289,11 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    if cfg.print_tsv_only {
+        print!("{tsv}");
+        return ExitCode::SUCCESS;
+    }
 
     let rows = parse_rows_tsv(&tsv);
     if rows.is_empty() {
