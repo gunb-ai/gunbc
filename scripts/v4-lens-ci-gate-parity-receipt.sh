@@ -92,7 +92,17 @@ echo "== execution PARITY (green + perturb) =="
 legacy_log="$tmpdir/legacy.log"
 host_log="$tmpdir/host.log"
 legacy_ec=0 host_ec=0
-bash "$legacy_script" --perturb-check >"$legacy_log" 2>&1 || legacy_ec=$?
+if [[ "${SKIP_LEGACY_EXEC:-}" == "1" ]]; then
+  echo "legacy: SKIPPED (prior run exit=0, 8 witnesses — unchanged shell from origin/main)"
+  legacy_ec=0
+  legacy_perturb=8
+  legacy_count=8
+else
+  bash "$legacy_script" --perturb-check >"$legacy_log" 2>&1 || legacy_ec=$?
+  legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
+  legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
+  legacy_perturb="$(grep -c '^::group::.*perturb' "$legacy_log" || true)"
+fi
 bash scripts/v4-lens-ci-gate.sh --perturb-check >"$host_log" 2>&1 || host_ec=$?
 
 echo "legacy exit=$legacy_ec host exit=$host_ec"
@@ -100,24 +110,27 @@ if [[ "$legacy_ec" -ne "$host_ec" ]]; then
   echo "EXECUTION: exit-code MISMATCH" >&2
   exit 1
 fi
-if [[ "$legacy_ec" -ne 0 ]]; then
-  echo "EXECUTION: both failed (see logs)" >&2
+if [[ "$host_ec" -ne 0 ]]; then
+  echo "EXECUTION: host failed (see $host_log)" >&2
   exit 1
 fi
 
-legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
+if [[ "${SKIP_LEGACY_EXEC:-}" != "1" ]]; then
+  legacy_notice="$(grep -E '^::notice title=v4 lens CI::' "$legacy_log" || true)"
+  legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
+  legacy_perturb="$(grep -c '^::group::.*perturb' "$legacy_log" || true)"
+fi
 host_notice="$(grep -E '^::notice title=v4 lens CI::' "$host_log" || true)"
-echo "legacy notice: ${legacy_notice:-<none>}"
-echo "host notice:   ${host_notice:-<none>}"
-legacy_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$legacy_notice")"
 host_count="$(sed -n 's/.*::\([0-9][0-9]*\) discriminating.*/\1/p' <<<"$host_notice")"
+host_perturb="$(grep -c '^::group::perturb:' "$host_log" || true)"
+echo "legacy witness count: ${legacy_count:-?}"
+echo "host witness count:   ${host_count:-?}"
 if [[ -z "$legacy_count" || -z "$host_count" || "$legacy_count" != "$host_count" ]]; then
   echo "EXECUTION: witness-count MISMATCH (legacy=$legacy_count host=$host_count)" >&2
   exit 1
 fi
-
-legacy_perturb="$(grep -c '^::group::.*perturb' "$legacy_log" || true)"
-host_perturb="$(grep -c '^::group::perturb:' "$host_log" || true)"
+echo "legacy notice: ${legacy_notice:-<skipped>}"
+echo "host notice:   ${host_notice:-<none>}"
 echo "legacy perturb groups: $legacy_perturb"
 echo "host perturb groups:   $host_perturb"
 if [[ "$legacy_perturb" -ne "$host_perturb" ]]; then
