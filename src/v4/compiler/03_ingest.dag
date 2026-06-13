@@ -17,19 +17,25 @@
 
 module v4.compiler.ingest
 
-import v4.std.algebra { Empty, list_append }
+import v4.std.algebra { Empty, list_append, zip_eq }
 import v4.std.collection { List }
-import v4.std.grammar { ParseTree, node_atom_identity_optional }
+import v4.std.grammar {
+  ParseTree,
+  grammar_relation_field_emitted,
+  grammar_relation_field_tokens,
+  node_atom_identity_optional
+}
 import v4.std.node_query { find_named_child }
 import v4.std.compilers.target_model {
   TargetModel,
+  concrete_syntax_token_class,
+  concrete_syntax_token_list_from_node,
   target_model_edge_translation_rules
 }
 import v4.compiler.compile { CoreNode }
 import v4.compiler.infer { infer }
 import v4.compiler.translate {
   coerce_grounded_node,
-  grammar_relation_row_for_emitted,
   target_bundle_child,
   translate
 }
@@ -48,7 +54,13 @@ import v4.std.diagnostic {
 }
 
 // Named fail-closed reasons — the gaps are located, never silent shims.
-data parse_tree_to_emitted_node_no_production_identity: Symbol = ^parse_tree_to_emitted_node_no_production_identity
+// Forward-selection (Option A) fail-closed reasons. The parse FRONTIER (the token classes the
+// parse actually consumed) selects the row; trusting the stamped emitted is explicitly forbidden
+// (signed design #4821, Option A: "select on FRONTIER, not the stamp"). No row whose production
+// token-spine matches the frontier -> fail closed; >1 such row -> the grammar is not
+// forward-deterministic at this frontier (G.2) -> fail closed.
+data parse_tree_to_emitted_node_no_matching_row: Symbol = ^parse_tree_to_emitted_node_no_matching_row
+data parse_tree_to_emitted_node_ambiguous_row: Symbol = ^parse_tree_to_emitted_node_ambiguous_row
 
 // ─────────────────────────────────────────────────────────────────────────────
 // F5 Option A (signed design #4821) — operational parse tree -> formal capture frontier.
@@ -97,46 +109,129 @@ fn operational_parse_tree_project_to_formal_captures(captured: Node) -> List<Sym
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Forward fold: ParseTree -> emit-side core Node.
+// Forward selection (signed design #4821, Option A) — row token-spine ↔ parse frontier.
 //
-// The parse stage stamps every production tree as a Conj carrying the production's emitted
-// TEMPLATE under `grammar_production_identity_node_projection` and the parsed children under
-// `grammar_production_captured_node_projection` (02_parse.parse_wrap_production_captured).
-// The forward interpreter (i) projects the emitted template, (ii) confirms ROW-DRIVEN that the
-// template is a declared translation row of `source_model` (fail-closed otherwise — this is the
-// generic gate; an arbitrary node that no row emits is rejected), and returns the emit-side core
-// node the parse committed to.
-//
-// NOTE (composition / nesting): for the add keystone the production is FLAT and its emitted is a
-// static TYPE template (e.g. Arrow[int,int,int]) — untyped sources like python `def add(x,y)`
-// carry no type tokens, so the slots are NOT built from captures; they are the row's declared
-// template. The general node-step recurses into captured nested-production children and composes
-// their emitted into the template's nonterminal slots; the flat add case has no such children, so
-// composition is the validated template. Per the signed design, build-from-captures applies only
-// where the source carries the slot tokens; row-confirm + frontier validation is the base step.
-fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
-  match find_named_child(
-    root: parse_tree,
-    name: ^grammar_production_identity_node_projection
-  ) {
-    Rejected { diagnostics: _ } =>
-      outcome_rejected(d: Diagnostic {
-        reason: parse_tree_to_emitted_node_no_production_identity,
-        at: node_locus(node: parse_tree),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
-    Accepted { value: emitted, diagnostics: _ } =>
-      // Row-driven gate: the emitted template must be a declared translation row of source_model.
+// A translation row node is a Conj carrying `grammar_relation_field_tokens` (the production's
+// concrete token spine, a fold_list_node named-cons of ConcreteSyntaxToken wire-nodes) and
+// `grammar_relation_field_emitted` (the emit-side core node the row commits to). The forward
+// interpreter recovers the emitted by matching the row's token-spine CLASSES against the parse
+// frontier — it never reads the parse tree's stamped emitted template (Option A: the stamp is not
+// trusted for selection; the frontier the parse actually consumed is the source of truth).
+
+// A row's production token-spine, projected to its ordered token CLASSES (bindings dropped — class
+// is what the frontier carries). Mirrors the wire-node decode `06_translate` serialize uses.
+fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    f: fn(tokens_root) {
       bind_outcome(
-        o: target_bundle_child(target: source_model, edge_name: target_model_edge_translation_rules),
-        f: fn(rules) {
-          bind_outcome(
-            o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-            f: fn(_row) { outcome_accepted(value: emitted) }
+        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+        f: fn(tokens) {
+          let classes = fold(
+            tokens,
+            init: Empty,
+            f: fn(acc, t) {
+              list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+            }
           )
+          outcome_accepted(value: classes)
         }
       )
+    }
+  )
+}
+
+// Three-state fold accumulator for unique forward selection (G.2 forward-determinism): a frontier
+// that matches no row fails closed; one that matches >1 row is non-deterministic and fails closed.
+type ForwardRowSelection
+  = ForwardRowNone
+  | ForwardRowOne { emitted: Node }
+  | ForwardRowMany
+
+fn forward_row_select_step(acc: ForwardRowSelection, frontier: List<Symbol>, row: Node) -> ForwardRowSelection {
+  match row_token_spine_classes(row: row) {
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: spine, diagnostics: _ } =>
+      if zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y }) {
+        match find_named_child(root: row, name: grammar_relation_field_emitted) {
+          Rejected { diagnostics: _ } => acc
+          Accepted { value: row_emitted, diagnostics: _ } =>
+            match acc {
+              ForwardRowNone => ForwardRowOne { emitted: row_emitted }
+              ForwardRowOne { emitted: _ } => ForwardRowMany
+              ForwardRowMany => ForwardRowMany
+            }
+        }
+      } else {
+        acc
+      }
   }
+}
+
+// Select the unique translation row whose production token-spine CLASSES equal the parse frontier,
+// returning that row's emit-side core node. GENERIC — every row is tried by the same structural
+// class-spine match; no per-language / per-production arm.
+fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        rules.children,
+        init: ForwardRowNone,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: _ } => forward_row_select_step(acc: acc, frontier: frontier, row: e.target)
+            Positional => acc
+          }
+        }
+      ) {
+        ForwardRowOne { emitted: emitted } => outcome_accepted(value: emitted)
+        ForwardRowMany =>
+          outcome_rejected(d: Diagnostic {
+            reason: parse_tree_to_emitted_node_ambiguous_row,
+            at: node_locus(node: rules),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        ForwardRowNone =>
+          outcome_rejected(d: Diagnostic {
+            reason: parse_tree_to_emitted_node_no_matching_row,
+            at: node_locus(node: rules),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: parse_tree_to_emitted_node_no_matching_row,
+        at: node_locus(node: rules),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forward fold: ParseTree -> emit-side core Node.
+//
+// (i) Project the parse tree to its token-class FRONTIER (the operational->formal projection skips
+// the static `grammar_production_identity_node_projection` template edge and collects the consumed
+// Atom token classes left-to-right). (ii) Forward-SELECT the unique source_model row whose
+// production token-spine matches that frontier, returning the row's emit-side core node. The
+// stamped emitted is never consulted: the parse committed to a token sequence, and the row that
+// sequence belongs to determines the core node (Option A, signed #4821).
+//
+// NOTE (composition / nesting): for the add keystone the production is FLAT — its frontier is the
+// full terminal spine and its emitted is a static TYPE template (e.g. Arrow[int,int,int]); untyped
+// sources like python `def add(x,y)` carry no type tokens, so the slots come from the row template,
+// not the captures. The general node-step recurses per nested production, matching each level's
+// frontier against its row and composing the emitted into the parent's nonterminal slots; the flat
+// add case has no nested-production children, so the matched row's emitted IS the composition. Per
+// the signed design, build-from-captures applies only where the source carries the slot tokens.
+fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
+  let frontier = operational_parse_tree_project_to_formal_captures(captured: parse_tree)
+  bind_outcome(
+    o: target_bundle_child(target: source_model, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      grammar_relation_row_forward_selection(frontier: frontier, rules: rules)
+    }
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
