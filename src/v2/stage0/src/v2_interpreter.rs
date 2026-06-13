@@ -133,6 +133,19 @@ impl SymbolInterner {
             .map(|s| s.as_str())
             .unwrap_or("<invalid-symbol>")
     }
+
+    /// Estimated heap bytes for the intern table (string payloads + index keys).
+    fn heap_bytes(&self) -> u64 {
+        let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
+        for s in &self.strings {
+            bytes += s.len() as u64;
+        }
+        bytes += (self.index.len() * std::mem::size_of::<(String, u32)>()) as u64;
+        for key in self.index.keys() {
+            bytes += key.len() as u64;
+        }
+        bytes
+    }
 }
 
 thread_local! {
@@ -144,9 +157,17 @@ thread_local! {
 fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
     ACTIVE_CTX.with(|cell| {
         let prev = cell.replace(Some(ctx as *const InterpContext));
-        let result = f();
-        cell.set(prev);
-        result
+        struct ActiveCtxGuard<'a> {
+            cell: &'a std::cell::Cell<Option<*const InterpContext>>,
+            prev: Option<*const InterpContext>,
+        }
+        impl Drop for ActiveCtxGuard<'_> {
+            fn drop(&mut self) {
+                self.cell.set(self.prev);
+            }
+        }
+        let _guard = ActiveCtxGuard { cell, prev };
+        f()
     })
 }
 
@@ -857,6 +878,18 @@ fn account_named_fields(
     }
 }
 
+fn account_interner(
+    ctx_ptr: usize,
+    interner: &SymbolInterner,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(ctx_ptr, "(interner)", visited, acc) {
+        return;
+    }
+    acc.add_unique("(interner)", interner.heap_bytes());
+}
+
 fn account_value(
     value: &Value,
     visited: &mut std::collections::HashSet<usize>,
@@ -1004,6 +1037,7 @@ impl InterpContext {
         for value in extra_roots {
             account_value(value, &mut visited, &mut acc);
         }
+        acc.add_unique("(interner)", self.symbols.borrow().heap_bytes());
         acc
     }
 
@@ -4050,6 +4084,14 @@ fn record_flatten(items: usize) {
 fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
+    let monoid_syms = active_ctx().map(|ctx| {
+        (
+            ctx.sym("Empty"),
+            ctx.sym("Cons"),
+            ctx.sym("head"),
+            ctx.sym("tail"),
+        )
+    });
     loop {
         match &cur {
             Value::List(items) => {
@@ -4070,29 +4112,21 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 fields,
                 ..
             } => {
-                let empty = active_ctx().map(|ctx| ctx.sym("Empty"));
-                let cons = active_ctx().map(|ctx| ctx.sym("Cons"));
-                let head = active_ctx().map(|ctx| ctx.sym("head"));
-                let tail = active_ctx().map(|ctx| ctx.sym("tail"));
-                match (empty, cons, head, tail) {
-                    (Some(empty), Some(cons), Some(head_sym), Some(tail_sym))
-                        if *variant_name == empty =>
-                    {
-                        record_flatten(out.len());
-                        return Some(out);
-                    }
-                    (Some(_empty), Some(cons), Some(head_sym), Some(tail_sym))
-                        if *variant_name == cons =>
-                    {
-                        match (fields.get(&head_sym), fields.get(&tail_sym)) {
-                            (Some(head), Some(tail)) => {
-                                out.push(head.clone());
-                                cur = tail.clone();
-                            }
-                            _ => return None,
+                let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
+                if *variant_name == empty_sym {
+                    record_flatten(out.len());
+                    return Some(out);
+                }
+                if *variant_name == cons_sym {
+                    match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                        (Some(head), Some(tail)) => {
+                            out.push(head.clone());
+                            cur = tail.clone();
                         }
+                        _ => return None,
                     }
-                    _ => return None,
+                } else {
+                    return None;
                 }
             }
             _ => return None,
