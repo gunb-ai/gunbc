@@ -608,87 +608,10 @@ fn grammar_inverse_bodied_arrow_validated(
     }
   )
 }
-// E-9 bodied Arrow: signature slots coerce to raw target inhabitant carriers so
-// grammar_inverse exact emitted-node match succeeds; shell wrapping is for binding
-// projection sites, not grammar-row signature equality.
-fn translate_bodied_arrow_coerce_signature_slot_raw(
-  node: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<Node> {
-  match coerce_grounded_node(source: node, tree: tree, target: target) {
-    Accepted { value: coerced, diagnostics: d } =>
-      Accepted { value: coerced.target, diagnostics: d }
-    Rejected { diagnostics: r } =>
-      match canonical_grounding_for_node(tree: tree, node: node) {
-        Accepted { value: grounding } =>
-          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
-            outcome_accepted(value: grounding.witness.structural.evidence)
-          } else {
-            Rejected { diagnostics: r }
-          }
-        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
-      }
-  }
-}
-
-fn translate_bodied_arrow_coerce_signature_slots(
-  arrow: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<Node> {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      match fold(
-        arrow.children,
-        init: Accepted { value: Empty, diagnostics: None },
-        f: fn(acc, edge) {
-          match acc {
-            Rejected { diagnostics: r } => acc
-            Accepted { value: edges, diagnostics: d } =>
-              match edge.label {
-                Positional =>
-                  bind_outcome(
-                    o: translate_bodied_arrow_coerce_signature_slot_raw(
-                      node: edge.target,
-                      tree: tree,
-                      target: target
-                    ),
-                    f: fn(coerced_slot) {
-                      outcome_accepted(
-                        list_snoc_item(
-                          xs: edges,
-                          item: Edge {
-                            label: Positional,
-                            target: coerced_slot
-                          }
-                        )
-                      )
-                    }
-                  )
-                Named { name: n } =>
-                  if n == arrow_body_edge {
-                    outcome_accepted(
-                      list_snoc_item(xs: edges, item: edge)
-                    )
-                  } else {
-                    outcome_rejected(
-                      translate_grammar_relation_row_not_found_diagnostic(emitted: arrow)
-                    )
-                  }
-              }
-          }
-        }
-      ) {
-        Accepted { value: children, diagnostics: d } =>
-          outcome_accepted(
-            value: node_rebuild(n: arrow, children: children)
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
-    _ =>
-      outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: arrow))
-  }
+// E-9 bodied Arrow: serialize derives signature from grammar scaffold + body from
+// value-expression projection — preserve producer IR unchanged through translate.
+fn translate_bodied_arrow_preserve_producer_ir(arrow: Node) -> Outcome<Node> {
+  outcome_accepted(arrow)
 }
 fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
@@ -3775,13 +3698,7 @@ fn translate_type_expression_tree(
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if arrow_has_transform_body(arrow: node) {
-    // E-9 bodied Arrow: skip structure-preserving fold (it rewrites body-scope atoms through
-    // binding projection shells). Coerce signature slots only; preserve producer body IR.
-    translate_bodied_arrow_coerce_signature_slots(
-      arrow: node,
-      tree: tree,
-      target: target
-    )
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     bind_outcome(
       o: fold_node(
@@ -3898,7 +3815,7 @@ fn translate_node_computation(
     }
   )
 }
-fn translate_node_mvp1(
+fn translate_node_mvp1_fold(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3910,6 +3827,17 @@ fn translate_node_mvp1(
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )
+}
+fn translate_node_mvp1(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  if arrow_has_transform_body(arrow: node) {
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
+  } else {
+    translate_node_mvp1_fold(node: node, tree: tree, target: target)
+  }
 }
 fn translate_node(
   node: Node,
