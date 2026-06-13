@@ -91,6 +91,21 @@ fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
             flatten_items as f64 / flatten_calls as f64
         }
     );
+    let intern = ctx.interner_stats_snapshot();
+    eprintln!("[interp-stats] symbol interning receipt (#4799; this context):");
+    eprintln!(
+        "  {:<12} {:>12} calls  {:>16} distinct  {:>16} hits  (dedup {:.1}x; {} heap bytes)",
+        "intern",
+        intern.calls,
+        intern.distinct,
+        intern.hits,
+        if intern.distinct == 0 {
+            0.0
+        } else {
+            intern.calls as f64 / intern.distinct as f64
+        },
+        intern.heap_bytes
+    );
     eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
     eprint!("{}", ctx.account_retained_memory(&[]));
     eprintln!("[interp-stats] process memory:");
