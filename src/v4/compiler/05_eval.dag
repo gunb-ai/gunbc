@@ -2140,6 +2140,81 @@ fn eval_fold_init(
   }
 }
 
+fn eval_fold_control_transfer_state(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_runtime_node_is_control_transfer(node: n) {
+    eval_fold_control_transfer_state(
+      node: n,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    fold_list(
+      xs: n.children,
+      empty: eval_fold_init(
+        node: n,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      ),
+      cons: fn(acc, e) {
+        eval_fold_step(
+          acc: acc,
+          edge: e,
+          child: eval_fold_tree(
+            n: e.target,
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          ),
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      }
+    )
+  }
+}
+
 fn eval_maybe_complete_node(
   node: Node,
   progress: EvalProgress,
@@ -2320,32 +2395,13 @@ fn eval_runtime_node_via_data_flow_fold(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  let folded = fold_node(
+  let folded = eval_fold_tree(
     n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        eval_fold_init(
-          node: n0,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      },
-      step: fn(acc, e, child) {
-        eval_fold_step(
-          acc: acc,
-          edge: e,
-          child: child,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      }
-    }
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
   )
   eval_fold_state_value(state: folded)
 }
