@@ -504,6 +504,12 @@ Each module is graded on how well it implements the upstream spec:
 | `tools/package_managers.dag` | 160 | A | **Missing** | Platform matrix, install semantics correct |
 | `tools/rust_toolchain.dag` | 146 | A | **Missing** | Channels, components, editions, targets correct |
 
+### Operating Systems
+
+| Module | Lines | Grade | Spec URL | Notes |
+|--------|-------|-------|----------|-------|
+| `os.dag` | 46 | A | Cited (per-row) | Ubuntu 24.04 LTS / Windows 11 24H2 / macOS 15 Sequoia as cited rows inhabiting `std.compute_fabric.OperatingSystemSurface` (kernel/fs/process facts). No new abstraction minted (M2) — grounds the previously-uninhabited surface |
+
 ### Rendering (internal, not external specs)
 
 | Module | Lines | Grade | Notes |
