@@ -41,8 +41,19 @@ CEILINGS = {
         "ci_floor": 60,
         "ci_floor_parity": 60,
         "ci_floor_emit": 60,
-        "v4_lens_gate": 20,  # pre-#4633 ceiling, restored by #4719
-        "v4_lens_ci": 20,
+        # INTERIM 35m (2026-06-13): uncontended base structurally outgrew 20m
+        # (witness-row + perturb-closure growth: ~2min/resolve over 73-source
+        # closures mid-perturb; #4792/#4785/#4786 all green-then-killed at
+        # 20m22s; reruns cannot fix a structural overrun). Budget rule:
+        # documented uncontended wall (~16m) x2 = 32, rounded to 35. The x2
+        # multiplier covers typical merge-wave DRAM-bandwidth contention
+        # (measured 1.5-2.6x, 2.5x observed twice); the 2.0-2.6x tail is
+        # accepted as rare manual-rerun territory. Dissolve-on: perturb-phase
+        # split into a parallel job and/or #4783 multi-entry claim_batch
+        # parse-cache adoption land -- both shrink the uncontended wall back
+        # under the 20m shape; re-derive the ceiling under the budget rule.
+        "v4_lens_gate": 35,
+        "v4_lens_ci": 35,
         "timeout_budgets": 5,
         "ci": 5,
     },
@@ -145,11 +156,27 @@ def perturb_check(workflows_dir: Path) -> int:
         shutil.copytree(workflows_dir, tmp_dir)
         target = tmp_dir / "ci.yml"
         text = target.read_text()
-        planted, n = re.subn(
-            r"timeout-minutes: 20", "timeout-minutes: 21", text, count=1
-        )
+        # Derive the plant target from the declared ceilings rather than
+        # hardcoding a value: pick the first ci.yml job whose declared
+        # timeout-minutes literal appears in the file, and raise it by 1
+        # past its ceiling. A hardcoded value rots the moment budgets
+        # change (the previous 'timeout-minutes: 20' plant broke when the
+        # last 20m budgets were raised).
+        planted, n = "", 0
+        for job, ceiling in CEILINGS["ci.yml"].items():
+            planted, n = re.subn(
+                rf"timeout-minutes: {ceiling}\b",
+                f"timeout-minutes: {ceiling + 1}",
+                text,
+                count=1,
+            )
+            if n == 1:
+                break
         if n != 1:
-            print("perturb-check could not plant a raise (no 'timeout-minutes: 20')")
+            print(
+                "perturb-check could not plant a raise (no declared ceiling "
+                "value found verbatim in ci.yml)"
+            )
             return 1
         target.write_text(planted)
         errors = run_gate(tmp_dir)
