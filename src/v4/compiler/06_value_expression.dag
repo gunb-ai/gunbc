@@ -6,7 +6,11 @@
 module v4.compiler.value_expression
 
 import v4.std.algebra { fold_list, length }
-import v4.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
+import v4.extdeps.languages.dag {
+  dag_mvp1_node_is_kw_false_atom,
+  dag_mvp1_node_is_kw_true_atom,
+  dag_surface_operator_canonicalization_member
+}
 import v4.std.collection {
   Absent,
   List,
@@ -35,6 +39,8 @@ import v4.std.diagnostic {
 import v4.std.node {
   all_edges_positional,
   Atom,
+  Bind,
+  Branch,
   ComputationNode,
   Conj,
   Edge,
@@ -63,7 +69,9 @@ import v4.std.compilers.target_model {
   target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
   target_value_expression_binding_ref,
+  target_value_expression_conditional,
   target_value_expression_primitive_apply,
+  target_value_expression_symbol_identity,
   target_value_expression_to_concrete_tokens,
   target_wave1_add_signature_matches
 }
@@ -172,6 +180,187 @@ fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
         _ => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Branch } =>
+          length(xs: node_positional_child_targets(node: body)) == 3
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
+  value_expr_arrow_has_transform_body(arrow: arrow)
+    || value_expr_arrow_has_branch_body(arrow: arrow)
+}
+
+fn value_expr_atom_to_symbol_identity_token(atom: Symbol) -> Outcome<Symbol> {
+  outcome_accepted(atom)
+}
+
+// 🟡 gated — feature:value-expression-pick-literal-binding-ref — consumer:value_expr_project_pick_literal_atom —
+// bind:node://adhoc-ecf6bf2b-84c — dissolve-on: Q-B2 literal-arm binding table lands; forbidden: hand-rolled
+// int-literal token_class projection for M0 pick arms past this interim map.
+fn value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+  if id == ^dag_mvp1_pick_lit_one {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_one)
+    )
+  } else if id == ^dag_mvp1_pick_lit_two {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_two)
+    )
+  } else {
+    bind_outcome(
+      o: value_expr_atom_to_symbol_identity_token(atom: id),
+      f: fn(token_class) {
+        outcome_accepted(
+          target_value_expression_symbol_identity(identity: token_class)
+        )
+      }
+    )
+  }
+}
+
+fn value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      value_expr_project_pick_literal_atom(id: id)
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
+}
+
+fn value_expr_branch_bool_gate(node: Node) -> Bool {
+  if length(xs: node_positional_child_targets(node: node)) != 3 {
+    false
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Present { value: cond } =>
+        dag_mvp1_node_is_kw_true_atom(node: cond)
+          || dag_mvp1_node_is_kw_false_atom(node: cond)
+      Absent => false
+    }
+  }
+}
+
+// 🟡 gated — feature:value-expression-branch-positional-m0 — consumer:project_branch_bool_if_else —
+// bind: design-comprep-m0-branch-mapping.md §12.9(A) — dissolve-on: Q-B1 named pattern edges for
+// match (M0-B5); forbidden: silent ordinal coupling past M0 Bool-if-else.
+fn project_branch_bool_if_else(
+  arrow: Node,
+  body: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  if !value_expr_branch_bool_gate(node: body) {
+    outcome_rejected(
+      value_expr_diagnostic(
+        reason: value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          value_expr_diagnostic(
+            reason: value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: cond } =>
+        match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+          Absent =>
+            outcome_rejected(
+              value_expr_diagnostic(
+                reason: value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+          Present { value: then_arm } =>
+            match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+              Absent =>
+                outcome_rejected(
+                  value_expr_diagnostic(
+                    reason: value_expr_reason_transform_shape_invalid,
+                    node: body
+                  )
+                )
+              Present { value: else_arm } =>
+                bind_outcome(
+                  o: value_expr_project_body_subexpression(
+                    arrow: arrow,
+                    node: cond,
+                    target: target
+                  ),
+                  f: fn(projected_cond) {
+                    bind_outcome(
+                      o: value_expr_project_body_subexpression(
+                        arrow: arrow,
+                        node: then_arm,
+                        target: target
+                      ),
+                      f: fn(projected_then) {
+                        bind_outcome(
+                          o: value_expr_project_body_subexpression(
+                            arrow: arrow,
+                            node: else_arm,
+                            target: target
+                          ),
+                          f: fn(projected_else) {
+                            outcome_accepted(
+                              target_value_expression_conditional(
+                                condition: projected_cond,
+                                then_arm: projected_then,
+                                else_arm: projected_else
+                              )
+                            )
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+            }
+        }
+    }
+  }
+}
+
+fn value_expr_project_body_subexpression(
+  arrow: Node,
+  node: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      project_transform_primitive_apply_in_arrow_scope(
+        arrow: arrow,
+        body: node,
+        target: target
+      )
+    ComputationNode { behavior: Branch } =>
+      project_branch_bool_if_else(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Atom { identity: _ } } =>
+      value_expr_project_atom_literal(node: node)
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
   }
 }
 
@@ -366,9 +555,9 @@ fn value_expression_to_concrete_tokens(
   )
 }
 
-// Export wrapper — disposition on value_expr_arrow_has_transform_body (Practice 10 consumer site).
+// Export wrapper — disposition on value_expr_arrow_has_value_expression_body (Practice 10 consumer site).
 fn arrow_has_transform_body(arrow: Node) -> Bool {
-  value_expr_arrow_has_transform_body(arrow: arrow)
+  value_expr_arrow_has_value_expression_body(arrow: arrow)
 }
 
 fn project_arrow_body_to_value_expression(
@@ -377,11 +566,23 @@ fn project_arrow_body_to_value_expression(
 ) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
-      project_transform_primitive_apply_in_arrow_scope(
-        arrow: arrow,
-        body: body,
-        target: target
-      )
+      match body.kind {
+        ComputationNode { behavior: Transform } =>
+          project_transform_primitive_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            target: target
+          )
+        ComputationNode { behavior: Branch } =>
+          project_branch_bool_if_else(arrow: arrow, body: body, target: target)
+        _ =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+      }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }

@@ -54,6 +54,12 @@ CEILINGS = {
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
         "v4_lens_ci": 35,
+        # Non-gating Wave-1 §11.7 timings aggregator: mirrors the `affected` setup
+        # (checkout + rust + sccache bin build) + the shell-free .dag github.Actions fetch
+        # (collect-affected-set-timings, which embeds v2-compiler) + one emit. Budget rule
+        # (documented uncontended wall x2): v2-compiler is sccache-warm from the floor jobs;
+        # warm wall ~1-2m, cold-build tail ~3-4m; 4m x2 = 8. Re-derive from the first green run.
+        "affected_timings": 8,
         "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
         "v4_claim_witness_corpus_b": 20,
         "timeout_budgets": 5,
