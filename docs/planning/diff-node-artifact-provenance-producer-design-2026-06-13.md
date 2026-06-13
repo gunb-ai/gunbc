@@ -122,10 +122,12 @@ authority, attach-don't-mint.** The whole-tree enumeration + discovery-receipt s
 producer share one enumeration authority (one walk, not two). Approved with **four binding
 conditions** (implementation gated; design refinement in-doc allowed now):
 
-1. **Sequencing.** `affects_v4` tripwire first (already GO) → **#4785 corpus gate MERGES** (in final
-   sign verification; re-raise if it stalls past **2026-06-14 EOD**) → *then* the relocation model
-   PR. Producer implementation lands strictly **after** the relocation. No implementation here until
-   tripwire **and** #4785 both clear.
+1. **Sequencing.** `affects_v4` tripwire first (already GO) → **#4785 corpus gate MERGES with its
+   hand-enumerated manifest** (in final sign verification; re-raise if it stalls past **2026-06-14
+   EOD**) → relocation/promotion model PR → producer → **corpus-manifest-dissolve PR** (the named
+   consumer below). Producer implementation lands strictly **after** the relocation; the dissolve
+   lands strictly **after** the producer. No implementation here until tripwire **and** #4785 both
+   clear.
 2. **Shape.** A **standalone model PR** that declares the promoted types at the
    compiler/source-authority layer **and migrates the discovery-lane consumers in the same PR** —
    never a window with two live enumerators. M9 obligation: the PR description must DFS from `std/`
@@ -182,6 +184,35 @@ arc, not as competing detectors (M9: still one "what changed" authority througho
 So Part 2 closes the source_authority API gap **minimally**: add the whole-ingest enumerator + fold
 returning `FreeMonoid<NodeArtifactProvenance>`; leave `SourceIrArtifactProvenance`/`span_index`
 sealed until a span-consuming lane needs it.
+
+### Named consumer — corpus-manifest dissolution (#4785 endpoint, operator-flagged)
+
+The producer is **load-bearing on a concrete endpoint**, not a someday-note: the #4785 corpus gate
+ships with a **hand-enumerated `ClaimWitnessCorpusClaimRunRow` manifest** (operator-flagged as the
+thing to dissolve). Once the single enumeration authority exists (the promoted discovery types this
+producer shares), corpus enrollment goes **discovery-driven off that same authority** — there is one
+whole-tree walk, and both "which nodes are affected" (producer) and "which witnesses exist"
+(corpus) read it.
+
+Two distinct layers, kept separate:
+
+- **Enrollment (discovery, default-on):** every discovered Bool witness enrolls **`ExpectPass` by
+  default**. Add-a-witness-file ⇒ auto-enrolled, **zero manifest edits**. The hand manifest
+  dissolves to **exceptions-only** — `ExpectFail` rows with live bind anchors remain, because a
+  judgment is a *declaration*, not an enumeration, and declarations never dissolve.
+- **Selection (producer, per-diff):** the affected-set frontier (this producer → `edit_locus` →
+  `affected_set_rerun_nodes`) narrows **which enrolled witnesses actually RUN** for a given diff.
+  Enrollment is the universe; selection is the per-PR subset. Selection never changes enrollment.
+
+**Acceptance criterion (anti-cement, same-PR).** The dissolve PR must **cite the hand-list as the
+artifact it deletes** and prove equivalence *before* deleting it: discovery enumeration reproduces
+the hand manifest's pass/fail baseline (the operator's **15 ExpectPass / 5 ExpectFail** split) as a
+by-execution receipt, **then** the hand-enumerated rows die **in the same PR**, leaving only the
+`ExpectFail` exception rows. No window exists where discovery and the hand-list are both live
+authorities (M9), and no window exists where the rows are deleted before discovery is proven against
+them (anti-cement). This is the same `tripwire → producer → retire` arc applied to the corpus
+manifest: the hand manifest is the interim authority; discovery off the shared enumeration is the
+durable subsumer.
 
 ### What Part 2 does NOT do (non-goals, per RR-K §5 + MODELING M9)
 
