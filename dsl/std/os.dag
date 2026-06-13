@@ -1,0 +1,49 @@
+// std/os.dag — derive OperatingSystemSurface from distribution catalog rows (projection only).
+
+module std.os
+
+import std.os.types {
+  Apfs,
+  Darwin,
+  Linux,
+  MacosDistributionCatalogRow,
+  Ntfs,
+  OperatingSystemSurface,
+  Posix,
+  PosixProcess,
+  UbuntuDistributionCatalogRow,
+  WindowsDistributionCatalogRow,
+  WindowsNt,
+  WindowsProcess,
+}
+import std.primitives { concat }
+
+fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {
+  OperatingSystemSurface {
+    kernel: Linux,
+    distro_or_product: Some { value: "Ubuntu" },
+    version: Some { value: row.release_label },
+    filesystem_semantics: Posix,
+    process_semantics: PosixProcess,
+  }
+}
+
+fn operating_system_surface_windows(row: WindowsDistributionCatalogRow) -> OperatingSystemSurface {
+  OperatingSystemSurface {
+    kernel: WindowsNt,
+    distro_or_product: Some { value: "Windows 11" },
+    version: Some { value: concat(row.release_label, " (OS build ", row.os_build, ")") },
+    filesystem_semantics: Ntfs,
+    process_semantics: WindowsProcess,
+  }
+}
+
+fn operating_system_surface_macos(row: MacosDistributionCatalogRow) -> OperatingSystemSurface {
+  OperatingSystemSurface {
+    kernel: Darwin,
+    distro_or_product: Some { value: "macOS Sequoia" },
+    version: Some { value: row.annual_release_label },
+    filesystem_semantics: Apfs,
+    process_semantics: PosixProcess,
+  }
+}
