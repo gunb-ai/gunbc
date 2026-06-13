@@ -122,8 +122,10 @@ type NetworkInterface {
 
 type OperatingSystemSurface {
   kernel: KernelFamily
-  // Relaxed to Option: operator fleet and Hetzner Cloud derive distro/version at
-  // provisioning time — not fixed in either provider's offer surface (P-CF-OS).
+  // P-CF-OS: distro/version relaxed to Option. srv1/srv2 run Ubuntu 24.04; to be
+  // grounded via a forthcoming extdeps OS catalog + shared OS abstraction (next chunk)
+  // rather than inlined here — no dual representation. Hetzner OS is bound at provision
+  // time, so stays None on the offer surface.
   distro_or_product: Option<NonEmptyStr>
   version: Option<NonEmptyStr>
   filesystem_semantics: FileSystemSemantics
