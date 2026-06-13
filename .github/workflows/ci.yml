@@ -765,7 +765,8 @@ jobs:
       id: v4-v2-bin
       uses: actions/cache/restore@v5
       with:
-        # claim_batch is now required by v4-lens-ci-gate.sh (multi-entry green pass).
+        # claim_batch was required by the legacy v4-lens-ci-gate.sh; ci-claim-gate supersedes
+        # the awk/grep roster projection but still uses the v2 interpreter host pattern.
         # Substrate-equivalence (C9) needs discover_owned_data. Use a distinct key
         # namespace ('gunbc-lens-gate2-bin-') so caches from before claim_batch was
         # added (namespace 'gunbc-lens-gate-bin-') never restore and skip its build.
@@ -789,6 +790,8 @@ jobs:
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Ensure ci-claim-gate binary (v4 lens gate)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
     - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       uses: actions/cache/save@v5
