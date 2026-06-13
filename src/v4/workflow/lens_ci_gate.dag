@@ -15,8 +15,8 @@ module v4.workflow.lens_ci_gate
 import v4.std.collection { List }
 import v4.std.algebra { fold_list_right }
 
-// M2 Lens-CI claim-run transport authority. The live shell gate projects this list;
-// it does not own a parallel witness roster.
+// M2 Lens-CI claim-run transport authority. `lens_ci_claim_run_rows` is the sole roster;
+// `lens_ci_claim_run_rows_tsv()` projects it for the `ci-claim-gate` host (no shell awk/grep).
 type LensCiClaimRunRow {
   label: String
   entry: String
