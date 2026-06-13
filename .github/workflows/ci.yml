@@ -589,18 +589,23 @@ jobs:
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
     runs-on: [self-hosted, linux, arm64]
-    # INTERIM 30m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
+    # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
     # job's UNCONTENDED wall structurally outgrew 20m via witness-row and
     # perturb-closure growth (~2min/resolve over 73-source closures; jobs ran
     # all witnesses GREEN then died at 20m22s mid-perturb; a third rerun also
-    # timed out, so reruns cannot recover a structural overrun). Sized by the
-    # lane rule: uncontended wall (~15m) x2 headroom for the canary-measured
-    # 1.5-2.6x merge-wave DRAM-bandwidth contention multiplier.
+    # timed out, so reruns cannot recover a structural overrun). Budget rule:
+    # documented uncontended wall (~16m) x2 contention headroom = 32, rounded
+    # to 35. Multiplier justification: merge-wave DRAM-bandwidth contention
+    # measured 1.5-2.6x (canary 2026-06-12; 2.5x observed on both lens phases
+    # and the #4785 corpus job); x2 covers typical waves, the 2.0-2.6x tail is
+    # accepted as rare manual-rerun territory and shrinks with the 2026-06-12
+    # 8-channel DIMM upgrade (+33% peak bandwidth).
     # Dissolve-on: perturb-phase split (parallel job, precedent: this very
     # gate/ci split) and/or #4783 parse-cache adoption shrink the uncontended
-    # wall back under the 20m shape -- restore 20 then. Do not raise further
-    # to absorb a slow step; root-cause it (enforced by timeout_budgets).
-    timeout-minutes: 30
+    # wall back under the 20m shape -- re-derive under the budget rule then.
+    # Do not raise further to absorb a slow step; root-cause it (enforced by
+    # timeout_budgets).
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -669,7 +674,11 @@ jobs:
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 20
+    # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
+    # as v4_lens_gate above (uncontended wall ~16m x2 = 32, rounded to 35;
+    # #4786 ran 9/9 witnesses green and was killed mid-perturb on a third
+    # rerun -- structural overrun, not contention-recoverable).
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |

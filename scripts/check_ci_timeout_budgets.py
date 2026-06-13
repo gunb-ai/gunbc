@@ -41,17 +41,19 @@ CEILINGS = {
         "ci_floor": 60,
         "ci_floor_parity": 60,
         "ci_floor_emit": 60,
-        # INTERIM 30m (2026-06-13): uncontended base structurally outgrew 20m
+        # INTERIM 35m (2026-06-13): uncontended base structurally outgrew 20m
         # (witness-row + perturb-closure growth: ~2min/resolve over 73-source
         # closures mid-perturb; #4792/#4785/#4786 all green-then-killed at
-        # 20m22s; reruns cannot fix a structural overrun). Sized by the
-        # lane rule: documented_uncontended_wall (~15m) x2 headroom for the
-        # measured 1.5-2.6x merge-wave DRAM-bandwidth contention multiplier.
-        # Dissolve-on: perturb-phase split into a parallel job and/or #4783
-        # multi-entry claim_batch parse-cache adoption land -- both shrink
-        # the uncontended wall back under the 20m shape; restore 20 then.
-        "v4_lens_gate": 30,
-        "v4_lens_ci": 30,
+        # 20m22s; reruns cannot fix a structural overrun). Budget rule:
+        # documented uncontended wall (~16m) x2 = 32, rounded to 35. The x2
+        # multiplier covers typical merge-wave DRAM-bandwidth contention
+        # (measured 1.5-2.6x, 2.5x observed twice); the 2.0-2.6x tail is
+        # accepted as rare manual-rerun territory. Dissolve-on: perturb-phase
+        # split into a parallel job and/or #4783 multi-entry claim_batch
+        # parse-cache adoption land -- both shrink the uncontended wall back
+        # under the 20m shape; re-derive the ceiling under the budget rule.
+        "v4_lens_gate": 35,
+        "v4_lens_ci": 35,
         "timeout_budgets": 5,
         "ci": 5,
     },
