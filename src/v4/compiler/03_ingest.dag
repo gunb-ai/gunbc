@@ -17,7 +17,9 @@
 
 module v4.compiler.ingest
 
-import v4.std.grammar { ParseTree }
+import v4.std.algebra { Empty, list_append }
+import v4.std.collection { List }
+import v4.std.grammar { ParseTree, node_atom_identity_optional }
 import v4.std.node_query { find_named_child }
 import v4.std.compilers.target_model {
   TargetModel,
@@ -31,7 +33,7 @@ import v4.compiler.translate {
   target_bundle_child,
   translate
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Edge, Named, Node, Positional, Symbol }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -47,6 +49,52 @@ import v4.std.diagnostic {
 
 // Named fail-closed reasons — the gaps are located, never silent shims.
 data parse_tree_to_emitted_node_no_production_identity: Symbol = ^parse_tree_to_emitted_node_no_production_identity
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F5 Option A (signed design #4821) — operational parse tree -> formal capture frontier.
+//
+// 🟡 dissolve-on: G.3 forward interpreter — feature:operational-parse-tree-formal-capture-projection
+//    · consumer:parse_tree_to_emitted_node (forward selection) · TRACKED-OBLIGATION:
+//    when 02_parse emits formal `emitted`-shaped trees directly for row-backed productions
+//    (Mgr-CONSOLIDATION G.3 stage adoption), this projection dissolves and the fold consumes
+//    formal captures with no operational shim. Surfaced to Mgr-EMIT as a tracked obligation, not
+//    mark-and-forget.
+//
+// Bounded projection from the operational parse shape (02_parse GrammarExpr walk: Atom leaves +
+// Sequence Conj with `grammar_sequence_left/right_node_projection` + production-wrapped Conj with
+// identity TEMPLATE + captured edges) to the flat token-class frontier the forward selection
+// matches against a row's production. GENERIC — structural recursion, no per-language /
+// per-production arm: it skips the static `grammar_production_identity_node_projection` template
+// edge (not a source token) and recurses into every other child, collecting Atom token classes
+// left-to-right.
+fn operational_parse_tree_project_to_formal_captures(captured: Node) -> List<Symbol> {
+  match node_atom_identity_optional(node: captured) {
+    Present { value: id } => list_append(left: Empty, right: [id])
+    Absent =>
+      fold(
+        captured.children,
+        init: Empty,
+        f: fn(acc, edge) {
+          match edge.label {
+            Named { name: n } =>
+              if n == ^grammar_production_identity_node_projection {
+                acc
+              } else {
+                list_append(
+                  left: acc,
+                  right: operational_parse_tree_project_to_formal_captures(captured: edge.target)
+                )
+              }
+            Positional =>
+              list_append(
+                left: acc,
+                right: operational_parse_tree_project_to_formal_captures(captured: edge.target)
+              )
+          }
+        }
+      )
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Forward fold: ParseTree -> emit-side core Node.
