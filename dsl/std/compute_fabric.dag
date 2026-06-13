@@ -579,7 +579,8 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
-  // P-CF-BYTESIZE: vCPU/RAM/disk via cax41_catalog raw Int fields; shared stopgap (no AltraMax Hz).
+  // P-CF-BYTESIZE: cax41_catalog vcpus/memory_bytes/disk_bytes not yet in processors[]/memory[];
+  // physical facts deferred — cost_quote.expected_units is the only catalog field wired today.
   processors: [],
   memory: [],
   storage: [],
@@ -593,7 +594,8 @@ data hetzner_per_second_cost: CostModel = CostModel {
 
 data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
   model: hetzner_per_second_cost,
-  // P-CF-BYTESIZE: hourly_eur_micros raw Int until Measure<Currency,_> value typing lands.
+  // P-CF-BYTESIZE: hourly_eur_micros raw Int → expected_units: Float (no typer yet);
+  // dissolves when Measure<Currency,_> value typing lands.
   expected_units: cax41_catalog.hourly_eur_micros,
   currency: "EUR",
 }
@@ -663,7 +665,8 @@ fn witness_srv2_offer_rejects_vm_demand() -> Bool {
   }
 }
 
-// Cross-provider: Hetzner CAX41 Vm supply admits Vm demand (Eligible witness).
+// Cross-provider: Hetzner Vm isolation admits Vm demand — isolation-lattice only until
+// hetzner_cax41_compute_host physical facts are plumbed from cax41_catalog (P-CF-BYTESIZE).
 fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
   match satisfies(offer: supply_hetzner_cax41_offer, demand: vm_isolation_work_demand) {
     Eligible { witness: _ } => true
