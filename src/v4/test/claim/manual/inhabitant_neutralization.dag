@@ -6,7 +6,11 @@ module v4.test.claim.manual.inhabitant_neutralization
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer }
-import v4.extdeps.languages.go { go_mvp1_target_model }
+import v4.extdeps.languages.go {
+  go_int64_additive_numeric_inhabitant_node,
+  go_int64_falsifier_emitted_add_fn_node,
+  go_mvp1_target_model
+}
 import v4.extdeps.languages.python {
   python_int_inhabitant_node,
   python_mvp1_emitted_add_fn_node
@@ -50,6 +54,15 @@ fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(
+    inhabitant: go_int64_additive_numeric_inhabitant_node()
+  ) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: std_projection_additive_numeric,
@@ -60,8 +73,28 @@ fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: go_int64_falsifier_emitted_add_fn_node(),
+    target: ts_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
-  inhabitant_neutralization_go_int64_target_lookup_holds()
+  inhabitant_neutralization_go_int64_std_projection_holds()
+    && inhabitant_neutralization_go_int64_target_lookup_holds()
+    && inhabitant_neutralization_go_int64_to_ts_emit_holds()
 }
 
 fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {

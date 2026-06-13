@@ -1519,6 +1519,21 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
 }
 }
 
+// Cond-3 falsifier carrier: same MVP1 add-fn shape as go_mvp1_emitted_add_fn_node but inhabitants
+// are go-int64 wired to shared std_projection_additive_numeric (extdeps-only, zero new bridge key).
+fn go_int64_falsifier_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      go_named_edge(name: ^go_surface_fn_item, target: go_inhabitant_atom(id: ^go_surface_fn_item)),
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
 fn go_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
