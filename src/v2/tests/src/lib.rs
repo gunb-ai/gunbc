@@ -75,3 +75,5 @@ mod v2_compiler_lib_test;
 mod value_carrier_swap_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
+#[cfg(test)]
+mod width_nat_type_arg_test;
