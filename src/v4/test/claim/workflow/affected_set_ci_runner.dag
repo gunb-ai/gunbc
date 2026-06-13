@@ -467,3 +467,33 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
 ]
 
 data ci_runner_node_frontier_claim_run_row_count: String = "9"
+
+// Perturb-phase shards (3 rows each): CI matrix job `v4_lens_ci_perturb` runs one shard
+// per matrix leg; max-parallel capped via V4_LENS_CI_PERTURB_MAX_PARALLEL (default 4).
+// Shards 3–4 live in affected_testgen_ci_runner.dag. Full --perturb-check (no --shard)
+// remains for local audit across all five shards.
+data ci_runner_perturb_shard_count: String = "5"
+
+data ci_runner_perturb_shard_0_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
+  ci_runner_gate_row_narrow_selection,
+  ci_runner_gate_row_fail_closed_superset,
+  ci_runner_gate_row_shape_collision
+]
+
+data ci_runner_perturb_shard_0_row_count: String = "3"
+
+data ci_runner_perturb_shard_1_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
+  ci_runner_gate_row_inner_frontier,
+  ci_runner_gate_row_discovered_narrow,
+  ci_runner_gate_row_discovered_fail_closed
+]
+
+data ci_runner_perturb_shard_1_row_count: String = "3"
+
+data ci_runner_perturb_shard_2_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
+  ci_runner_gate_row_discovered_shape,
+  ci_runner_gate_row_discovered_inner,
+  ci_runner_gate_row_four_phase
+]
+
+data ci_runner_perturb_shard_2_row_count: String = "3"
