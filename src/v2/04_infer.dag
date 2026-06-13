@@ -2678,13 +2678,21 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if needs_alias_field_expansion(n: n, env: env) {
+  let peeled = if needs_alias_field_expansion(n: n, env: env) {
     let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-    let expanded = if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none { resolve_node(n: once, env: env, module_name: module_name).resolved } else { once }
-    resolve_scrutinee_type_node(env: env, n: expanded)
-  } else {
-    resolve_scrutinee_type_node(env: env, n: n)
-  }
+    if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
+      resolve_node(n: once, env: env, module_name: module_name).resolved
+    } else { once }
+  } else { n }
+  let normed = resolve_scrutinee_type_node(env: env, n: peeled)
+  if normed.connective == Conj || normed.connective == Disj { normed }
+  else if normed.inferred != none {
+    match normed.inferred {
+      Present { value: Resolved { node: target } } =>
+        if target.connective == Conj || target.connective == Disj { target } else { normed }
+      _ => normed
+    }
+  } else { normed }
 }
 
 fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<Node>? {
