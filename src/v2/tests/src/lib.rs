@@ -44,7 +44,7 @@ mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
-mod money_carrier_cost_witness_test;
+mod measure_field_access_debug_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
