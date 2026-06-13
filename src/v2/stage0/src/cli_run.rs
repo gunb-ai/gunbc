@@ -455,66 +455,64 @@ pub fn handle_run_with_options(
         }
     };
 
-    // Run the interpreter
+    // Run the interpreter — keep one context alive for symbol resolution while
+    // printing and classifying the return value (ctrl#1533 phase 3).
     eprintln!("running {}()...", function);
-    match v2_interpreter::run_with_options(
-        graph,
-        result.source_indices.clone(),
-        &function,
-        dry_run,
-        !claim_run,
-    ) {
-        Ok(val) => {
-            println!("{}", val);
-            if claim_run {
-                // Witness entry points return Bool; fail-closed like ProcessExit below.
-                match &val {
-                    v2_interpreter::Value::Bool(false) => std::process::exit(1),
-                    v2_interpreter::Value::Bool(true) => return,
-                    other => {
+    let ctx = v2_interpreter::InterpContext::new(graph, result.source_indices.clone(), dry_run);
+    v2_interpreter::with_active_context(&ctx, || {
+        match v2_interpreter::run_in_context(&ctx, &function, !claim_run) {
+            Ok(val) => {
+                println!("{}", val);
+                if claim_run {
+                    // Witness entry points return Bool; fail-closed like ProcessExit below.
+                    match &val {
+                        v2_interpreter::Value::Bool(false) => std::process::exit(1),
+                        v2_interpreter::Value::Bool(true) => return,
+                        other => {
+                            eprintln!(
+                                "error: function `{}` returned `{}`, not `Bool`. \
+                                 With --claim-run the entry must return Bool (false → exit 1).",
+                                function, other
+                            );
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                // FAIL-CLOSED EXIT CODE CONTRACT
+                //
+                // Functions invoked via `dag run` MUST return std/process.dag's
+                // ProcessExit variant. The host translates ExitSuccess → 0 and
+                // ExitFailure { code } → code. Any other return value is a
+                // programmer error: the host cannot tell whether the function
+                // succeeded or failed, so it exits 2 with a clear diagnostic.
+                //
+                // This makes silent failure IMPOSSIBLE: a function whose result
+                // type isn't structurally ProcessExit cannot accidentally exit 0
+                // when its rich result represents failure. Compose internal
+                // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
+                // points must wrap their result in ProcessExit explicitly.
+                match classify_exit(&val, &ctx) {
+                    ExitClass::Success => {} // exit 0 (default)
+                    ExitClass::Failure(code) => std::process::exit(code),
+                    ExitClass::NotProcessExit { type_name } => {
                         eprintln!(
-                            "error: function `{}` returned `{}`, not `Bool`. \
-                             With --claim-run the entry must return Bool (false → exit 1).",
-                            function, other
+                            "error: function `{}` returned `{}`, not `ProcessExit`. \
+                             Functions invoked via `dag run` must return std/process.dag's \
+                             ProcessExit so the host can map success/failure to an exit code. \
+                             Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
+                             --claim-run for Bool witness entry points under src/v4.",
+                            function, type_name
                         );
                         std::process::exit(2);
                     }
                 }
             }
-            // FAIL-CLOSED EXIT CODE CONTRACT
-            //
-            // Functions invoked via `dag run` MUST return std/process.dag's
-            // ProcessExit variant. The host translates ExitSuccess → 0 and
-            // ExitFailure { code } → code. Any other return value is a
-            // programmer error: the host cannot tell whether the function
-            // succeeded or failed, so it exits 2 with a clear diagnostic.
-            //
-            // This makes silent failure IMPOSSIBLE: a function whose result
-            // type isn't structurally ProcessExit cannot accidentally exit 0
-            // when its rich result represents failure. Compose internal
-            // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
-            // points must wrap their result in ProcessExit explicitly.
-            match classify_exit(&val) {
-                ExitClass::Success => {} // exit 0 (default)
-                ExitClass::Failure(code) => std::process::exit(code),
-                ExitClass::NotProcessExit { type_name } => {
-                    eprintln!(
-                        "error: function `{}` returned `{}`, not `ProcessExit`. \
-                         Functions invoked via `dag run` must return std/process.dag's \
-                         ProcessExit so the host can map success/failure to an exit code. \
-                         Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                         --claim-run for Bool witness entry points under src/v4.",
-                        function, type_name
-                    );
-                    std::process::exit(2);
-                }
+            Err(e) => {
+                eprintln!("runtime error: {}", e);
+                std::process::exit(1);
             }
         }
-        Err(e) => {
-            eprintln!("runtime error: {}", e);
-            std::process::exit(1);
-        }
-    }
+    });
 }
 
 /// Classification of a `dag run` return value for exit-code mapping.
@@ -535,27 +533,29 @@ enum ExitClass {
 ///   ProcessExit::ExitSuccess              → Success
 ///   ProcessExit::ExitFailure { code, .. } → Failure(code)
 ///   anything else                         → NotProcessExit (fail-closed at host)
-fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
+fn classify_exit(val: &v2_interpreter::Value, ctx: &v2_interpreter::InterpContext) -> ExitClass {
     match val {
         v2_interpreter::Value::Variant {
             type_name,
             variant_name,
             fields,
         } => {
-            if type_name != "ProcessExit" {
+            if !ctx.sym_eq(*type_name, "ProcessExit") {
                 return ExitClass::NotProcessExit {
-                    type_name: type_name.clone(),
+                    type_name: ctx.resolve(*type_name),
                 };
             }
-            match variant_name.as_str() {
-                "ExitSuccess" => ExitClass::Success,
-                "ExitFailure" => match fields.get("code") {
+            if ctx.sym_eq(*variant_name, "ExitSuccess") {
+                ExitClass::Success
+            } else if ctx.sym_eq(*variant_name, "ExitFailure") {
+                match ctx.field(fields, "code") {
                     Some(v2_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
                     _ => ExitClass::Failure(1),
-                },
-                _ => ExitClass::NotProcessExit {
-                    type_name: format!("ProcessExit::{}", variant_name),
-                },
+                }
+            } else {
+                ExitClass::NotProcessExit {
+                    type_name: format!("ProcessExit::{}", ctx.resolve(*variant_name)),
+                }
             }
         }
         _ => ExitClass::NotProcessExit {

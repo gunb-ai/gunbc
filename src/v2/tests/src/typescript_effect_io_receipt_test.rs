@@ -22,7 +22,7 @@
 use std::rc::Rc;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
-use v2_compiler::v2_interpreter::{self, Value};
+use v2_compiler::v2_interpreter::{self, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -52,7 +52,7 @@ fn witness_sources() -> Vec<Rc<SourceFile>> {
 /// `serialize_concrete_syntax_tokens_to_source` builds its result via `Empty`/`Cons`/`list_append`,
 /// so the value arrives as a native `Str`, a `Cons`/`Empty` codepoint chain, or a `List` of
 /// codepoint `Int`s. Flatten all three to a Rust `String`.
-fn decode_freemonoid_string(val: &Value) -> String {
+fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
     fn codepoint(v: &Value) -> char {
         match v {
             Value::Int(n) => char::from_u32(*n as u32)
@@ -69,18 +69,27 @@ fn decode_freemonoid_string(val: &Value) -> String {
             loop {
                 match cur {
                     Value::Variant {
-                        ref variant_name,
-                        ref fields,
+                        variant_name,
+                        fields,
                         ..
-                    } => match variant_name.as_str() {
-                        "Empty" => break,
-                        "Cons" => {
-                            let head = fields.get("head").expect("Cons.head");
-                            out.push(codepoint(head));
-                            cur = fields.get("tail").expect("Cons.tail").clone();
+                    } => {
+                        if ctx.sym_eq(variant_name, "Empty") {
+                            break;
                         }
-                        other => panic!("unexpected FreeMonoid variant {other}"),
-                    },
+                        if ctx.sym_eq(variant_name, "Cons") {
+                            let head = ctx.field(&fields, "head").expect("Cons.head");
+                            out.push(codepoint(head));
+                            cur = ctx
+                                .field(&fields, "tail")
+                                .expect("Cons.tail")
+                                .clone();
+                            continue;
+                        }
+                        panic!(
+                            "unexpected FreeMonoid variant {}",
+                            ctx.resolve(variant_name)
+                        );
+                    }
                     Value::Str(s) => {
                         out.push_str(&s);
                         break;
@@ -109,9 +118,10 @@ fn emitted_source(function: &str) -> String {
         "expected clean resolved graph for {WITNESS_ENTRY}, got diagnostics {blocking:?}"
     );
     let graph = resolved.graph.as_ref().expect("resolved graph");
-    let value = v2_interpreter::run(graph, resolved.source_indices.clone(), function)
+    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), false);
+    let value = v2_interpreter::run_in_context(&ctx, function, true)
         .unwrap_or_else(|e| panic!("run {function}: {e:?}"));
-    decode_freemonoid_string(&value)
+    decode_freemonoid_string(&value, &ctx)
 }
 
 #[test]

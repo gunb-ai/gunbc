@@ -35,7 +35,7 @@ use std::thread;
 use v2_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_value, ClaimOutcome,
 };
-use v2_compiler::v2_interpreter::Value;
+use v2_compiler::v2_interpreter::{InterpContext, Value};
 
 /// One runnable claim, projected from a `ClaimRef` record in the plan value.
 #[derive(Clone)]
@@ -57,7 +57,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 /// Walk the std `List` representation (the `FreeMonoid` Cons/Empty coproduct)
 /// into a borrowed Vec of element values. `gunbc` renders `List<T>` as
 /// `Cons { head, tail } | Empty`, not `Value::List`.
-fn free_monoid_elems(value: &Value) -> Result<Vec<&Value>, String> {
+fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'a Value>, String> {
     let mut out = Vec::new();
     let mut cur = value;
     loop {
@@ -66,16 +66,18 @@ fn free_monoid_elems(value: &Value) -> Result<Vec<&Value>, String> {
                 variant_name,
                 fields,
                 ..
-            } if variant_name == "Cons" => {
-                let head = fields
-                    .get("head")
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
                     .ok_or_else(|| "Cons without `head` field".to_string())?;
                 out.push(head);
-                cur = fields
-                    .get("tail")
+                cur = ctx
+                    .field(fields, "tail")
                     .ok_or_else(|| "Cons without `tail` field".to_string())?;
             }
-            Value::Variant { variant_name, .. } if variant_name == "Empty" => return Ok(out),
+            Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => {
+                return Ok(out);
+            }
             // Tolerate an eager `Value::List` too, in case the representation
             // ever changes; keeps the walker honest rather than silently wrong.
             Value::List(items) => {
@@ -92,9 +94,9 @@ fn free_monoid_elems(value: &Value) -> Result<Vec<&Value>, String> {
     }
 }
 
-fn claim_ref_from_value(value: &Value) -> Result<ClaimRef, String> {
+fn claim_ref_from_value(value: &Value, ctx: &InterpContext) -> Result<ClaimRef, String> {
     let fields = match value {
-        Value::Record { type_name, fields } if type_name == "ClaimRef" => fields,
+        Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => fields,
         other => {
             return Err(format!(
                 "expected a ClaimRef record, got {}",
@@ -103,7 +105,7 @@ fn claim_ref_from_value(value: &Value) -> Result<ClaimRef, String> {
         }
     };
     let str_field = |name: &str| -> Result<String, String> {
-        match fields.get(name) {
+        match ctx.field(fields, name) {
             Some(Value::Str(s)) => Ok(s.clone()),
             Some(other) => Err(format!("ClaimRef.{} is {}, not String", name, other)),
             None => Err(format!("ClaimRef missing field `{}`", name)),
@@ -116,12 +118,12 @@ fn claim_ref_from_value(value: &Value) -> Result<ClaimRef, String> {
 }
 
 /// Parse the plan value `List<List<ClaimRef>>` into ordered batches of claims.
-fn batches_from_plan(plan: &Value) -> Result<Vec<Vec<ClaimRef>>, String> {
+fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<ClaimRef>>, String> {
     let mut batches = Vec::new();
-    for batch_val in free_monoid_elems(plan)? {
+    for batch_val in free_monoid_elems(plan, ctx)? {
         let mut batch = Vec::new();
-        for claim_val in free_monoid_elems(batch_val)? {
-            batch.push(claim_ref_from_value(claim_val)?);
+        for claim_val in free_monoid_elems(batch_val, ctx)? {
+            batch.push(claim_ref_from_value(claim_val, ctx)?);
         }
         batches.push(batch);
     }
@@ -252,7 +254,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Drop the plan graph before running claims (keeps no `!Send` state alive).
     drop(plan_graph);
 
-    let batches = match batches_from_plan(&plan_value) {
+    let batches = match batches_from_plan(&plan_value, &plan_ctx) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: malformed plan value: {}", msg);
