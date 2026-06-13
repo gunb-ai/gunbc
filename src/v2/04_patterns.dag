@@ -2,7 +2,7 @@
 
 module v2.compiler.infer_patterns
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, is_optional_coproduct_type_name }
 import v2.std.core {
   Node,
   find_child_named, NewlineIndex, authored_name_at,
@@ -171,7 +171,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
           // Optional<T> coproduct: after generic instantiation the applied type may be a
           // bare `Optional` node carrying only the type arg (no Disj children). Synthesize
           // Present/Absent the same way cardinality-optionals do once direct child lookup fails.
-          let optional_coproduct_subject = scrut_name == "Optional"
+          let optional_coproduct_subject = is_optional_coproduct_type_name(name: scrut_name)
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
           // Record / generic-record destructuring: `LocusAnchor { at: x }` against
