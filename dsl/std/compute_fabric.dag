@@ -324,29 +324,10 @@ type ComputeLease {
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
-// P-CF-WITNESS (dissolved): `satisfies` returns the concrete ComputeLeaseEligibility
-// coproduct directly — the witness/diagnostic carrier `ComputeWitness<C>` stays a
-// forward Node (v4.std.witness, used by ReducerLaws / ComputeLease) and is NOT what
-// eligibility flows through. Decision flows through the real sum type. The load-bearing
-// security rule is proven now at the lattice level on grounded enum values (§7 cases 7–8);
-// full srv1/srv2 ComputeOffer inhabitation that would exercise satisfies end-to-end is a
-// documented deferred follow-up (blocked on ungroundable OperatingSystemSurface fields).
-//
-// satisfies takes the ComputeOffer, not bare ComputeSupplyFacts as the stub sketched:
-// the Eligible branch must name a ProviderIdentity in its ComputeLeaseWitness, and provider
-// lives on the offer (supply facts alone carry no provider). The offer is the supply+provider
-// pairing the witness is a receipt of.
-//
-// Isolation is enforced as an ORDERED LATTICE, not equality. IsolationBoundary is a chain
+// 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
+// stays a forward Node for v4.std.witness). Isolation is an ordered lattice (chain below),
+// honored iff ordinal(supply) >= ordinal(demand) — rationale in PR #4805 / commit message.
 //   SharedHostHome < PerJobFilesystem < ContainerHermetic < Vm
-// of monotonically-increasing containment of untrusted code: SharedHostHome shares $HOME and
-// uid across jobs (weakest — trusted code only); PerJobFilesystem adds a per-job fs root;
-// ContainerHermetic adds namespace/cgroup isolation on a shared kernel; Vm adds a separate
-// guest kernel (strongest). A demand for boundary B is satisfied by supply boundary S iff
-// ordinal(S) >= ordinal(B): stronger-or-equal isolation always honors a weaker-or-equal
-// requirement (a SharedHostHome-tolerant job runs fine inside a VM), never the reverse — an
-// untrusted Vm-requiring job MUST NOT land on a SharedHostHome host. This is the security
-// rule "fresh VM per job for untrusted code" expressed as the chain's partial order.
 fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
   match boundary {
     SharedHostHome   => 0
@@ -370,13 +351,9 @@ fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> 
   isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
 }
 
-// Eligibility currently gates on the isolation dimension — the load-bearing security
-// boundary, fully modeled here. Remaining dimensions (cpu cores, memory/storage bytes, os,
-// toolchains, …) attach as their per-dimension comparison helpers land; several are blocked
-// upstream on value-typed Measure inhabitants (ByteSize has no constructor yet — see the
-// §1.4b projection note). The Eligible witness enumerates EXACTLY the dimensions proven
-// (here: DemandIsolation), so the receipt never overclaims — fail-closed: an untrusted Vm
-// demand against SharedHostHome supply is Rejected before any other dimension is consulted.
+// Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
+// helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
+// only the dimensions actually proven.
 fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
   if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
     Eligible {
@@ -392,20 +369,6 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
         required: isolation_boundary_label(boundary: demand.isolation.boundary),
       },
     }
-  }
-}
-
-fn eligibility_is_eligible(eligibility: ComputeLeaseEligibility) -> Bool {
-  match eligibility {
-    Eligible { witness: _ } => true
-    Rejected { reason: _ }  => false
-  }
-}
-
-fn eligibility_is_rejected(eligibility: ComputeLeaseEligibility) -> Bool {
-  match eligibility {
-    Eligible { witness: _ } => false
-    Rejected { reason: _ }  => true
   }
 }
 
