@@ -321,13 +321,14 @@ fn resolve_entry_graph_with_index(
     resolved_graph_from_sources(sources)
 }
 
-/// Resolve one entry's closure using pre-cached parse trees from `MultiEntryIndex`.
-/// Skips tokenize+parse for every file in the source root; runs
-/// resolve_modules → normalize_graph → reconcile per entry using the cached
-/// AST nodes and the pre-built global intern table.
+/// Resolve one entry's closure using a lazily-populated parse cache from
+/// `MultiEntryIndex`. Each file is tokenised and parsed at most once per
+/// session; shared std/ files are reused across all entry resolves.
 ///
-/// Falls back to `resolved_graph_from_sources` for any closure file not found
-/// in the cache (e.g. an entry file loaded from disk outside the source root).
+/// Cache miss path: tokenise the file, advance the global intern table via
+/// `parse_with_table` (which pre-interns internally), store the result, and
+/// continue. The intern table only grows, so cached parse results stay valid
+/// for all future entries.
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -344,31 +345,56 @@ fn resolve_entry_with_parse_cache(
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
     for source in &sources {
-        match index.parse_cache.get(&source.path) {
-            Some((parse_result, nl_index)) => {
-                si_map.insert(nl_index.file.clone(), nl_index.clone());
-                if let Some(err) = &parse_result.error {
-                    let span = diagnostic_to_span(err.diagnostic.clone());
-                    let loc = format_error_loc(&span.file, span.start, &si_map);
-                    return Err(format!(
-                        "{}: error: {}",
-                        loc,
-                        diagnostic_to_message(err.diagnostic.clone())
-                    ));
-                }
-                if let Some(module) = &parse_result.module {
-                    modules.push(module.clone());
-                }
-            }
+        // Release immutable borrow before any potential mutation below.
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+
+        let (parse_result, nl_index) = match cached {
+            Some(entry) => entry,
             None => {
-                // File not in cache (outside source root or module-less entry
-                // loaded from disk) — fall back to the full compile path.
-                return resolved_graph_from_sources(sources);
+                // First encounter for this file: tokenise, parse with the
+                // current accumulated intern table, advance the table, cache.
+                let tokens =
+                    v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+                let current_table = index.intern_table.borrow().clone();
+                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                    let mut m = HashMap::new();
+                    m.insert(source.path.clone(), nl_index.clone());
+                    m
+                });
+                let parsed =
+                    v2_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                // Advance the global intern table with tokens from this file.
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index);
+                index
+                    .parse_cache
+                    .borrow_mut()
+                    .insert(source.path.clone(), entry.clone());
+                entry
             }
+        };
+
+        si_map.insert(nl_index.file.clone(), nl_index.clone());
+        if let Some(err) = &parse_result.error {
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &si_map);
+            return Err(format!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        if let Some(module) = &parse_result.module {
+            modules.push(module.clone());
         }
     }
 
     let source_indices = Rc::new(si_map);
+    // Snapshot the accumulated intern table after all files in this closure
+    // have been parsed; pass it to reconcile for type-name lookup.
+    let global_table = index.intern_table.borrow().clone();
+
     let graph = v2_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
 
     if graph
@@ -389,11 +415,7 @@ fn resolve_entry_with_parse_cache(
         return Err(format_error_nodes(&norm.diagnostics, &source_indices));
     }
 
-    let typed = v2_compiler_infer::reconcile(
-        norm.graph.clone(),
-        source_indices.clone(),
-        index.global_intern_table.clone(),
-    );
+    let typed = v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), global_table);
 
     let has_type_errors = typed
         .diagnostics
