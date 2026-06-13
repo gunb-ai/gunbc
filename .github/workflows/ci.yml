@@ -755,9 +755,10 @@ jobs:
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   # Compiler-semantics claim-witness corpus enrollment — two parallel shards (~10 rows
-  # each). Sign runner (2026-06-13): monolith 20-row --spot-perturb-check measured 1108s
-  # (~18.5m) — exceeds 13m uncontended gate; sharded jobs target <10m/shard uncontended.
-  # Budget rule: ×2 covers typical merge waves; 2.0–2.6× tail accepted rare-rerun territory.
+  # each, deterministic first-half/second-half partition in substrate .dag).
+  # Sign runner (2026-06-13): monolith Phase A ~880s (~14.7m) + spot-perturb → 1108s
+  # (~18.5m) — exceeds 13m gate. Per-shard: Phase A ~7.4m + spot ~1m ≈ 8.4m uncontended;
+  # budget rule: 8.4m ×2 = 16.8m → 20m ceiling/shard (×2.6 tail ≈ 22m < 35m monolith).
   # CI: --shard a|b --spot-perturb-check; full --perturb-check local-only (both shards).
   # dissolve-on-arrival: #4783 multi-entry claim_batch shrinks Phase A wall.
   v4_claim_witness_corpus_a:
