@@ -53,7 +53,12 @@ CEILINGS = {
         # parse-cache adoption land -- both shrink the uncontended wall back
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
-        "v4_lens_ci": 35,
+        # Post-perturb-split (2026-06-13): GREEN batch + executor dogfood only
+        # (~5.5m uncontended); budget rule ×2 → 20m (down from 35m monolith).
+        "v4_lens_ci": 20,
+        # 4-shard parallel perturb matrix: ~4 rows/shard × ~50s/row ≈ 3-4m
+        # uncontended/shard; budget rule ×2 → 20m/shard (profiler A synthesis).
+        "v4_lens_ci_perturb": 20,
         # Non-gating Wave-1 §11.7 timings aggregator: mirrors the `affected` setup
         # (checkout + rust + sccache bin build) + the shell-free .dag github.Actions fetch
         # (collect-affected-set-timings, which embeds v2-compiler) + one emit. Budget rule

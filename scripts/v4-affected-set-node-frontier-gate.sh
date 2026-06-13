@@ -70,7 +70,7 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
-if [[ ! -x "$bin_batch" ]]; then
+if [[ "$shard_n" -eq 0 && ! -x "$bin_batch" ]]; then
   echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
   exit 2
 fi
