@@ -55,12 +55,30 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::process::ExitCode;
+use std::time::Instant;
 
 use v2_compiler::cli_run::{
     build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim, ClaimOutcome,
     MultiEntryIndex,
 };
 use v2_compiler::v2_interpreter::InterpContext;
+
+/// Per-phase wall-clock / closure-size accounting for the green pass.
+///
+/// The lens + node-frontier CI jobs spend most of their wall in this binary's
+/// resolves (`build_module_index` + closure-compile is ~5-13s per distinct
+/// entry; the witness eval that follows is comparatively cheap). The CI latency
+/// attack (2026-06-13) needs that split visible per row, so every resolve
+/// reports its wall plus closure size (modules scanned + resolved items) and
+/// every witness reports its eval wall. The end-of-run summary lets a reader
+/// confirm "resolve dominates" at a glance instead of timestamp archaeology.
+#[derive(Default)]
+struct ResolveTimings {
+    resolves: u64,
+    resolve_ms: u128,
+    witnesses: u64,
+    witness_ms: u128,
+}
 
 /// VmHWM/VmRSS lines from /proc/self/status (linux best-effort; empty elsewhere).
 fn peak_rss_lines() -> String {
@@ -195,38 +213,91 @@ fn parse_args(args: &[String]) -> Result<(Vec<String>, Vec<EntryGroup>), ExitCod
     Ok((source_roots, entry_groups))
 }
 
+/// Report one witness outcome on stdout (PASS/FAIL line consumed by callers),
+/// flipping `any_failed` on any non-pass. Shared by the single- and multi-entry
+/// paths so the failure-reporting shape stays in one place.
+fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) {
+    match outcome {
+        ClaimOutcome::Pass => println!("PASS {}", function),
+        ClaimOutcome::Fail => {
+            println!("FAIL {}", function);
+            *any_failed = true;
+        }
+        ClaimOutcome::NotBool { got } => {
+            println!(
+                "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",
+                function, got
+            );
+            *any_failed = true;
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            println!("FAIL {} (runtime error: {})", function, message);
+            *any_failed = true;
+        }
+    }
+}
+
+/// Resolve one entry's closure, timing the resolve and reporting its wall plus
+/// closure size (modules in the import closure, resolved items) on stderr.
+fn resolve_timed(
+    index: &MultiEntryIndex,
+    entry: &str,
+    timings: &mut ResolveTimings,
+) -> Result<
+    (
+        std::rc::Rc<v2_compiler::v2_compiler_compile::ResolvedGraph>,
+        std::rc::Rc<std::collections::HashMap<String, std::rc::Rc<v2_compiler::cli_run::NewlineIndex>>>,
+    ),
+    ExitCode,
+> {
+    let started = Instant::now();
+    match resolve_entry_with_index(index, entry) {
+        Ok((graph, source_indices)) => {
+            let ms = started.elapsed().as_millis();
+            eprintln!(
+                "[resolve] {}: {}ms  ({} modules, {} resolved items in closure)",
+                entry,
+                ms,
+                graph.modules.len(),
+                graph.item_registry.len(),
+            );
+            timings.resolves += 1;
+            timings.resolve_ms += ms;
+            Ok((graph, source_indices))
+        }
+        Err(msg) => {
+            eprintln!("claim_batch: resolve failed for {}:\n{}", entry, msg);
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+/// Run one witness, timing its eval and reporting it on stderr.
+fn run_claim_timed(
+    ctx: &InterpContext,
+    function: &str,
+    any_failed: &mut bool,
+    timings: &mut ResolveTimings,
+) {
+    let started = Instant::now();
+    let outcome = run_claim(ctx, function);
+    let ms = started.elapsed().as_millis();
+    report_outcome(function, outcome, any_failed);
+    eprintln!("[witness] {}: {}ms", function, ms);
+    timings.witnesses += 1;
+    timings.witness_ms += ms;
+}
+
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
     any_failed: &mut bool,
+    timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
-    let (graph, source_indices) = match resolve_entry_with_index(index, &group.entry) {
-        Ok(pair) => pair,
-        Err(msg) => {
-            eprintln!("claim_batch: resolve failed for {}:\n{}", group.entry, msg);
-            return Err(ExitCode::from(1));
-        }
-    };
+    let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
     let ctx = make_eval_context(&graph, source_indices);
     for function in &group.functions {
-        match run_claim(&ctx, function) {
-            ClaimOutcome::Pass => println!("PASS {}", function),
-            ClaimOutcome::Fail => {
-                println!("FAIL {}", function);
-                *any_failed = true;
-            }
-            ClaimOutcome::NotBool { got } => {
-                println!(
-                    "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",
-                    function, got
-                );
-                *any_failed = true;
-            }
-            ClaimOutcome::RuntimeError { message } => {
-                println!("FAIL {} (runtime error: {})", function, message);
-                *any_failed = true;
-            }
-        }
+        run_claim_timed(&ctx, function, any_failed, timings);
     }
     Ok(())
 }
