@@ -54,6 +54,8 @@ CEILINGS = {
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
         "v4_lens_ci": 35,
+        "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
+        "v4_claim_witness_corpus_b": 20,
         "timeout_budgets": 5,
         "ci": 5,
     },
