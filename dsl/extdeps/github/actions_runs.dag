@@ -74,6 +74,14 @@ service github.Actions {
       owner: String
       repo: String
       run_id: Int
+      // 100 is GitHub's per-page maximum. This operation fetches a SINGLE page and
+      // does NOT paginate, so a run with >100 jobs would be silently truncated --
+      // `wall_clock_by_job` would miss the overflow jobs and `actual_run_minutes`
+      // (max_end - min_start) could under-report the span. Documented per the
+      // "no silent caps" lens. Acceptable here: the affected-set CI workflow this
+      // collects (ci.yml) has ~14 jobs, an order of magnitude under the cap; if the
+      // job count ever approaches 100, add `page`-loop pagination in the driver
+      // (fold over pages until a short page) before this becomes load-bearing.
       per_page: Int = 100
     }
     output {
