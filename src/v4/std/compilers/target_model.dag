@@ -3298,23 +3298,40 @@ fn target_value_expression_binding_ref_to_concrete_tokens(
 }
 
 fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: find_named_child(root: wire, name: ^target_value_expression_field_identity),
-    f: fn(child) {
-      match child.kind {
-        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
-        _ =>
-          outcome_rejected(
-            target_value_expression_emit_unsupported_kind_diagnostic(
-              expr: TargetValueExpression {
-                kind: TargetValueExprSymbolIdentity,
-                node: wire
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expression_field_identity {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
               }
-            )
-          )
+            Positional => acc
+          }
       }
     }
-  )
+  ) {
+    Present { value: id } => outcome_accepted(id)
+    Absent =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(
+          expr: TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      )
+  }
 }
 
 fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
@@ -3412,12 +3429,32 @@ fn target_value_expr_conditional_child_from_wire(
   wire: Node,
   field: Symbol
 ) -> Outcome<TargetValueExpression> {
-  bind_outcome(
-    o: find_named_child(root: wire, name: field),
-    f: fn(child) {
-      target_value_expression_reify_from_wire(wire: child)
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == field {
+                optional_present(value: edge.target)
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
     }
-  )
+  ) {
+    Present { value: child } =>
+      target_value_expression_reify_from_wire(wire: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
 }
 
 fn target_value_expression_symbol_identity_to_concrete_tokens(
