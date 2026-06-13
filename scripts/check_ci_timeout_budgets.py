@@ -54,6 +54,22 @@ CEILINGS = {
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
         "v4_lens_ci": 35,
+        # Per-row PERTURB fan-out split out of v4_lens_ci into a capped parallel
+        # matrix (4 legs, max-parallel default 4 — the "perturb-phase split into a
+        # parallel job" dissolve-on named in the v4_lens_ci comment above). Budget
+        # rule (uncontended wall x2): the heaviest shard owns 4 of 15 rows; ~108s
+        # cold resolve/row + per-row src/v4 copy + checkout/setup/cache-restore
+        # ~= 8m uncontended; x2 -> 16, rounded to 20 (matches the corpus shards).
+        # Re-derive from the first on-wave per-shard receipt; ratchet against raises.
+        "v4_lens_ci_perturb": 20,
+        # Non-gating Wave-1 §11.7 timings aggregator: mirrors the `affected` setup
+        # (checkout + rust + sccache bin build) + the shell-free .dag github.Actions fetch
+        # (collect-affected-set-timings, which embeds v2-compiler) + one emit. Budget rule
+        # (documented uncontended wall x2): v2-compiler is sccache-warm from the floor jobs;
+        # warm wall ~1-2m, cold-build tail ~3-4m; 4m x2 = 8. Re-derive from the first green run.
+        "affected_timings": 8,
+        "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
+        "v4_claim_witness_corpus_b": 20,
         "timeout_budgets": 5,
         "ci": 5,
     },

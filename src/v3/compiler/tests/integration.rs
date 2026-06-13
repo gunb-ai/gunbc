@@ -209,32 +209,32 @@ mod r3_lens_producer_retirement_executable_witness_test;
 mod r3_path_b_brief3_char_in_class_execution_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
 mod r3_pb_runtime_evaluator_corpus_seed_test;
-#[path = "integration/r3_sg0_non_test_zero_test.rs"]
-mod r3_sg0_non_test_zero_test;
+#[path = "integration/r3_self_gen_non_test_zero_test.rs"]
+mod r3_self_gen_non_test_zero_test;
 #[path = "integration/r3_substrate_gap_reflection_closure_test.rs"]
 mod r3_substrate_gap_reflection_closure_test;
 #[path = "integration/r3_v3_self_host_demonstration_dag_test.rs"]
 mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
-#[path = "integration/sg0_census_test.rs"]
-mod sg0_census_test;
-#[path = "integration/sg1_tokenize_authority_test.rs"]
-mod sg1_tokenize_authority_test;
-#[path = "integration/sg2_parse_authority_test.rs"]
-mod sg2_parse_authority_test;
-#[path = "integration/sg2c1_parse_tables_authority_test.rs"]
-mod sg2c1_parse_tables_authority_test;
-#[path = "integration/sg2c5_soft_keyword_ident_test.rs"]
-mod sg2c5_soft_keyword_ident_test;
-#[path = "integration/sg3_lower_parse_surface_stack_test.rs"]
-mod sg3_lower_parse_surface_stack_test;
-#[path = "integration/sg3_surface_reflection_consumer_test.rs"]
-mod sg3_surface_reflection_consumer_test;
-#[path = "integration/sg6_hand_authored_census_test.rs"]
-mod sg6_hand_authored_census_test;
-#[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
-mod sg7_prep_variant_payload_freshness_test;
+#[path = "integration/self_gen0_census_test.rs"]
+mod self_gen0_census_test;
+#[path = "integration/self_gen1_tokenize_authority_test.rs"]
+mod self_gen1_tokenize_authority_test;
+#[path = "integration/self_gen2_parse_authority_test.rs"]
+mod self_gen2_parse_authority_test;
+#[path = "integration/self_gen2c1_parse_tables_authority_test.rs"]
+mod self_gen2c1_parse_tables_authority_test;
+#[path = "integration/self_gen2c5_soft_keyword_ident_test.rs"]
+mod self_gen2c5_soft_keyword_ident_test;
+#[path = "integration/self_gen3_lower_parse_surface_stack_test.rs"]
+mod self_gen3_lower_parse_surface_stack_test;
+#[path = "integration/self_gen3_surface_reflection_consumer_test.rs"]
+mod self_gen3_surface_reflection_consumer_test;
+#[path = "integration/self_gen6_hand_authored_census_test.rs"]
+mod self_gen6_hand_authored_census_test;
+#[path = "integration/self_gen7_prep_variant_payload_freshness_test.rs"]
+mod self_gen7_prep_variant_payload_freshness_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
@@ -1134,7 +1134,7 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cache_identity_dag() {
-        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cache_identity`
         // (P2 dup-authority substrate) until T-PB-B hand-Rust test floor reaches zero.
@@ -1146,13 +1146,13 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cpu_dag() {
-        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cpu` /
         // `std.cpu.types` / `std.cpu.ampere` (operator CPU taxonomy; P-CF supply authority)
         // until T-PB-B hand-Rust test floor reaches zero.
-        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
         // this adds one `#[test]` fn only, same pattern as
         // `handwritten_parser_accepts_cache_interface_dag` below.
         parse_file(
@@ -1171,12 +1171,12 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_memory_dag() {
-        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.memory` /
         // operator fleet DIMM catalog until T-PB-B hand-Rust test floor reaches zero.
-        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
         // this adds one `#[test]` fn only, same pattern as `handwritten_parser_accepts_cpu_dag`.
         parse_file(
             include_str!("../../../../dsl/std/memory.dag"),
@@ -1197,8 +1197,17 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_hetzner_cloud_dag() {
+        // P5 receipt: extdeps.cloud.hetzner catalog authority for compute_fabric CAX41 supply.
+        parse_file(
+            include_str!("../../../../dsl/extdeps/cloud/hetzner.dag"),
+            "dsl/extdeps/cloud/hetzner.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_compute_fabric_dag() {
-        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; Worksheet A §2 parser gate
         // (`docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md`) until T-PB-B
@@ -1213,8 +1222,8 @@ mod parse_stage4_prep {
     fn handwritten_parser_accepts_cache_interface_dag() {
         // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
         // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.
-        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
+        // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
         // unchanged (N→N); this adds one `#[test]` fn only, same pattern as
         // `handwritten_parser_accepts_gunbc_digest_render_dag` below.
         parse_file(

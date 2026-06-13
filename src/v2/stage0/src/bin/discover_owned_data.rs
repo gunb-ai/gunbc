@@ -44,11 +44,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scan_dir = "src/v4/test/claim".to_string();
     // glob_discovery.dag imports the ephemeral manifest this binary emits; exclude to keep discovery acyclic.
     // unified_test_claim_substrate_equivalence.dag imports glob_discovery — also a manifest consumer, not corpus.
+    // (The discovery types moved to v4.compiler.discovery_enumeration — outside this scan_dir —
+    // so the prior "discovery_types.dag" exclude is dead and removed; its `unified_claim_arm_*`
+    // pins are no longer under the scan path and cannot pollute the discovered set.)
     let mut exclude_subpaths: Vec<String> = vec![
         "impossible_bug".to_string(),
         "glob_discovery.dag".to_string(),
         "glob_discovery_law.dag".to_string(),
-        "discovery_types.dag".to_string(),
         "host_discovered_owned_data_manifest.dag".to_string(),
         "unified_test_claim_substrate_equivalence.dag".to_string(),
     ];

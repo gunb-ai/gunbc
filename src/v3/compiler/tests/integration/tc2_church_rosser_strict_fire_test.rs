@@ -16,7 +16,7 @@
 //! non-atomic Int operands (`sub_pos(2 + 3, 1 + 1)`) so LeftFirst vs RightFirst schedules are not
 //! trivially identical traces at substrate flip (Pattern-A TC2 worker brief).
 //!
-//! **INVARIANTS P5:** The P5(b) **single checkable per-PR receipt** (SG-0 census / pairing /
+//! **INVARIANTS P5:** The P5(b) **single checkable per-PR receipt** (Self-Generation-0 census / pairing /
 //! `ROADMAP.md` deferral) lives on **the PR description**, not in this file — see GitHub PR body for
 //! authoritative dissolution bookkeeping (`INVARIANTS.md` P5 Dispatch-Discipline mechanism (b)).
 

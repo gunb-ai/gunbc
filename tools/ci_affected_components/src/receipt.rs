@@ -146,6 +146,80 @@ pub fn saved_minutes(
     (estimated_full_run_minutes - actual_run_minutes).max(0.0)
 }
 
+/// Parse an RFC3339 UTC timestamp into Unix epoch seconds, dependency-free.
+///
+/// GitHub Actions job timestamps are a fixed shape: `YYYY-MM-DDTHH:MM:SSZ` (UTC, no
+/// fractional seconds, always `Z`). Rather than pull in `chrono` for one fixed format,
+/// this parses that exact shape via the civil-days algorithm. Returns `None` for any
+/// input it does not recognize — queued/not-yet-started jobs emit `null`, so callers
+/// fail-safe-skip rather than fabricate a window.
+pub fn rfc3339_utc_to_epoch_secs(s: &str) -> Option<i64> {
+    // Expect exactly "YYYY-MM-DDTHH:MM:SSZ" (20 chars). Reject anything else.
+    let b = s.as_bytes();
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
+    {
+        return None;
+    }
+    let num = |lo: usize, hi: usize| -> Option<i64> { s.get(lo..hi)?.parse::<i64>().ok() };
+    let (year, month, day) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (hour, min, sec) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || min > 59 || sec > 60 {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil: days since 1970-01-01 (proleptic Gregorian).
+    let y = year - i64::from(month <= 2);
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    Some(days * 86400 + hour * 3600 + min * 60 + sec)
+}
+
+/// Project raw per-job `(name, started_at, completed_at)` timestamp windows into the
+/// receipt's timing inputs: `wall_clock_by_job` (per-job duration in seconds) and
+/// `actual_run_minutes` (the run's wall span = latest completion − earliest start, in
+/// minutes, rounded to 2dp).
+///
+/// This is the SINGLE authority for turning observed timestamps into timings: the
+/// shell-free `.dag` transport only relays the raw windows (RR-K §2.4 "projects, does
+/// not recompute"); all arithmetic lives here alongside the `saved_minutes` formula.
+/// Jobs whose timestamps don't parse (still running / `null`) or run backwards are
+/// skipped — the same fail-safe the prior Python collector applied.
+pub fn job_windows_to_timings(
+    windows: &[(String, String, String)],
+) -> (BTreeMap<String, u64>, f64) {
+    let mut by_job: BTreeMap<String, u64> = BTreeMap::new();
+    let mut min_start: Option<i64> = None;
+    let mut max_end: Option<i64> = None;
+    for (name, started, completed) in windows {
+        let (Some(s), Some(e)) = (
+            rfc3339_utc_to_epoch_secs(started),
+            rfc3339_utc_to_epoch_secs(completed),
+        ) else {
+            continue;
+        };
+        if e < s {
+            continue;
+        }
+        // Last writer wins on a duplicate job name (matrix/rerun) — a wall-clock ledger.
+        by_job.insert(name.clone(), (e - s) as u64);
+        min_start = Some(min_start.map_or(s, |m| m.min(s)));
+        max_end = Some(max_end.map_or(e, |m| m.max(e)));
+    }
+    let actual_run_minutes = match (min_start, max_end) {
+        (Some(s), Some(e)) => (((e - s) as f64 / 60.0) * 100.0).round() / 100.0,
+        _ => 0.0,
+    };
+    (by_job, actual_run_minutes)
+}
+
 /// Build the receipt from the affected-set partition plus optional timing inputs.
 #[allow(clippy::too_many_arguments)]
 pub fn affected_set_ci_receipt(
@@ -333,5 +407,69 @@ mod tests {
         // v4 substrate diff ⇒ bootstrap_required; savings are structurally N/A (not skip-eligible).
         assert_eq!(receipt.saved_minutes, 0.0);
         assert!(receipt.bootstrap_required);
+    }
+
+    #[test]
+    fn rfc3339_parses_github_job_timestamps_and_rejects_junk() {
+        // Unix epoch and a known instant.
+        assert_eq!(rfc3339_utc_to_epoch_secs("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            rfc3339_utc_to_epoch_secs("2000-01-01T00:00:00Z"),
+            Some(946_684_800)
+        );
+        // A real GitHub Actions job stamp from run 27454321323.
+        assert_eq!(
+            rfc3339_utc_to_epoch_secs("2026-06-13T02:48:58Z"),
+            Some(1_781_318_938)
+        );
+        // Difference of two stamps = duration in seconds (ci_floor: 02:48:58 → 02:55:55 = 417s).
+        let s = rfc3339_utc_to_epoch_secs("2026-06-13T02:48:58Z").unwrap();
+        let e = rfc3339_utc_to_epoch_secs("2026-06-13T02:55:55Z").unwrap();
+        assert_eq!(e - s, 417);
+        // Fail-safe rejections: null (queued job), wrong length, missing Z, bad field.
+        assert_eq!(rfc3339_utc_to_epoch_secs("null"), None);
+        assert_eq!(rfc3339_utc_to_epoch_secs(""), None);
+        assert_eq!(rfc3339_utc_to_epoch_secs("2026-06-13T02:48:58"), None);
+        assert_eq!(rfc3339_utc_to_epoch_secs("2026-13-13T02:48:58Z"), None);
+        assert_eq!(rfc3339_utc_to_epoch_secs("2026-06-13 02:48:58Z"), None);
+    }
+
+    #[test]
+    fn job_windows_project_to_timings_and_skip_unparseable() {
+        // Mirrors the real run 27454321323 shape: completed jobs + one still-running (null end).
+        let windows = vec![
+            (
+                "ci_floor".to_string(),
+                "2026-06-13T02:48:58Z".to_string(),
+                "2026-06-13T02:55:55Z".to_string(),
+            ),
+            (
+                "infra_isolation".to_string(),
+                "2026-06-13T02:48:58Z".to_string(),
+                "2026-06-13T02:49:05Z".to_string(),
+            ),
+            // Still running: null completion → skipped, contributes no timing and no span.
+            (
+                "still_running".to_string(),
+                "2026-06-13T02:48:58Z".to_string(),
+                "null".to_string(),
+            ),
+        ];
+        let (by_job, actual_run_minutes) = job_windows_to_timings(&windows);
+        assert_eq!(by_job.get("ci_floor"), Some(&417));
+        assert_eq!(by_job.get("infra_isolation"), Some(&7));
+        assert!(!by_job.contains_key("still_running"));
+        // Span = earliest start (02:48:58) to latest completion (02:55:55) = 417s = 6.95 min.
+        assert_eq!(actual_run_minutes, 6.95);
+    }
+
+    #[test]
+    fn job_windows_empty_or_all_unparseable_yields_zero() {
+        assert_eq!(job_windows_to_timings(&[]), (BTreeMap::new(), 0.0));
+        let only_running = vec![("queued".to_string(), "null".to_string(), "null".to_string())];
+        assert_eq!(
+            job_windows_to_timings(&only_running),
+            (BTreeMap::new(), 0.0)
+        );
     }
 }

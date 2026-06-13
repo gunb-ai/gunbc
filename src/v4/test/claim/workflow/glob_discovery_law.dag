@@ -8,7 +8,7 @@ module v4.test.claim.workflow.glob_discovery_law
 import v4.std.algebra { Cons, Empty, fold_list, length, list_append }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.test.claim.workflow.discovery_types {
+import v4.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
   OwnedDataDeclInitializer,
   OwnedDataDeclRecord,

@@ -172,6 +172,7 @@ import v4.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetEffectCalleeRow,
+  TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -274,31 +275,6 @@ type TsGrammarRelationRow {
 // DESIGN-6 / #3900 ratified Task surface (bit-identical).
 data ts_task_type_alias_source_text: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 data ts_pr3_identity_source_text: String = "function identity(x: number): number { return x; }"
-// 🟡 coproduct dissolution — feature:t6-value-expr-body-derive — dissolve-on: bodied add-fn emit derives body tokens via value-expression projection; delete this fixture enumeration for the add path once T6 skeleton is green (design-value-emit-schema.md §4.5).
-fn ts_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^ts_token_kw_function },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_fn_add },
-    FixedToken { token_class: ^ts_token_lparen },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_x },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_comma },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_y },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_rparen },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_lbrace },
-    FixedToken { token_class: ^ts_token_kw_return },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_x },
-    FixedToken { token_class: ^ts_token_plus },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_y },
-    FixedToken { token_class: ^ts_token_semicolon },
-    FixedToken { token_class: ^ts_token_rbrace }
-  ]
-}
 data ts_mvp1_source_text: String = "function add(x: number, y: number): number { return x + y; }"
 
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
@@ -650,6 +626,17 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       close: ^ts_token_rparen,
       separator: ^ts_token_comma
+    },
+    // 🟡 stub — TypeScript has no `then` keyword; this conditional_form would emit
+    // `if cond then T else E`, which is invalid TypeScript (TS uses the `?:` ternary). No test wires
+    // the TS conditional path yet (M0). The ternary realization is deferred as a §12.9(B) Optional-token
+    // refinement (functional, out of #4807 scope) — recorded here, not silently shipped as canonical.
+    // dissolve-on: TS ternary lowering lands (replace the if/then/else token shape with `?:`).
+    // (durably records jolly-wren-365's old F4.)
+    conditional_form: TargetConditionalShape {
+      if_token: ^ts_token_kw_if,
+      then_token: ^ts_token_kw_then,
+      else_token: ^ts_token_kw_else
     }
   }
 }
@@ -741,7 +728,7 @@ fn ts_mvp1_serialize_source_children() -> List<Edge> {
       ts_named_edge(
         name: grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: ts_mvp1_concrete_tokens(),
+          tokens: ts_mvp1_canonical_add_fn_tokens(),
           token_to_node: ts_concrete_token_node
         )
       )
@@ -769,7 +756,7 @@ type TsGramBuild1State
 
 fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
-    xs: ts_mvp1_concrete_tokens(),
+    xs: ts_mvp1_canonical_add_fn_tokens(),
     empty: TsGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
@@ -797,7 +784,7 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
     production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
-    tokens: ts_mvp1_concrete_tokens()
+    tokens: ts_mvp1_canonical_add_fn_tokens()
   }
 }
 
@@ -807,6 +794,11 @@ fn ts_mvp1_add_return_body_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^ts_token_plus },
     BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
   ]
+}
+
+// Descriptor-derived canonical add-fn token row (statement scaffold + value-expression body).
+fn ts_mvp1_canonical_add_fn_tokens() -> List<ConcreteSyntaxToken> {
+  ts_mvp1_compose_add_fn_tokens(body_tokens: ts_mvp1_add_return_body_tokens())
 }
 
 fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
@@ -2475,7 +2467,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGr
 fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
     lhs: ^ts_production_mvp1_fn_add,
-    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
+    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_canonical_add_fn_tokens())
   )
 }
 

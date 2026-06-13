@@ -30751,7 +30751,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                     (
-                        "dsl/extdeps/cron_schedule_model.dag".to_string(),
+                        "dsl/extdeps/cron/schedule_model.dag".to_string(),
                         FieldValue::Variant {
                             constructor: DeclarationId(1740),
                             payload: vec![],
@@ -31487,7 +31487,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![(
                             "virtual_path".to_string(),
                             FieldValue::Literal(LiteralBits::String(
-                                "dsl/extdeps/cron_schedule_model.dag".to_string(),
+                                "dsl/extdeps/cron/schedule_model.dag".to_string(),
                             )),
                         )]),
                     ),
@@ -46865,7 +46865,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4214, 4433),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4224, 4443),
         });
         declarations.push(Declaration {
             id: DeclarationId(1383),
@@ -46902,7 +46902,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4435, 4564),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4445, 4574),
         });
         declarations.push(Declaration {
             id: DeclarationId(1384),
@@ -46931,7 +46931,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4566, 4641),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4576, 4651),
         });
         declarations.push(Declaration {
             id: DeclarationId(1385),
@@ -46940,9 +46940,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 inputs: vec![DeclarationId(1382)],
                 output: DeclarationId(227),
                 body: ArrowBody::Unparsed(SourceSpan::new(
-                    "dsl/extdeps/cron_schedule_model.dag",
-                    4688,
-                    4963,
+                    "dsl/extdeps/cron/schedule_model.dag",
+                    4698,
+                    4973,
                 )),
             },
             type_params: vec![],
@@ -46953,7 +46953,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4643, 4963),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4653, 4973),
         });
         declarations.push(Declaration {
             id: DeclarationId(1386),
@@ -46962,9 +46962,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 inputs: vec![DeclarationId(1383)],
                 output: DeclarationId(227),
                 body: ArrowBody::Unparsed(SourceSpan::new(
-                    "dsl/extdeps/cron_schedule_model.dag",
-                    5016,
-                    5253,
+                    "dsl/extdeps/cron/schedule_model.dag",
+                    5026,
+                    5263,
                 )),
             },
             type_params: vec![],
@@ -46975,7 +46975,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4965, 5253),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4975, 5263),
         });
         declarations.push(Declaration {
             id: DeclarationId(1387),
@@ -65644,7 +65644,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4233, 4241),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4243, 4251),
         });
         declarations.push(Declaration {
             id: DeclarationId(2382),
@@ -65663,7 +65663,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4246, 4277),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4256, 4287),
         });
         declarations.push(Declaration {
             id: DeclarationId(2383),
@@ -65683,7 +65683,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4299, 4319),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4309, 4329),
         });
         declarations.push(Declaration {
             id: DeclarationId(2384),
@@ -65702,7 +65702,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4282, 4321),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4292, 4331),
         });
         declarations.push(Declaration {
             id: DeclarationId(2385),
@@ -65727,7 +65727,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4326, 4379),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4336, 4389),
         });
         declarations.push(Declaration {
             id: DeclarationId(2386),
@@ -65752,7 +65752,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/cron_schedule_model.dag", 4384, 4433),
+            span: SourceSpan::new("dsl/extdeps/cron/schedule_model.dag", 4394, 4443),
         });
         declarations.push(Declaration {
             id: DeclarationId(2387),

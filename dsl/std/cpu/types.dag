@@ -2,6 +2,7 @@
 
 module std.cpu.types
 
+import std.measure { HardwareThreadCount, Hertz }
 import std.types { Int, NonEmptyStr, Option }
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
@@ -18,8 +19,8 @@ type CpuModelCatalogRow {
   oem_listing_id: Option<NonEmptyStr>
   architecture: CpuArchitecture
   cores: Int
-  threads: Int
-  nominal_sustained_per_thread_hz: Int
+  threads: HardwareThreadCount
+  nominal_sustained_per_thread_hz: Hertz
   socket: NonEmptyStr
   tdp_watts: Int
   // TODO(P-CF-ISA): populate instruction_sets when InstructionSet dissolves
@@ -27,7 +28,7 @@ type CpuModelCatalogRow {
 }
 
 type CpuDeploymentFacts {
-  sustained_per_thread_hz: Int
+  sustained_per_thread_hz: Hertz
 }
 
 type CpuFacts {

@@ -4,6 +4,24 @@
 # Each row is a Bool witness run through `gunbc run --claim-run`. `--perturb-check`
 # rewrites the wired witness body to `false` in a temp source-root and requires
 # the same row to fail, so every wired green has a red-under-perturb receipt.
+#
+# Modes:
+#   (no arg) / --green-only   GREEN batch pass + modeled row-count checks only
+#                             (the must-pass witnesses; no perturb). Used by the
+#                             v4_lens_ci job — the perturb fan-out lives in the
+#                             parallel v4_lens_ci_perturb matrix (see below).
+#   --perturb-check           GREEN + the FULL per-row perturb fan-out + counts.
+#                             Local full run (and any non-sharded caller).
+#   --perturb-shard K N       PERTURB ONLY the rows of the combined
+#                             node-frontier++testgen list (deterministic order)
+#                             whose global index i satisfies i % N == K. GREEN
+#                             passes + testgen evidence are NOT re-run here (they
+#                             stay in v4_lens_ci). Fail-closed: a shard that maps
+#                             to zero rows, or runs fewer rows than its slice,
+#                             aborts — coverage can never silently shrink. The
+#                             union of shards 0..N-1 is a complete cover, and the
+#                             ci aggregator requires every matrix leg to succeed,
+#                             so a skipped/cancelled shard fails the gate.
 
 set -euo pipefail
 
@@ -16,15 +34,33 @@ bin="${V2_COMPILER:-target/release/gunbc}"
 # stays per-row through `$bin` (each row mutates a different function).
 bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 perturb=0
+# shard_n > 0 selects --perturb-shard mode; shard_k is the 0-based leg index.
+shard_k=-1
+shard_n=0
 
 case "${1:-}" in
   --perturb-check)
     perturb=1
     ;;
+  --green-only)
+    perturb=0
+    ;;
+  --perturb-shard)
+    shard_k="${2:-}"
+    shard_n="${3:-}"
+    if ! [[ "$shard_k" =~ ^[0-9]+$ && "$shard_n" =~ ^[1-9][0-9]*$ ]]; then
+      echo "usage: $0 --perturb-shard <shard-index K, 0-based> <shard-count N, >=1>" >&2
+      exit 2
+    fi
+    if (( shard_k >= shard_n )); then
+      echo "error: shard index ${shard_k} out of range for shard count ${shard_n} (expect 0 <= K < N)" >&2
+      exit 2
+    fi
+    ;;
   "")
     ;;
   *)
-    echo "usage: $0 [--perturb-check]" >&2
+    echo "usage: $0 [--perturb-check | --green-only | --perturb-shard K N]" >&2
     exit 2
     ;;
 esac
@@ -34,13 +70,31 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
-if [[ ! -x "$bin_batch" ]]; then
+# claim_batch is the GREEN batch runner (batch_green_pass). The --perturb-shard
+# path never calls it — perturb is per-row `gunbc run --claim-run` — so a shard
+# only requires gunbc. Requiring claim_batch on a perturb leg would either force
+# building a binary the leg never uses or fail the leg vacuously on a gunbc-only
+# restore. This is a presence check for an uninvoked tool, NOT a coverage gate:
+# fail-closed-on-skip is unaffected (the ci aggregator requires every leg to
+# succeed, and each shard still asserts its non-empty slice ran in full).
+if [[ "$shard_n" -eq 0 && ! -x "$bin_batch" ]]; then
   echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
   exit 2
 fi
 
 gate_model="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 affected_testgen_gate_model="src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
+
+# Per-phase wall-time notices (same pattern as v4-substrate-equivalence-gate.sh;
+# added by #4837 for the CI latency attack). claim_batch's own
+# [resolve]/[witness]/[resolve-summary] lines give the per-witness breakdown
+# within each green phase. Helper takes the phase label + start SECONDS. The
+# perturb-shard path uses it too, so each matrix leg emits its own wall — that
+# is the on-wave per-shard receipt the perturb split is measured by.
+phase_notice() {
+  local label="$1" started="$2"
+  echo "::notice title=gate timing::${label} took $((SECONDS - started))s"
+}
 
 dag_string_data() {
   local name="$1"
@@ -157,63 +211,27 @@ path.write_text(text[:brace] + "{\n  false\n}" + text[end:], encoding="utf-8")
 PY
 }
 
-expected_count="$(dag_string_data ci_runner_node_frontier_claim_run_row_count)"
-if [[ -z "$expected_count" ]]; then
-  echo "error: missing ci_runner_node_frontier_claim_run_row_count in $gate_model" >&2
-  exit 2
-fi
-
-# Collect every row first so the GREEN pass can resolve each shared entry once.
-node_frontier_rows=()
-while IFS= read -r member; do
-  [[ -z "$member" ]] && continue
-  row="$(project_list_member_row "$member")"
-  if [[ -z "$row" ]]; then
-    echo "error: list member $member missing AffectedSetNodeFrontierClaimRunRow binding in $gate_model" >&2
-    exit 2
-  fi
-  node_frontier_rows+=("$row")
-done < <(list_claim_run_row_members)
-
-if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
-  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
-  exit 2
-fi
-
-# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
-printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
-  | batch_green_pass "affected-set node-frontier"
-
-# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
-row_count=0
-for row in "${node_frontier_rows[@]}"; do
-  IFS=$'\t' read -r label entry function <<< "$row"
-
-  if [[ "$perturb" -eq 1 ]]; then
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp"
-    cp -a src/v4 "$tmp/src"
-    perturbed_entry="$tmp/src/${entry#src/v4/}"
-    perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-set node-frontier perturb: ${label}"
-    if run_row "$tmp/src" "$perturbed_entry" "$function"; then
-      echo "::error::perturbed witness still passed: ${label}"
-      exit 1
-    fi
-    echo "::endgroup::"
+# Perturb one row's wired witness to `false` in a fresh temp source-root and
+# require the witness to flip red. Fail-closed: a perturbed witness that still
+# passes aborts the gate. Identical mutation for node-frontier and testgen rows
+# (both mutate a function body in their own entry file).
+perturb_one_row() {
+  local label="$1" entry="$2" function="$3" title="$4"
+  local tmp
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp"
+  cp -a src/v4 "$tmp/src"
+  local perturbed_entry="$tmp/src/${entry#src/v4/}"
+  perturb_function_to_false "$perturbed_entry" "$function"
+  echo "::group::${title} perturb: ${label}"
+  if run_row "$tmp/src" "$perturbed_entry" "$function"; then
+    echo "::error::perturbed witness still passed: ${label}"
     rm -rf "$tmp"
-    trap - EXIT
+    exit 1
   fi
-  row_count=$((row_count + 1))
-done
-
-if [[ "$row_count" -ne "$expected_count" ]]; then
-  echo "error: node-frontier gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
-  exit 2
-fi
-
-echo "::notice title=affected-set node-frontier::${row_count} discriminating witness(es) passed"
+  echo "::endgroup::"
+  rm -rf "$tmp"
+}
 
 affected_testgen_dag_string_data() {
   local name="$1"
@@ -321,7 +339,31 @@ print_affected_testgen_real_diff_evidence() {
   echo "::endgroup::"
 }
 
-print_affected_testgen_real_diff_evidence
+# ---- Collect both modeled row-sets up front. The projected-vs-modeled count
+# check is a model-drift guard and runs in EVERY mode (green-only, full, and each
+# perturb shard), so a row added to the list without bumping its modeled count
+# — or vice versa — fails closed before any shard can pass-by-omission. ----
+expected_count="$(dag_string_data ci_runner_node_frontier_claim_run_row_count)"
+if [[ -z "$expected_count" ]]; then
+  echo "error: missing ci_runner_node_frontier_claim_run_row_count in $gate_model" >&2
+  exit 2
+fi
+
+node_frontier_rows=()
+while IFS= read -r member; do
+  [[ -z "$member" ]] && continue
+  row="$(project_list_member_row "$member")"
+  if [[ -z "$row" ]]; then
+    echo "error: list member $member missing AffectedSetNodeFrontierClaimRunRow binding in $gate_model" >&2
+    exit 2
+  fi
+  node_frontier_rows+=("$row")
+done < <(list_claim_run_row_members)
+
+if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
+  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
+  exit 2
+fi
 
 expected_affected_testgen_count="$(affected_testgen_dag_string_data affected_testgen_claim_run_row_count)"
 if [[ -z "$expected_affected_testgen_count" ]]; then
@@ -329,7 +371,6 @@ if [[ -z "$expected_affected_testgen_count" ]]; then
   exit 2
 fi
 
-# Collect every row first so the GREEN pass can resolve each shared entry once.
 affected_testgen_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
@@ -346,37 +387,91 @@ if [[ "${#affected_testgen_rows[@]}" -eq 0 ]]; then
   exit 2
 fi
 
-# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
-printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
-  | batch_green_pass "affected-testgen"
-
-# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
-affected_testgen_count=0
-for row in "${affected_testgen_rows[@]}"; do
-  IFS=$'\t' read -r label entry function <<< "$row"
-
-  if [[ "$perturb" -eq 1 ]]; then
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp"
-    cp -a src/v4 "$tmp/src"
-    perturbed_entry="$tmp/src/${entry#src/v4/}"
-    perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-testgen perturb: ${label}"
-    if run_row "$tmp/src" "$perturbed_entry" "$function"; then
-      echo "::error::perturbed witness still passed: ${label}"
-      exit 1
-    fi
-    echo "::endgroup::"
-    rm -rf "$tmp"
-    trap - EXIT
-  fi
-  affected_testgen_count=$((affected_testgen_count + 1))
-done
-
-if [[ "$affected_testgen_count" -ne "$expected_affected_testgen_count" ]]; then
-  echo "error: affected-testgen gate projected ${affected_testgen_count} rows; modeled count is ${expected_affected_testgen_count}" >&2
+if [[ "${#node_frontier_rows[@]}" -ne "$expected_count" ]]; then
+  echo "error: node-frontier gate projected ${#node_frontier_rows[@]} rows; modeled count is ${expected_count}" >&2
+  exit 2
+fi
+if [[ "${#affected_testgen_rows[@]}" -ne "$expected_affected_testgen_count" ]]; then
+  echo "error: affected-testgen gate projected ${#affected_testgen_rows[@]} rows; modeled count is ${expected_affected_testgen_count}" >&2
   exit 2
 fi
 
-echo "::notice title=affected-testgen::${affected_testgen_count} discriminating witness(es) passed"
+if [[ "$shard_n" -gt 0 ]]; then
+  # ---- --perturb-shard mode (one parallel v4_lens_ci_perturb matrix leg) ----
+  # Combined node-frontier (first) ++ testgen (second) in deterministic order;
+  # this leg perturbs exactly the rows where global-index % shard_n == shard_k.
+  combined_rows=("${node_frontier_rows[@]}" "${affected_testgen_rows[@]}")
+  total="${#combined_rows[@]}"
+
+  # Rows this shard owns under a complete mod-N partition. Zero is a
+  # misconfiguration (shard count exceeds row count, or a bad index) — fail
+  # closed rather than report a vacuous green.
+  expected_shard=0
+  for ((i = 0; i < total; i++)); do
+    if (( i % shard_n == shard_k )); then
+      expected_shard=$((expected_shard + 1))
+    fi
+  done
+  if [[ "$expected_shard" -eq 0 ]]; then
+    echo "::error::perturb shard ${shard_k}/${shard_n} maps to 0 of ${total} rows (shard count exceeds row count?); failing closed to avoid pass-by-omission" >&2
+    exit 2
+  fi
+
+  shard_started=$SECONDS
+  ran=0
+  for ((i = 0; i < total; i++)); do
+    (( i % shard_n == shard_k )) || continue
+    IFS=$'\t' read -r label entry function <<< "${combined_rows[$i]}"
+    perturb_one_row "$label" "$entry" "$function" "affected-set lens (shard ${shard_k}/${shard_n})"
+    ran=$((ran + 1))
+  done
+
+  if [[ "$ran" -ne "$expected_shard" ]]; then
+    echo "::error::perturb shard ${shard_k}/${shard_n} ran ${ran} rows; expected ${expected_shard} -- coverage incomplete, failing closed" >&2
+    exit 1
+  fi
+
+  # On-wave per-shard receipt: this leg's wall for its ${ran} perturb rows.
+  phase_notice "perturb shard ${shard_k}/${shard_n} (${ran} rows)" "$shard_started"
+  echo "::notice title=affected-set lens perturb shard::shard ${shard_k}/${shard_n} verified ${ran}/${total} discriminating witness(es) red-under-perturb"
+  exit 0
+fi
+
+# ---- (default / --green-only) or --perturb-check mode ----
+# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+nf_green_started=$SECONDS
+printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
+  | batch_green_pass "affected-set node-frontier"
+phase_notice "node-frontier green pass" "$nf_green_started"
+
+# PERTURB pass (full --perturb-check only): one mutated resolve per row.
+if [[ "$perturb" -eq 1 ]]; then
+  nf_perturb_started=$SECONDS
+  for row in "${node_frontier_rows[@]}"; do
+    IFS=$'\t' read -r label entry function <<< "$row"
+    perturb_one_row "$label" "$entry" "$function" "affected-set node-frontier"
+  done
+  phase_notice "node-frontier perturb pass (${#node_frontier_rows[@]} rows)" "$nf_perturb_started"
+fi
+
+echo "::notice title=affected-set node-frontier::${#node_frontier_rows[@]} discriminating witness(es) passed"
+
+print_affected_testgen_real_diff_evidence
+
+# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+atg_green_started=$SECONDS
+printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
+  | batch_green_pass "affected-testgen"
+phase_notice "affected-testgen green pass" "$atg_green_started"
+
+# PERTURB pass (full --perturb-check only): one mutated resolve per row.
+if [[ "$perturb" -eq 1 ]]; then
+  atg_perturb_started=$SECONDS
+  for row in "${affected_testgen_rows[@]}"; do
+    IFS=$'\t' read -r label entry function <<< "$row"
+    perturb_one_row "$label" "$entry" "$function" "affected-testgen"
+  done
+  phase_notice "affected-testgen perturb pass (${#affected_testgen_rows[@]} rows)" "$atg_perturb_started"
+fi
+
+echo "::notice title=affected-testgen::${#affected_testgen_rows[@]} discriminating witness(es) passed"

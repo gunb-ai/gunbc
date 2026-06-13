@@ -11,17 +11,25 @@
 
 module std.placement_supply
 
+import std.measure {
+  ByteSize,
+  Hertz,
+  HardwareThreadCount,
+  byte_size_count,
+  hardware_thread_count_value,
+  hertz_count,
+}
 import std.types { NonEmptyStr, Int }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 
 type PlacementSupplyRow {
   identity: HostIdentity
-  hardware_threads: Int
-  clock_hz: Int
-  ram_bytes: Int
+  hardware_threads: HardwareThreadCount
+  clock_hz: Hertz
+  ram_bytes: ByteSize
 }
 
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Int {
-  row.hardware_threads * row.clock_hz
+  hardware_thread_count_value(row.hardware_threads) * hertz_count(row.clock_hz)
 }

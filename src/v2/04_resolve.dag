@@ -21,6 +21,7 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   ExprErrorKind, SemanticExprError,
+  LiteralValue, LitInt,
   make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
   expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
@@ -39,6 +40,14 @@ import v2.compiler.infer_types {
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
+}
+
+// Gate #60 Slice Z: anonymous decimal width literals in `<…>` type-arg position.
+fn is_width_nat_type_literal(n: Node) -> Bool {
+  match n.expr_data {
+    ExprLiteral { value: LitInt { value: _ } } => true
+    _ => false
+  }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -497,7 +506,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
           // Arrow nodes (callable types) handled by has_structure above.
           // Dynamic/Error sentinel names dissolved — no .dag source declares them.
-          if is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
+          if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

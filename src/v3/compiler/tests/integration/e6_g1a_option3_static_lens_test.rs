@@ -2,7 +2,7 @@
 //!
 //! E6-G1.a Option 3 — static `Lens<Int>` consumer wiring (argument-opaque `Dag` / `Behavior`).
 //!
-//! Authority: E6-G1.a Option 3 static `Lens<Int>` mechanism landed in `gunbc#1853`; SG-0
+//! Authority: E6-G1.a Option 3 static `Lens<Int>` mechanism landed in `gunbc#1853`; Self-Generation-0
 //! `EXPECTED_HAND_AUTHORED_TEST` census membership keeps this hand-authored integration harness
 //! visible to the P5 subratchet.
 //! Mechanism demonstration only; dissolve-on: Q-Reification `ReflectedProgram<T>` / typed

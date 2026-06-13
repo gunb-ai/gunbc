@@ -1,5 +1,5 @@
 // src/v4/lens/registry.dag
-// Scope: PREFIX / T-23 v0 LENS_ID → v4 module_path registry (operator pin §3).
+// Scope: v0 LENS_ID → v4 module_path registry (operator pin §3).
 // Status: v0 registry-backed consumer surface
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/briefs/r4-lane-a-lens-interface-freeze-pin.md
 
@@ -94,7 +94,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_table_decision_tree
 ]
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality (docs/audit/pr-3510-distinct-node-zip-fold-blocked-2026-05-21.md) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality (docs/audit/pr-3510-distinct-node-zip-fold-blocked-2026-05-21.md) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   match left {
     Complexity => match right {

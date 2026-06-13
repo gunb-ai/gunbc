@@ -2,19 +2,27 @@
 // Not generated — survives stage0 regeneration.
 // The generated main.rs calls handle_run() for the Run subcommand.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::std_syntax::LiteralValue;
 use crate::v2_compiler_compile;
+use crate::v2_compiler_infer;
 use crate::v2_compiler_infer_env::lookup_type_by_name;
 use crate::v2_compiler_infer_items::{ItemKind, ResolvedGraph, TypedModule};
+use crate::v2_compiler_normalize;
+use crate::v2_compiler_parse;
+use crate::v2_compiler_resolve;
+use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
 use crate::v2_std_core::{
-    authored_name_at, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    expr_var_name_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    is_interpreter_blocking_diagnostic, ExprData, InferredNode, NewlineIndex, Node,
+    authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
+    diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
+    field_init_node_value, has_child_named, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
+    NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -256,6 +264,49 @@ pub fn resolve_entry_graph(
     resolve_entry_graph_with_index(&index, entry_file)
 }
 
+/// Opaque module source index built from a set of source roots. Pass to
+/// `resolve_entry_with_index` to resolve multiple entries without re-scanning
+/// the filesystem per entry. Used by the `claim_batch` multi-entry green pass.
+pub struct MultiEntryIndex {
+    source_files: ModuleSourceIndex,
+    /// Lazily-accumulated intern table. Starts empty; grows as new files are
+    /// parsed for the first time. `parse_with_table` advances it via its
+    /// returned `intern_table` field, so every token string gets a stable ID
+    /// regardless of which entry first triggers its parse.
+    intern_table: RefCell<Rc<InternTable>>,
+    /// Lazily-populated parse cache: file path → (ParseResult, NewlineIndex).
+    /// Populated on first access for each file; shared across all entry resolves.
+    parse_cache: RefCell<HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
+}
+
+/// Scan the given source roots once and return a `MultiEntryIndex`. Only the
+/// filesystem scan happens here; tokenise+parse work is deferred to the first
+/// `resolve_entry_with_index` call that needs each file, so the index build cost
+/// is proportional to the number of .dag files on disk — not to their parse time.
+pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    MultiEntryIndex {
+        source_files: build_module_index(source_roots),
+        intern_table: RefCell::new(empty_intern_table()),
+        parse_cache: RefCell::new(HashMap::new()),
+    }
+}
+
+/// Resolve one entry's import closure using a pre-built `MultiEntryIndex`.
+/// Uses cached parse trees for all files in the source root, skipping
+/// tokenize+parse per entry.
+pub fn resolve_entry_with_index(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    resolve_entry_with_parse_cache(index, entry_file)
+}
+
 fn resolve_entry_graph_with_index(
     index: &ModuleSourceIndex,
     entry_file: &str,
@@ -268,6 +319,171 @@ fn resolve_entry_graph_with_index(
 > {
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
     resolved_graph_from_sources(sources)
+}
+
+/// Resolve one entry's closure using a lazily-populated parse cache from
+/// `MultiEntryIndex`. Each file is tokenised and parsed at most once per
+/// session; shared std/ files are reused across all entry resolves.
+///
+/// Cache miss path: tokenise the file, advance the global intern table via
+/// `parse_with_table` (which pre-interns internally), store the result, and
+/// continue. The intern table only grows, so cached parse results stay valid
+/// for all future entries.
+// TODO(dissolution): this function duplicates the tokenize→parse→resolve→normalize→reconcile→
+// ownership pipeline that `resolved_graph_from_sources` drives through `compile_to_resolved`.
+// The duplication exists solely to thread the lazy intern table across cached parses.  When
+// `compile_to_resolved` (or a wrapper) learns to accept a pre-populated parse cache and intern
+// table, fold this back and delete the inline pipeline.
+fn resolve_entry_with_parse_cache(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
+
+    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+
+    for source in &sources {
+        // Release immutable borrow before any potential mutation below.
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+
+        let (parse_result, nl_index) = match cached {
+            Some(entry) => entry,
+            None => {
+                // First encounter for this file: tokenise, parse with the
+                // current accumulated intern table, advance the table, cache.
+                let tokens =
+                    v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+                let current_table = index.intern_table.borrow().clone();
+                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                    let mut m = HashMap::new();
+                    m.insert(source.path.clone(), nl_index.clone());
+                    m
+                });
+                let parsed = v2_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                // Advance the global intern table with tokens from this file.
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index);
+                index
+                    .parse_cache
+                    .borrow_mut()
+                    .insert(source.path.clone(), entry.clone());
+                entry
+            }
+        };
+
+        si_map.insert(nl_index.file.clone(), nl_index.clone());
+        if let Some(err) = &parse_result.error {
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &si_map);
+            return Err(format!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        if let Some(module) = &parse_result.module {
+            modules.push(module.clone());
+        }
+    }
+
+    let source_indices = Rc::new(si_map);
+    // Snapshot the accumulated intern table after all files in this closure
+    // have been parsed; pass it to reconcile for type-name lookup.
+    let global_table = index.intern_table.borrow().clone();
+
+    let graph = v2_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+
+    if graph
+        .diagnostics
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+    }
+
+    let norm = v2_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+
+    if norm
+        .diagnostics
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&norm.diagnostics, &source_indices));
+    }
+
+    let typed =
+        v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), global_table);
+
+    let has_type_errors = typed
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+    if has_type_errors {
+        let msgs: Vec<String> = typed
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format_error_node(d, &source_indices))
+            .collect();
+        return Err(msgs.join("\n"));
+    }
+
+    // Ownership validation — same check compile_to_resolved applies after
+    // reconcile (P3 fail-closed parity: claim_batch must not green-light a
+    // graph that gunbc run would block on ownership errors).
+    let ownership = v2_compiler_compile::extract_ownership_proofs(typed.clone());
+    let ownership_diags = v2_compiler_compile::ownership_diagnostics(ownership);
+    if ownership_diags
+        .iter()
+        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
+    {
+        return Err(format_error_nodes(&ownership_diags, &source_indices));
+    }
+
+    Ok((typed, source_indices))
+}
+
+fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
+    match si.get(file) {
+        Some(idx) => {
+            let lc = byte_to_line_col(idx.clone(), start);
+            format!("{}:{}:{}", file, lc.line, lc.col)
+        }
+        None => file.to_string(),
+    }
+}
+
+fn format_error_node(
+    d: &Rc<ErrorNode>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let loc = format_error_loc(&span.file, span.start, source_indices);
+    format!(
+        "{}: error: {}",
+        loc,
+        diagnostic_to_message(d.diagnostic.clone())
+    )
+}
+
+fn format_error_nodes(
+    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    diags
+        .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| format_error_node(d, source_indices))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Compile an already-assembled source closure to a resolved graph, or return
@@ -347,7 +563,7 @@ pub fn run_claim(ctx: &v2_interpreter::InterpContext, function: &str) -> ClaimOu
         Ok(v2_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v2_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => ClaimOutcome::NotBool {
-            got: format!("{}", other),
+            got: ctx.format_value(&other),
         },
         Err(e) => ClaimOutcome::RuntimeError {
             message: format!("{}", e),
@@ -455,66 +671,64 @@ pub fn handle_run_with_options(
         }
     };
 
-    // Run the interpreter
+    // Run the interpreter — keep one context alive for symbol resolution while
+    // printing and classifying the return value (ctrl#1533 phase 3).
     eprintln!("running {}()...", function);
-    match v2_interpreter::run_with_options(
-        graph,
-        result.source_indices.clone(),
-        &function,
-        dry_run,
-        !claim_run,
-    ) {
-        Ok(val) => {
-            println!("{}", val);
-            if claim_run {
-                // Witness entry points return Bool; fail-closed like ProcessExit below.
-                match &val {
-                    v2_interpreter::Value::Bool(false) => std::process::exit(1),
-                    v2_interpreter::Value::Bool(true) => return,
-                    other => {
+    let ctx = v2_interpreter::InterpContext::new(graph, result.source_indices.clone(), dry_run);
+    v2_interpreter::with_active_context(&ctx, || {
+        match v2_interpreter::run_in_context(&ctx, &function, !claim_run) {
+            Ok(val) => {
+                println!("{}", val);
+                if claim_run {
+                    // Witness entry points return Bool; fail-closed like ProcessExit below.
+                    match &val {
+                        v2_interpreter::Value::Bool(false) => std::process::exit(1),
+                        v2_interpreter::Value::Bool(true) => return,
+                        other => {
+                            eprintln!(
+                                "error: function `{}` returned `{}`, not `Bool`. \
+                                 With --claim-run the entry must return Bool (false → exit 1).",
+                                function, other
+                            );
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                // FAIL-CLOSED EXIT CODE CONTRACT
+                //
+                // Functions invoked via `dag run` MUST return std/process.dag's
+                // ProcessExit variant. The host translates ExitSuccess → 0 and
+                // ExitFailure { code } → code. Any other return value is a
+                // programmer error: the host cannot tell whether the function
+                // succeeded or failed, so it exits 2 with a clear diagnostic.
+                //
+                // This makes silent failure IMPOSSIBLE: a function whose result
+                // type isn't structurally ProcessExit cannot accidentally exit 0
+                // when its rich result represents failure. Compose internal
+                // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
+                // points must wrap their result in ProcessExit explicitly.
+                match classify_exit(&val, &ctx) {
+                    ExitClass::Success => {} // exit 0 (default)
+                    ExitClass::Failure(code) => std::process::exit(code),
+                    ExitClass::NotProcessExit { type_name } => {
                         eprintln!(
-                            "error: function `{}` returned `{}`, not `Bool`. \
-                             With --claim-run the entry must return Bool (false → exit 1).",
-                            function, other
+                            "error: function `{}` returned `{}`, not `ProcessExit`. \
+                             Functions invoked via `dag run` must return std/process.dag's \
+                             ProcessExit so the host can map success/failure to an exit code. \
+                             Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
+                             --claim-run for Bool witness entry points under src/v4.",
+                            function, type_name
                         );
                         std::process::exit(2);
                     }
                 }
             }
-            // FAIL-CLOSED EXIT CODE CONTRACT
-            //
-            // Functions invoked via `dag run` MUST return std/process.dag's
-            // ProcessExit variant. The host translates ExitSuccess → 0 and
-            // ExitFailure { code } → code. Any other return value is a
-            // programmer error: the host cannot tell whether the function
-            // succeeded or failed, so it exits 2 with a clear diagnostic.
-            //
-            // This makes silent failure IMPOSSIBLE: a function whose result
-            // type isn't structurally ProcessExit cannot accidentally exit 0
-            // when its rich result represents failure. Compose internal
-            // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
-            // points must wrap their result in ProcessExit explicitly.
-            match classify_exit(&val) {
-                ExitClass::Success => {} // exit 0 (default)
-                ExitClass::Failure(code) => std::process::exit(code),
-                ExitClass::NotProcessExit { type_name } => {
-                    eprintln!(
-                        "error: function `{}` returned `{}`, not `ProcessExit`. \
-                         Functions invoked via `dag run` must return std/process.dag's \
-                         ProcessExit so the host can map success/failure to an exit code. \
-                         Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                         --claim-run for Bool witness entry points under src/v4.",
-                        function, type_name
-                    );
-                    std::process::exit(2);
-                }
+            Err(e) => {
+                eprintln!("runtime error: {}", e);
+                std::process::exit(1);
             }
         }
-        Err(e) => {
-            eprintln!("runtime error: {}", e);
-            std::process::exit(1);
-        }
-    }
+    });
 }
 
 /// Classification of a `dag run` return value for exit-code mapping.
@@ -535,27 +749,29 @@ enum ExitClass {
 ///   ProcessExit::ExitSuccess              → Success
 ///   ProcessExit::ExitFailure { code, .. } → Failure(code)
 ///   anything else                         → NotProcessExit (fail-closed at host)
-fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
+fn classify_exit(val: &v2_interpreter::Value, ctx: &v2_interpreter::InterpContext) -> ExitClass {
     match val {
         v2_interpreter::Value::Variant {
             type_name,
             variant_name,
             fields,
         } => {
-            if type_name != "ProcessExit" {
+            if !ctx.sym_eq(*type_name, "ProcessExit") {
                 return ExitClass::NotProcessExit {
-                    type_name: type_name.clone(),
+                    type_name: ctx.resolve(*type_name),
                 };
             }
-            match variant_name.as_str() {
-                "ExitSuccess" => ExitClass::Success,
-                "ExitFailure" => match fields.get("code") {
+            if ctx.sym_eq(*variant_name, "ExitSuccess") {
+                ExitClass::Success
+            } else if ctx.sym_eq(*variant_name, "ExitFailure") {
+                match ctx.field(fields, "code") {
                     Some(v2_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
                     _ => ExitClass::Failure(1),
-                },
-                _ => ExitClass::NotProcessExit {
-                    type_name: format!("ProcessExit::{}", variant_name),
-                },
+                }
+            } else {
+                ExitClass::NotProcessExit {
+                    type_name: format!("ProcessExit::{}", ctx.resolve(*variant_name)),
+                }
             }
         }
         _ => ExitClass::NotProcessExit {
@@ -567,6 +783,9 @@ fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
 // ---------------------------------------------------------------------------
 // discover_owned_data — host transport for Consolidation #4553 resolved-type glob
 // ---------------------------------------------------------------------------
+// These structs serde-mirror the modeled types in v4.compiler.discovery_enumeration
+// (promoted there from v4.test.claim.workflow.discovery_types; the emitted manifest below
+// imports that module). Keep the field shapes in lockstep with that .dag authority.
 
 /// Resolved declaration identity from the typed graph (not authored surface names).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1340,7 +1559,7 @@ pub fn emit_owned_data_manifest(
     out.push_str("import v4.std.collection { List }\n");
     out.push_str("import v4.std.logic { Bool }\n");
     out.push_str(
-        "import v4.test.claim.workflow.discovery_types {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
+        "import v4.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
     );
     out.push_str("data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {\n");
     out.push_str(&format!(

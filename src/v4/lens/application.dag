@@ -3,7 +3,7 @@
 // Scope: lens-application surface — how a user attaches a lens to a program section (declaration / module / expression scope) with configurable enforcement. THE opt-in-depth mechanism + user-defined-dimensions surface + the ONLY advisory→fail-closed bridge. Referenced by report.dag/synthesis.dag's apply_lens(Enforce) — this file is its substrate home.
 // Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
 //
-// Status: T-23 filled — carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
+// Status: carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
 // P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
 // `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
 // `v4.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
@@ -51,7 +51,7 @@ import v4.std.node_query {
 }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
+// 🟡 gated — feature:section-ref-identity-evidence —
 // dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
 // node-containment evidence from the shared declaration/node identity substrate; forbidden:
 // marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.

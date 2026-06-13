@@ -6,14 +6,17 @@
 // That ~6,300-line model was a descriptive-only CI mirror with no runtime consumer (see
 // docs/planning/thin-shim-ci-a3-runall-blocker-report-2026-06-08.md) and was deleted wholesale per
 // operator GO. The only fragment with a real consumer is this lens-CI claim-run roster: the must-pass
-// `v4_lens_ci` CI job (`scripts/v4-lens-ci-gate.sh`) text-projects this list and `*_count` to drive
-// its discriminating, perturb-checked witnesses. `.github/workflows/ci.yml` is the direct hand-edited
-// CI authority; this file owns only the lens claim-run roster the gate consumes.
+// `v4_lens_gate` CI job (`scripts/v4-lens-ci-gate.sh` → uniform `ci-claim-gate` host) evaluates
+// `lens_ci_claim_run_rows_tsv` via the v2 interpreter — no shell awk/grep text projection. `.github/workflows/ci.yml`
+// is the direct hand-edited CI authority; this file owns only the lens claim-run roster the gate consumes.
 
 module v4.workflow.lens_ci_gate
 
-// M2 Lens-CI claim-run transport authority. The live shell gate projects this list;
-// it does not own a parallel witness roster.
+import v4.std.collection { List }
+import v4.std.algebra { fold_list_right }
+
+// M2 Lens-CI claim-run transport authority. `lens_ci_claim_run_rows` is the sole roster;
+// `lens_ci_claim_run_rows_tsv()` projects it for the `ci-claim-gate` host (no shell awk/grep).
 type LensCiClaimRunRow {
   label: String
   entry: String
@@ -86,4 +89,20 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_complexity_gate_budget_roster_completeness
 ]
 
-data lens_ci_claim_run_row_count: String = "8"
+// Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
+// Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
+// hand-maintained awk/grep roster projection in the shell gate scripts.
+fn lens_ci_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: lens_ci_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}

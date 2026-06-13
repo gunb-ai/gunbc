@@ -15,9 +15,9 @@
 //! TESTING discipline a source-structure grep belongs in a host crate, not a `.dag`
 //! claim, so it is preserved here — a minimal structural guard, not the full smoke.
 //!
-//! **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
+//! **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
 //! registration, mechanism (b)):** the matching `EXPECTED_HAND_AUTHORED_TEST` row in
-//! `sg0_census_test.rs` lands in the same PR. Net of the fold-delete remains strongly
+//! `self_gen0_census_test.rs` lands in the same PR. Net of the fold-delete remains strongly
 //! negative (bulk parse-surface smoke deleted; only this absence-lint retained).
 //! Dissolves when a `.dag`/host structural mechanism can assert a module's declared-type
 //! set directly (type-absence as data).

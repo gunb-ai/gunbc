@@ -6,9 +6,9 @@
 
 module std.memory.operator_fleet
 
+import std.measure { ByteSize, byte_size }
 import std.memory { host_memory_population_nominal_bytes }
 import std.memory.types { DramModuleIdentity, HostMemoryPopulation, HostRamSupplyFacts, MemoryPopulationRow }
-import std.types { Int }
 
 data supply_srv1_memory: HostMemoryPopulation = HostMemoryPopulation {
   rows: [
@@ -32,12 +32,12 @@ data supply_srv2_memory: HostMemoryPopulation = HostMemoryPopulation {
   ],
 }
 
-data supply_srv1_nominal_ram_bytes: Int = host_memory_population_nominal_bytes(supply_srv1_memory)
-data supply_srv2_nominal_ram_bytes: Int = host_memory_population_nominal_bytes(supply_srv2_memory)
+data supply_srv1_nominal_ram_bytes: ByteSize = host_memory_population_nominal_bytes(supply_srv1_memory)
+data supply_srv2_nominal_ram_bytes: ByteSize = host_memory_population_nominal_bytes(supply_srv2_memory)
 
 // Observed usable bytes (operator spec 2026-06-02) — below nominal on srv1 (mixed sticks).
-data supply_srv1_observed_ram_bytes: Int = 99857989632
-data supply_srv2_observed_ram_bytes: Int = 134217728000
+data supply_srv1_observed_ram_bytes: ByteSize = byte_size(99857989632)
+data supply_srv2_observed_ram_bytes: ByteSize = byte_size(134217728000)
 
 data supply_srv1_ram: HostRamSupplyFacts = HostRamSupplyFacts {
   nominal_bytes: supply_srv1_nominal_ram_bytes,

@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # actions:read lets the non-gating `affected_timings` job read this run's own per-job wall-clock
+  # via the Actions API (the .dag github.Actions extdep, driven by collect-affected-set-timings).
+  # Read-only; no job uses write scopes.
+  actions: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -269,6 +273,105 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
+  # Wave-1 §11.7 follow-up TIMINGS AGGREGATOR -- the job the `affected` comment above promised.
+  # NON-GATING measurement: after the floor/lens jobs finish, read THIS run's per-job wall-clock via
+  # the Actions API (the shell-free .dag github.Actions extdep) and re-emit the affected-set CI receipt with
+  # actual_run_minutes + wall_clock_by_job populated, so `saved_minutes` becomes measurable (closes the
+  # v1 gap the kill-criterion doc flagged). Transport-only (RR-K §2.4): re-invokes the SAME emit bin
+  # (single authority for the saved_minutes formula in receipt.rs); computes NO affected-set facts and
+  # gates NO job. Deliberately NOT in the `ci` aggregator needs-closure -- timing collection must never
+  # fail a merge. `if: always()` so timings are captured even when a floor job failed (not when the
+  # whole run is cancelled). Emits a SEPARATE `affected-set-ci-receipt-timed` artifact; the early
+  # `affected-set-ci-receipt` stays as the prediction-only receipt (available even on cancelled runs).
+  affected_timings:
+    runs-on: [self-hosted, linux, arm64]
+    # Mirrors the `affected` setup (checkout + rust + sccache bin build) + the shell-free .dag
+    # github.Actions fetch (collect-affected-set-timings, which embeds v2-compiler) + one emit.
+    # Budget rule (documented uncontended wall x2): INTERIM 8 -- v2-compiler is sccache-warm from
+    # the floor jobs that build it (ci_floor_emit), so the warm wall is ~1-2m; the cold-build
+    # (sccache-miss) tail dominates at ~3-4m; 4m x2 = 8. Re-derive from the first green run; if the
+    # v2-host build breaches it cold, restore a cached binary as the lens jobs do for claim_batch.
+    timeout-minutes: 8
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci]
+    if: always()
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Fetch main for diff base
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: Collect this run's per-job wall-clock (.dag github.Actions extdep, shell-free, fail-safe)
+      # Option B host: collect-affected-set-timings embeds the v2 interpreter, binds
+      # GITHUB_RUN_ID (auto-provided by Actions) as the .dag transform's arg, and the job
+      # FETCH fires through the .dag github.Actions extdep -> dispatch_rest -> ureq (real
+      # HTTP, zero shell). Replaces scripts/ci_collect_job_timings.py. GITHUB_TOKEN (actions:read,
+      # from the permissions block) is read natively by the .dag service auth. Writes the SAME two
+      # artifacts the Python collector did, so the emit step's --job-timings contract is unchanged.
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_timings_collector --bin collect-affected-set-timings -- \
+          "$RUNNER_TEMP/job-timings.json" "$RUNNER_TEMP/actual-run-minutes.txt"
+    - name: Emit timed affected-set CI receipt
+      run: |
+        bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- \
+          "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt-timed.json" \
+          --estimated-full-run-minutes 15 \
+          --actual-run-minutes "$(cat "$RUNNER_TEMP/actual-run-minutes.txt")" \
+          --job-timings "$RUNNER_TEMP/job-timings.json"
+    - name: Upload timed affected-set CI receipt
+      uses: actions/upload-artifact@v6
+      with:
+        name: affected-set-ci-receipt-timed
+        path: ${{ runner.temp }}/affected-set-ci-receipt-timed.json
+        if-no-files-found: warn
   # §11.7.1 Class A safety floor -- stage0 freshness receipt. DAG parity runs CONCURRENTLY in the
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
   # Job id `ci_floor` is unchanged for branch protection.
@@ -316,7 +419,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -428,7 +533,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -536,7 +643,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -652,26 +761,46 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
+    - name: Restore gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
-        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
-        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        # claim_batch was required by the legacy v4-lens-ci-gate.sh; ci-claim-gate supersedes
+        # the awk/grep roster projection but still uses the v2 interpreter host pattern.
+        # Substrate-equivalence (C9) needs discover_owned_data. Use a distinct key
+        # namespace ('gunbc-lens-gate2-bin-') so caches from before claim_batch was
+        # added (namespace 'gunbc-lens-gate-bin-') never restore and skip its build.
         path: |
           target/release/gunbc
+          target/release/claim_batch
           target/release/discover_owned_data
-        key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure claim_batch binary (v4 lens gate)
+      run: |
+        if [[ ! -x target/release/claim_batch ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin claim_batch
+        fi
     - name: Ensure discover_owned_data binary (v4 lens gate C9)
       run: |
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Ensure ci-claim-gate binary (v4 lens gate)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/discover_owned_data
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
     - name: v4 glob-discovery substrate equivalence (C9)
@@ -745,8 +874,16 @@ jobs:
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-    - name: affected-set node-frontier selection must-pass discriminating witnesses
-      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
+    # GREEN-only here: the must-pass batched (claim_batch) witnesses + modeled
+    # row-count guard for both row-sets (node-frontier + affected-testgen). The
+    # per-row PERTURB fan-out (the 15-row red-under-mutation receipts) moved to
+    # the parallel `v4_lens_ci_perturb` matrix below — each perturb row is an
+    # independent cold full-tree resolve, so fanning them out (capped) cuts the
+    # serial wall without changing gate semantics. Coverage stays whole: the
+    # matrix's union covers all 15 rows and the `ci` aggregator requires every
+    # matrix leg to succeed (fail-closed-on-skip).
+    - name: affected-set node-frontier + testgen GREEN must-pass witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
@@ -754,9 +891,221 @@ jobs:
     # executor's ordering gates execution (false gating claim -> batch 2 skipped).
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
+  # §11.7.1 Class A safety floor (parallel matrix lane) -- the per-row PERTURB
+  # fan-out split out of v4_lens_ci. The 15 red-under-mutation receipts (9
+  # node-frontier + 6 affected-testgen) each require an independent cold full-tree
+  # resolve, which serialized into the v4_lens_ci wall. Profiler E measured
+  # DRAM-bandwidth contention at 2.2-3x and UNCHANGED post-DIMM, so concurrency is
+  # CAPPED (max-parallel, default 4, env-tunable via the
+  # V4_LENS_CI_PERTURB_MAX_PARALLEL repo variable): 3-4 concurrent captures most of
+  # the wall-clock win without saturating bandwidth for every other concurrent job.
+  # Shard count N = matrix leg count = strategy.job-total; this leg is K =
+  # strategy.job-index. The script perturbs the combined-15 rows where i % N == K,
+  # asserts its slice is non-empty and fully run, and the `ci` aggregator requires
+  # EVERY leg to succeed -- a skipped/cancelled shard fails the gate closed (no
+  # pass-by-omission). GREEN witnesses + the executor dogfood STAY in v4_lens_ci.
+  # Enforced via the `ci` aggregator. dissolve-on: PR3 (uniform ci_claim_gate
+  # single-process perturb) re-absorbs this split.
+  v4_lens_ci_perturb:
+    runs-on: [self-hosted, linux, arm64]
+    # Per-shard budget rule (documented uncontended wall x2): with N=4 the
+    # heaviest shard owns 4 of 15 rows; ~108s cold resolve/row + per-row src/v4
+    # copy + checkout/setup/cache-restore ~= 8m uncontended; x2 -> 16, rounded to
+    # 20m (matches the corpus shards). Re-derive once an on-wave per-shard wall
+    # receipt exists; do NOT raise without one.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ vars.V4_LENS_CI_PERTURB_MAX_PARALLEL || 4 }}
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v4 lens CI perturb)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + claim_batch binaries (v4 lens CI perturb)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        # Same binary set + key namespace as v4_lens_ci ('gunbc-lens-bin-') so a
+        # shard restores the artifacts v4_lens_ci built rather than cold-building.
+        # The perturb pass only needs gunbc (per-row `gunbc run --claim-run`), but
+        # the cache stores the trio produced by the one `cargo build -p
+        # v2-compiler --release` so the key matches v4_lens_ci exactly.
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/claim_executor
+        key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens CI perturb)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: affected-set lens PERTURB shard (red-under-mutation receipts)
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard "${{ strategy.job-index }}" "${{ strategy.job-total }}"
+  # Compiler-semantics claim-witness corpus enrollment — two parallel shards (~10 rows
+  # each, deterministic first-half/second-half partition in substrate .dag).
+  # Sign runner (2026-06-13): monolith Phase A ~880s (~14.7m) + spot-perturb → 1108s
+  # (~18.5m) — exceeds 13m gate. Per-shard: Phase A ~7.4m + spot ~1m ≈ 8.4m uncontended;
+  # budget rule: 8.4m ×2 = 16.8m → 20m ceiling/shard (×2.6 tail ≈ 22m < 35m monolith).
+  # CI: --shard a|b --spot-perturb-check; full --perturb-check local-only (both shards).
+  # dissolve-on-arrival: #4783 multi-entry claim_batch shrinks Phase A wall.
+  v4_claim_witness_corpus_a:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard a)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + claim_batch binaries (claim witness corpus shard a)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+        key: gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (claim witness corpus shard a)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: claim-witness corpus enrollment gate (shard a)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
+  v4_claim_witness_corpus_b:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard b)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc + claim_batch binaries (claim witness corpus shard b)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+        key: gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (claim witness corpus shard b)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: claim-witness corpus enrollment gate (shard b)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
   ci:
     if: always()
-    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports, timeout_budgets]
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_lens_ci_perturb, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, infra_isolation, doc_refs, layering_imports, timeout_budgets]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -787,6 +1136,18 @@ jobs:
           echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
+        if [[ "${{ needs.v4_lens_ci_perturb.result }}" != "success" ]]; then
+          echo "::error::v4_lens_ci_perturb matrix did not succeed (result=${{ needs.v4_lens_ci_perturb.result }}); a perturb shard was skipped, cancelled, or failed -- red-under-mutation coverage incomplete, ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_claim_witness_corpus_a.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_a job did not succeed (result=${{ needs.v4_claim_witness_corpus_a.result }}); claim-witness corpus shard-a enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_claim_witness_corpus_b.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_b job did not succeed (result=${{ needs.v4_claim_witness_corpus_b.result }}); claim-witness corpus shard-b enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
@@ -806,4 +1167,4 @@ jobs:
         echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (node-frontier) + v4_claim_witness_corpus_{a,b} (compiler-semantics enrollment shards)"
