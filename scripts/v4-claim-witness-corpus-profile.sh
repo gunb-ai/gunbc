@@ -6,14 +6,18 @@
 #   cold_run_s     — standalone `gunbc run --claim-run` (resolve + eval, full subprocess)
 #   green_batch_s  — amortized share of `claim_batch` for the witness's entry group
 #   spot_perturb_s — temp-copy + perturb + cold run (CI spot-perturb path)
-#   overhead_s     — cold_run_s minus spot_perturb_s (resolve/index/compile tax
-#                    on the green path; negative when perturb copy dominates)
+#   overhead_s     — cold_run_s minus spot_perturb_s (subprocess resolve delta vs
+#                    perturb path; negative when temp-copy dominates)
+#   batch_savings_s — cold_run_s minus green_batch_s (claim_batch amortization win;
+#                    empty when --skip-cold)
 #
 # ExpectFail rows get cold_run_s only (no batch green / spot perturb).
 #
 # Usage:
-#   scripts/v4-claim-witness-corpus-profile.sh --shard a|b [--out DIR]
+#   scripts/v4-claim-witness-corpus-profile.sh --shard a|b [--out DIR] [--skip-cold]
 #   scripts/v4-claim-witness-corpus-profile.sh --shard a|b --both   # run a then b
+#   --skip-cold: skip per-witness standalone gunbc runs (green batch + spot only;
+#                use for full-shard coverage when cold subprocess tax is sampled separately)
 #
 # Requires: target/release/gunbc, target/release/claim_batch
 set -euo pipefail
@@ -26,6 +30,7 @@ bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 shard=""
 out_dir=""
 run_both=0
+skip_cold=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,11 +46,15 @@ while [[ $# -gt 0 ]]; do
       out_dir="$2"
       shift 2
       ;;
+    --skip-cold)
+      skip_cold=1
+      shift
+      ;;
     "")
       shift
       ;;
     *)
-      echo "usage: $0 --shard a|b [--out DIR] | --both [--out DIR]" >&2
+      echo "usage: $0 --shard a|b [--out DIR] [--skip-cold] | --both [--out DIR] [--skip-cold]" >&2
       exit 2
       ;;
   esac
@@ -186,13 +195,7 @@ profile_shard() {
   local s="$1"
   local rows_data="claim_witness_corpus_shard_${s}_rows"
   local count_data="claim_witness_corpus_shard_${s}_row_count"
-  local tsv
-  if [[ -n "$out_dir" ]]; then
-    mkdir -p "$out_dir"
-    tsv="$out_dir/corpus_shard_${s}_profile.tsv"
-  else
-    tsv="/dev/stdout"
-  fi
+  local tsv tsv_final
 
   local -a all_rows=()
   local -a pass_rows=()
@@ -216,6 +219,9 @@ profile_shard() {
 
   local expected_count
   expected_count="$(dag_string_data "$count_data")"
+  if [[ -n "$out_dir" ]]; then
+    mkdir -p "$out_dir"
+  fi
   if [[ "${#all_rows[@]}" -ne "$expected_count" ]]; then
     echo "error: shard ${s}: projected ${#all_rows[@]} rows; modeled count is ${expected_count}" >&2
     exit 2
@@ -262,28 +268,48 @@ profile_shard() {
     done
   done
 
-  printf 'shard\tlabel\tentry\tfunction\texpect\tcold_run_s\tgreen_batch_s\tspot_perturb_s\toverhead_s\n' >"$tsv"
+  local tsv_final
+  if [[ -n "$out_dir" ]]; then
+    tsv_final="$out_dir/corpus_shard_${s}_profile.tsv"
+    tsv="$(mktemp "${tsv_final}.XXXXXX")"
+  else
+    tsv_final=/dev/stdout
+    tsv=/dev/stdout
+  fi
 
-  local total_cold=0 total_green=0 total_spot=0 total_overhead=0
-  local label r_entry r_fn expect cold_s green_s spot_s overhead_s
+  printf 'shard\tlabel\tentry\tfunction\texpect\tcold_run_s\tgreen_batch_s\tspot_perturb_s\toverhead_s\tbatch_savings_s\n' >"$tsv"
+
+  local total_cold=0 total_green=0 total_spot=0 total_overhead=0 total_fail_cold=0 total_batch_savings=0
+  local label r_entry r_fn expect cold_s green_s spot_s overhead_s batch_savings_s
 
   for row in "${pass_rows[@]}"; do
     IFS=$'\t' read -r label r_entry r_fn expect _bind <<< "$row"
-    start=$(date +%s)
-    run_row "src/v4" "$r_entry" "$r_fn"
-    cold_s=$(wall_secs "$start")
+    if [[ "$skip_cold" -eq 1 ]]; then
+      cold_s=""
+      batch_savings_s=""
+    else
+      start=$(date +%s)
+      run_row "src/v4" "$r_entry" "$r_fn"
+      cold_s=$(wall_secs "$start")
+      total_cold=$((total_cold + cold_s))
+    fi
     green_s=${witness_green_amort[$label]:-0}
-    start=$(date +%s)
     spot_s=$(time_spot_perturb "$row")
-    overhead_s=$((cold_s - spot_s))
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    if [[ -n "$cold_s" ]]; then
+      overhead_s=$((cold_s - spot_s))
+      batch_savings_s=$((cold_s - green_s))
+      total_overhead=$((total_overhead + overhead_s))
+      total_batch_savings=$((total_batch_savings + batch_savings_s))
+    else
+      overhead_s=""
+      batch_savings_s=""
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$s" "$label" "$r_entry" "$r_fn" "$expect" \
-      "$cold_s" "$green_s" "$spot_s" "$overhead_s" >>"$tsv"
-    total_cold=$((total_cold + cold_s))
+      "${cold_s:--}" "$green_s" "$spot_s" "${overhead_s:--}" "${batch_savings_s:--}" >>"$tsv"
     total_green=$((total_green + green_s))
     total_spot=$((total_spot + spot_s))
-    total_overhead=$((total_overhead + overhead_s))
-    echo "::notice title=corpus profile ${s}::${label} cold=${cold_s}s green_amort=${green_s}s spot=${spot_s}s overhead=${overhead_s}s" >&2
+    echo "::notice title=corpus profile ${s}::${label} cold=${cold_s:-skip} green_amort=${green_s}s spot=${spot_s}s overhead=${overhead_s:-skip} batch_savings=${batch_savings_s:-skip}" >&2
   done
 
   for row in "${fail_rows[@]}"; do
@@ -291,9 +317,10 @@ profile_shard() {
     start=$(date +%s)
     run_row "src/v4" "$r_entry" "$r_fn" || true
     cold_s=$(wall_secs "$start")
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\n' \
       "$s" "$label" "$r_entry" "$r_fn" "$expect" "$cold_s" >>"$tsv"
     total_cold=$((total_cold + cold_s))
+    total_fail_cold=$((total_fail_cold + cold_s))
     echo "::notice title=corpus profile ${s}::${label} (ExpectFail) cold=${cold_s}s" >&2
   done
 
@@ -302,27 +329,31 @@ profile_shard() {
     green_batch_wall=$((green_batch_wall + entry_batch_total[$e]))
   done
 
-  echo "::notice title=corpus profile ${s} summary::rows=${#all_rows[@]} pass=${#pass_rows[@]} fail=${#fail_rows[@]} green_batch_wall=${green_batch_wall}s total_cold=${total_cold}s total_green_amort=${total_green}s total_spot=${total_spot}s total_overhead=${total_overhead}s" >&2
+  echo "::notice title=corpus profile ${s} summary::rows=${#all_rows[@]} pass=${#pass_rows[@]} fail=${#fail_rows[@]} green_batch_wall=${green_batch_wall}s total_cold=${total_cold}s total_green_amort=${total_green}s total_spot=${total_spot}s total_overhead=${total_overhead}s total_batch_savings=${total_batch_savings}s skip_cold=${skip_cold}" >&2
+
+  if [[ -n "$out_dir" ]]; then
+    mv -f "$tsv" "$tsv_final"
+    tsv="$tsv_final"
+  fi
 
   if [[ -n "$out_dir" ]]; then
     {
       echo "# claim-witness corpus shard ${s} profile"
       echo "generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "skip_cold: ${skip_cold}"
       echo "rows: ${#all_rows[@]} (${#pass_rows[@]} ExpectPass, ${#fail_rows[@]} ExpectFail)"
       echo "green_batch_wall_s: ${green_batch_wall}"
       echo "sum_cold_run_s: ${total_cold}"
       echo "sum_green_amort_s: ${total_green}"
       echo "sum_spot_perturb_s: ${total_spot}"
       echo "sum_overhead_s: ${total_overhead}"
-      local fail_cold=0
-      for row in "${fail_rows[@]}"; do
-        IFS=$'\t' read -r _l r_entry r_fn _e _b <<< "$row"
-        start=$(date +%s)
-        run_row "src/v4" "$r_entry" "$r_fn" || true
-        fail_cold=$((fail_cold + $(wall_secs "$start")))
+      echo "sum_batch_savings_s: ${total_batch_savings}"
+      echo "entry_batch_wall_s:"
+      for e in "${entry_order[@]}"; do
+        echo "  ${e}: ${entry_batch_total[$e]}s (${entry_fn_count[$e]} witness(es))"
       done
       echo "ci_spot_perturb_estimate_s: $(( ${#pass_rows[@]} > 0 ? (total_spot * 2 / ${#pass_rows[@]}) : 0 )) (2/${#pass_rows[@]} of full spot sum)"
-      echo "ci_phase_a_estimate_s: $((green_batch_wall + fail_cold)) (green batch + ExpectFail cold runs)"
+      echo "ci_phase_a_estimate_s: $((green_batch_wall + total_fail_cold)) (green batch + ExpectFail cold runs)"
     } >"$out_dir/corpus_shard_${s}_summary.txt"
   fi
 }
