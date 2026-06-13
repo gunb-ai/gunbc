@@ -193,76 +193,51 @@ fn module_root_name_find_fold(
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-node — hand-rolls Empty/Cons accumulation over FreeMonoid<Node>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn module_root_validate_fold(
-  roots: FreeMonoid<Node>,
-  acc: ModuleRootValidateState
-) -> ModuleRootValidateState {
-  match roots {
-    Empty => acc
-    Cons { head: root, tail: rest } =>
+fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
+  match fold_list(
+    xs: roots,
+    empty: ModuleRootsValid { seen: Empty, diagnostics: None },
+    cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
-          module_root_validate_fold(
-            roots: rest,
-            acc: ModuleRootsDuplicate { diagnostics: d }
-          )
+          ModuleRootsDuplicate { diagnostics: d }
         ModuleRootsProjectionRejected { diagnostics: d } =>
-          module_root_validate_fold(
-            roots: rest,
-            acc: ModuleRootsProjectionRejected { diagnostics: d }
-          )
+          ModuleRootsProjectionRejected { diagnostics: d }
         ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
           if well_formed(n: root) {
             match qualified_name_from_module_node(root: root) {
               Rejected { diagnostics: d } =>
-                module_root_validate_fold(
-                  roots: rest,
-                  acc: ModuleRootsProjectionRejected {
-                    diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
-                  }
-                )
+                ModuleRootsProjectionRejected {
+                  diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
+                }
               Accepted { value: name, diagnostics: proj_diag } =>
                 let merged_diag = diagnostics_merge(outer: acc_diag, inner: proj_diag)
-                module_root_validate_fold(
-                  roots: rest,
-                  acc: match module_root_name_find_fold(
-                    names: prior,
-                    name: name,
-                    acc: ModuleRootNameNotFound
-                  ) {
-                    ModuleRootNameNotFound =>
-                      ModuleRootsValid {
-                        seen: Cons { head: name, tail: prior },
-                        diagnostics: merged_diag
-                      }
-                    ModuleRootNameFoundOnce =>
-                      ModuleRootsDuplicate { diagnostics: merged_diag }
-                    ModuleRootNameFoundDuplicate =>
-                      ModuleRootsDuplicate { diagnostics: merged_diag }
-                  }
-                )
+                match module_root_name_find_fold(
+                  names: prior,
+                  name: name,
+                  acc: ModuleRootNameNotFound
+                ) {
+                  ModuleRootNameNotFound =>
+                    ModuleRootsValid {
+                      seen: Cons { head: name, tail: prior },
+                      diagnostics: merged_diag
+                    }
+                  ModuleRootNameFoundOnce =>
+                    ModuleRootsDuplicate { diagnostics: merged_diag }
+                  ModuleRootNameFoundDuplicate =>
+                    ModuleRootsDuplicate { diagnostics: merged_diag }
+                }
             }
           } else {
-            module_root_validate_fold(
-              roots: rest,
-              acc: ModuleRootsProjectionRejected {
-                diagnostics: rejected_with_pending(
-                  pending: acc_diag,
-                  rejected: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
-                )
-              }
-            )
+            ModuleRootsProjectionRejected {
+              diagnostics: rejected_with_pending(
+                pending: acc_diag,
+                rejected: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+              )
+            }
           }
       }
-  }
-}
-
-
-fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
-  match module_root_validate_fold(
-    roots: roots,
-    acc: ModuleRootsValid { seen: Empty, diagnostics: None }
+    }
   ) {
     ModuleRootsValid { seen: _, diagnostics: d } =>
       Accepted { value: roots, diagnostics: d }
@@ -279,47 +254,42 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-node — hand-rolls Empty/Cons accumulation over FreeMonoid<Node>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn module_root_for_name_fold(
-  roots: FreeMonoid<Node>,
-  name: QualifiedName,
-  acc: PassingCandidateFold
-) -> Outcome<PassingCandidateFold> {
-  match roots {
-    Empty => Accepted { value: acc, diagnostics: None }
-    Cons { head: root, tail: rest } =>
-      match acc {
-        ManyPassingCandidates =>
-          Accepted { value: ManyPassingCandidates, diagnostics: None }
-        _ =>
-          match qualified_name_from_module_node(root: root) {
-            Rejected { diagnostics: d } =>
-              Rejected { diagnostics: d }
-            Accepted { value: candidate, diagnostics: _ } =>
-              module_root_for_name_fold(
-                roots: rest,
-                name: name,
-                acc: if qualified_name_eq(a: candidate, b: name) {
-                  match acc {
-                    NoPassingCandidate => OnePassingCandidate { candidate: root }
-                    OnePassingCandidate { candidate: _ } => ManyPassingCandidates
-                    ManyPassingCandidates => ManyPassingCandidates
-                  }
-                } else {
-                  acc
-                }
-              )
-          }
-      }
-  }
-}
-
-
 fn module_root_find(
   roots: FreeMonoid<Node>,
   name: QualifiedName
 ) -> Outcome<Node> {
-  match module_root_for_name_fold(roots: roots, name: name, acc: NoPassingCandidate) {
+  match fold_list(
+    xs: roots,
+    empty: Accepted { value: NoPassingCandidate, diagnostics: None },
+    cons: fn(acc, root) {
+      match acc {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: fold_state, diagnostics: _ } =>
+          match fold_state {
+            ManyPassingCandidates =>
+              Accepted { value: ManyPassingCandidates, diagnostics: None }
+            _ =>
+              match qualified_name_from_module_node(root: root) {
+                Rejected { diagnostics: d } =>
+                  Rejected { diagnostics: d }
+                Accepted { value: candidate, diagnostics: _ } =>
+                  Accepted {
+                    value: match qualified_name_eq(a: candidate, b: name) {
+                      true =>
+                        match fold_state {
+                          NoPassingCandidate => OnePassingCandidate { candidate: root }
+                          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+                          ManyPassingCandidates => ManyPassingCandidates
+                        }
+                      false => fold_state
+                    },
+                    diagnostics: None
+                  }
+              }
+          }
+      }
+    }
+  ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {

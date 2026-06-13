@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; format slice.
-// Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
+// Status: parse/emit axes (gated on lex/parse/emit pipeline substrate), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -384,7 +384,7 @@ type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
 
-// 🟡 coproduct dissolution — feature:openapi-json-yaml-parse-emit-selector — consumer:T-10/T-11 OpenAPI parse/emit boundary — dissolve-on-arrival: parse/emit selects JsonDocument or YamlDocument directly from source media type / target artifact kind, eliminating this document-local selector; forbidden: adding a third OpenAPI concrete grammar authority.
+// 🟡 coproduct dissolution — feature:openapi-json-yaml-parse-emit-selector — consumer:openapi-parse-emit-boundary — dissolve-on-arrival: parse/emit selects JsonDocument or YamlDocument directly from source media type / target artifact kind, eliminating this document-local selector; forbidden: adding a third OpenAPI concrete grammar authority.
 type OpenApiConcreteSyntaxAuthority
   = OpenApiJsonSyntax { json_document: JsonDocument }
   | OpenApiYamlSyntax { yaml_document: YamlDocument }
@@ -542,8 +542,8 @@ type OpenApiDocumentWireContractFacts {
 }
 
 
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
 // 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
 // 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_admitted_to_http_method + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
 // 🟡 gated — feature: operation WireContractFacts composition with coordination.dag WireContractFacts + ExchangePattern authority — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION.

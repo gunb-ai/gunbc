@@ -16,7 +16,7 @@
 // SymbolicCost lattice axioms at fill (`UnknownCost`-as-top must satisfy
 // the lattice laws — the AbelianGroup<Nat> precedent).
 //
-// Status: T-12 filled — SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
+// Status: SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -73,7 +73,7 @@ import v4.std.node {
 }
 import v4.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v4.std.witness { Holds, Violates, Witness }
-// U2/T-12: this is the single cost carrier. Complexity imports the
+// single cost carrier — Complexity imports the
 // `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
 // 🟢 coproduct dissolution — T-12-COST-CARRIER.
 type SizeVariable {

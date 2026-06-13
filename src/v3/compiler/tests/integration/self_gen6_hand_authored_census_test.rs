@@ -16,7 +16,7 @@
 // ratchet only down" can't be upheld without a machine check.
 //
 // Scope is deliberately SG-6-local. A full `src/v3/compiler/src`
-// inventory belongs to SG-0 and is intentionally out of scope here.
+// inventory belongs to Self-Generation-0 and is intentionally out of scope here.
 //
 // **Bounded-debt trigger: out-of-band registry copies.** `regen.dag`
 // is now the primary authority for each lens's `(name, lens_file,
@@ -138,7 +138,7 @@ fn bin_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn sg6_bin_census_is_locked_to_expected_regen_shims() {
+fn self_gen6_bin_census_is_locked_to_expected_regen_shims() {
     // SG-1 receipts `regen_tokenize.rs` here. The tokenizer cutover uses
     // `src/v3/compiler/tokenize.dag` as lexical authority and
     // `regen_tokenize.rs` as the host driver that projects it into
@@ -333,7 +333,7 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
 // any drift forces a paired edit across `regen.dag`, this test,
 // and the referring migration test.
 #[test]
-fn sg6_regen_dag_registry_triples_are_pinned() {
+fn self_gen6_regen_dag_registry_triples_are_pinned() {
     let (_dag, mut rows) = load_registry();
     rows.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -427,7 +427,7 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
 // `read_registry`; the test below pins the invariant at the registry
 // source so the structural guarantee is visible at the authority.
 #[test]
-fn sg6_lens_registry_names_are_unique() {
+fn self_gen6_lens_registry_names_are_unique() {
     let (_dag, rows) = load_registry();
     let mut seen: HashMap<String, String> = HashMap::new();
     for row in &rows {
@@ -449,7 +449,7 @@ fn sg6_lens_registry_names_are_unique() {
 // (full-registry pass). The driver fails closed on duplicates; this
 // test mirrors that invariant at the registry source.
 #[test]
-fn sg6_lens_registry_generated_files_are_unique() {
+fn self_gen6_lens_registry_generated_files_are_unique() {
     let (_dag, rows) = load_registry();
     let mut seen: HashMap<String, String> = HashMap::new();
     for row in &rows {
@@ -472,7 +472,7 @@ fn sg6_lens_registry_generated_files_are_unique() {
 // registry name and asserts a singleton match, locking in the
 // contract the driver's `--lens` argument depends on.
 #[test]
-fn sg6_lens_registry_names_resolve_to_singleton_entry() {
+fn self_gen6_lens_registry_names_resolve_to_singleton_entry() {
     let (_dag, rows) = load_registry();
     let known_names: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
     for name in &known_names {
@@ -495,7 +495,7 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
 // integration harness glue checks; this ratchet lives here so CI stays honest when the
 // runner wiring drifts.
 #[test]
-fn sg6_cementing_dispatch_dag_is_wired_in_runner_receipt() {
+fn self_gen6_cementing_dispatch_dag_is_wired_in_runner_receipt() {
     let path = manifest_dir()
         .join("tests")
         .join("integration")
@@ -514,7 +514,7 @@ fn sg6_cementing_dispatch_dag_is_wired_in_runner_receipt() {
 }
 
 #[test]
-fn sg6_infer_helpers_generated_module_matches_checked_in_snapshot() {
+fn self_gen6_infer_helpers_generated_module_matches_checked_in_snapshot() {
     let (_dag, rows) = load_registry();
     let row = registry_row(&rows, "infer_helpers");
     let fresh = emit_registry_module(row);
@@ -530,7 +530,7 @@ fn sg6_infer_helpers_generated_module_matches_checked_in_snapshot() {
 
 #[test]
 #[ignore]
-fn sg6_emit_infer_helpers_snapshot() {
+fn self_gen6_emit_infer_helpers_snapshot() {
     let (_dag, rows) = load_registry();
     let row = registry_row(&rows, "infer_helpers");
     let fresh = emit_registry_module(row);
@@ -541,7 +541,7 @@ fn sg6_emit_infer_helpers_snapshot() {
 }
 
 #[test]
-fn sg6_lower_helpers_generated_module_matches_checked_in_snapshot() {
+fn self_gen6_lower_helpers_generated_module_matches_checked_in_snapshot() {
     let (_dag, rows) = load_registry();
     let row = registry_row(&rows, "lower_helpers");
     let fresh = emit_registry_module(row);
@@ -557,7 +557,7 @@ fn sg6_lower_helpers_generated_module_matches_checked_in_snapshot() {
 
 #[test]
 #[ignore]
-fn sg6_emit_lower_helpers_snapshot() {
+fn self_gen6_emit_lower_helpers_snapshot() {
     let (_dag, rows) = load_registry();
     let row = registry_row(&rows, "lower_helpers");
     let fresh = emit_registry_module(row);
@@ -579,7 +579,7 @@ fn sg6_emit_lower_helpers_snapshot() {
 // failing so a local red test does not leave the worktree dirty.
 budgeted_test! {
     15_000,
-    sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
+    self_gen6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
     {
         let (_dag, rows) = load_registry();
         let row = registry_row(&rows, "cost");
