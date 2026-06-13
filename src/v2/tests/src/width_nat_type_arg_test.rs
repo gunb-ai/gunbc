@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use crate::helpers::{
-    compile_dag_resolved, parse_source, read_v2_file, resolve_imports_transitively_with_source_roots,
-    source_roots,
+    compile_dag_resolved, parse_source, read_v2_file,
+    resolve_imports_transitively_with_source_roots, source_roots,
 };
 use v2_compiler::v2_compiler_compile::compile_to_resolved;
 use v2_compiler::v2_std_core::diagnostic_to_message;
