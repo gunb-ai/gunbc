@@ -2,6 +2,7 @@
 
 module std.memory.types
 
+import std.measure { ByteSize }
 import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
@@ -15,7 +16,7 @@ type DramModuleIdentity = SkHynix { dimm: SkHynixDdr4Module }
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
-  capacity_bytes: Int
+  capacity_bytes: ByteSize
   ddr4_pc4_class: NonEmptyStr
   data_rate_mts: Int
   ecc: Bool
@@ -34,6 +35,6 @@ type HostMemoryPopulation {
 
 // Nominal stick population vs observed usable bytes (srv1 degraded case).
 type HostRamSupplyFacts {
-  nominal_bytes: Int
-  observed_usable_bytes: Int
+  nominal_bytes: ByteSize
+  observed_usable_bytes: ByteSize
 }

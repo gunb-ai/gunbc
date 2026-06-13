@@ -1,7 +1,7 @@
 # Measure value-typing — design (scope / dual-representation dissolution)
 
-**Status:** DESIGN / SCOPING ONLY — feasibility spike complete 2026-06-13; **no kernel
-lands until operator/manager confirms scope.**
+**Status:** Phase 1–2 kernel landed (2026-06-13, PR #4812). `compute_fabric.dag`
+conversion deferred to manager (#4810 sequencing). v2 claim-run still gated (G1–G3).
 **Work item:** `node://adhoc-4523b7d2-967`
 **Session:** zesty-otter-413 · **Manager:** snappy-stag-903 (compute fabric)
 **Authority:** `dsl/std/measure.dag` (Q-Unit-1..5 + option (c) ratified at gunbc#828)
