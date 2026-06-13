@@ -150,6 +150,12 @@ fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
     })
 }
 
+/// Host-transport helper: keep `InterpContext` active while inspecting or
+/// printing `Value`s whose identity carriers are interned symbols.
+pub fn with_active_context<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
+    with_active_ctx(ctx, f)
+}
+
 fn active_ctx() -> Option<&'static InterpContext> {
     ACTIVE_CTX.with(|cell| cell.get().map(|ptr| unsafe { &*ptr }))
 }
@@ -963,14 +969,18 @@ impl InterpContext {
         self.symbols.borrow().resolve(sym).to_string()
     }
 
-    fn sym_fields<I>(&self, fields: I) -> HashMap<Symbol, Value>
-    where
-        I: IntoIterator<Item = (String, Value)>,
-    {
-        fields
-            .into_iter()
-            .map(|(k, v)| (self.sym(&k), v))
-            .collect()
+    /// True when `sym` resolves to `name` in this context's intern table.
+    pub fn sym_eq(&self, sym: Symbol, name: &str) -> bool {
+        self.symbols.borrow().resolve(sym) == name
+    }
+
+    /// Lookup a named field in an intern-keyed field map.
+    pub fn field<'a>(
+        &self,
+        fields: &'a HashMap<Symbol, Value>,
+        name: &str,
+    ) -> Option<&'a Value> {
+        fields.get(&self.sym(name))
     }
     /// Snapshot of the copy-work counters accumulated by evaluations in this
     /// context (phase-0 measurement, ctrl#1533).
