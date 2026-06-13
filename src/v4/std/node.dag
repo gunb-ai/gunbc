@@ -185,6 +185,20 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
+
+// Preorder listing of every Node in the subtree rooted at root (root first).
+// init includes self; step appends each child's recursive result — do not re-snoc edge.target
+// (sub already contains it). Sibling to node_subtree_count in 06_translate.dag.
+fn node_subtree_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { [self] },
+      step: fn(acc, _edge, sub) { concat(acc, sub) }
+    }
+  )
+}
+
 type NodeFoldTopDown<A,R> {
   init: fn(Node, A) -> R
   child_context: fn(Node, A, Edge) -> A
