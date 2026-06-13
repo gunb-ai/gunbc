@@ -186,20 +186,20 @@ extdeps.** At most add a **projection** at the std boundary.
 
 ---
 
-## 5. Phased landing
+## 5. Phased landing (operator Path-X sequencing — manager-confirmed)
 
-| Phase | Deliverable | v3 typecheck | v2 claim-run |
-|-------|-------------|--------------|--------------|
-| **1** | `measure.dag` value body + aliases + constructors | ✅ expected | ❌ G1–G3 |
-| **2** | `cpu/types`, `memory/types`, `sk_hynix`, `operator_fleet` | ✅ | ❌ (use projections in fn bodies if needed) |
-| **3** | `placement_supply` typed fields | ✅ | ❌ until G1–G3 |
-| **4** | Currency / `MoneyAmount` (director scale decision) | TBD | TBD |
-| **5** | `compute_fabric` (manager, post-#4810) | — | — |
+Dispatch order pending operator go. **Do not start A/B/C until manager relay.**
 
-**Escalation (recommended with Phase 1):** v2 interpreter lane for G1 (Quantity/Scale as
-phantom type args), G2 (alias field chase in infer), G3 (parametric record literals in
-`data`/expr). Without this, marks stay honest — "typed in model, v2 execution uses
-projections."
+| Lane | Deliverable | Effort | Authority |
+|------|-------------|--------|-----------|
+| **A — Float v2** | F1: `Phantom` terminal in `dsl/std/`; F2: literal-Nat type args in v2 parser (`MachineWidth<8>`) | ~2–3 days | v2 parser (load-bearing) — escalate before edit |
+| **B — G1–G3 v2** | G1: Quantity/Scale as phantom type params; G2: alias field chase in infer; G3: parametric record literals | ~3–5 days | v2 infer + parse (load-bearing) — escalate before edit |
+| **C — Measure census** | `count: Nat` kernel + census (`measure`, `cpu`, `memory`, `placement_supply`); #4812 reference draft | ~1 PR | modeling (after A+B if Path X) |
+| **D — compute_fabric** | Manager lane post-#4810 | — | snappy-stag-903 |
+| **E — Currency** | `MoneyAmount` / `CostEstimate` | TBD | Phase 4 |
+
+**#4812** already reflects lane C shape (`count: Nat`); stays **draft** until A+B land (Path X)
+or operator picks an alternative to parametric Measure.
 
 ---
 
@@ -234,4 +234,4 @@ standard; do not force `Milli` = cents without catalog authority per currency.
 
 ---
 
-**Awaiting manager/operator confirmation before kernel implementation.**
+**HOLD — standing by for operator Path-X go via manager relay.**
