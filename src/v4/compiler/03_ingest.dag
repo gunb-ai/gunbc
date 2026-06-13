@@ -1,0 +1,119 @@
+// src/v4/compiler/03_ingest.dag
+// Scope: #g-ingest-bridge (#4801) — the ParseTree -> emit-side core node forward interpreter,
+//   the single unrealized link of the cross-language emit matrix
+//   (cross_language_add_python_to_typescript.dag links 2-4). Structural inverse of the
+//   06_translate grammar-inverse serialize: backward selects a production from an emitted core
+//   node; this forward direction recovers the emit-side core node a parse committed to and
+//   carries it (via the LANDED semantic dual coerce_grounded_node) to canonical IR.
+//
+// Home discipline (signed design, #4821): SMALL CLOSURE. This module OWNS the forward fold and
+//   the bridge composition; it imports grammar.dag / 02_parse carriers / 06_translate /
+//   04_infer / 05_emit READ-ONLY. It edits none of them (02_parse adoption is Mgr-CONSOLIDATION
+//   territory per #g-bidir gate 2; grammar.dag is at its 47-importer ceiling).
+//
+// Genericity (CoC=1): one language-blind fold parameterised by a source TargetModel. A new
+//   language greens by authoring rows in extdeps/languages/*.dag — never by editing this fold.
+//   Any per-language / per-production arm here is a FALSIFIER (escalate, do not work around).
+
+module v4.compiler.ingest
+
+import v4.std.grammar { ParseTree }
+import v4.std.node_query { find_named_child }
+import v4.std.compilers.target_model {
+  TargetModel,
+  target_model_edge_translation_rules
+}
+import v4.compiler.compile { CoreNode }
+import v4.compiler.infer { infer }
+import v4.compiler.translate {
+  coerce_grounded_node,
+  grammar_relation_row_for_emitted,
+  target_bundle_child,
+  translate
+}
+import v4.std.node { Node, Symbol }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+
+// Named fail-closed reasons — the gaps are located, never silent shims.
+data parse_tree_to_emitted_node_no_production_identity: Symbol = ^parse_tree_to_emitted_node_no_production_identity
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forward fold: ParseTree -> emit-side core Node.
+//
+// The parse stage stamps every production tree as a Conj carrying the production's emitted
+// TEMPLATE under `grammar_production_identity_node_projection` and the parsed children under
+// `grammar_production_captured_node_projection` (02_parse.parse_wrap_production_captured).
+// The forward interpreter (i) projects the emitted template, (ii) confirms ROW-DRIVEN that the
+// template is a declared translation row of `source_model` (fail-closed otherwise — this is the
+// generic gate; an arbitrary node that no row emits is rejected), and returns the emit-side core
+// node the parse committed to.
+//
+// NOTE (composition / nesting): for the add keystone the production is FLAT and its emitted is a
+// static TYPE template (e.g. Arrow[int,int,int]) — untyped sources like python `def add(x,y)`
+// carry no type tokens, so the slots are NOT built from captures; they are the row's declared
+// template. The general node-step recurses into captured nested-production children and composes
+// their emitted into the template's nonterminal slots; the flat add case has no such children, so
+// composition is the validated template. Per the signed design, build-from-captures applies only
+// where the source carries the slot tokens; row-confirm + frontier validation is the base step.
+fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
+  match find_named_child(
+    root: parse_tree,
+    name: ^grammar_production_identity_node_projection
+  ) {
+    Rejected { diagnostics: _ } =>
+      outcome_rejected(d: Diagnostic {
+        reason: parse_tree_to_emitted_node_no_production_identity,
+        at: node_locus(node: parse_tree),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    Accepted { value: emitted, diagnostics: _ } =>
+      // Row-driven gate: the emitted template must be a declared translation row of source_model.
+      bind_outcome(
+        o: target_bundle_child(target: source_model, edge_name: target_model_edge_translation_rules),
+        f: fn(rules) {
+          bind_outcome(
+            o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+            f: fn(_row) { outcome_accepted(value: emitted) }
+          )
+        }
+      )
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The bridge: ParseTree -> canonical IR (stops at canonical IR per signed signature).
+//
+//   parse_tree_to_target_model_bridge(parse_tree, source_model)
+//     = fold (syntactic half) -> infer (generic grounding) -> coerce_grounded_node (semantic half)
+//
+// The signed `bind(parse_tree_to_emitted_node, coerce_grounded_node)` elides the InferredTree
+// coerce requires; `infer(emitted)` supplies it GENERICALLY (ResolvedTree = Node), so the bridge
+// stays parameterised by source_model only — no per-language hand-built grounding. coerce returns
+// the canonical IR core node (result.target).
+fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<CoreNode> {
+  bind_outcome(
+    o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
+    f: fn(emitted) {
+      bind_outcome(
+        o: infer(tree: emitted),
+        f: fn(inferred) {
+          bind_outcome(
+            o: coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
+            f: fn(result) { outcome_accepted(value: result.target) }
+          )
+        }
+      )
+    }
+  )
+}
