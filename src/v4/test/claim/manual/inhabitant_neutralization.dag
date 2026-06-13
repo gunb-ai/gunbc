@@ -27,7 +27,6 @@ import v4.std.compilers.target_model {
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node {
-  Atom,
   Conj,
   Edge,
   Named,
@@ -59,7 +58,7 @@ import v4.std.inhabitant_neutralization {
 
 fn falsifier_symbol_node(id: Symbol) -> Node {
   Node {
-    kind: Atom { identity: id },
+    kind: TypeNode { connective: Atom { identity: id } },
     children: Empty,
     occurrence_id: SyntheticOccurrence
   }
