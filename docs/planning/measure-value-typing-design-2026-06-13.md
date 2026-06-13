@@ -113,16 +113,16 @@ same facts twice — typed alias + bare `Int`/`Float`. Explicit debt:
 ### 3.1 Widen carrier (ratification header updated, not replaced)
 
 ```dag
+import std.nat { Nat }
 import std.types { Int }
 
 type Measure<Q, S> {
-  count: Int
+  count: Nat
 }
 ```
 
-- **`count: Int`** (not `Nat`) — matches every census `Int` site; v2-importable without
-  `nat.dag` → `algebra.dag` chain. Forward-flag: migrate to `Nat` when construction chain is
-  v2-green (same field label).
+- **`count: Nat`** — construction-chain authority. Int literals inhabit `Nat` fields on v2
+  (spike-verified). **No Int fallback** (operator override 2026-06-13).
 - Phantom `<Q>` / `<S>` unchanged. Option (c) preserved — no predicates on `Measure`.
 
 ### 3.2 Aliases (M9 — attach to `measure.dag`, no per-site re-declarations)
@@ -137,11 +137,11 @@ type Measure<Q, S> {
 ### 3.3 Constructors / projections (per-alias totals — no generic `measure<Q,S>`)
 
 ```dag
-fn byte_size(count: Int) -> ByteSize
+fn byte_size(magnitude: Int) -> ByteSize
 fn byte_size_count(b: ByteSize) -> Int
-fn hertz(count: Int) -> Hertz
+fn hertz(magnitude: Int) -> Hertz
 fn hertz_count(h: Hertz) -> Int
-fn hardware_thread_count(count: Int) -> HardwareThreadCount
+fn hardware_thread_count(magnitude: Int) -> HardwareThreadCount
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Int
 ```
 
@@ -163,8 +163,8 @@ use projections in fn bodies until interpreter chases aliases.
 | `std/cpu/types.dag` | `CpuModelCatalogRow.threads`, `nominal_sustained_per_thread_hz`, `CpuDeploymentFacts.sustained_per_thread_hz` | → `HardwareThreadCount`, `Hertz` |
 | `std/placement_supply.dag` | `PlacementSupplyRow.{hardware_threads, clock_hz, ram_bytes}` | v2-safe import graph preserved |
 
-**`placement_supply` import rule:** may import `std.measure` + `std.types` only (no
-`float.dag` / `compute_fabric`).
+**`placement_supply` import rule:** may import `std.measure` (transitively `std.nat`) +
+`std.types` only (no `float.dag` / `compute_fabric`).
 
 ### 4.2 Out of scope — manager coordinates after #4810
 
