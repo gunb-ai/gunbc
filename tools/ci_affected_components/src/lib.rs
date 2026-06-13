@@ -400,10 +400,12 @@ mod tests {
     }
 
     // Drift tripwire: every .dag file the ci_floor compile actually reads
-    // (--source-root src/v4 walks the tree recursively) must be covered by the allowlist.
-    // A new src/v4/<dir>/x.dag that escapes all prefixes will fail here before CI silently skips it.
+    // (--source-root src/v4 walks the tree recursively) must be covered by at least one CI
+    // bucket so that no src/v4 path can silently escape all CI gating.
+    // test/claim/ files map to testclaim_corpus; install.dag maps to release_distribution;
+    // everything else must be in v4 (which is a subset of testclaim_corpus).
     #[test]
-    fn affects_v4_allowlist_covers_all_src_v4_dag_files() {
+    fn ci_floor_compile_closure_fully_covered_by_ci_buckets() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // tools/ci_affected_components -> repo root
         let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
@@ -420,15 +422,19 @@ mod tests {
                 .strip_prefix(repo_root)
                 .expect("dag path must be under repo root");
             let rel_str = rel.to_str().expect("path must be valid utf-8");
-            if !ci_changed_path_affects_v4(rel_str) {
+            // A file is covered if it triggers any CI bucket that runs during a PR.
+            // testclaim_corpus is a superset of v4 (it calls ci_changed_path_affects_v4 first).
+            let covered = ci_changed_path_affects_testclaim_corpus(rel_str)
+                || ci_changed_path_affects_release_distribution(rel_str);
+            if !covered {
                 uncovered.push(rel_str.to_string());
             }
         }
         assert!(
             uncovered.is_empty(),
-            "ci_changed_path_affects_v4 is NARROWER than the ci_floor compile closure.\n\
-             These src/v4 .dag files are compiled by ci_floor (--source-root src/v4) \
-             but NOT covered by the allowlist — add them:\n  {}",
+            "These src/v4 .dag files are compiled by ci_floor (--source-root src/v4) \
+             but do NOT trigger any CI bucket (v4 / testclaim_corpus / release_distribution). \
+             Add them to the appropriate predicate in ci_changed_path_affects_v4 or a sibling:\n  {}",
             uncovered.join("\n  ")
         );
     }
