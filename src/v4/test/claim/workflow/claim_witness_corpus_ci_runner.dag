@@ -50,7 +50,7 @@ data corpus_ci_gate_row_comprep_eval_keystone: ClaimWitnessCorpusClaimRunRow = C
   label: "comprep eval by execution keystone",
   entry: "src/v4/test/claim/manual/comprep_eval_by_execution.dag",
   function: "comprep_eval_by_execution_keystone_holds",
-  expected: ExpectFail { bind_anchor: "#4741" }
+  expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {

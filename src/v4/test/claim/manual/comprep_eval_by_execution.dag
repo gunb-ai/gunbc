@@ -29,7 +29,11 @@ import v4.extdeps.languages.dag {
   dag_mvp1_source_text
 }
 import v4.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
-import v4.std.cardinality { termination_proof_witness_for_node }
+import v4.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  termination_proof_witness_for_node
+}
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.diagnostic {
   Accepted,
@@ -62,6 +66,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
+  loop_bound_edge,
   SyntheticOccurrence
 }
 import v4.std.node_query { node_positional_child_targets }
@@ -775,8 +780,41 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
+      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
+      Edge {
+        label: Named { name: loop_bound_edge },
+        target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal)
+      }
     ]
+  }
+}
+
+fn comprep_eval_loop_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(key) {
+        match key.kind {
+          ComputationNode { behavior: Loop } =>
+            Holds {
+              value: claim_inferred_facts_from_nodes(
+                resolved: key,
+                algebra: comprep_eval_i64_node(),
+                descent: Holds {
+                  value: TerminationProof {
+                    non_increasing: [],
+                    strict: RankingDimension {
+                      measured: ^comprep_eval_loop_measure_literal
+                    }
+                  }
+                }
+              )
+            }
+          _ =>
+            comprep_eval_facts_lookup(key: key)
+        }
+      }
+    }
   }
 }
 
@@ -788,7 +826,7 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
 // dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
 fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
   let loop_node = comprep_eval_lazy_arm_loop_node()
-  let tree = comprep_eval_admitted_tree(root: loop_node)
+  let tree = comprep_eval_loop_admitted_tree(root: loop_node)
   match eval(
     tree: tree,
     interpretation: comprep_eval_lazy_arm_loop_interpretation(),

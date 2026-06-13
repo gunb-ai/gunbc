@@ -516,6 +516,7 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  | TargetValueExprConditional
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -534,6 +535,7 @@ type TargetValueTemplateKind
   | ValueBindingRef
   | ValuePrimitiveApply
   | ValueEffectApply
+  | ValueConditional
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -611,11 +613,18 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
+type TargetConditionalShape {
+  if_token: Symbol
+  then_token: Symbol
+  else_token: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
   effect_apply_form: TargetEffectApplyShape
+  conditional_form: TargetConditionalShape
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
@@ -644,6 +653,13 @@ data target_value_expr_field_operation: Symbol = target_value_expr_field_operati
 data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
 data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
 data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
+data target_value_expr_field_conditional: Symbol = target_value_expr_field_conditional
+data target_value_expr_field_branch_condition: Symbol = target_value_expr_field_branch_condition
+data target_value_expr_field_branch_then_arm: Symbol = target_value_expr_field_branch_then_arm
+data target_value_expr_field_branch_else_arm: Symbol = target_value_expr_field_branch_else_arm
+data target_value_expr_field_if_token: Symbol = target_value_expr_field_if_token
+data target_value_expr_field_then_token: Symbol = target_value_expr_field_then_token
+data target_value_expr_field_else_token: Symbol = target_value_expr_field_else_token
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
 data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
@@ -1121,6 +1137,37 @@ fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveA
   )
 }
 
+fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_if_token),
+    f: fn(if_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: target_value_expr_field_then_token
+        ),
+        f: fn(then_token) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_else_token
+            ),
+            f: fn(else_token) {
+              outcome_accepted(
+                TargetConditionalShape {
+                  if_token: if_token,
+                  then_token: then_token,
+                  else_token: else_token
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(
@@ -1306,12 +1353,28 @@ fn decode_value_expression_projection_bundle(
                                   bind_outcome(
                                     o: decode_effect_apply_shape_bundle(bundle: effect_bundle),
                                     f: fn(effect_apply_form) {
-                                      outcome_accepted(
-                                        TargetValueExpressionProjection {
-                                          binding_ref_form: binding_ref_form,
-                                          primitive_apply_form: primitive_apply_form,
-                                          callable_apply_form: callable_apply_form,
-                                          effect_apply_form: effect_apply_form
+                                      bind_outcome(
+                                        o: projection_bundle_child(
+                                          bundle: bundle,
+                                          name: target_value_expr_field_conditional
+                                        ),
+                                        f: fn(conditional_bundle) {
+                                          bind_outcome(
+                                            o: decode_conditional_shape_bundle(
+                                              bundle: conditional_bundle
+                                            ),
+                                            f: fn(conditional_form) {
+                                              outcome_accepted(
+                                                TargetValueExpressionProjection {
+                                                  binding_ref_form: binding_ref_form,
+                                                  primitive_apply_form: primitive_apply_form,
+                                                  callable_apply_form: callable_apply_form,
+                                                  effect_apply_form: effect_apply_form,
+                                                  conditional_form: conditional_form
+                                                }
+                                              )
+                                            }
+                                          )
                                         }
                                       )
                                     }
@@ -2122,6 +2185,8 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValueEffectApply =>
       optional_absent()
+    ValueConditional =>
+      optional_absent()
   }
 }
 
@@ -2766,6 +2831,36 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
   )
 }
 
+fn target_value_expression_conditional(
+  condition: TargetValueExpression,
+  then_arm: TargetValueExpression,
+  else_arm: TargetValueExpression
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprConditional,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_conditional_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: target_value_expr_field_branch_condition,
+          target: condition.node
+        ),
+        target_model_named_edge(
+          name: target_value_expr_field_branch_then_arm,
+          target: then_arm.node
+        ),
+        target_model_named_edge(
+          name: target_value_expr_field_branch_else_arm,
+          target: else_arm.node
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
 data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
 data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
 data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
@@ -3153,6 +3248,278 @@ fn target_value_expression_binding_ref_to_concrete_tokens(
   )
 }
 
+fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expression_field_identity {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: id } => outcome_accepted(id)
+    Absent =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(
+          expr: TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      )
+  }
+}
+
+fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: atom_id } } =>
+      if atom_id == ^target_value_expression_binding_ref_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprBindingRef,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_symbol_identity_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_conditional_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprConditional,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_primitive_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprPrimitiveApply,
+            node: wire
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expression_emit_unsupported_kind_diagnostic(
+            expr: TargetValueExpression {
+              kind: TargetValueExprSymbolIdentity,
+              node: wire
+            }
+          )
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(
+          expr: TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      )
+  }
+}
+
+fn target_value_expr_conditional_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_conditional_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_branch_condition,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_branch_then_arm,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_branch_else_arm,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        outcome_accepted(true)
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_conditional_child_from_wire(
+  wire: Node,
+  field: Symbol
+) -> Outcome<TargetValueExpression> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == field {
+                optional_present(value: edge.target)
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: child } =>
+      target_value_expression_reify_from_wire(wire: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expression_symbol_identity_to_concrete_tokens(
+  expr: TargetValueExpression
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
+    f: fn(token_class) {
+      outcome_accepted(
+        Cons {
+          head: FixedToken { token_class: token_class },
+          tail: Empty
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_conditional_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_conditional_child_from_wire(
+          wire: expr.node,
+          field: target_value_expr_field_branch_condition
+        ),
+        f: fn(condition) {
+          bind_outcome(
+            o: target_value_expr_conditional_child_from_wire(
+              wire: expr.node,
+              field: target_value_expr_field_branch_then_arm
+            ),
+            f: fn(then_arm) {
+              bind_outcome(
+                o: target_value_expr_conditional_child_from_wire(
+                  wire: expr.node,
+                  field: target_value_expr_field_branch_else_arm
+                ),
+                f: fn(else_arm) {
+                  bind_outcome(
+                    o: target_value_expression_to_concrete_tokens(
+                      expr: condition,
+                      projection: projection,
+                      catalog: catalog
+                    ),
+                    f: fn(cond_tokens) {
+                      bind_outcome(
+                        o: target_value_expression_to_concrete_tokens(
+                          expr: then_arm,
+                          projection: projection,
+                          catalog: catalog
+                        ),
+                        f: fn(then_tokens) {
+                          bind_outcome(
+                            o: target_value_expression_to_concrete_tokens(
+                              expr: else_arm,
+                              projection: projection,
+                              catalog: catalog
+                            ),
+                            f: fn(else_tokens) {
+                              outcome_accepted(
+                                list_append(
+                                  left: list_append(
+                                    left: list_append(
+                                      left: list_append(
+                                        left: list_append(
+                                          left: Cons {
+                                            head: FixedToken {
+                                              token_class: projection.conditional_form.if_token
+                                            },
+                                            tail: Empty
+                                          },
+                                          right: cond_tokens
+                                        ),
+                                        right: Cons {
+                                          head: FixedToken {
+                                            token_class: projection.conditional_form.then_token
+                                          },
+                                          tail: Empty
+                                        }
+                                      ),
+                                      right: then_tokens
+                                    ),
+                                    right: Cons {
+                                      head: FixedToken {
+                                        token_class: projection.conditional_form.else_token
+                                      },
+                                      tail: Empty
+                                    }
+                                  ),
+                                  right: else_tokens
+                                )
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 // Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
@@ -3175,6 +3542,14 @@ fn target_value_expression_to_concrete_tokens(
       target_value_expression_effect_apply_to_concrete_tokens(
         expr: expr,
         projection: projection
+      )
+    TargetValueExprSymbolIdentity =>
+      target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
+    TargetValueExprConditional =>
+      target_value_expression_conditional_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
       )
     _ =>
       outcome_rejected(
@@ -3452,6 +3827,31 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             ]
           )
         )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_conditional,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_if_token,
+              target: target_model_type_atom_node(
+                identity: projection.conditional_form.if_token
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_then_token,
+              target: target_model_type_atom_node(
+                identity: projection.conditional_form.then_token
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_else_token,
+              target: target_model_type_atom_node(
+                identity: projection.conditional_form.else_token
+              )
+            )
+          ]
+        )
       )
     ]
   )
@@ -3516,6 +3916,10 @@ fn target_value_template_apply(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
     ValueEffectApply =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueConditional =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
