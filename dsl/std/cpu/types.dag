@@ -3,7 +3,8 @@
 module std.cpu.types
 
 import std.measure { HardwareThreadCount, Hertz }
-import std.types { Int, NonEmptyStr, Option }
+import std.option { Option }
+import std.types { Int, NonEmptyStr }
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 

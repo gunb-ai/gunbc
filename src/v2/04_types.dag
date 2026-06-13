@@ -2,6 +2,7 @@
 
 module v2.compiler.infer_types
 
+import std.option { is_optional_coproduct_type_name }
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -1021,8 +1022,8 @@ fn extract_optional_inner_node(n: Node) -> Node {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     with_required_cardinality(n: n)
-  } else if n.name == "Optional" && n.children |> count == 1 {
-    // Applied generic Optional<T>: inner is the type argument when the coproduct
+  } else if is_optional_coproduct_type_name(name: n.name) && n.children |> count == 1 {
+    // Applied generic Option<T> / Optional<T>: inner is the type argument when the coproduct
     // Disj structure is not carried on the instantiated node (substitute_generics
     // rebuild). Present/Absent synthesis still needs T for the value field.
     match n.children |> first {

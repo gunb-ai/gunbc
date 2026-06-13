@@ -8,6 +8,7 @@
 
 module std.compute_fabric
 
+import std.option { Option }
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.os.types {
