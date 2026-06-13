@@ -1,0 +1,55 @@
+// TEMPORARY fast probe — cross-language emit neutralization on the python core (NO parse).
+// Tests: python emitted add core -> infer -> coerce(target=ts) -> emit(ts). Delete after.
+module v4.test.claim.manual.xlang_neutralize_probe
+
+import v4.compiler.infer { infer }
+import v4.compiler.emit { emit }
+import v4.compiler.translate { coerce_grounded_node }
+import v4.extdeps.languages.python { python_mvp1_emitted_add_fn_node, python_mvp1_target_model }
+import v4.extdeps.languages.typescript { ts_mvp1_target_model }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node { Symbol }
+
+// Baseline: does python core emit to PYTHON (same-language)? Should be ok.
+fn py_to_py() -> Symbol {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+    Rejected { diagnostics: _ } => ^infer_rejected
+    Accepted { value: ti, diagnostics: _ } =>
+      match emit(tree: ti, target: python_mvp1_target_model()) {
+        Rejected { diagnostics: _ } => ^py_emit_rejected
+        Accepted { value: _, diagnostics: _ } => ^py_ok
+      }
+  }
+}
+
+// Cross-language: python core -> coerce(target=ts) -> emit(ts).
+fn py_to_ts() -> Symbol {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+    Rejected { diagnostics: _ } => ^infer_rejected
+    Accepted { value: ci, diagnostics: _ } =>
+      match coerce_grounded_node(source: python_mvp1_emitted_add_fn_node(), tree: ci, target: ts_mvp1_target_model()) {
+        Rejected { diagnostics: _ } => ^coerce_to_ts_rejected
+        Accepted { value: coerced, diagnostics: _ } =>
+          match infer(tree: coerced.target) {
+            Rejected { diagnostics: _ } => ^infer2_rejected
+            Accepted { value: ti, diagnostics: _ } =>
+              match emit(tree: ti, target: ts_mvp1_target_model()) {
+                Rejected { diagnostics: _ } => ^emit_after_coerce_rejected
+                Accepted { value: _, diagnostics: _ } => ^xlang_ok
+              }
+          }
+      }
+  }
+}
+
+// Direct (no coerce): python core -> emit(ts). Expected to fail (flavor mismatch).
+fn py_to_ts_direct() -> Symbol {
+  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+    Rejected { diagnostics: _ } => ^infer_rejected
+    Accepted { value: ti, diagnostics: _ } =>
+      match emit(tree: ti, target: ts_mvp1_target_model()) {
+        Rejected { diagnostics: _ } => ^direct_ts_emit_rejected
+        Accepted { value: _, diagnostics: _ } => ^direct_ts_ok
+      }
+  }
+}
