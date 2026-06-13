@@ -24,6 +24,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.compiler.source_authority { source_authority_node_equal }
 import v4.compiler.translate {
+  coerce_grounded_node,
   target_serialize_source_from_model,
   translate_emitted_node
 }
@@ -267,6 +268,17 @@ fn branch_if_then_else_emit_diag_branch_body_translate_accepts() -> Bool {
     tree: branch_if_then_else_emit_inferred_tree_for(
       root: dag_mvp1_pick_if_body_fixture
     ),
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_pick_empty_domain_coerce_accepts() -> Bool {
+  match coerce_grounded_node(
+    source: dag_mvp1_pick_arrow_domain_conj_node(),
+    tree: branch_if_then_else_inferred_tree,
     target: dag_mvp1_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
