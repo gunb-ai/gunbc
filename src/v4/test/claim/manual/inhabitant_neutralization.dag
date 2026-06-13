@@ -4,6 +4,8 @@
 
 module v4.test.claim.manual.inhabitant_neutralization
 
+import v4.compiler.emit { emit }
+import v4.compiler.infer { infer }
 import v4.extdeps.languages.go {
   Signed,
   SignedTypedIntegerTruncatesSilentlyOnOverflow,
