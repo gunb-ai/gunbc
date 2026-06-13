@@ -102,8 +102,7 @@ fn main() -> ExitCode {
     let job_count = job_timings.len();
     let receipt = timed_ci_receipt(job_timings, actual_run_minutes);
     // Best-effort write; a write failure also fails safe (no downstream consumer hard-depends).
-    let receipt_json =
-        serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string());
+    let receipt_json = serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string());
     if let Err(e) = std::fs::write(out_receipt, receipt_json) {
         warn(&format!("could not write {out_receipt}: {e}"));
     }
