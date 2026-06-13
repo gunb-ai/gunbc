@@ -7,32 +7,106 @@ module v4.test.claim.manual.program_partition_comprep_body_emit
 
 import v4.compiler.program_partition {
   emit_for_target,
-  program_segment_from_section_unavailable
+  facts_closure_fold,
+  program_segment_from_section_unavailable,
+  resolve_program_partition
 }
 import v4.extdeps.languages.typescript {
   ts_mvp1_source_text,
   ts_mvp1_target_model
 }
+import v4.std.algebra { Empty, any, fold_list, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   None,
   Rejected
 }
+import v4.std.node { Node }
 import v4.std.logic { Bool }
 import v4.std.node_query { find_arrow_body_child }
 import v4.std.program_segment {
   partition_boundary_ambient_context,
+  partition_boundary_fail_closed,
   program_segment_subtree_root,
   program_segment_whole_program
 }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
-  UnifiedTestClaim
+  UnifiedTestClaim,
+  node_subtree_nodes
 }
 import v4.test.claim.manual.comprep_add_body_emit_typescript {
   comprep_ts_emit_from_producer_tree,
   comprep_ts_producer_inferred_tree
+}
+
+fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
+  any(xs: seen, predicate: fn(member) { member == needle })
+}
+
+fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
+  match fold_list(
+    xs: xs,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, member) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: seen, diagnostics: _ } =>
+          if program_partition_node_list_member_seen(seen: seen, needle: member) {
+            Rejected { diagnostics: None }
+          } else {
+            Accepted {
+              value: list_snoc_item(xs: seen, item: member),
+              diagnostics: None
+            }
+          }
+      }
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Canonical node_subtree_nodes enumeration must be duplicate-free (deduped fold semantics).
+fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: program, diagnostics: _ } =>
+      match find_arrow_body_child(root: program.root) {
+        Accepted { value: body, diagnostics: _ } =>
+          program_partition_node_list_is_duplicate_free(
+            xs: node_subtree_nodes(root: body)
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// facts_closure_fold on body segment under FailClosed must accept (exercises canonical enumeration path).
+fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: program, diagnostics: _ } =>
+      match find_arrow_body_child(root: program.root) {
+        Accepted { value: body, diagnostics: _ } =>
+          match resolve_program_partition(
+            program: program,
+            segment: program_segment_subtree_root(root: body),
+            boundary: partition_boundary_fail_closed()
+          ) {
+            Accepted { value: partition, diagnostics: _ } =>
+              match facts_closure_fold(partition: partition) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // Body-only partition emit must accept and differ from whole-program emit (proves segment selection).
