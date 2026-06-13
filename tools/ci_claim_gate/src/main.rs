@@ -208,24 +208,31 @@ fn remap_entry_for_temp(source_root: &str, entry: &str) -> PathBuf {
 }
 
 fn run_perturb_pass(
-    source_roots: &[String],
+    _source_roots: &[String],
     rows: &[GateRow],
     primary_root: &str,
 ) -> Result<bool, String> {
     let mut all_ok = true;
-    for row in rows {
-        let tmp = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
-        let src_v4 = tmp.path().join("src");
+    for (idx, row) in rows.iter().enumerate() {
+        let tmp = std::env::temp_dir().join(format!(
+            "ci-claim-gate-perturb-{}-{}",
+            std::process::id(),
+            idx
+        ));
+        if tmp.exists() {
+            fs::remove_dir_all(&tmp).map_err(|e| format!("rm {}: {e}", tmp.display()))?;
+        }
+        let src_v4 = tmp.join("src");
         let from = Path::new(primary_root);
         fs::create_dir_all(&src_v4).map_err(|e| format!("mkdir {}: {e}", src_v4.display()))?;
         copy_dir_all(from, &src_v4)?;
 
-        let perturbed_entry = tmp.path().join(remap_entry_for_temp(primary_root, &row.entry));
+        let perturbed_entry = tmp.join(remap_entry_for_temp(primary_root, &row.entry));
         perturb_function_to_false(&perturbed_entry, &row.function)?;
 
         let temp_source_root = src_v4.to_string_lossy().into_owned();
-        let index = build_multi_entry_index(&[temp_source_root.clone()]);
         let perturbed_entry_str = perturbed_entry.to_string_lossy().into_owned();
+        let index = build_multi_entry_index(&[temp_source_root]);
         let (graph, si) = resolve_entry_with_index(&index, &perturbed_entry_str)?;
         let ctx = make_eval_context(&graph, si);
         println!("::group::perturb: {}", row.label);
@@ -235,6 +242,7 @@ fn run_perturb_pass(
             eprintln!("::error::perturbed witness still passed: {}", row.label);
             all_ok = false;
         }
+        let _ = fs::remove_dir_all(&tmp);
     }
     Ok(all_ok)
 }

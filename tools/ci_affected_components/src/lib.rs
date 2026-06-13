@@ -146,7 +146,9 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-claim-witness-corpus-gate.sh"
         || path == "src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag"
-        || path == "scripts/v4-testclaim-smoke-roster.sh"
+        || path == "scripts/v4-lens-ci-gate.sh"
+        || path == "tools/ci_claim_gate/Cargo.toml"
+        || path == "tools/ci_claim_gate/src/main.rs"
         || path == "scripts/v4-discover-owned-data.sh"
         || path == "scripts/v4-substrate-equivalence-gate.sh"
         || path.starts_with("scripts/fixtures/v4_discovery_completeness_slice/")

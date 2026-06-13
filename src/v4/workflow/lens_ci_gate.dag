@@ -13,6 +13,7 @@
 module v4.workflow.lens_ci_gate
 
 import v4.std.collection { List }
+import v4.std.algebra { fold_list_right }
 
 // M2 Lens-CI claim-run transport authority. The live shell gate projects this list;
 // it does not own a parallel witness roster.
@@ -93,11 +94,17 @@ data lens_ci_claim_run_row_count: String = "8"
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
 // Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
 // hand-maintained awk/grep roster projection in the shell gate scripts.
-fn lens_ci_claim_run_rows_tsv() -> String =
-  lens_ci_claim_run_rows |> fold(init: "", f: (acc, row) =>
-    concat(acc,
-      concat(row.label,
-        concat("\t",
-          concat(row.entry,
-            concat("\t",
-              concat(row.function, "\n")))))))
+fn lens_ci_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: lens_ci_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
