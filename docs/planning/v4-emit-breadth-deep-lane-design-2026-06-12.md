@@ -56,12 +56,15 @@ Witnesses run 2026-06-12 on `target/release/gunbc run --source-root src/v4 --ent
 | `comprep_ts_bodied_emit_catalog_minus_discriminates` | same | **false** | catalog perturbation red |
 | `comprep_ts_bodied_emit_missing_catalog_rejects` | same | **true** | fail-closed (missing catalog → Rejected) |
 | `comprep_eval_by_execution_keystone_holds` | `comprep_eval_by_execution.dag` | **false** | add body **eval** — stale witness vs #4737/#4738 semantics (culprit #4737) |
-| `comprep_branch_eval_by_execution_keystone_holds` | `comprep_branch_eval_by_execution.dag` | **true** | Branch body **eval** |
+| `comprep_branch_eval_by_execution_keystone_holds` | `comprep_branch_eval_by_execution.dag` | **false** | Branch body **eval** — regression under demand-driven `eval_fold_tree` (#4741); corpus row `ExpectFail { bind_anchor: "#4741" }` until eval-spine follow-on |
+| `bind_demand_driven_eval_keystone_holds` | `bind_demand_driven_eval.dag` | **true** | Bind demand-driven eval witness |
+| `loop_demand_driven_eval_keystone_holds` | `loop_demand_driven_eval.dag` | **true** | Loop demand-driven eval witness (bounded-descent fixture) |
 
 **Honest summary:** **signature-tier** TS emit is green by execution; **body-tier** add eval and
 body-tier TS emit are **red-baseline** (not green) in this environment. Fail-closed
-operator-catalog refusal is green. Branch eval is green; Branch emit and round-trip tracked on
-§2 lane (#4741 sign stage).
+operator-catalog refusal is green. Branch **emit** and round-trip are green on #4741; full-pipeline
+branch **eval** regressed and is pinned `ExpectFail` pending eval-spine stack. Bind/Loop
+demand-driven eval witnesses are green and CI-enrolled.
 
 **Triage (snappy-crab, 2026-06-12 — bisect final):** `comprep_eval_by_execution_keystone_holds`
 **TRUE** at `af4530cc0e` (#4735), **FALSE** at `9e26842d53` (**culprit #4737**). Not

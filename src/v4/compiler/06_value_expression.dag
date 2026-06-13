@@ -183,6 +183,13 @@ fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:t6-value-expr-bodied-arrow-branch — consumer:06_value_expression —
+// value_expr_arrow_branch_body_scope_binding — bind: PR #4741 /
+// design-comprep-m0-branch-mapping.md §12.9 — dissolve-on-arrival: bodied Arrow branch
+// serialize routes through grammar relation-row / positional dispatch; delete branch-body Bool
+// predicate steady-state; forbidden: ComputationNode behavior Branch match for
+// binding-validation dispatch past M0 Bool-if-else.
 fn value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
