@@ -17,6 +17,8 @@ import v4.compiler.target_carriers { TargetSource }
 import v4.extdeps.languages.dag {
   dag_mvp1_fixture_emitted_pick_fn,
   dag_mvp1_node_is_kw_true_atom,
+  dag_mvp1_pick_arrow_domain_conj_node,
+  dag_mvp1_pick_if_body_fixture,
   dag_mvp1_pick_source_text,
   dag_mvp1_pick_target_model
 }
@@ -253,6 +255,30 @@ fn branch_if_then_else_emit_diag_translate_accepts() -> Bool {
 fn branch_if_then_else_emit_diag_fixture_translate_accepts() -> Bool {
   match translate_emitted_node(
     tree: branch_if_then_else_inferred_tree,
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_branch_body_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_emit_inferred_tree_for(
+      root: dag_mvp1_pick_if_body_fixture
+    ),
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_pick_empty_domain_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_emit_inferred_tree_for(
+      root: dag_mvp1_pick_arrow_domain_conj_node()
+    ),
     target: dag_mvp1_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None

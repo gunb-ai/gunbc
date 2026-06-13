@@ -10,9 +10,9 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate {
-  coerce_grounded_node,
   grammar_inverse_source_validated,
-  target_serialize_source_from_model
+  target_serialize_source_from_model,
+  translate_emitted_node
 }
 import v4.extdeps.languages.dag {
   dag_inhabitant_atom,
@@ -193,6 +193,13 @@ fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
 }
 
 // R2 keystone — emit(add) must match grammar-inverse serialize (shared 06_translate path).
+fn mvp1_dag_translate_accepts_holds() -> Bool {
+  match translate_emitted_node(tree: mvp1_dag_inferred_tree, target: mvp1_dag_target_model) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn mvp1_dag_emit_add_fn_accepts_holds() -> Bool {
   mvp1_dag_emit_matches_serialize_holds()
 }
