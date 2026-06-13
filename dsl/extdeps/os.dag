@@ -3,9 +3,9 @@
 
 module extdeps.os
 
-import extdeps.macos { sequoia_15_catalog }
-import extdeps.ubuntu { noble_numbat_2404_catalog }
-import extdeps.windows { windows_11_24h2_catalog }
+import extdeps.macos { macos_distribution_catalog_row }
+import extdeps.ubuntu { ubuntu_distribution_catalog_row }
+import extdeps.windows { windows_distribution_catalog_row }
 import std.compute_fabric { OperatingSystemSurface }
 import std.list { List }
 import std.os {
@@ -14,23 +14,26 @@ import std.os {
   operating_system_surface_windows,
 }
 import std.os.types {
+  MacosOs,
   NobleNumbat2404Lts,
   OperatingSystemProduct,
   Sequoia15,
+  UbuntuOs,
   Windows1124H2Build26100,
+  WindowsOs,
 }
 
 fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {
   match product {
-    NobleNumbat2404Lts => operating_system_surface_ubuntu(noble_numbat_2404_catalog)
-    Windows1124H2Build26100 => operating_system_surface_windows(windows_11_24h2_catalog)
-    Sequoia15 => operating_system_surface_macos(sequoia_15_catalog)
+    UbuntuOs { distro: d } => operating_system_surface_ubuntu(ubuntu_distribution_catalog_row(d))
+    WindowsOs { distro: d } => operating_system_surface_windows(windows_distribution_catalog_row(d))
+    MacosOs { distro: d } => operating_system_surface_macos(macos_distribution_catalog_row(d))
   }
 }
 
-data ubuntu_24_04: OperatingSystemSurface = cited_operating_system_surface(NobleNumbat2404Lts)
-data windows_11: OperatingSystemSurface = cited_operating_system_surface(Windows1124H2Build26100)
-data macos_15_sequoia: OperatingSystemSurface = cited_operating_system_surface(Sequoia15)
+data ubuntu_24_04: OperatingSystemSurface = cited_operating_system_surface(UbuntuOs { distro: NobleNumbat2404Lts })
+data windows_11: OperatingSystemSurface = cited_operating_system_surface(WindowsOs { distro: Windows1124H2Build26100 })
+data macos_15_sequoia: OperatingSystemSurface = cited_operating_system_surface(MacosOs { distro: Sequoia15 })
 
 data os_catalog: List<OperatingSystemSurface> = [
   ubuntu_24_04,
@@ -39,5 +42,5 @@ data os_catalog: List<OperatingSystemSurface> = [
 ]
 
 // Operator fleet authority (srv1/srv2 run Ubuntu 24.04 LTS).
-data operator_fleet_os_product: OperatingSystemProduct = NobleNumbat2404Lts
+data operator_fleet_os_product: OperatingSystemProduct = UbuntuOs { distro: NobleNumbat2404Lts }
 data operator_fleet_os_surface: OperatingSystemSurface = cited_operating_system_surface(operator_fleet_os_product)

@@ -3,7 +3,6 @@
 
 module extdeps.macos
 
-import std.compute_fabric { Apfs, Darwin, PosixProcess }
 import std.os.types {
   HomebrewDeFacto,
   LibSystem,
@@ -19,12 +18,8 @@ data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogR
   darwin_version: "24",
   package_manager: HomebrewDeFacto,
   libc: LibSystem,
+  libc_version: none,
   annual_release_label: "15",
-  kernel: Darwin,
-  distro_or_product: "macOS Sequoia",
-  version: "15",
-  filesystem_semantics: Apfs,
-  process_semantics: PosixProcess,
 }
 
 fn macos_distribution_catalog_row(distro: MacosDistribution) -> MacosDistributionCatalogRow {

@@ -508,10 +508,10 @@ Each module is graded on how well it implements the upstream spec:
 
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
-| `ubuntu.dag` | 28 | A | Cited | Ubuntu 24.04 LTS (Noble Numbat): `UbuntuDistribution` identity + `UbuntuDistributionCatalogRow` (kernel 6.8, APT, glibc 2.39, security maintenance until 2029-05-31) |
-| `windows.dag` | 34 | A | Cited | Windows 11 24H2 (build 26100): `WindowsDistribution` identity + `WindowsDistributionCatalogRow` (winget, UCRT, end-of-servicing 2026-10-13) |
-| `macos.dag` | 34 | A | Cited | macOS 15 Sequoia: `MacosDistribution` identity + `MacosDistributionCatalogRow` (Darwin 24, libSystem, Homebrew de-facto dev PM per extdeps/brew.dag) |
-| `os.dag` | 43 | A | Cited (dispatch) | Hub: `OperatingSystemProduct` → per-distro catalog rows → `std.os` surface projection; operator fleet wired to Noble Numbat 24.04 |
+| `ubuntu.dag` | 30 | A | Cited | Ubuntu 24.04 LTS: `UbuntuDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `windows.dag` | 30 | A | Cited | Windows 11 24H2: `WindowsDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `macos.dag` | 30 | A | Cited | macOS 15 Sequoia: `MacosDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `os.dag` | 46 | A | Cited (dispatch) | `OperatingSystemProduct` coproduct → per-distro catalog dispatch → `std.os` projection |
 
 ### Rendering (internal, not external specs)
 

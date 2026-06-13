@@ -2,15 +2,16 @@
 
 module std.os.types
 
-import std.compute_fabric { KernelFamily, FileSystemSemantics, ProcessSemantics }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Option }
 
-// Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
 type UbuntuDistribution = NobleNumbat2404Lts
 type WindowsDistribution = Windows1124H2Build26100
 type MacosDistribution = Sequoia15
 
-type OperatingSystemProduct = NobleNumbat2404Lts | Windows1124H2Build26100 | Sequoia15
+type OperatingSystemProduct
+  = UbuntuOs { distro: UbuntuDistribution }
+  | WindowsOs { distro: WindowsDistribution }
+  | MacosOs { distro: MacosDistribution }
 
 type OsPackageManager = Apt | Winget | HomebrewDeFacto
 
@@ -20,40 +21,28 @@ type UbuntuDistributionCatalogRow {
   distribution: UbuntuDistribution
   release_label: NonEmptyStr
   kernel_version: NonEmptyStr
-  package_manager: Apt
-  libc_version: NonEmptyStr
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
   security_maintenance_until: NonEmptyStr
-  kernel: KernelFamily
-  distro_or_product: NonEmptyStr
-  version: NonEmptyStr
-  filesystem_semantics: FileSystemSemantics
-  process_semantics: ProcessSemantics
 }
 
 type WindowsDistributionCatalogRow {
   distribution: WindowsDistribution
   release_label: NonEmptyStr
   os_build: NonEmptyStr
-  package_manager: Winget
-  libc: Ucrt
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
   end_of_servicing: NonEmptyStr
-  kernel: KernelFamily
-  distro_or_product: NonEmptyStr
-  version: NonEmptyStr
-  filesystem_semantics: FileSystemSemantics
-  process_semantics: ProcessSemantics
 }
 
 type MacosDistributionCatalogRow {
   distribution: MacosDistribution
   release_label: NonEmptyStr
   darwin_version: NonEmptyStr
-  package_manager: HomebrewDeFacto
-  libc: LibSystem
+  package_manager: OsPackageManager
+  libc: LibcFamily
+  libc_version: Option<NonEmptyStr>
   annual_release_label: NonEmptyStr
-  kernel: KernelFamily
-  distro_or_product: NonEmptyStr
-  version: NonEmptyStr
-  filesystem_semantics: FileSystemSemantics
-  process_semantics: ProcessSemantics
 }
