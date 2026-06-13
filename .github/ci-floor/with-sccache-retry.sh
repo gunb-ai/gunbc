@@ -35,7 +35,7 @@ set -uo pipefail
 
 # Only these stderr shapes are treated as transient transport faults. Kept
 # narrow on purpose -- a broader match would retry (and mask) genuine errors.
-SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server|Resource temporarily unavailable|os error 11'
+SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server'
 
 RETRIES="${SCCACHE_RETRY_ATTEMPTS:-2}"
 
@@ -65,10 +65,6 @@ while [ "$attempt" -le "$RETRIES" ]; do
     exit "$rc"
   fi
   echo "::warning::sccache transport failure (attempt ${attempt}/${RETRIES}, rc=${rc}); restarting server and retrying"
-  if grep -qiE 'Resource temporarily unavailable|os error 11' "$log"; then
-    # Runner process-table pressure (EAGAIN) under concurrent jobs: back off before retry.
-    sleep $((attempt * 15))
-  fi
   sccache --stop-server >/dev/null 2>&1 || true
   sccache --start-server >/dev/null 2>&1 || true
   attempt=$((attempt + 1))
