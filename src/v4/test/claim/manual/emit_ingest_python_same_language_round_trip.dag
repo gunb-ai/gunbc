@@ -88,8 +88,8 @@ fn emit_ingest_python_canonical_emitted() -> Node {
   python_mvp1_emitted_add_fn_node()
 }
 
-// Hermetic perturb token: not on the python_mvp1 add-fn production spine.
-data emit_ingest_python_off_frontier_tok: Symbol = emit_ingest_python_off_frontier_tok
+// Hermetic perturb token: not on the python_mvp1 add-fn production spine (bogus append target).
+data emit_ingest_python_perturb_bogus_tok: Symbol = emit_ingest_python_perturb_bogus_tok
 
 // Backward selector (emit/serialize): keys on grammar_relation_field_emitted.
 fn emit_python_backward_selects_canonical_row_holds() -> Bool {
@@ -165,10 +165,32 @@ fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   }
 }
 
-// Hermetic perturb-RED: a frontier that matches no python_mvp1 row -> fail closed (not vacuous accept).
+// Hermetic discriminator (per-merge vacuous-accept guard): canonical spine with a bogus extra token
+// class appended must NOT select any row — forward selection fails closed. Mirrors #4829
+// ingest_bridge_realized perturbed-frontier RED.
+fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
+  match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: list_append(left: frontier, right: [emit_ingest_python_perturb_bogus_tok]),
+        rules: emit_ingest_python_shared_rules()
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Positive control (perturb-RED other side): the UN-perturbed canonical frontier MUST select.
+fn emit_ingest_python_unperturbed_frontier_accepts() -> Bool {
+  ingest_python_forward_selects_canonical_emitted_holds()
+}
+
+// Hermetic perturb-RED: a single-token frontier off the python_mvp1 add spine -> fail closed.
 fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
-    frontier: Cons { head: emit_ingest_python_off_frontier_tok, tail: Empty },
+    frontier: Cons { head: emit_ingest_python_perturb_bogus_tok, tail: Empty },
     rules: emit_ingest_python_shared_rules()
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -193,6 +215,7 @@ fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
     && ingest_python_forward_selects_canonical_emitted_holds()
     && emit_then_ingest_python_selector_identity_holds()
     && ingest_then_emit_python_selector_identity_holds()
+    && emit_ingest_python_perturbed_frontier_fails_closed()
     && ingest_python_forward_fails_closed_off_frontier_holds()
     && emit_python_backward_fails_closed_on_foreign_emitted_holds()
 }
