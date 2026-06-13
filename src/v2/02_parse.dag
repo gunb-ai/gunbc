@@ -761,6 +761,30 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: if name == "" { none } else { Present { value: span } }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
+// Gate #60: decimal width literal inside `<…>` type-argument lists only
+// (e.g. `MachineWidth<8>`). Standalone `let x: 64 = …` must stay a parse error.
+fn literal_width_nat_type_node(value: Int, span: SourceSpan) -> Node {
+  Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLiteral { value: LitInt { value: value } } }
+}
+
+fn parse_type_angle_arg(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
+  let span = token_span(tok: tok)
+  match sh {
+    Present { value: ShLitInt } => {
+      let r = parse_int_literal_value(tokens: tokens)
+      if has_err(err: r.err) {
+        TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: r.tokens, ctx: ctx, err: r.err }
+      } else {
+        TypeResult { type_expr: literal_width_nat_type_node(value: r.value, span: span), tokens: r.tokens, ctx: ctx, err: none }
+      }
+    }
+    _ => parse_type_expr(tokens: tokens, ctx: ctx)
+  }
+}
+
 fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
@@ -1577,7 +1601,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name:
   let dummy_te = leaf_type_node(name: type_name, span: start_span)
   match eat(tokens: tokens, expected: ExpectLt) {
   EatConsumed { token: _, tokens: __ec } =>
-    let r = parse_type_expr(tokens: __ec, ctx: ctx)
+    let r = parse_type_angle_arg(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return r }
     let first_arg = r.type_expr
 
@@ -1637,7 +1661,7 @@ type TypeArgsResult {
 fn collect_type_args(tokens: List<Token>, ctx: ParseContext, args: List<Node>) -> TypeArgsResult {
   match eat(tokens: tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
-    let r = parse_type_expr(tokens: __ec, ctx: ctx)
+    let r = parse_type_angle_arg(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return TypeArgsResult { args: args, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     collect_type_args(tokens: r.tokens, ctx: r.ctx, args: list_push(args, r.type_expr))
   EatUnchanged { tokens: __eu } =>
