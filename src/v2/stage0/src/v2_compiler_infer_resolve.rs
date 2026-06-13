@@ -4,6 +4,8 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+pub use crate::std_syntax::LiteralValue;
+use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_env::{
@@ -52,6 +54,18 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. } => {
+            let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
@@ -1369,10 +1383,12 @@ pub fn resolve_node_bounded(
                                             } else {
                                                 false
                                             };
-                                            if (((is_kernel_type(authored_name(
-                                                env.clone(),
-                                                n.clone(),
-                                            )) || n_is_type_var)
+                                            if ((((is_width_nat_type_literal(n.clone())
+                                                || is_kernel_type(authored_name(
+                                                    env.clone(),
+                                                    n.clone(),
+                                                )))
+                                                || n_is_type_var)
                                                 || n_is_error)
                                                 || n_is_callable)
                                             {
