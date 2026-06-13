@@ -1197,6 +1197,15 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_hetzner_cloud_dag() {
+        // P5 receipt: extdeps.cloud.hetzner catalog authority for compute_fabric CAX41 supply.
+        parse_file(
+            include_str!("../../../../dsl/extdeps/cloud/hetzner.dag"),
+            "dsl/extdeps/cloud/hetzner.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_compute_fabric_dag() {
         // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
