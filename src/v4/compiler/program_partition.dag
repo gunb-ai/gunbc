@@ -24,7 +24,7 @@ import v4.compiler.value_expression {
   value_expression_to_concrete_tokens
 }
 import v4.lens.application { subterm_at }
-import v4.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Map }
 import v4.std.compilers.target_model { TargetModel }
 import v4.std.diagnostic {
@@ -44,10 +44,12 @@ import v4.std.node {
   ComputationNode,
   Edge,
   Node,
-  NodeFold,
   Transform,
-  fold_node,
   well_formed
+}
+import v4.std.verification {
+  node_in_subtree_by_identity,
+  node_subtree_nodes
 }
 import v4.std.program_segment {
   AmbientContextAvailable,
@@ -106,39 +108,23 @@ fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
-// 🟡 SCAFFOLD — containment is structural identity-in-subtree until Q-EP1 path witness lands.
-fn partition_node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
-  any(
-    xs: partition_closure_nodes(root: root),
-    predicate: fn(member) { member == needle }
-  )
-}
-
+// 🟡 gated — feature:program-partition-subtree-containment — consumer:partition_subtree_root_contained_in_ambient —
+// bind: design-in-language-emission-program-partition.md Q-EP1 — dissolve-on-arrival: path witness via
+// subterm_at / content_hash containment replaces structural identity-in-subtree membership; forbidden:
+// steady-state identity-only containment without path witness.
 fn partition_subtree_root_contained_in_ambient(
   ambient_root: Node,
   segment_root: Node
 ) -> Bool {
   (segment_root == ambient_root)
-    || partition_node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
-}
-
-fn partition_closure_nodes(root: Node) -> List<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(self) { list_snoc_item(xs: Empty, item: self) },
-      step: fn(acc, _edge, sub) {
-        list_append(left: acc, right: sub)
-      }
-    }
-  )
+    || node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
 }
 
 fn partition_grounding_subject_in_segment(
   segment_root: Node,
   facts: InferredFacts
 ) -> Bool {
-  partition_node_in_subtree_by_identity(
+  node_in_subtree_by_identity(
     root: segment_root,
     needle: facts.grounding.node
   )
@@ -227,7 +213,7 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, Inferred
           ambient: partition.ambient,
           segment_root: partition.root,
           boundary: partition.boundary,
-          nodes: partition_closure_nodes(root: partition.root)
+          nodes: node_subtree_nodes(root: partition.root)
         ),
         f: fn(entries) {
           facts_map_from_entries(entries: entries)
@@ -292,6 +278,18 @@ fn resolve_program_partition(
   )
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:program-partition-arrow-body-behavior-segment — consumer:partition_segment_is_ambient_arrow_body_behavior —
+// bind: design-in-language-emission-program-partition.md §6.1 — dissolve-on-arrival: segment-root behavior
+// projects through std node-kind realization rows; forbidden: steady-state ComputationNode behavior Transform
+// match in partition emit routing.
+fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
+  match root.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
+  }
+}
+
 fn partition_segment_is_ambient_arrow_body_behavior(
   partition: ProgramPartition
 ) -> Bool {
@@ -299,14 +297,11 @@ fn partition_segment_is_ambient_arrow_body_behavior(
     SubtreeRoot { root: segment_root } =>
       (segment_root != partition.ambient.root)
         && arrow_has_transform_body(arrow: partition.ambient.root)
-        && partition_node_in_subtree_by_identity(
+        && node_in_subtree_by_identity(
           root: partition.ambient.root,
           needle: segment_root
         )
-        && match segment_root.kind {
-          ComputationNode { behavior: Transform } => true
-          _ => false
-        }
+        && partition_segment_root_is_transform_computation(root: segment_root)
     _ => false
   }
 }
