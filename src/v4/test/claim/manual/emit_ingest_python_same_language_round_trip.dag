@@ -52,7 +52,7 @@ import v4.std.verification {
 
 // Project a grammar-relation row's token-spine to ordered token CLASSES (bindings dropped),
 // mirroring v4.compiler.ingest row_token_spine_classes — the frontier forward selection keys on.
-fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -99,7 +99,7 @@ fn emit_python_backward_selects_canonical_row_holds() -> Bool {
 
 // Forward selector (ingest bridge): keys on token-spine frontier classes.
 fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
-  match grammar_relation_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
+  match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
         frontier: frontier,
@@ -120,7 +120,7 @@ fn emit_then_ingest_python_selector_identity_holds() -> Bool {
     emitted: emit_ingest_python_canonical_emitted()
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      match grammar_relation_row_token_spine_classes(row: row) {
+      match emit_ingest_python_row_token_spine_classes(row: row) {
         Accepted { value: frontier, diagnostics: _ } =>
           match grammar_relation_row_forward_selection(
             frontier: frontier,
@@ -138,7 +138,7 @@ fn emit_then_ingest_python_selector_identity_holds() -> Bool {
 
 // Bijectivity: forward(spine) then backward(emitted) = identity on row.
 fn ingest_then_emit_python_selector_identity_holds() -> Bool {
-  match grammar_relation_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
+  match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
         frontier: frontier,
