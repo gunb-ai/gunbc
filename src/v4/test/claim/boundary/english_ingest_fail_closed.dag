@@ -1,16 +1,18 @@
 // src/v4/test/claim/boundary/english_ingest_fail_closed.dag
 //
-// Scope: TestClaim — the English boundary-honesty probe (T-4.11). English
-//        is NOT a language model (natural language has no formal grammar
-//        — ratified fork). It is a boundary-honesty probe with
-//        two demonstrable wins:
-//          (a) Shape B emit: a `.dag` program walking typed values →
-//              English prose (this is the existing T-16 Markdown/docs
-//              artifact; no new substrate).
-//          (b) the honest win: pointing `ingest` at arbitrary English
-//              prose produces a PRECISE Diagnostic — never a fabricated
-//              parse. This is the no-engine / no-fallback thesis made
-//              visible: the architecture refusing to lie IS the result.
+// Scope: TestClaim — the English boundary-honesty probe. English is two
+//        regimes:
+//          (a) arbitrary natural English has no formal grammar and is NOT
+//              a language model — pointing `ingest` at it produces a
+//              PRECISE Diagnostic, never a fabricated parse (this probe;
+//              the no-engine / no-fallback thesis made visible).
+//          (b) the rigid Controlled-English subset (T-4.19,
+//              extdeps/languages/english.dag: article-led SVO and copula
+//              sentence forms) IS a modeled language and an emit target;
+//              its prose lexes, parses, and round-trips through the
+//              shared pipeline like any other target.
+//        The fail-closed boundary in this file guards regime (a) only;
+//        regime (b) is claimed by manual/english_emit_add.dag.
 // Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
 //         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
 // Prerequisites (sequencing — NOT parallel to an unfilled verification
