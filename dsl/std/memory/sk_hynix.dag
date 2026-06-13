@@ -4,10 +4,11 @@
 
 module std.memory.sk_hynix
 
+import std.measure { ByteSize, byte_size }
 import std.memory.types { DramManufacturer, DramModuleCatalogRow, SkHynixDdr4Module }
 
 // 16 GiB per stick (1×16GB).
-data stick_capacity_bytes: Int = 17179869184
+data stick_capacity_bytes: ByteSize = byte_size(17179869184)
 
 // Marketplace listing: "SK Hynix 16GB PC4-21300 (1x16GB) DDR4 Server RAM".
 data hma82gr7afr4n_vk_server_catalog: DramModuleCatalogRow = DramModuleCatalogRow {

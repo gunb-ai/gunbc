@@ -45,15 +45,15 @@
 //   Milliseconds :=  Measure<Time, Milli>   (Quantity-tagged; predicate deferred)
 //   Seconds      :=  Duration               (Q-Unit-3 collapse)
 //
-// `Measure<Q, S>` is a phantom-parameter carrier: it has no runtime value
-// structure. The semantic content of "non-negative time-magnitude" is
-// carried by the `Quantity = Time` tag itself; predicate-bearing refinement
-// is a downstream concern when `Refined<>` consumes a base with actual
-// numeric inhabitants. Forward-flag: when value-typed dimensional refinement
-// integration arrives, revisit the literal `Refined<Measure<Time, One>,
-// non_negative>` form per Q-Unit-4 RATIFIED.
+// Value-typed integration (Q-Refined-Phantom-Composition option (c) follow-up):
+// `Measure<Q, S>` carries magnitude in `count`; phantom `<Q>` / `<S>` tag
+// dimensional semantics. Predicate-bearing refinement (`Refined<Measure<…>>`)
+// remains deferred per option (c).
 
 module std.measure
+
+import std.nat { Nat }
+import std.types { Int }
 
 // --- Quantity: what is being measured -------------------------------------
 //
@@ -138,10 +138,9 @@ fn scale_exponent(s: Scale) -> Int {
 // --- Measure<Q, S>: phantom-parameter dimensional carrier -----------------
 //
 // PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE
-// Phantom-parameter carrier: widening adds Quantity / Scale values, not
-// new Measure variants. The carrier itself has a single inhabitant per
-// (Q, S) pairing; the type parameters tag dimensional semantics for the
-// type system without runtime payload distinction at this layer.
+// Parametric dimensional carrier: phantom `<Q>` / `<S>` tag semantics;
+// `count` holds magnitude at the declared scale. Widening adds Quantity /
+// Scale values, not new Measure variants.
 // Per-target representation (Rust `std::time::Duration`, Python
 // `datetime.timedelta`, Go `time.Duration`, etc.) is Grounding's job
 // per Q-Unit-4 RATIFIED.
@@ -169,16 +168,45 @@ fn scale_exponent(s: Scale) -> Int {
 //   Scale`. Existing call sites continue to type-check by construction.
 //
 // HARD BOUNDARIES (per Q-Unit RATIFIED + option (c) RATIFIED):
-//   - Phantom-parameter only -- no runtime payload, no value-level
-//     refinement (`non_negative` etc.) at this layer per option (c).
+//   - No `Refined<Measure<…>, predicate>` at this layer per option (c).
 //   - No mechanical Measure-witness derivation declared here -- same
 //     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
-type Measure<Q, S>
+//   - v2 claim-run on alias field access / parametric literals remains
+//     gated (G1–G3); consumers use constructor/projection fns below until
+//     the v2 interpreter lane lands (see measure-value-typing-design).
+type Measure<Q, S> {
+  count: Nat
+}
 
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One>
 
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
-// v2 execution-layer carriers use bare Int hertz at projection sites until
-// value-typed Measure inhabitants land (same pattern as ByteSize).
 type Hertz = Measure<Frequency, One>
+
+// Schedulable hardware thread count (std.cpu catalog/deployment authority).
+type HardwareThreadCount = Measure<Count, One>
+
+fn byte_size(count: Int) -> ByteSize {
+  ByteSize { count: count }
+}
+
+fn byte_size_count(b: ByteSize) -> Int {
+  b.count
+}
+
+fn hertz(count: Int) -> Hertz {
+  Hertz { count: count }
+}
+
+fn hertz_count(h: Hertz) -> Int {
+  h.count
+}
+
+fn hardware_thread_count(count: Int) -> HardwareThreadCount {
+  HardwareThreadCount { count: count }
+}
+
+fn hardware_thread_count_value(t: HardwareThreadCount) -> Int {
+  t.count
+}
