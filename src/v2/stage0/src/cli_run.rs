@@ -329,6 +329,11 @@ fn resolve_entry_graph_with_index(
 /// `parse_with_table` (which pre-interns internally), store the result, and
 /// continue. The intern table only grows, so cached parse results stay valid
 /// for all future entries.
+// TODO(dissolution): this function duplicates the tokenize→parse→resolve→normalize→reconcile→
+// ownership pipeline that `resolved_graph_from_sources` drives through `compile_to_resolved`.
+// The duplication exists solely to thread the lazy intern table across cached parses.  When
+// `compile_to_resolved` (or a wrapper) learns to accept a pre-populated parse cache and intern
+// table, fold this back and delete the inline pipeline.
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
