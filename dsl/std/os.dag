@@ -2,9 +2,9 @@
 
 module std.os
 
-import extdeps.macos { macos_distribution_catalog_row }
-import extdeps.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.windows { windows_distribution_catalog_row }
+import extdeps.os.macos { macos_distribution_catalog_row }
+import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import extdeps.os.windows { windows_distribution_catalog_row }
 import std.os.types {
   Apfs,
   Darwin,
