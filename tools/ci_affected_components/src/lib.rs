@@ -144,6 +144,8 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
     ci_changed_path_affects_v4(path)
         || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
+        || path == "scripts/v4-claim-witness-corpus-gate.sh"
+        || path == "src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
         || path == "scripts/v4-discover-owned-data.sh"
         || path == "scripts/v4-substrate-equivalence-gate.sh"
