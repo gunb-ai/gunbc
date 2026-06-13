@@ -1,0 +1,40 @@
+// gunbc/tools/affected_timings.dag -- affected-set CI job-timings collector (shell-free).
+//
+// Replaces scripts/ci_collect_job_timings.py: fetches THIS workflow run's per-job
+// wall-clock via the github.Actions REST extdep (.dag -> v2 -> ureq, zero shell) and
+// emits raw per-job timestamp windows. It does NO arithmetic and computes NO
+// affected-set facts -- pure transport (RR-K §2.4 "projects, does not recompute").
+// The receipt projection (durations, actual_run_minutes, saved_minutes) stays the
+// single authority in tools/ci_affected_components/src/receipt.rs, which consumes
+// these windows via the emit bin's --job-windows flag.
+//
+// OUTPUT (stdout via `gunbc run`): one TSV line per job, `name\tstarted_at\tcompleted_at`.
+// Jobs still running (null timestamps) render their null fields; receipt.rs skips any
+// line whose timestamps don't parse as RFC3339 (same fail-safe as the Python it replaces).
+
+module gunbc.tools.affected_timings
+
+import extdeps.github.actions_runs
+
+// OPEN SEAM: run_id is hardcoded pending the shell-free env-read primitive (a native
+// env(name) builtin backing a std ReadResource-effect declaration, routed for
+// operator+coordinator sign). Once it lands, replace this literal with the
+// GITHUB_RUN_ID env read. owner/repo are this repo's fixed identity, not a per-run
+// input, so they stay literals.
+data probe_run_id: Int = 27454321323
+
+fn collect_run_job_windows() -> String {
+  result = github.Actions.ListWorkflowRunJobs(
+    auth_token: "",
+    owner: "gunb-ai",
+    repo: "gunbc",
+    run_id: probe_run_id
+  )
+  result.jobs |> fold(init: "", f: (acc, j) =>
+    concat(acc,
+      concat(j.name,
+        concat("\t",
+          concat(j.started_at,
+            concat("\t",
+              concat(j.completed_at, "\n")))))))
+}
