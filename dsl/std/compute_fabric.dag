@@ -399,13 +399,6 @@ type WorkUnit<T> {
   requirements: WorkDemand
 }
 
-fn artifact_refs_from_upsert_inputs<T>(
-  _inputs: List<UpsertInputRef>,
-  _change: ChangeSet,
-) -> List<ArtifactRef<T>> {
-  []
-}
-
 // --- §1.6 execution receipts -------------------------------------------------
 
 type MeasurementConfidence
