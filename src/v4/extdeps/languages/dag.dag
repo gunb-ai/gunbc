@@ -3278,8 +3278,13 @@ fn dag_grammar_pick_condition_terminal() -> GrammarExpr {
   )
 }
 
-// Parse scaffold: canonical source text lexes 1/2 as int_literal; emit round-trip may
-// re-ingest binding-ref idents at the same positions (§2 pick target model).
+// 🟡 narrow approximation of arm=value_expression. Branch/pick arms ARE value-expressions
+// (a literal, a variable, or a computation), so the arm grammar position should be the
+// value_expression production. WHY stopgap: no value_expression grammar production exists in
+// dag.dag today, so this widens the arm terminal to int_literal|ident — canonical source text
+// lexes 1/2 as int_literal, and emit round-trip re-ingests binding-ref idents at the same
+// positions (§2 pick target model). dissolve-on: replace with the value_expression production
+// when it lands in dag.dag.
 fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
