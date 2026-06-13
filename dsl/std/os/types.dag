@@ -8,9 +8,9 @@ type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 
-// P-CF-OS: distro/version relaxed to Option. srv1/srv2 grounded via
-// std.os.operator_fleet.operator_fleet_os_surface (Ubuntu 24.04 LTS). Hetzner OS is
-// bound at provision time, so stays None on the offer surface.
+// P-CF-OS: distro/version relaxed to Option. Operator-fleet distro/version binding
+// (srv1/srv2) is operator-private — lives in gunb-ai/ctrl, not gunbc std/. Hetzner OS
+// is bound at provision time, so stays None on the offer surface.
 type OperatingSystemSurface {
   kernel: KernelFamily
   distro_or_product: Option<NonEmptyStr>
