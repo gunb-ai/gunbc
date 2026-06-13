@@ -3,7 +3,7 @@
 // Status: host gate scripts/v4-claim-witness-corpus-gate.sh (v4_claim_witness_corpus_{a,b}
 //   parallel shards). CI: --shard a|b --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
 //   rotation); full --perturb-check local-only. Sign runner (2026-06-13): monolith 20-row
-//   spot-perturb measured 1108s (~18.5m) — exceeds 13m gate; two ~10-row shards target
+//   spot-perturb measured 1108s (~18.5m) — exceeds 13m gate; two ~12+10 row shards target
 //   <10m uncontended/shard (×2 ≈ 20m ≤ 20m ceiling per shard; documented-tail clause).
 //
 // Design-sign notes (alternatives rejected):
@@ -43,6 +43,20 @@ data corpus_ci_gate_row_mvp1_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunR
   label: "mvp1 emit ingest round trip",
   entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
   function: "mvp1_dag_add_emit_ingest_round_trip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "branch if-then-else emit keystone",
+  entry: "src/v4/test/claim/manual/branch_if_then_else_emit.dag",
+  function: "branch_if_then_else_emit_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_branch_if_then_else_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "branch if-then-else round trip keystone",
+  entry: "src/v4/test/claim/manual/branch_if_then_else_round_trip.dag",
+  function: "branch_if_then_else_round_trip_keystone_holds",
   expected: ExpectPass
 }
 
@@ -177,6 +191,8 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
+  corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
@@ -197,15 +213,17 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "20"
+data claim_witness_corpus_claim_run_row_count: String = "22"
 
 // Sharded enrollment: two parallel CI jobs (~10 rows each). Partition rebalanced by
 // measured wall-cost (sign runner): swap slow shard-a rows (lazy_arm, witness_sg2_arrow)
 // for fast shard-b rows (sg2 projection/falsification pair) — target ~6.4m/shard vs
-// first-half split (a 617s / b 149s). Completeness unchanged: 20 rows, same expecteds.
+// first-half split (a 617s / b 149s). Completeness unchanged: 22 rows, same expecteds.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
+  corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
@@ -216,7 +234,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "10"
+data claim_witness_corpus_shard_a_row_count: String = "12"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
