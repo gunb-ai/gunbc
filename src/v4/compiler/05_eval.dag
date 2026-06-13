@@ -2164,6 +2164,34 @@ fn eval_fold_control_transfer_state(
   }
 }
 
+fn eval_fold_child_edge_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  eval_fold_step(
+    acc: acc,
+    edge: edge,
+    child: eval_fold_tree(
+      n: edge.target,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    ),
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
 fn eval_fold_tree(
   n: Node,
   tree: InferredTree,
@@ -2193,17 +2221,9 @@ fn eval_fold_tree(
         effect_io: effect_io
       ),
       cons: fn(acc, e) {
-        eval_fold_step(
+        eval_fold_child_edge_step(
           acc: acc,
           edge: e,
-          child: eval_fold_tree(
-            n: e.target,
-            tree: tree,
-            interpretation: interpretation,
-            environment: environment,
-            runtime: runtime,
-            effect_io: effect_io
-          ),
           tree: tree,
           interpretation: interpretation,
           environment: environment,
