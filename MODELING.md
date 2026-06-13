@@ -141,6 +141,16 @@ There is no third category. "Stage logic that is fine to keep as control-flow" i
 
 This is the **stage-level** form of M1 / Practice 10 (*don't hand-roll a derived operation*, the per-function form) and P1's *heuristics indicate lost structure* (the per-fact form): a stage that is not a fold is hand-rolling the catamorphism the compiler already derives, one arm at a time. The operationalized review rubric — how to measure residue and tell a kernel from debt — is [docs/modeling-discipline.md](docs/modeling-discipline.md) Practice 12. The frontloaded program that brings each stage to this shape is `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`; `05_emit` (`emit = serialize_target ∘ translate`, i.e. `bind_outcome(translate, serialize_target)`, 43 lines) is the existence proof already on `main` of the **composition** form — zero residue, no hand-walk, both halves fold-backed.
 
+### M12: Encountered concepts are modeled, not deferred (JIT)
+
+When a change *touches or introduces* a concept that is not yet modeled, the author models it **in that change** — not later. An unmodeled concept is a raw `Int`/`String` standing in for a domain quantity (a byte count, a clock rate, a price), a stringly value for a closed set (M4), a bare alias asserting zero facts (M1), or a concept referenced before it has a proper home (M10). Encountering one obligates modeling it now: give it an identity and ground it in cited facts / a catalog row (M3, M9, M10).
+
+**No stopgaps, no defer-and-forget.** A `P-*` / TODO mark that ships a raw placeholder "to be modeled later" is not a tracked stopgap — it is the deferral this rule forbids. If a concept genuinely cannot be modeled in-PR because it needs upstream compiler/interpreter capability that does not exist yet, that is a **blocker to escalate** (the change does not merge with the concept unmodeled), not a placeholder to ship.
+
+This is distinct from the *scope* deferral that INVARIANTS permits (`minimal slice a real consumer validates; defer the rest to consumer-triggered roadmap`): you may defer building out **breadth** ahead of a consumer, but you may not defer **modeling** a concept your change already touches. Scope-narrow is fine; model-shallow is not. The litmus: *would a reader of this diff have to read a non-cited string/Int to know the fact?* If yes, the concept is unmodeled and this rule fires.
+
+Descends from P1 (Modeling Faithfulness — ungrounded is invalid) and P5 (Progress Is Dissolution — a change that adds an un-dissolved scaffold is not progress). Operationalized as a merge-blocking review trigger in [docs/modeling-discipline.md](docs/modeling-discipline.md) Practice 13.
+
 ### Navigating the concept DAG: where to start
 
 The `dsl/std/` tree is the concept DAG; read it from roots to compositions to domain vocabularies.

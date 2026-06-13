@@ -439,6 +439,7 @@ Each module is graded on how well it implements the upstream spec:
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
 | `cloud/cloud.dag` | 67 | A | — | Abstract vocabulary, not a specific API |
+| `cloud/hetzner.dag` | 41 | A | Cited | CAX Ampere ARM server types + price-adjustment citation; only CAX41 inhabited |
 | `cloud/gcp/gcp.dag` | 196 | A | Inline endpoints | OAuth2 scopes, API base URLs, ADC path all spec-correct |
 | `cloud/gcp/iam.dag` | 224 | A- | Inline endpoints | GenerateAccessToken path correct; missing GenerateIdToken |
 | `cloud/gcp/secret_manager.dag` | 211 | A- | Inline endpoint | AccessVersion/CreateSecret/AddVersion correct; missing List |
@@ -503,6 +504,12 @@ Each module is graded on how well it implements the upstream spec:
 | `tools/package_managers.dag` | 160 | A | **Missing** | Platform matrix, install semantics correct |
 | `tools/rust_toolchain.dag` | 146 | A | **Missing** | Channels, components, editions, targets correct |
 
+### Operating Systems
+
+| Module | Lines | Grade | Spec URL | Notes |
+|--------|-------|-------|----------|-------|
+| `os.dag` | 46 | A | Cited (per-row) | Ubuntu 24.04 LTS / Windows 11 24H2 / macOS 15 Sequoia as cited rows inhabiting `std.compute_fabric.OperatingSystemSurface` (kernel/fs/process facts). No new abstraction minted (M2) — grounds the previously-uninhabited surface |
+
 ### Rendering (internal, not external specs)
 
 | Module | Lines | Grade | Notes |
@@ -535,8 +542,8 @@ Each module is graded on how well it implements the upstream spec:
 ## Aggregate
 
 ```
-Total extdeps modules: 79
-  Grade A:   42  (53%)
+Total extdeps modules: 80
+  Grade A:   43  (54%)
   Grade B+:   9  (11%)
   Grade B:   13  (16%)
   Grade B-:   2   (3%)
@@ -544,9 +551,9 @@ Total extdeps modules: 79
   Grade C:    1   (1%)
   Ungraded:  11  (14%)  (rendering internals)
 
-Modules citing spec URLs:  ~8 of 79 (10%)
-Modules with inline endpoint URLs: ~12 of 79 (15%)
-Modules with no external reference: ~59 of 79 (75%)
+Modules citing spec URLs:  ~9 of 80 (11%)
+Modules with inline endpoint URLs: ~12 of 80 (15%)
+Modules with no external reference: ~59 of 80 (74%)
 ```
 
 ## Priority Fixes

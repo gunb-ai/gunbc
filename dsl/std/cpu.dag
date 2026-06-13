@@ -6,6 +6,7 @@ module std.cpu
 
 import std.cpu.types { AmpereCpuModel, CpuArchitecture, CpuDeploymentFacts, CpuFacts, CpuIdentity, CpuModelCatalogRow, CpuVendor }
 import std.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
+import std.measure { HardwareThreadCount, Hertz }
 
 fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
   match identity {
@@ -26,7 +27,7 @@ fn cpu_facts_cores(cpu: CpuFacts) -> Int {
   cpu_catalog_row(cpu.identity).cores
 }
 
-fn cpu_facts_threads(cpu: CpuFacts) -> Int {
+fn cpu_facts_threads(cpu: CpuFacts) -> HardwareThreadCount {
   cpu_catalog_row(cpu.identity).threads
 }
 
@@ -34,6 +35,6 @@ fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
   cpu_catalog_row(cpu.identity).architecture
 }
 
-fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
+fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Hertz {
   cpu.deployment.sustained_per_thread_hz
 }
