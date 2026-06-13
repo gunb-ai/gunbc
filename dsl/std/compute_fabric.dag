@@ -20,7 +20,8 @@ import std.os.types {
   ProcessSemantics,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, hertz }
+import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
+import std.currency { CurrencyCode, Eur }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 import std.cpu {
   CpuDeploymentFacts,
@@ -172,7 +173,16 @@ type ProviderConstraint
 
 type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
 // Lens: RAII borrow window — open acquires scope; close is optional early release.
-type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
+// Cost quote: a fixed-point money price tagged with its ISO 4217 currency.
+// The `expected_units: Float` / `currency: NonEmptyStr` stopgap (Float carrying
+// raw int micros; loose string code) is DISSOLVED here onto the money carrier
+// landed in `std.measure` / `std.currency`:
+//   - `unit_price: MoneyMicros` — `Measure<Currency, Micro>`, the exact micro
+//     denomination Hetzner quotes in (`*_eur_micros`). Money is fixed-point,
+//     never `Float` (floating point for money is a representation defect).
+//   - `currency: CurrencyCode` — ISO 4217 closed-domain identity, not a free
+//     `NonEmptyStr`.
+type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
 
 type ComputeOffer {
   provider: ProviderIdentity
@@ -424,7 +434,13 @@ type AmortizationScope
 type CostReceipt {
   provider: ProviderIdentity
   cost_class: CostClass
-  amount: Option<Float>
+  // Money is fixed-point: the observed-bill amount is `MoneyMicros`, not
+  // `Float` (same money-as-Float defect dissolved on `CostEstimate.unit_price`).
+  // The type is corrected here regardless of inhabitation — fixing a
+  // known-wrong field type is type-correctness, not abstraction ahead of
+  // demand. `CostReceipt` stays uninhabited (no fabricated `data` rows until a
+  // real observed-bill consumer lands).
+  amount: Option<MoneyMicros>
   pricing_source: PricingSource
   amortization_scope: Option<AmortizationScope>
 }
@@ -566,7 +582,7 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
   // P-CF-BYTESIZE: cax41_catalog vcpus/memory_bytes/disk_bytes not yet in processors[]/memory[];
-  // physical facts deferred — cost_quote.expected_units is the only catalog field wired today.
+  // physical facts deferred — cost_quote.unit_price is the only catalog field wired today.
   processors: [],
   memory: [],
   storage: [],
@@ -580,10 +596,11 @@ data hetzner_per_second_cost: CostModel = CostModel {
 
 data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
   model: hetzner_per_second_cost,
-  // P-CF-BYTESIZE: hourly_eur_micros raw Int → expected_units: Float (no typer yet);
-  // dissolves when Measure<Currency,_> value typing lands.
-  expected_units: cax41_catalog.hourly_eur_micros,
-  currency: "EUR",
+  // Std-boundary projection of the extdeps raw `hourly_eur_micros: Int` onto the
+  // money carrier (extdeps stays spec-faithful per the §4.3 fidelity carve-out;
+  // the wrap happens here, not in `hetzner.dag`).
+  unit_price: money_micros(cax41_catalog.hourly_eur_micros),
+  currency: Eur,
 }
 
 data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"
