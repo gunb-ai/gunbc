@@ -419,7 +419,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -531,7 +533,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -639,7 +643,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 0
+        # depth 1: this job has no diff-base step (no `git fetch origin main`); it builds/runs the
+        # working tree only, so a full-history clone is pure checkout latency. Keep depth 1.
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:

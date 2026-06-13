@@ -1,4 +1,4 @@
-// extdeps/brew.dag — Homebrew package manager (macOS).
+// extdeps/package_managers/brew.dag — Homebrew package manager (macOS).
 //
 // Spec: https://docs.brew.sh/
 // Version: Homebrew 4.x+
@@ -21,7 +21,7 @@
 //   - Bundle (Brewfile) workflows
 //
 // Future: When we model brew operations programmatically, this file
-// gains service declarations like extdeps/cargo.dag.
+// gains service declarations like extdeps/rust/cargo.dag.
 
 module extdeps.brew
 

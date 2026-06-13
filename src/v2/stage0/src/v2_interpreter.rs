@@ -114,10 +114,32 @@ pub struct Symbol(u32);
 pub struct SymbolInterner {
     strings: Vec<String>,
     index: HashMap<String, u32>,
+    /// Total `intern` calls over this table's lifetime — the linear term.
+    calls: u64,
+}
+
+/// Interning receipt (ctrl#1533 phase 3 / #4799): every `intern` call for a
+/// name already in the table is a heap `String` allocation that the
+/// pre-#4799 carrier WOULD have made (each occurrence of a type/variant/field
+/// name was its own owned `String`) and that interning elides. `distinct` is
+/// the number of allocations actually retained; `hits` (= `calls − distinct`)
+/// is the count of allocations avoided — the dedup factor `calls/distinct` is
+/// the before/after receipt for the carrier swap.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct InternStats {
+    /// Total `intern` invocations (linear in occurrences of identity names).
+    pub calls: u64,
+    /// Distinct symbols retained — `String` allocations actually made.
+    pub distinct: u64,
+    /// Repeat lookups served from the table — allocations interning avoided.
+    pub hits: u64,
+    /// Estimated heap bytes the table retains (payloads + index keys).
+    pub heap_bytes: u64,
 }
 
 impl SymbolInterner {
     pub fn intern(&mut self, s: &str) -> Symbol {
+        self.calls += 1;
         if let Some(&id) = self.index.get(s) {
             return Symbol(id);
         }
@@ -125,6 +147,17 @@ impl SymbolInterner {
         self.strings.push(s.to_string());
         self.index.insert(s.to_string(), id);
         Symbol(id)
+    }
+
+    /// Snapshot the interning receipt for this table (see [`InternStats`]).
+    pub fn stats(&self) -> InternStats {
+        let distinct = self.strings.len() as u64;
+        InternStats {
+            calls: self.calls,
+            distinct,
+            hits: self.calls.saturating_sub(distinct),
+            heap_bytes: self.heap_bytes(),
+        }
     }
 
     pub fn resolve(&self, sym: Symbol) -> &str {
@@ -1025,6 +1058,14 @@ impl InterpContext {
     /// context (phase-0 measurement, ctrl#1533).
     pub fn mutation_counters_snapshot(&self) -> MutationCounters {
         self.mutation_counters.borrow().clone()
+    }
+
+    /// Snapshot the symbol-interning receipt for this context (see
+    /// [`InternStats`]): how many identity-name `intern` calls ran, how many
+    /// distinct symbols were retained, and how many repeat `String`
+    /// allocations interning avoided (the #4799 dedup receipt).
+    pub fn interner_stats_snapshot(&self) -> InternStats {
+        self.symbols.borrow().stats()
     }
 
     /// Sharing-aware byte accounting over everything this context retains

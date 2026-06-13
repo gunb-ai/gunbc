@@ -1,4 +1,4 @@
-// extdeps/cargo.dag -- "What is Cargo?"
+// extdeps/rust/cargo.dag -- "What is Cargo?"
 //
 // Rust's build system and package manager: packages, targets, profiles,
 // features, and command behaviors.
