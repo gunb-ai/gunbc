@@ -1,34 +1,18 @@
 // extdeps/os.dag — OS catalog dispatch hub (per-distro modules: ubuntu/windows/macos).
-// Reuse: std.os surface projections from cited distribution catalog rows.
+// Reuse: std.os cited_operating_system_surface (product → catalog → surface).
 
 module extdeps.os
 
-import extdeps.macos { macos_distribution_catalog_row }
-import extdeps.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.windows { windows_distribution_catalog_row }
 import std.list { List }
-import std.os {
-  operating_system_surface_macos,
-  operating_system_surface_ubuntu,
-  operating_system_surface_windows,
-}
+import std.os { cited_operating_system_surface }
 import std.os.types {
   MacosOs,
   NobleNumbat2404Lts,
-  OperatingSystemProduct,
   OperatingSystemSurface,
   Sequoia15,
   UbuntuOs,
   Windows1124H2Build26100,
   WindowsOs,
-}
-
-fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {
-  match product {
-    UbuntuOs { distro: d } => operating_system_surface_ubuntu(ubuntu_distribution_catalog_row(d))
-    WindowsOs { distro: d } => operating_system_surface_windows(windows_distribution_catalog_row(d))
-    MacosOs { distro: d } => operating_system_surface_macos(macos_distribution_catalog_row(d))
-  }
 }
 
 data ubuntu_24_04: OperatingSystemSurface = cited_operating_system_surface(UbuntuOs { distro: NobleNumbat2404Lts })

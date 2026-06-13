@@ -2,18 +2,24 @@
 
 module std.os
 
+import extdeps.macos { macos_distribution_catalog_row }
+import extdeps.ubuntu { ubuntu_distribution_catalog_row }
+import extdeps.windows { windows_distribution_catalog_row }
 import std.os.types {
   Apfs,
   Darwin,
   Linux,
   MacosDistributionCatalogRow,
+  MacosOs,
   Ntfs,
+  OperatingSystemProduct,
   OperatingSystemSurface,
   Posix,
   PosixProcess,
   UbuntuDistributionCatalogRow,
   WindowsDistributionCatalogRow,
   WindowsNt,
+  WindowsOs,
   WindowsProcess,
 }
 import std.primitives { concat }
@@ -45,5 +51,13 @@ fn operating_system_surface_macos(row: MacosDistributionCatalogRow) -> Operating
     version: Some { value: row.annual_release_label },
     filesystem_semantics: Apfs,
     process_semantics: PosixProcess,
+  }
+}
+
+fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {
+  match product {
+    UbuntuOs { distro: d } => operating_system_surface_ubuntu(ubuntu_distribution_catalog_row(d))
+    WindowsOs { distro: d } => operating_system_surface_windows(windows_distribution_catalog_row(d))
+    MacosOs { distro: d } => operating_system_surface_macos(macos_distribution_catalog_row(d))
   }
 }
