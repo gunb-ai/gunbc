@@ -61,6 +61,26 @@ Selected-component frequency (per-run, n=1988): `testclaim_corpus` 67.1%, `v4` 6
 `v3` 24.2%, `workflow_policy` 12.6%, `release_distribution` 0.9%. The floor is dominated by the
 v4/testclaim closure — consistent with most real PRs touching `src/v4`.
 
+### Live exhibit — a one-file markdown PR ran the full heavy suite (#4797)
+
+The waste this recommendation targets is not hypothetical. Same night (2026-06-13), PR **gunbc#4797**
+(`docs(demo): friend-facing walkthrough for the add program`) — diff = **exactly one file,
+`docs/demo/add-walkthrough.md`, zero `.dag`/`src`** — ran the **full heavy suite**: `ci_floor`
+**14.7 min**, `ci_floor_parity` 11.6 min, with `v4_lens_ci` + `v4_lens_gate` still pending. The
+`affected` job *classified* it correctly (docs-only, empty selection) but **gates nothing today**, so
+the floor and lens jobs ran anyway. A pure-markdown PR therefore **consumed scarce lens capacity
+during a contention squeeze and could fail-closed on a cancelled dependency despite changing no
+code** — exactly the false-green-adjacent waste an empty-selection skip would eliminate.
+
+This single live PR is the same phenomenon the aggregate quantifies: **219 docs-only would-skip runs
+with 0 diff-attributable false-negatives.** The safe slice is real, the prediction is correct, and
+the waste is observable tonight — not a projection.
+
+**Prerequisite (binding):** this exhibit is evidence for the docs-only enforce decision the operator
+is now weighing; it is **not** an authorization to flip. The `affects_v4` gap closure (**#4796**,
+`fix(ci): close affects_v4 allowlist gap FAIL-CLOSED`, at the finish line) **must land first** —
+no enforce flip on any slice before that fail-closed correction is on main.
+
 ## False-negative analysis — would gating have hidden a real failure?
 
 For the 274 would-skip runs we pulled the actual GHA job conclusions for the three floor jobs.
