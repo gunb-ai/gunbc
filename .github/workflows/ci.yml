@@ -784,6 +784,11 @@ jobs:
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Ensure ci-claim-gate binary (v4 lens gate)
+      run: |
+        if [[ ! -x target/release/ci-claim-gate ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+        fi
     - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       uses: actions/cache/save@v5
