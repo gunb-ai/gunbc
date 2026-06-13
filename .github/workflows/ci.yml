@@ -803,14 +803,13 @@ jobs:
     - name: v4 glob-discovery substrate equivalence (C9)
       run: bash scripts/v4-substrate-equivalence-gate.sh --perturb-check
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
-  # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
+  # this job retains the GREEN must-pass witnesses + executor dogfood only. Job id `v4_lens_ci`
+  # unchanged for any existing refs. Per-row PERTURB receipts fan out to `v4_lens_ci_perturb`.
   v4_lens_ci:
     runs-on: [self-hosted, linux, arm64]
-    # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
-    # as v4_lens_gate above (uncontended wall ~16m x2 = 32, rounded to 35;
-    # #4786 ran 9/9 witnesses green and was killed mid-perturb on a third
-    # rerun -- structural overrun, not contention-recoverable).
-    timeout-minutes: 35
+    # Post-perturb-split (2026-06-13, profiler A): GREEN batch ~1.7-2.5m + executor dogfood
+    # ~3m ≈ 5.5m uncontended; budget rule ×2 = 11m → 20m ceiling (down from 35m monolith).
+    timeout-minutes: 20
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -871,8 +870,16 @@ jobs:
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-    - name: affected-set node-frontier selection must-pass discriminating witnesses
-      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
+    # GREEN-only here: the must-pass batched (claim_batch) witnesses + modeled
+    # row-count guard for both row-sets (node-frontier + affected-testgen). The
+    # per-row PERTURB fan-out (the 15-row red-under-mutation receipts) moved to
+    # the parallel `v4_lens_ci_perturb` matrix below — each perturb row is an
+    # independent cold full-tree resolve, so fanning them out (capped at 4) cuts
+    # the serial wall without changing gate semantics. Coverage stays whole: the
+    # matrix's union covers all 15 rows and the `ci` aggregator requires every
+    # matrix leg to succeed (fail-closed-on-skip).
+    - name: affected-set node-frontier + testgen GREEN must-pass witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
