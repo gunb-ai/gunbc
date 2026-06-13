@@ -60,6 +60,20 @@ data corpus_ci_gate_row_comprep_branch_eval_keystone: ClaimWitnessCorpusClaimRun
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_bind_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "bind demand driven eval keystone",
+  entry: "src/v4/test/claim/manual/bind_demand_driven_eval.dag",
+  function: "bind_demand_driven_eval_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_loop_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "loop demand driven eval keystone",
+  entry: "src/v4/test/claim/manual/loop_demand_driven_eval.dag",
+  function: "loop_demand_driven_eval_keystone_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "lazy arm eval acceptance keystone",
   entry: "src/v4/test/claim/manual/comprep_branch_lazy_arm_eval_acceptance.dag",
@@ -214,6 +228,8 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
+  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
+  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
   corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
   corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
@@ -237,7 +253,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "25"
+data claim_witness_corpus_claim_run_row_count: String = "27"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -246,6 +262,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
+  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
   corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
   corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
   corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
@@ -257,10 +274,11 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "13"
+data claim_witness_corpus_shard_a_row_count: String = "14"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
+  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
   corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free,
   corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold,
   corpus_ci_gate_row_witness_sg2_arrow,
@@ -274,4 +292,4 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "12"
+data claim_witness_corpus_shard_b_row_count: String = "13"
