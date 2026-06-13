@@ -91,7 +91,7 @@ fn assert_default_fixed_point_mirror_shape(m: &parse_surface::SurfaceModule) {
 
 #[test]
 fn lower_pipeline_fixture_aligns_with_parse_surface_mirror() {
-    let file = "sg3_lower_parse_surface_stack.v3";
+    let file = "self_gen3_lower_parse_surface_stack.v3";
     let source = default_fixed_point_source();
     let tokens = tokenize_for_test(source, file).expect("tokenize");
     let parsed = parse_for_test(&tokens, file).expect("parse");

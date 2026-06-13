@@ -39,7 +39,7 @@ use crate::{
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/integration/sg0_census_test.rs"
+    "/tests/integration/self_gen0_census_test.rs"
 ));
 const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

@@ -1,6 +1,6 @@
 // src/v4/lens/unused_parameters.dag
-// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (T-13 family-shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (Practice 11 / single mechanism, two outputs).
-// Status: T-13 family ratchet + registry split-contract.
+// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (per-edge classification-family shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (Practice 11 / single mechanism, two outputs).
+// Status: per-edge classification-family ratchet + registry split-contract.
 
 
 module v4.lens.unused_parameters
@@ -29,7 +29,7 @@ type UseRelation
   | IsNonUseDependency
   | RequiresResolutionWitness
 
-// PROJECTION OUTPUT — T-13 family shape (per-edge classification list).
+// PROJECTION OUTPUT — per-edge classification-family shape.
 type UseClassificationFact {
   uses: List<ClassifiedDependencyView<UseRelation>>
 }

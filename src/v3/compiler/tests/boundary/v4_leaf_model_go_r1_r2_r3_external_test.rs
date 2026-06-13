@@ -5,7 +5,7 @@
 //! Temporary host bridge: this test exercises `go build` / `go run` until T-22
 //! `run_target_verification` owns the modeled rows directly.
 //!
-//! **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** same-path expansion (+0
+//! **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** same-path expansion (+0
 //! census paths); explicit deferral **T-PB-B** / `_internal/ROADMAP_OPS.md` `pb_rust_tests_outside_residual_zero`;
 //! dissolve when T-22 `run_target_verification` owns Go leaf claims without this bridge (#4243).
 //! R2b falsification is a harness divergence probe (wrong `want` → panic), not a semantic alt-behavior witness.

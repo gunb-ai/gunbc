@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Status: T-21 IRT-1 filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI/T-24 node-precision closure via affected_set_from_diff.
+// Status: filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI node-precision closure via affected_set_from_diff.
 
 module v4.lens.affected_set
 
@@ -62,17 +62,17 @@ type EditDimension {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — bind T-21 — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
+// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
-// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
+// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 
-// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
+// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
@@ -84,21 +84,21 @@ type BoundaryExclusion {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — bind T-21 — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
+// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
   | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — bind T-21 — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
+// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 
-// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
 // RULING-1: 🟢 pretty-much-done — frontier carrier.
-// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
       boundary_exclusions: List<BoundaryExclusion>,
@@ -107,41 +107,41 @@ type ReExecFrontier
   | FailClosed { reason: FailClosedReason }
 
 
-// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — bind T-21 — dissolve-on: B1/B-5 receipt primitives replace scaffold
+// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — dissolve-on: B1/B-5 receipt primitives replace scaffold
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — bind T-21 — dissolve-on: T-21 TestClaims boundary coverage
+// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — dissolve-on: affected-set TestClaims boundary coverage
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
+// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — bind T-21 — dissolve-on: B-4/B-5 edge receipts replace scaffold
+// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — dissolve-on: B-4/B-5 edge receipts replace scaffold
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21 — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
 type FrontierDependency {
   dependency: DependencyView
   target: DependencyEndpoint
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — bind T-21 — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
+// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
   = FrontierProduced { dependencies: List<FrontierDependency> }
   | FrontierUnknown { reason: Symbol }
@@ -197,7 +197,7 @@ type AffectedSetFoldAcc
     }
 
 
-// 🟢 coproduct dissolution — T-21 edit/rebuild projection; preserves fail-closed evidence.
+// 🟢 coproduct dissolution — edit/rebuild projection; preserves fail-closed evidence.
 type RerunNodeSet
   = RerunNodeSetProduced {
       nodes: List<Node>
@@ -268,7 +268,7 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
-// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
+// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
 fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
@@ -278,7 +278,7 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
 }
 
 
-// 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
+// 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
 fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
@@ -1040,7 +1040,7 @@ fn affected_set_from_diff(
 }
 
 
-// IRT-1 canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
+// canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
 fn re_exec_frontier_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -1101,7 +1101,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 }
 
 
-// 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — bind T-21/T-24 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
+// 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
   ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
 }

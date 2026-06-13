@@ -1,6 +1,6 @@
 // R1C-D — PB census `.dag` TestClaim fixtures for the six
 // PB census gates (T-PB-A ×4 + T-PB-B ×2). The Rust ratchets in
-// `src/v3/compiler/tests/integration/sg0_census_test.rs` remain the
+// `src/v3/compiler/tests/integration/self_gen0_census_test.rs` remain the
 // drift-detection authority on the underlying lists; this file wires the
 // release-gate `.dag` layer that R1 close evaluates, per the strict
 // reading of `THESIS.md §"Tests are structural data"`.
@@ -52,15 +52,15 @@ import std.verification {
 // Census-authority handle. The Rust runner's `resolve_census_authority_ref`
 // only requires a `DeclarationRef` edge (it does not pin a name or type);
 // the marker exists so fixtures point at a typed identity that names the
-// underlying authority (`src/v3/compiler/tests/integration/sg0_census_test.rs`)
+// underlying authority (`src/v3/compiler/tests/integration/self_gen0_census_test.rs`)
 // rather than smuggling the path through fixture text.
 type Sg0CensusAuthority {}
 
-data sg0_census_test_authority: Sg0CensusAuthority = {}
+data self_gen0_census_test_authority: Sg0CensusAuthority = {}
 
 // Stub source string repeated inline on each `TestClaim` below. The PB
 // census `eval_*_shape` family does not consume `claim.source` —
-// evaluation reads live census state via `sg0_census_list_*` helpers in
+// evaluation reads live census state via `self_gen_census_list_*` helpers in
 // `test_runner.rs`. The string is repeated rather than referenced through
 // a shared `data` because `TestClaimValue::from_declaration` reads `source`
 // as a `FieldValue::Literal(String)`; a `Reference(_)` edge falls back to
@@ -71,7 +71,7 @@ data pb_hand_rust_at_shim_floor_gate: TestClaim = {
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_pb_hand_rust_at_shim_floor.v3",
   predicate: CensusBoundCheck {
-    authority: sg0_census_test_authority,
+    authority: self_gen0_census_test_authority,
     list_constant: expected_hand_authored_non_test,
     bound: 0
   },
@@ -83,7 +83,7 @@ data lens_producer_files_remaining_gate: TestClaim = {
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_lens_producer_files_remaining.v3",
   predicate: CensusSubsetCount {
-    authority: sg0_census_test_authority,
+    authority: self_gen0_census_test_authority,
     list_constant: expected_hand_authored_non_test,
     subset_predicate: lens_producer_files_subset_predicate
   },
@@ -106,13 +106,13 @@ data pb_compiler_std_ratchet_zero_gate: TestClaim = {
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_pb_compiler_std_ratchet_zero.v3",
   predicate: RatchetZero {
-    authority: sg0_census_test_authority,
+    authority: self_gen0_census_test_authority,
     ratchet_kind: compiler_std_positive_set_ratchet
   },
   requires: []
 }
 
-// `manifest_entries` enumerates every path in the SG-0 generated-file manifest
+// `manifest_entries` enumerates every path in the Self-Generation-0 generated-file manifest
 // (`src/v3/compiler/src/lib.rs::generated_files`, emitted from
 // `build.rs::REGEN_OUTPUTS`). **Keep this list in lockstep with that literal**
 // (same paths, same order as `build.rs`) so `GeneratedFromDag` set-equality
@@ -129,7 +129,7 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_pb_test_file_generated_from_dag.v3",
   predicate: GeneratedFromDag {
-    authority: sg0_census_test_authority,
+    authority: self_gen0_census_test_authority,
     manifest_entries: [
       PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs" },
@@ -177,7 +177,7 @@ data pb_rust_tests_outside_residual_zero_gate: TestClaim = {
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_pb_rust_tests_outside_residual_zero.v3",
   predicate: CensusBoundCheck {
-    authority: sg0_census_test_authority,
+    authority: self_gen0_census_test_authority,
     list_constant: expected_hand_authored_test,
     bound: 0
   },
