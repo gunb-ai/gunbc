@@ -48,11 +48,11 @@
 // Value-typed integration (Q-Refined-Phantom-Composition option (c) follow-up):
 // `Measure<Q, S>` carries magnitude in `count`; phantom `<Q>` / `<S>` tag
 // dimensional semantics. Predicate-bearing refinement (`Refined<Measure<…>>`)
-// remains deferred per option (c). Forward-flag: migrate `count: Int` →
-// `count: Nat` when the construction chain is v2-importable.
+// remains deferred per option (c).
 
 module std.measure
 
+import std.nat { Nat }
 import std.types { Int }
 
 // --- Quantity: what is being measured -------------------------------------
@@ -175,7 +175,7 @@ fn scale_exponent(s: Scale) -> Int {
 //     gated (G1–G3); consumers use constructor/projection fns below until
 //     the v2 interpreter lane lands (see measure-value-typing-design).
 type Measure<Q, S> {
-  count: Int
+  count: Nat
 }
 
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
