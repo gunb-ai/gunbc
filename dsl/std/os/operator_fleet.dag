@@ -1,0 +1,14 @@
+// std/os/operator_fleet.dag — Operator srv1/srv2 OS deployment binding.
+//
+// srv1/srv2 run Ubuntu 24.04 LTS (Noble Numbat). Cited distro catalog: extdeps.ubuntu.
+
+module std.os.operator_fleet
+
+import extdeps.ubuntu { noble_numbat_2404_catalog }
+import std.os { operating_system_surface_ubuntu }
+import std.os.types { NobleNumbat2404Lts, OperatingSystemProduct, UbuntuOs }
+import std.compute_fabric { OperatingSystemSurface }
+
+data operator_fleet_os_product: OperatingSystemProduct = UbuntuOs { distro: NobleNumbat2404Lts }
+
+data operator_fleet_os_surface: OperatingSystemSurface = operating_system_surface_ubuntu(noble_numbat_2404_catalog)

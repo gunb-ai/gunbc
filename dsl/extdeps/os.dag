@@ -40,7 +40,3 @@ data os_catalog: List<OperatingSystemSurface> = [
   windows_11,
   macos_15_sequoia,
 ]
-
-// Operator fleet authority (srv1/srv2 run Ubuntu 24.04 LTS).
-data operator_fleet_os_product: OperatingSystemProduct = UbuntuOs { distro: NobleNumbat2404Lts }
-data operator_fleet_os_surface: OperatingSystemSurface = cited_operating_system_surface(operator_fleet_os_product)
