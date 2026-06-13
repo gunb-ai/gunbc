@@ -156,11 +156,27 @@ def perturb_check(workflows_dir: Path) -> int:
         shutil.copytree(workflows_dir, tmp_dir)
         target = tmp_dir / "ci.yml"
         text = target.read_text()
-        planted, n = re.subn(
-            r"timeout-minutes: 20", "timeout-minutes: 21", text, count=1
-        )
+        # Derive the plant target from the declared ceilings rather than
+        # hardcoding a value: pick the first ci.yml job whose declared
+        # timeout-minutes literal appears in the file, and raise it by 1
+        # past its ceiling. A hardcoded value rots the moment budgets
+        # change (the previous 'timeout-minutes: 20' plant broke when the
+        # last 20m budgets were raised).
+        planted, n = "", 0
+        for job, ceiling in CEILINGS["ci.yml"].items():
+            planted, n = re.subn(
+                rf"timeout-minutes: {ceiling}\b",
+                f"timeout-minutes: {ceiling + 1}",
+                text,
+                count=1,
+            )
+            if n == 1:
+                break
         if n != 1:
-            print("perturb-check could not plant a raise (no 'timeout-minutes: 20')")
+            print(
+                "perturb-check could not plant a raise (no declared ceiling "
+                "value found verbatim in ci.yml)"
+            )
             return 1
         target.write_text(planted)
         errors = run_gate(tmp_dir)
