@@ -14,6 +14,9 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # actions:read lets the non-gating `affected_timings` job read this run's own per-job wall-clock
+  # via the Actions API (scripts/ci_collect_job_timings.py). Read-only; no job uses write scopes.
+  actions: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -268,6 +271,94 @@ jobs:
       with:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
+        if-no-files-found: warn
+  # Wave-1 §11.7 follow-up TIMINGS AGGREGATOR -- the job the `affected` comment above promised.
+  # NON-GATING measurement: after the floor/lens jobs finish, read THIS run's per-job wall-clock via
+  # the Actions API (scripts/ci_collect_job_timings.py) and re-emit the affected-set CI receipt with
+  # actual_run_minutes + wall_clock_by_job populated, so `saved_minutes` becomes measurable (closes the
+  # v1 gap the kill-criterion doc flagged). Transport-only (RR-K §2.4): re-invokes the SAME emit bin
+  # (single authority for the saved_minutes formula in receipt.rs); computes NO affected-set facts and
+  # gates NO job. Deliberately NOT in the `ci` aggregator needs-closure -- timing collection must never
+  # fail a merge. `if: always()` so timings are captured even when a floor job failed (not when the
+  # whole run is cancelled). Emits a SEPARATE `affected-set-ci-receipt-timed` artifact; the early
+  # `affected-set-ci-receipt` stays as the prediction-only receipt (available even on cancelled runs).
+  affected_timings:
+    runs-on: [self-hosted, linux, arm64]
+    # Mirrors the `affected` setup (checkout + rust + sccache bin build) + an Actions-API read + one
+    # emit. Budget rule (documented uncontended wall x2): INTERIM 8 -- sccache-warm wall is ~1m, the
+    # cold-build (sccache-miss) tail dominates at ~3-4m; 4m x2 = 8. Re-derive from the first green run.
+    timeout-minutes: 8
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci]
+    if: always()
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Fetch main for diff base
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: Collect this run's per-job wall-clock (Actions API, fail-safe)
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python3 scripts/ci_collect_job_timings.py "$RUNNER_TEMP/job-timings.json" "$RUNNER_TEMP/actual-run-minutes.txt"
+    - name: Emit timed affected-set CI receipt
+      run: |
+        bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- \
+          "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt-timed.json" \
+          --estimated-full-run-minutes 15 \
+          --actual-run-minutes "$(cat "$RUNNER_TEMP/actual-run-minutes.txt")" \
+          --job-timings "$RUNNER_TEMP/job-timings.json"
+    - name: Upload timed affected-set CI receipt
+      uses: actions/upload-artifact@v6
+      with:
+        name: affected-set-ci-receipt-timed
+        path: ${{ runner.temp }}/affected-set-ci-receipt-timed.json
         if-no-files-found: warn
   # §11.7.1 Class A safety floor -- stage0 freshness receipt. DAG parity runs CONCURRENTLY in the
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).

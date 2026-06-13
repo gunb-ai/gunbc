@@ -54,6 +54,12 @@ CEILINGS = {
         # under the 20m shape; re-derive the ceiling under the budget rule.
         "v4_lens_gate": 35,
         "v4_lens_ci": 35,
+        # Non-gating Wave-1 §11.7 timings aggregator: mirrors the `affected` setup
+        # (checkout + rust + sccache bin build) + one Actions-API read + one emit.
+        # Budget rule (documented uncontended wall x2): sccache-warm wall ~1m, the
+        # cold-build (sccache-miss) tail dominates ~3-4m; 4m x2 = 8. Re-derive from
+        # the first green run's observed aggregator wall.
+        "affected_timings": 8,
         "timeout_budgets": 5,
         "ci": 5,
     },
