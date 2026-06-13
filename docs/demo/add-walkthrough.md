@@ -120,12 +120,16 @@ noun phrases instead of TypeScript tokens.
 
 ## 5. What this covers today
 
-The TypeScript grammar fixture ingests the add slice: the tokenizer and parser recognize
-the emitted `function add(...)` form and recover the emitted node (round-trip holds).
-Arbitrary TypeScript programs are not yet ingestible; only the add-function shape is
-modeled in the current grammar fixture.
+The TypeScript emit witness (`mvp1_ts_emit_add_fn_accepts_holds`) is emit-only: it
+verifies the emitted source text equals the authority string. There is no executed
+tokenize+parse consumer for the emitted `function add(...)` text on main today;
+`src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag` explicitly scopes
+itself as an emit-only receipt (E-10). The landed ingest round-trip is for the `.dag`
+target (`mvp1_dag_add_emit_ingest_round_trip_holds`), not for TypeScript text.
+Arbitrary TypeScript programs are also not yet ingestible; no TS text-ingest witness
+exists until a future grammar claim is authored and executed.
 
 Rust, Python, and Go emit for the same add slice are also verified by the same mechanism
 (`mvp1_rust_emit_add_fn_accepts_holds`, `mvp1_python_emit_add_fn_accepts_holds`,
-`mvp1_go_emit_add_fn_accepts_holds`). The interpreter, the TypeScript witness, and the
-English witness shown here are the three distinct evaluation modes active today.
+`mvp1_go_emit_add_fn_accepts_holds`). The interpreter, the TypeScript emit witness, and the
+English emit witness shown here are the three distinct evaluation modes active today.
