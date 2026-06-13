@@ -2,7 +2,7 @@
 //!
 //! Structural acceptance for R3 §1.8 gate #53 `workflow_substrate_carriers_landed`:
 //! Slice 1 workflow substrate carriers landed at `dsl/extdeps/github/actions.dag` +
-//! `dsl/extdeps/cron_schedule_model.dag` per Director β-ratification at
+//! `dsl/extdeps/cron/schedule_model.dag` per Director β-ratification at
 //! gunbc#828 #issuecomment-4395945465 (PR #2160). Carriers ratcheted here:
 //!
 //!   - `WorkflowSecret { name: SecretName, scope: SecretScope }` (provider-typed,

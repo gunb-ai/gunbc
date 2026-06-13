@@ -494,21 +494,24 @@ Each module is graded on how well it implements the upstream spec:
 
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
-| `git.dag` | 261 | A | **Missing** | Object model, merge strategies, diff format correct |
-| `shell.dag` | 54 | A | **Missing** | POSIX find/printenv; which extension; Exec `sh -lc` (`-l` bash login) |
-| `cron_schedule_model.dag` | 81 | A | Module header | POSIX.1-2017 XCU `crontab` five-field grammar; spec URL + edition in header |
-| `cargo.dag` | 216 | A | **Missing** | Package, target, profile, feature model correct |
+| `git/git.dag` | 261 | A | **Missing** | Object model, merge strategies, diff format correct |
+| `shell/shell.dag` | 54 | A | **Missing** | POSIX find/printenv; which extension; Exec `sh -lc` (`-l` bash login) |
+| `cron/schedule_model.dag` | 81 | A | Module header | POSIX.1-2017 XCU `crontab` five-field grammar; spec URL + edition in header |
+| `rust/cargo.dag` | 216 | A | **Missing** | Package, target, profile, feature model correct |
 | `build/make.dag` | 127 | A | Cited | GNU Make manual URL. Recipe prefixes §5.2/5.5/5.7.1 |
 | `yaml.dag` | 92 | A | **Missing** | Indent/kv/list/comment rules correct |
 | `tools/gh_cli.dag` | 127 | B+ | **Missing** | CLI wrapper model, not REST API |
-| `tools/package_managers.dag` | 160 | A | **Missing** | Platform matrix, install semantics correct |
-| `tools/rust_toolchain.dag` | 146 | A | **Missing** | Channels, components, editions, targets correct |
+| `tools/tools.dag` | 160 | A | **Missing** | Platform matrix, install semantics correct |
+| `rust/rustup.dag` | 146 | A | **Missing** | Channels, components, editions, targets correct |
 
 ### Operating Systems
 
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
-| `os.dag` | 46 | A | Cited (per-row) | Ubuntu 24.04 LTS / Windows 11 24H2 / macOS 15 Sequoia as cited rows inhabiting `std.compute_fabric.OperatingSystemSurface` (kernel/fs/process facts). No new abstraction minted (M2) — grounds the previously-uninhabited surface |
+| `os/ubuntu.dag` | 30 | A | Cited | Ubuntu 24.04 LTS: `UbuntuDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `os/windows.dag` | 30 | A | Cited | Windows 11 24H2: `WindowsDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `os/macos.dag` | 30 | A | Cited | macOS 15 Sequoia: `MacosDistribution` identity + cited catalog row; surface derived in `std.os` |
+| `os/os.dag` | 42 | A | Cited (dispatch) | `OperatingSystemProduct` coproduct → per-distro catalog dispatch → `std.os` row projections |
 
 ### Rendering (internal, not external specs)
 
@@ -518,7 +521,7 @@ Each module is graded on how well it implements the upstream spec:
 | `build/targets.dag` | 79 | A | Internal — shared schema types |
 | `build/make_render.dag` | 51 | A | Internal — Make-specific rendering |
 | `build/justfile_render.dag` | 34 | A | Internal — Just-specific rendering |
-| `gitignore_render.dag` | 38 | A | Internal — gitignore rendering |
+| `git/gitignore_render.dag` | 38 | A | Internal — gitignore rendering |
 | `ci/github_actions.dag` | 186 | B | Schema correct but no spec URL |
 | `ci/github_actions_render.dag` | 109 | A | Internal — YAML rendering |
 | `ci/gitlab_ci.dag` | 64 | B | Schema correct but no spec URL |
@@ -542,8 +545,8 @@ Each module is graded on how well it implements the upstream spec:
 ## Aggregate
 
 ```
-Total extdeps modules: 80
-  Grade A:   43  (54%)
+Total extdeps modules: 83
+  Grade A:   46  (55%)
   Grade B+:   9  (11%)
   Grade B:   13  (16%)
   Grade B-:   2   (3%)
@@ -551,9 +554,9 @@ Total extdeps modules: 80
   Grade C:    1   (1%)
   Ungraded:  11  (14%)  (rendering internals)
 
-Modules citing spec URLs:  ~9 of 80 (11%)
-Modules with inline endpoint URLs: ~12 of 80 (15%)
-Modules with no external reference: ~59 of 80 (74%)
+Modules citing spec URLs:  ~12 of 83 (14%)
+Modules with inline endpoint URLs: ~12 of 83 (14%)
+Modules with no external reference: ~59 of 83 (71%)
 ```
 
 ## Priority Fixes
@@ -569,11 +572,11 @@ Targets (28 modules):
 - `cloud/aws/*` — cite https://docs.aws.amazon.com/ per service
 - `cloud/azure/*` — cite https://learn.microsoft.com/en-us/rest/api/ per service
 - `secrets/*` — cite provider-specific docs
-- `git.dag` — cite https://git-scm.com/docs or Pro Git
-- `cargo.dag` — cite https://doc.rust-lang.org/cargo/reference/
-- `shell.dag` — cite POSIX.1 for find/printenv and `-c`; common-utility docs for `which`; bash/zsh (or host `sh` implementation) for login-shell `-l` on `sh -lc`
+- `git/git.dag` — cite https://git-scm.com/docs or Pro Git
+- `rust/cargo.dag` — cite https://doc.rust-lang.org/cargo/reference/
+- `shell/shell.dag` — cite POSIX.1 for find/printenv and `-c`; common-utility docs for `which`; bash/zsh (or host `sh` implementation) for login-shell `-l` on `sh -lc`
 - `yaml.dag` — cite https://yaml.org/spec/1.2.2/
-- `tools/rust_toolchain.dag` — cite https://rust-lang.github.io/rustup/
+- `rust/rustup.dag` — cite https://rust-lang.github.io/rustup/
 - `transports/sql.dag` — cite ISO SQL plus concrete prepared-statement docs
 
 ### P1: Fix GitHub modules (B/B- → A)
