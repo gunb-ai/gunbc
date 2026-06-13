@@ -11,6 +11,10 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
+# Batch witness runner: builds the module source index once and resolves each
+# entry's closure in a single process. Used for the GREEN pass only; the
+# perturb pass stays per-row through `$bin` (each row mutates a different fn).
+bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 perturb=0
 
 case "${1:-}" in
@@ -27,6 +31,11 @@ esac
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
+  exit 2
+fi
+
+if [[ ! -x "$bin_batch" ]]; then
+  echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
   exit 2
 fi
 
@@ -126,7 +135,9 @@ if [[ -z "$expected_count" ]]; then
   exit 2
 fi
 
-row_count=0
+# Collect all rows before running so the GREEN pass can issue one claim_batch
+# call instead of N separate gunbc-run invocations.
+lens_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
   row="$(project_list_member_row "$member")"
@@ -134,10 +145,30 @@ while IFS= read -r member; do
     echo "error: list member $member missing LensCiClaimRunRow binding in $ci_model" >&2
     exit 2
   fi
+  lens_rows+=("$row")
+done < <(list_claim_run_row_members)
+
+if [[ "${#lens_rows[@]}" -eq 0 ]]; then
+  echo "error: lens_ci_claim_run_rows has no members in $ci_model" >&2
+  exit 2
+fi
+
+# GREEN pass: one claim_batch call with all entry/function pairs. The module
+# source index is built once; each entry's closure is resolved in the same
+# process instead of spawning a new gunbc process per row.
+green_args=(--source-root src/v4)
+for row in "${lens_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
-  echo "::group::v4 lens CI: ${label}"
-  run_row "src/v4" "$entry" "$function"
-  echo "::endgroup::"
+  green_args+=(--entry "$entry" --function "$function")
+done
+echo "::group::v4 lens CI green pass (batch)"
+"$bin_batch" "${green_args[@]}" --claim-run
+echo "::endgroup::"
+
+# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+row_count=0
+for row in "${lens_rows[@]}"; do
+  IFS=$'\t' read -r label entry function <<< "$row"
 
   if [[ "$perturb" -eq 1 ]]; then
     tmp="$(mktemp -d)"
@@ -156,12 +187,7 @@ while IFS= read -r member; do
     trap - EXIT
   fi
   row_count=$((row_count + 1))
-done < <(list_claim_run_row_members)
-
-if [[ "$row_count" -eq 0 ]]; then
-  echo "error: lens_ci_claim_run_rows has no members in $ci_model" >&2
-  exit 2
-fi
+done
 
 if [[ "$row_count" -ne "$expected_count" ]]; then
   echo "error: lens CI transport projected ${row_count} rows; modeled count is ${expected_count}" >&2
