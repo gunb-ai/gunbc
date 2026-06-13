@@ -5191,31 +5191,47 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     }
 }
 
+pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
+    match normed.connective.clone() {
+        Connective::Conj | Connective::Disj => normed,
+        _ => match normed.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                if target.connective.clone() == Connective::Conj
+                    || target.connective.clone() == Connective::Disj
+                {
+                    target
+                } else {
+                    normed
+                }
+            }
+            _ => normed,
+        },
+    }
+}
+
 pub fn expand_type_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
-    if needs_alias_field_expansion(n.clone(), env.clone()) {
+    let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+        let once = resolve_node(n.clone(), env.clone(), module_name.clone())
+            .resolved
+            .clone();
+        if (((once.connective.clone() == Connective::NoConnective)
+            && ((once.children.clone().len() as i64) > 0))
+            && (once.inferred.clone() == None))
         {
-            let once = resolve_node(n.clone(), env.clone(), module_name.clone())
+            resolve_node(once.clone(), env.clone(), module_name.clone())
                 .resolved
-                .clone();
-            let expanded = if (((once.connective.clone() == Connective::NoConnective)
-                && ((once.children.clone().len() as i64) > 0))
-                && (once.inferred.clone() == None))
-            {
-                resolve_node(once.clone(), env.clone(), module_name.clone())
-                    .resolved
-                    .clone()
-            } else {
-                once.clone()
-            };
-            resolve_scrutinee_type_node(env.clone(), expanded)
+                .clone()
+        } else {
+            once
         }
     } else {
-        resolve_scrutinee_type_node(env.clone(), n.clone())
-    }
+        n.clone()
+    };
+    structural_from_expanded_type(resolve_scrutinee_type_node(env, peeled))
 }
 
 pub fn record_lit_alias_struct_fields(
