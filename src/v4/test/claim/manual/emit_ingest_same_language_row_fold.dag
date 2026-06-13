@@ -11,11 +11,13 @@ module v4.test.claim.manual.emit_ingest_same_language_row_fold
 import v4.compiler.ingest { grammar_relation_row_forward_selection }
 import v4.compiler.translate { grammar_relation_row_for_emitted }
 import v4.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
   dag_mvp1_grammar_relation_row_node,
   dag_mvp1_translation_rules_node
 }
 import v4.extdeps.languages.python {
   python_grammar_relation_row_node,
+  python_mvp1_emitted_add_fn_node,
   python_mvp1_grammar_relation_row,
   python_mvp1_translation_rules_node
 }
@@ -35,7 +37,16 @@ import v4.std.diagnostic {
   outcome_accepted
 }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
 import v4.std.node_query { find_named_child }
 import v4.std.verification {
   BoolWitness,
@@ -44,6 +55,44 @@ import v4.std.verification {
 }
 
 data emit_ingest_fold_perturb_bogus_tok: Symbol = emit_ingest_fold_perturb_bogus_tok
+data emit_ingest_fold_row_label_dag: Symbol = emit_ingest_fold_row_label_dag
+data emit_ingest_fold_row_label_python: Symbol = emit_ingest_fold_row_label_python
+
+// Claim-local negative fixture: same token-spine as a real row, foreign emitted (A2 only — not B1 N=2).
+fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: grammar_relation_field_emitted },
+              target: emitted
+            },
+            Edge {
+              label: Named { name: grammar_relation_field_tokens },
+              target: tokens_root
+            }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    }
+  )
+}
+
+fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: emit_ingest_fold_row_label_dag }, target: dag_row },
+      Edge { label: Named { name: emit_ingest_fold_row_label_python }, target: python_row }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
 
 fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
@@ -136,69 +185,73 @@ fn emit_ingest_fold_python_add_row() -> Node {
   python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
 }
 
-// Hermetic per-row perturb-RED: canonical spine + appended bogus token class → fail closed.
-fn emit_ingest_fold_row_perturbed_frontier_fails_closed(row: Node, rules: Node) -> Bool {
-  match emit_ingest_fold_row_token_spine_classes(row: row) {
-    Accepted { value: frontier, diagnostics: _ } =>
-      match grammar_relation_row_forward_selection(
-        frontier: list_append(left: frontier, right: [emit_ingest_fold_perturb_bogus_tok]),
-        rules: rules
-      ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// Positive control: unperturbed canonical frontier selects (subset of bijectivity).
-fn emit_ingest_fold_row_unperturbed_frontier_accepts(row: Node, rules: Node) -> Bool {
-  match emit_ingest_fold_row_emitted(row: row) {
-    Accepted { value: emitted, diagnostics: _ } =>
-      match emit_ingest_fold_row_token_spine_classes(row: row) {
-        Accepted { value: frontier, diagnostics: _ } =>
-          match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-            Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// A2 — perturb dag row: THAT row's perturbed frontier fails closed; python fold stays GREEN.
-fn emit_ingest_fold_a2_dag_row_perturb_isolated_holds() -> Bool {
-  emit_ingest_fold_row_perturbed_frontier_fails_closed(
+fn emit_ingest_fold_perturbed_dag_row() -> Node {
+  match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_dag_add_row(),
-    rules: emit_ingest_fold_dag_add_rules()
-  )
-    && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_python_add_rules())
+    emitted: python_mvp1_emitted_add_fn_node()
+  ) {
+    Accepted { value: perturbed, diagnostics: _ } => perturbed
+    Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
+  }
 }
 
-// A2 — perturb python row: THAT row's perturbed frontier fails closed; dag fold stays GREEN.
-fn emit_ingest_fold_a2_python_row_perturb_isolated_holds() -> Bool {
-  emit_ingest_fold_row_perturbed_frontier_fails_closed(
+fn emit_ingest_fold_perturbed_python_row() -> Node {
+  match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_python_add_row(),
-    rules: emit_ingest_fold_python_add_rules()
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: perturbed, diagnostics: _ } => perturbed
+    Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()
+  }
+}
+
+fn emit_ingest_fold_clean_two_row_rules() -> Node {
+  emit_ingest_fold_rules_table(
+    dag_row: emit_ingest_fold_dag_add_row(),
+    python_row: emit_ingest_fold_python_add_row()
   )
-    && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_dag_add_rules())
+}
+
+fn emit_ingest_fold_perturbed_dag_two_row_rules() -> Node {
+  emit_ingest_fold_rules_table(
+    dag_row: emit_ingest_fold_perturbed_dag_row(),
+    python_row: emit_ingest_fold_python_add_row()
+  )
+}
+
+fn emit_ingest_fold_perturbed_python_two_row_rules() -> Node {
+  emit_ingest_fold_rules_table(
+    dag_row: emit_ingest_fold_dag_add_row(),
+    python_row: emit_ingest_fold_perturbed_python_row()
+  )
+}
+
+// A2 — fold OVER a table containing a perturbed row MUST go red; clean table stays green.
+fn emit_ingest_fold_catches_perturbed_dag_row_holds() -> Bool {
+  !emit_ingest_fold_rules_all_rows_bijectivity_holds(
+    rules: emit_ingest_fold_perturbed_dag_two_row_rules()
+  )
+    && emit_ingest_fold_rules_all_rows_bijectivity_holds(
+      rules: emit_ingest_fold_clean_two_row_rules()
+    )
+}
+
+fn emit_ingest_fold_catches_perturbed_python_row_holds() -> Bool {
+  !emit_ingest_fold_rules_all_rows_bijectivity_holds(
+    rules: emit_ingest_fold_perturbed_python_two_row_rules()
+  )
+    && emit_ingest_fold_rules_all_rows_bijectivity_holds(
+      rules: emit_ingest_fold_clean_two_row_rules()
+    )
 }
 
 // Row-agnostic over the real productions that exist (N=2: dag add, python add).
 fn emit_ingest_same_language_row_fold_holds() -> Bool {
   emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_dag_add_rules())
     && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_python_add_rules())
-    && emit_ingest_fold_a2_dag_row_perturb_isolated_holds()
-    && emit_ingest_fold_a2_python_row_perturb_isolated_holds()
-    && emit_ingest_fold_row_unperturbed_frontier_accepts(
-      row: emit_ingest_fold_dag_add_row(),
-      rules: emit_ingest_fold_dag_add_rules()
-    )
-    && emit_ingest_fold_row_unperturbed_frontier_accepts(
-      row: emit_ingest_fold_python_add_row(),
-      rules: emit_ingest_fold_python_add_rules()
-    )
+    && emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: emit_ingest_fold_clean_two_row_rules())
+    && emit_ingest_fold_catches_perturbed_dag_row_holds()
+    && emit_ingest_fold_catches_perturbed_python_row_holds()
 }
 
 data unified_claim_emit_ingest_same_language_row_fold: UnifiedTestClaim = BoolWitnessClaim {
