@@ -39,6 +39,23 @@ if [[ ! -x "$bin_batch" ]]; then
   exit 2
 fi
 
+# Per-phase wall-time notices: v4_lens_ci cost is dominated by per-row perturb
+# resolves; without explicit durations the job summary hides whether a regression
+# is in green-batch, node-frontier perturb, or affected-testgen perturb.
+phase_name=""
+phase_started=0
+phase_begin() {
+  phase_name="$1"
+  phase_started=$SECONDS
+  echo "::group::${phase_name}"
+}
+phase_end() {
+  echo "::endgroup::"
+  echo "::notice title=gate timing::${phase_name} took $((SECONDS - phase_started))s"
+}
+
+gate_started=$SECONDS
+
 gate_model="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 affected_testgen_gate_model="src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
 
@@ -118,9 +135,9 @@ batch_green_pass() {
   local e fns
   for e in "${entry_order[@]}"; do
     fns="${entry_fns[$e]%,}"
-    echo "::group::${title} (batch green): ${e}"
+    phase_begin "${title} (batch green): ${e}"
     "$bin_batch" --source-root src/v4 --entry "$e" --functions "$fns" --claim-run
-    echo "::endgroup::"
+    phase_end
   done
 }
 
@@ -196,12 +213,12 @@ for row in "${node_frontier_rows[@]}"; do
     cp -a src/v4 "$tmp/src"
     perturbed_entry="$tmp/src/${entry#src/v4/}"
     perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-set node-frontier perturb: ${label}"
+    phase_begin "affected-set node-frontier perturb: ${label}"
     if run_row "$tmp/src" "$perturbed_entry" "$function"; then
       echo "::error::perturbed witness still passed: ${label}"
       exit 1
     fi
-    echo "::endgroup::"
+    phase_end
     rm -rf "$tmp"
     trap - EXIT
   fi
@@ -362,12 +379,12 @@ for row in "${affected_testgen_rows[@]}"; do
     cp -a src/v4 "$tmp/src"
     perturbed_entry="$tmp/src/${entry#src/v4/}"
     perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::affected-testgen perturb: ${label}"
+    phase_begin "affected-testgen perturb: ${label}"
     if run_row "$tmp/src" "$perturbed_entry" "$function"; then
       echo "::error::perturbed witness still passed: ${label}"
       exit 1
     fi
-    echo "::endgroup::"
+    phase_end
     rm -rf "$tmp"
     trap - EXIT
   fi
@@ -380,3 +397,4 @@ if [[ "$affected_testgen_count" -ne "$expected_affected_testgen_count" ]]; then
 fi
 
 echo "::notice title=affected-testgen::${affected_testgen_count} discriminating witness(es) passed"
+echo "::notice title=gate timing::node-frontier gate total took $((SECONDS - gate_started))s"

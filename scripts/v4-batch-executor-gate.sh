@@ -39,7 +39,21 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
-echo "== green: executor-decided batches, every claim passes =="
+phase_name=""
+phase_started=0
+phase_begin() {
+  phase_name="$1"
+  phase_started=$SECONDS
+  echo "::group::${phase_name}"
+}
+phase_end() {
+  echo "::endgroup::"
+  echo "::notice title=gate timing::${phase_name} took $((SECONDS - phase_started))s"
+}
+
+gate_started=$SECONDS
+
+phase_begin "executor green: 2-batch plan, every claim passes"
 out="$("$bin" --source-root src/v4 --plan-entry "$plan_entry" 2>&1)"
 echo "$out"
 if ! grep -q "executor plan = 2 batch(es)" <<<"$out"; then
@@ -50,16 +64,17 @@ if grep -q '^FAIL' <<<"$out"; then
   echo "FAIL: a claim failed in the green pass" >&2
   exit 1
 fi
-echo "green OK"
+phase_end
 
 if [[ "$perturb" -eq 0 ]]; then
+  echo "::notice title=gate timing::executor gate total took $((SECONDS - gate_started))s"
   exit 0
 fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-echo "== perturb/authority: emptying the .dag dependency list must rebatch 2 -> 1 =="
+phase_begin "executor perturb/authority: empty dependency list rebatches 2 -> 1"
 cp -r src/v4 "$tmp/v4"
 python3 - "$tmp/v4/test/claim/workflow/batch_runner.dag" <<'PY'
 import sys
@@ -79,9 +94,9 @@ if ! grep -q "executor plan = 1 batch(es)" <<<"$out_auth"; then
   echo "FAIL: removing the .dag dependency did NOT rebatch to 1 — host is not consuming the executor" >&2
   exit 1
 fi
-echo "authority OK (model drives batching)"
+phase_end
 
-echo "== perturb/fail-closed: a false batch-1 gating claim must stop before batch 2 =="
+phase_begin "executor perturb/fail-closed: false batch-1 gating claim stops before batch 2"
 # Hermetic like the other two perturbs: work entirely in a tmp/v4 copy. The
 # claim entry inside batch_runner.dag is repo-relative, so we also repoint
 # bre_suite_entry at the tmp copy — then the host resolves the perturbed file,
@@ -130,9 +145,9 @@ if grep -q "batch 2" <<<"$out_fc"; then
   echo "FAIL: batch 2 ran despite a failed gating batch 1 (ordering not enforced)" >&2
   exit 1
 fi
-echo "fail-closed OK (executor ordering gates execution)"
+phase_end
 
-echo "== perturb/degenerate: an empty suite (0 batches) must fail closed, not pass on 0 claims =="
+phase_begin "executor perturb/degenerate: empty suite (0 batches) fails closed"
 rm -rf "$tmp/v4"
 cp -r src/v4 "$tmp/v4"
 python3 - "$tmp/v4/test/claim/workflow/batch_runner.dag" <<'PY'
@@ -157,6 +172,7 @@ if [[ "$code_empty" -eq 0 ]]; then
   echo "FAIL: a 0-batch executor plan exited 0 (vacuous pass)" >&2
   exit 1
 fi
-echo "degenerate OK (empty plan fails closed)"
+phase_end
 
+echo "::notice title=gate timing::executor gate total took $((SECONDS - gate_started))s"
 echo "ALL OK"
