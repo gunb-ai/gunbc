@@ -831,11 +831,9 @@ jobs:
         key: gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-
-    - name: Ensure gunbc + claim_batch binaries (claim witness corpus shard a)
-      run: |
-        if [[ ! -x target/release/gunbc ]] || [[ ! -x target/release/claim_batch ]]; then
-          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-        fi
+    - name: Build v2 compiler (claim witness corpus shard a)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: claim-witness corpus enrollment gate (shard a)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
   v4_claim_witness_corpus_b:
@@ -891,11 +889,9 @@ jobs:
         key: gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-
-    - name: Ensure gunbc + claim_batch binaries (claim witness corpus shard b)
-      run: |
-        if [[ ! -x target/release/gunbc ]] || [[ ! -x target/release/claim_batch ]]; then
-          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-        fi
+    - name: Build v2 compiler (claim witness corpus shard b)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: claim-witness corpus enrollment gate (shard b)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
   ci:
