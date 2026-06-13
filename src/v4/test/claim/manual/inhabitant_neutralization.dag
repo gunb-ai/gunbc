@@ -6,6 +6,11 @@ module v4.test.claim.manual.inhabitant_neutralization
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer }
+import v4.extdeps.languages.python {
+  python_facts_int,
+  python_inhabitant_atom,
+  python_named_edge
+}
 import v4.extdeps.languages.go {
   Signed,
   SignedTypedIntegerTruncatesSilentlyOnOverflow,
@@ -19,12 +24,16 @@ import v4.extdeps.languages.go {
 import v4.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
+  ts_mvp1_selection_policy_node,
+  ts_mvp1_translation_rules_node,
   ts_named_edge
 }
 import v4.std.algebra { Empty }
 import v4.std.compilers.target_model {
   TargetModel,
-  target_model_edge_declared_inhabitants
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
@@ -62,6 +71,55 @@ fn falsifier_symbol_node(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: Empty,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Python int inhabitant wired claim-locally (MVP pair slice, no extdeps edit).
+fn falsifier_python_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: ^python_inhabitant_field_atom,
+        target: python_inhabitant_atom(id: ^python_inhabitant_int)
+      ),
+      python_named_edge(
+        name: ^python_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            python_named_edge(
+              name: ^python_facts_field_surface_spelling,
+              target: python_inhabitant_atom(id: python_facts_int.surface_spelling)
+            ),
+            python_named_edge(
+              name: ^python_facts_field_encoding,
+              target: python_inhabitant_atom(id: python_facts_int.encoding)
+            ),
+            Edge {
+              label: Named { name: inhabitant_neutralization_facts_field_std_projection },
+              target: falsifier_symbol_node(
+                id: inhabitant_neutralization_std_projection_additive_numeric
+              )
+            }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn falsifier_python_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() },
+      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() },
+      Edge { label: Positional, target: falsifier_python_int_inhabitant_node() }
+    ],
     occurrence_id: SyntheticOccurrence
   }
 }
@@ -154,6 +212,10 @@ fn falsifier_ts_target_model() -> TargetModel {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
+          label: Named { name: target_model_edge_selection_policy },
+          target: ts_mvp1_selection_policy_node()
+        },
+        Edge {
           label: Named { name: target_model_edge_declared_inhabitants },
           target: Node {
             kind: TypeNode { connective: Conj },
@@ -162,6 +224,10 @@ fn falsifier_ts_target_model() -> TargetModel {
             ],
             occurrence_id: SyntheticOccurrence
           }
+        },
+        Edge {
+          label: Named { name: target_model_edge_translation_rules },
+          target: ts_mvp1_translation_rules_node()
         }
       ],
       occurrence_id: SyntheticOccurrence
@@ -215,6 +281,31 @@ fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
     && inhabitant_neutralization_go_int64_to_ts_neutralize_holds()
 }
 
+fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: falsifier_python_emitted_add_fn_node(),
+    target: falsifier_ts_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
+  match infer(tree: falsifier_python_emitted_add_fn_node()) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match emit(tree: inferred, target: falsifier_ts_target_model()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -227,5 +318,19 @@ data unified_claim_inhabitant_neutralization_third_inhabitant_falsifier_holds: U
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
     function: inhabitant_neutralization_third_inhabitant_falsifier_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_emit_after_neutralize_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_raw_emit_fails_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_raw_emit_still_fails_closed
   }
 }
