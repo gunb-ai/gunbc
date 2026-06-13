@@ -1,0 +1,107 @@
+// src/v4/compiler/program_partition.dag
+// Scope: resolve ProgramSegment against InferredTree → ProgramPartition; project emit input.
+// Status: DESIGN scaffold — root resolution for three segment arms; facts closure deferred (§4.2).
+// Anchor: docs/design-in-language-emission-program-partition.md
+
+module v4.compiler.program_partition
+
+import v4.compiler.infer { InferredTree }
+import v4.lens.application { subterm_at }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node { Node }
+import v4.std.program_segment {
+  PartitionBoundaryPolicy,
+  ProgramSegment,
+  SubtreeAtPath,
+  SubtreeRoot,
+  WholeProgram,
+  partition_root_not_in_ambient
+}
+
+// Resolved emit slice: ambient infer output + chosen segment + boundary policy.
+// `root` is authoritative for translation; `segment` records provenance.
+type ProgramPartition {
+  ambient: InferredTree
+  segment: ProgramSegment
+  root: Node
+  boundary: PartitionBoundaryPolicy
+}
+
+fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: partition_root_not_in_ambient,
+    at: node_locus(node: segment_root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟡 SCAFFOLD — containment is syntactic identity until Q-EP1 path/containment witness lands.
+fn partition_subtree_root_contained_in_ambient(
+  ambient_root: Node,
+  segment_root: Node
+) -> Bool {
+  segment_root == ambient_root
+}
+
+fn resolve_program_segment_root(
+  program: InferredTree,
+  segment: ProgramSegment
+) -> Outcome<Node> {
+  match segment {
+    WholeProgram => outcome_accepted(value: program.root)
+    SubtreeAtPath { path: path } =>
+      subterm_at(root: program.root, path: path)
+    SubtreeRoot { root: root } =>
+      if partition_subtree_root_contained_in_ambient(
+        ambient_root: program.root,
+        segment_root: root
+      ) {
+        outcome_accepted(value: root)
+      } else {
+        outcome_rejected(d: partition_root_not_in_ambient_diagnostic(segment_root: root))
+      }
+  }
+}
+
+// 🟡 SCAFFOLD — defers facts-closure fold (design §4.2). Copies ambient facts verbatim.
+fn partition_inferred_tree(partition: ProgramPartition) -> InferredTree {
+  InferredTree {
+    root: partition.root,
+    facts: partition.ambient.facts
+  }
+}
+
+fn resolve_program_partition(
+  program: InferredTree,
+  segment: ProgramSegment,
+  boundary: PartitionBoundaryPolicy
+) -> Outcome<ProgramPartition> {
+  bind_outcome(
+    o: resolve_program_segment_root(program: program, segment: segment),
+    f: fn(root) {
+      outcome_accepted(value: ProgramPartition {
+        ambient: program,
+        segment: segment,
+        root: root,
+        boundary: boundary
+      })
+    }
+  )
+}
+
+// Placeholder for Wave A — maps lens SectionRef into ProgramSegment without std→lens edge.
+// Implementation lands with section_subject adapter consumer.
+fn program_segment_from_section_unavailable() -> ProgramSegment {
+  WholeProgram
+}
