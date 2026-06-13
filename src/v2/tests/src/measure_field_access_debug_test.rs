@@ -104,13 +104,6 @@ fn byte_size_count(b: ByteSize) -> Nat {
             frontend.intern_table.clone(),
         )
     };
-    let hard: Vec<_> = resolved
-        .diagnostics
-        .iter()
-        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
-        .collect();
-    eprintln!("minimal compile diags: {hard:?}");
     let module = resolved.modules.first().expect("module");
     let env = module.type_env.clone();
     let binding = lookup_type_by_name(env.clone(), "ByteSize".to_string())

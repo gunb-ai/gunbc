@@ -5184,7 +5184,7 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
         is_user_generic_use_site(n.clone(), env)
     } else {
-        match lookup_type_for(env, n.clone()) {
+        match lookup_type_for(env.clone(), n.clone()) {
             Some(binding) => {
                 if ((binding.connective.clone() == Connective::Conj)
                     || (binding.connective.clone() == Connective::Disj))
