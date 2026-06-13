@@ -17,10 +17,14 @@
 //
 // Links 2-3 are the forward interpreter bridge: it selects the source-model row whose production
 // token-spine matches the parse FRONTIER (never trusting the stamped emitted), and grounds it through
-// infer/coerce to the canonical core. Proven by execution: the typed bridge check Holds (hermetic) +
-// the bridge accepts the real nested python tree (~627s receipt). Link 4 is the discovered downstream
-// gap — `coerce_grounded_node` grounds against a model's OWN candidates and rejects a foreign
-// inhabitant, so it is not a cross-language translator; neutralization lives in EMIT-surface territory.
+// infer/coerce to the canonical core. TWO DISTINCT by-execution proofs, neither over-claimed: the
+// per-merge HERMETIC witness `ingest_bridge_realized` (the real bridge fn applied to a discriminating
+// fixture — frontier recovery + perturbed-frontier RED + ambiguity/unstamped fail-closed), and the
+// HEAVY `…chain_status_holds`, which APPLIES `parse_tree_to_target_model_bridge` to the REAL
+// live-parsed nested python tree (~627s; a documented receipt, NOT per-merge) so it goes RED if the
+// bridge regresses on real python trees. Link 4 is the discovered downstream gap —
+// `coerce_grounded_node` grounds against a model's OWN candidates and rejects a foreign inhabitant, so
+// it is not a cross-language translator; neutralization lives in EMIT-surface territory.
 //
 // The bridge machinery lives in v4.compiler.ingest (small closure, #4801); this file composes it with
 // the existing parse/emit ends and declares claim-local matrix data — no language-model row and no
