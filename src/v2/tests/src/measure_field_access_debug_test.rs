@@ -45,7 +45,7 @@ fn get(b: NatBox) -> Nat {
 }
 
 #[test]
-fn debug_bytesize_expand_reaches_conj() {
+fn bytesize_alias_binding_with_resolved_rhs_expands_for_field_access() {
     use v2_compiler::v2_compiler_infer::{
         expand_type_for_field_access, needs_alias_field_expansion,
     };
@@ -74,7 +74,36 @@ fn byte_size_count(b: ByteSize) -> Nat {
   b.count
 }
 "#;
-    let resolved = compile_dag_resolved(src);
+    let resolved = {
+        use v2_compiler::v2_compiler_compile::{front_end_sources, SourceFile};
+        use v2_compiler::v2_compiler_infer::reconcile;
+        use v2_compiler::v2_compiler_normalize::normalize_graph;
+        let sources = Rc::new(vec![Rc::new(SourceFile {
+            path: "test.dag".to_string(),
+            content: src.to_string(),
+        })]);
+        let frontend = front_end_sources(sources);
+        let graph = frontend
+            .graph
+            .clone()
+            .expect("frontend graph for minimal snippet");
+        let source_indices = frontend
+            .newline_indices
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(std::collections::HashMap::new()),
+                |acc, index| {
+                    v2_compiler::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+                },
+            );
+        let norm = normalize_graph(graph, source_indices.clone());
+        reconcile(
+            norm.graph.clone(),
+            source_indices,
+            frontend.intern_table.clone(),
+        )
+    };
     let hard: Vec<_> = resolved
         .diagnostics
         .iter()
@@ -82,11 +111,7 @@ fn byte_size_count(b: ByteSize) -> Nat {
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
     eprintln!("minimal compile diags: {hard:?}");
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph should exist for minimal measure snippet");
-    let module = graph.modules.first().expect("module");
+    let module = resolved.modules.first().expect("module");
     let env = module.type_env.clone();
     let binding = lookup_type_by_name(env.clone(), "ByteSize".to_string())
         .expect("ByteSize binding");
@@ -113,32 +138,21 @@ fn byte_size_count(b: ByteSize) -> Nat {
         match_pattern: None,
         expr_data: Rc::new(v2_compiler::v2_std_core::ExprData::NoExprData),
     });
-    eprintln!(
-        "needs_alias={}",
-        needs_alias_field_expansion(base_rt.clone(), env.clone())
+    assert!(
+        needs_alias_field_expansion(base_rt.clone(), env.clone()),
+        "resolved alias RHS in env should still gate field expansion"
     );
     let once = resolve_node(base_rt.clone(), env.clone(), "m".to_string())
         .resolved
         .clone();
-    eprintln!(
-        "once: connective={:?} children={} inferred={}",
-        once.connective,
-        once.children.len(),
-        once.inferred.is_some()
-    );
     let expanded = expand_type_for_field_access(base_rt.clone(), env.clone(), "m".to_string());
-    eprintln!(
-        "expanded: connective={:?} children={} inferred={}",
-        expanded.connective,
-        expanded.children.len(),
-        expanded.inferred.is_some()
-    );
     let field = lookup_field_type_node(
         expanded.clone(),
         "count".to_string(),
         env.source_indices.clone(),
     );
-    eprintln!("field lookup: {:?}", field.is_some());
+    assert_eq!(once.connective, Connective::NoConnective);
+    assert!((once.children.len() as i64) > 0);
     assert!(
         field.is_some(),
         "ByteSize field expand should reach count, expanded={expanded:?}"

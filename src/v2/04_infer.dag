@@ -2666,12 +2666,16 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 
 
 fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
-  if n.connective == NoConnective && n.children |> count > 0 && n.inferred == none {
+  if n.connective == Conj || n.connective == Disj { false }
+  else if n.connective == NoConnective && n.children |> count > 0 && n.inferred == none {
     is_user_generic_use_site(n: n, env: env)
   } else {
     match lookup_type_for(env: env, node: n) {
       Present { value: binding } =>
-        binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none
+        if binding.connective == Conj || binding.connective == Disj { false }
+        else if binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none { true }
+        else if binding.connective == NoConnective && binding.children |> count > 0 { is_user_generic_use_site(n: binding, env: env) || binding.inferred != none }
+        else { false }
       Absent => false
     }
   }

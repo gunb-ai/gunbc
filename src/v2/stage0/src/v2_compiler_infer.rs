@@ -5174,7 +5174,11 @@ pub fn infer_variant_constructor_call(
 }
 
 pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if (((n.connective.clone() == Connective::NoConnective)
+    if ((n.connective.clone() == Connective::Conj)
+        || (n.connective.clone() == Connective::Disj))
+    {
+        false
+    } else if (((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
         && (n.inferred.clone() == None))
     {
@@ -5182,9 +5186,23 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     } else {
         match lookup_type_for(env, n.clone()) {
             Some(binding) => {
-                (((binding.connective.clone() == Connective::NoConnective)
+                if ((binding.connective.clone() == Connective::Conj)
+                    || (binding.connective.clone() == Connective::Disj))
+                {
+                    false
+                } else if (((binding.connective.clone() == Connective::NoConnective)
                     && ((binding.children.clone().len() as i64) == 0))
                     && (binding.inferred.clone() != None))
+                {
+                    true
+                } else if ((binding.connective.clone() == Connective::NoConnective)
+                    && ((binding.children.clone().len() as i64) > 0))
+                {
+                    (is_user_generic_use_site(binding.clone(), env.clone())
+                        || (binding.inferred.clone() != None))
+                } else {
+                    false
+                }
             }
             None => false,
         }
