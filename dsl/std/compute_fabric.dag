@@ -20,7 +20,8 @@ import std.os.types {
   ProcessSemantics,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, hertz }
+import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
+import std.currency { CurrencyCode, Eur }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 import std.cpu {
   CpuDeploymentFacts,
@@ -30,7 +31,7 @@ import std.cpu {
   cpu_facts_threads
 }
 import std.memory.types { HostRamSupplyFacts }
-import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram }
+import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram, supply_srv1_observed_ram_bytes, supply_srv2_observed_ram_bytes }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
@@ -172,7 +173,16 @@ type ProviderConstraint
 
 type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
 // Lens: RAII borrow window — open acquires scope; close is optional early release.
-type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
+// Cost quote: a fixed-point money price tagged with its ISO 4217 currency.
+// The `expected_units: Float` / `currency: NonEmptyStr` stopgap (Float carrying
+// raw int micros; loose string code) is DISSOLVED here onto the money carrier
+// landed in `std.measure` / `std.currency`:
+//   - `unit_price: MoneyMicros` — `Measure<Currency, Micro>`, the exact micro
+//     denomination Hetzner quotes in (`*_eur_micros`). Money is fixed-point,
+//     never `Float` (floating point for money is a representation defect).
+//   - `currency: CurrencyCode` — ISO 4217 closed-domain identity, not a free
+//     `NonEmptyStr`.
+type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
 
 type ComputeOffer {
   provider: ProviderIdentity
@@ -194,8 +204,8 @@ fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
 fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
   // Label from execution surface when grounded; else host identity (Worksheet A §1.4).
   match surface.os.distro_or_product {
-    Some { value: distro } => distro
-    None => host.identity
+    Present { value: distro } => distro
+    Absent => host.identity
   }
 }
 
@@ -393,17 +403,6 @@ type WorkUnit<T> {
   requirements: WorkDemand
 }
 
-fn artifact_refs_from_upsert_inputs<T>(
-  _inputs: List<UpsertInputRef>,
-  _change: ChangeSet,
-) -> List<ArtifactRef<T>> {
-  artifact_refs_from_upsert_inputs_empty<T>()
-}
-
-fn artifact_refs_from_upsert_inputs_empty<T>() -> List<ArtifactRef<T>> {
-  []
-}
-
 // --- §1.6 execution receipts -------------------------------------------------
 
 type MeasurementConfidence
@@ -435,7 +434,13 @@ type AmortizationScope
 type CostReceipt {
   provider: ProviderIdentity
   cost_class: CostClass
-  amount: Option<Float>
+  // Money is fixed-point: the observed-bill amount is `MoneyMicros`, not
+  // `Float` (same money-as-Float defect dissolved on `CostEstimate.unit_price`).
+  // The type is corrected here regardless of inhabitation — fixing a
+  // known-wrong field type is type-correctness, not abstraction ahead of
+  // demand. `CostReceipt` stays uninhabited (no fabricated `data` rows until a
+  // real observed-bill consumer lands).
+  amount: Option<MoneyMicros>
   pricing_source: PricingSource
   amortization_scope: Option<AmortizationScope>
 }
@@ -472,13 +477,13 @@ data supply_srv2_cpu: CpuFacts = CpuFacts {
 data supply_srv1_placement_row: PlacementSupplyRow = placement_supply_row(
   supply_srv1_host_identity,
   supply_srv1_cpu,
-  supply_srv1_ram.observed_usable_bytes,
+  supply_srv1_observed_ram_bytes
 )
 
 data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
   supply_srv2_host_identity,
   supply_srv2_cpu,
-  supply_srv2_ram.observed_usable_bytes,
+  supply_srv2_observed_ram_bytes
 )
 
 // §7 cases 7–8: isolation-lattice witnesses on grounded fleet values (srv1/srv2 = SharedHostHome).
@@ -532,7 +537,7 @@ data supply_srv1_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
     execution: operator_fleet_execution_surface,
-    cost: Some { value: operator_fleet_owned_cost },
+    cost: Present { value: operator_fleet_owned_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
@@ -545,7 +550,7 @@ data supply_srv2_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu, supply_srv2_ram),
     execution: operator_fleet_execution_surface,
-    cost: Some { value: operator_fleet_owned_cost },
+    cost: Present { value: operator_fleet_owned_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
@@ -577,7 +582,7 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
   // P-CF-BYTESIZE: cax41_catalog vcpus/memory_bytes/disk_bytes not yet in processors[]/memory[];
-  // physical facts deferred — cost_quote.expected_units is the only catalog field wired today.
+  // physical facts deferred — cost_quote.unit_price is the only catalog field wired today.
   processors: [],
   memory: [],
   storage: [],
@@ -591,10 +596,11 @@ data hetzner_per_second_cost: CostModel = CostModel {
 
 data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
   model: hetzner_per_second_cost,
-  // P-CF-BYTESIZE: hourly_eur_micros raw Int → expected_units: Float (no typer yet);
-  // dissolves when Measure<Currency,_> value typing lands.
-  expected_units: cax41_catalog.hourly_eur_micros,
-  currency: "EUR",
+  // Std-boundary projection of the extdeps raw `hourly_eur_micros: Int` onto the
+  // money carrier (extdeps stays spec-faithful per the §4.3 fidelity carve-out;
+  // the wrap happens here, not in `hetzner.dag`).
+  unit_price: money_micros(cax41_catalog.hourly_eur_micros),
+  currency: Eur,
 }
 
 data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"
@@ -606,11 +612,11 @@ data supply_hetzner_cax41_offer: ComputeOffer = ComputeOffer {
   supply: ComputeSupplyFacts {
     physical: hetzner_cax41_compute_host,
     execution: hetzner_cax41_execution_surface,
-    cost: Some { value: hetzner_per_second_cost },
+    cost: Present { value: hetzner_per_second_cost },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: hetzner_api_availability_open, close: none },
-  cost_quote: Some { value: hetzner_cax41_cost_quote },
+  cost_quote: Present { value: hetzner_cax41_cost_quote },
   constraints: [],
 }
 

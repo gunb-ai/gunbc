@@ -42,6 +42,16 @@ fi
 gate_model="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 affected_testgen_gate_model="src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
 
+# Per-phase wall-time notices (same pattern as v4-substrate-equivalence-gate.sh):
+# the CI latency attack (2026-06-13) needs this job's wall broken into its green
+# vs perturb phases, visible in the job summary. claim_batch's own
+# [resolve]/[witness]/[resolve-summary] lines give the per-witness breakdown
+# within each green phase. Helper takes the phase label + start SECONDS.
+phase_notice() {
+  local label="$1" started="$2"
+  echo "::notice title=gate timing::${label} took $((SECONDS - started))s"
+}
+
 dag_string_data() {
   local name="$1"
   grep -E "^data ${name}: String = \"" "$root/$gate_model" \
@@ -181,10 +191,13 @@ if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
 fi
 
 # GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+nf_green_started=$SECONDS
 printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
   | batch_green_pass "affected-set node-frontier"
+phase_notice "node-frontier green pass" "$nf_green_started"
 
 # PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+nf_perturb_started=$SECONDS
 row_count=0
 for row in "${node_frontier_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
@@ -207,6 +220,10 @@ for row in "${node_frontier_rows[@]}"; do
   fi
   row_count=$((row_count + 1))
 done
+
+if [[ "$perturb" -eq 1 ]]; then
+  phase_notice "node-frontier perturb pass (${row_count} rows)" "$nf_perturb_started"
+fi
 
 if [[ "$row_count" -ne "$expected_count" ]]; then
   echo "error: node-frontier gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
@@ -347,10 +364,13 @@ if [[ "${#affected_testgen_rows[@]}" -eq 0 ]]; then
 fi
 
 # GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+atg_green_started=$SECONDS
 printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
   | batch_green_pass "affected-testgen"
+phase_notice "affected-testgen green pass" "$atg_green_started"
 
 # PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+atg_perturb_started=$SECONDS
 affected_testgen_count=0
 for row in "${affected_testgen_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
@@ -373,6 +393,10 @@ for row in "${affected_testgen_rows[@]}"; do
   fi
   affected_testgen_count=$((affected_testgen_count + 1))
 done
+
+if [[ "$perturb" -eq 1 ]]; then
+  phase_notice "affected-testgen perturb pass (${affected_testgen_count} rows)" "$atg_perturb_started"
+fi
 
 if [[ "$affected_testgen_count" -ne "$expected_affected_testgen_count" ]]; then
   echo "error: affected-testgen gate projected ${affected_testgen_count} rows; modeled count is ${expected_affected_testgen_count}" >&2
