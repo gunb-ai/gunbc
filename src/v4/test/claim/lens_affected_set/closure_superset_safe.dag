@@ -1,0 +1,126 @@
+// src/v4/test/claim/lens_affected_set/closure_superset_safe.dag
+// Scope: D1a receipt — substrate affected_set_closure is superset-safe under dependency growth.
+// Status: scoped to closure(dependencies, edit_locus) only; no dimension / real-diff selectivity.
+
+module v4.test.claim.lens_affected_set.closure_superset_safe
+
+import v4.lens.affected_set { affected_set_closure }
+import v4.lens.affected_set_examples { affected_set_claim_failure_node }
+import v4.std.algebra { for_all }
+import v4.std.dependency { Contains, DependencyView }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.test.claim.lens_affected_set.closure_deep_chain {
+  closure_deep_chain_dependency_reading,
+  closure_deep_chain_leaf,
+  closure_deep_chain_n01,
+  closure_deep_chain_n02,
+  closure_deep_chain_n03,
+  closure_deep_chain_root
+}
+import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
+
+fn closure_frontier_node_eq(left: Node, right: Node) -> Bool {
+  left == right
+}
+
+fn closure_frontier_contains(nodes: List<Node>, needle: Node) -> Bool {
+  for_all(xs: nodes, predicate: fn(candidate) {
+    closure_frontier_node_eq(left: candidate, right: needle) == false
+  }) == false
+    || for_all(xs: nodes, predicate: fn(candidate) {
+      closure_frontier_node_eq(left: candidate, right: needle) == false
+        || closure_frontier_node_eq(left: candidate, right: needle)
+    })
+}
+
+fn node_in_closure_frontier(closure: AffectedSetClosureAcc, node: Node) -> Bool {
+  for_all(xs: closure.frontier, predicate: fn(candidate) {
+    if candidate == node {
+      false
+    } else {
+      true
+    }
+  }) == false
+}
+
+// Prefix of the deep-chain substrate: three hops from root (strict subset of full reading).
+data closure_superset_safe_prefix_dependencies: List<DependencyView> = [
+  DependencyView {
+    source: closure_deep_chain_root,
+    dependent: closure_deep_chain_n01,
+    kind: Contains,
+    usage_site: closure_deep_chain_n01
+  },
+  DependencyView {
+    source: closure_deep_chain_n01,
+    dependent: closure_deep_chain_n02,
+    kind: Contains,
+    usage_site: closure_deep_chain_n02
+  },
+  DependencyView {
+    source: closure_deep_chain_n02,
+    dependent: closure_deep_chain_n03,
+    kind: Contains,
+    usage_site: closure_deep_chain_n03
+  }
+]
+
+type AffectedSetClosureAcc {
+  frontier: List<Node>
+  dependencies: List<FrontierDependency>
+}
+
+type FrontierDependency {
+  dependency: DependencyView
+  target: DependencyEndpoint
+}
+
+type DependencyEndpoint
+  = DependencySource
+  | DependencyDependent
+
+import v4.std.change { DependencyDependent, DependencySource }
+
+fn closure_superset_safe_under_dependency_growth_holds() -> Bool {
+  let narrow = affected_set_closure(
+    dependencies: closure_superset_safe_prefix_dependencies,
+    edit_locus: closure_deep_chain_root
+  )
+  let wide = affected_set_closure(
+    dependencies: closure_deep_chain_dependency_reading,
+    edit_locus: closure_deep_chain_root
+  )
+  for_all(xs: narrow.frontier, predicate: fn(node) {
+    for_all(xs: wide.frontier, predicate: fn(wide_node) {
+      if node == wide_node {
+        true
+      } else {
+        true
+      }
+    })
+      && contains_wide_node(nodes: wide.frontier, needle: node)
+  })
+}
+
+fn contains_wide_node(nodes: List<Node>, needle: Node) -> Bool {
+  for_all(xs: nodes, predicate: fn(candidate) {
+    if candidate == needle {
+      false
+    } else {
+      true
+    }
+  }) == false
+}
+
+fn closure_superset_safe_claim_holds() -> Bool {
+  closure_superset_safe_under_dependency_growth_holds()
+}
+
+fn closure_superset_safe_claim_rhs() -> Node {
+  if closure_superset_safe_claim_holds() {
+    closure_deep_chain_root
+  } else {
+    affected_set_claim_failure_node
+  }
+}
