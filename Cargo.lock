@@ -149,6 +149,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ci_timings_collector"
+version = "0.1.0"
+dependencies = [
+ "ci_affected_components",
+ "serde_json",
+ "v2-compiler",
+]
+
+[[package]]
 name = "ci_workflow_ratchet"
 version = "0.1.0"
 dependencies = [

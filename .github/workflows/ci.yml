@@ -15,7 +15,8 @@ permissions:
   contents: read
   pull-requests: read
   # actions:read lets the non-gating `affected_timings` job read this run's own per-job wall-clock
-  # via the Actions API (scripts/ci_collect_job_timings.py). Read-only; no job uses write scopes.
+  # via the Actions API (the .dag github.Actions extdep, driven by collect-affected-set-timings).
+  # Read-only; no job uses write scopes.
   actions: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -274,7 +275,7 @@ jobs:
         if-no-files-found: warn
   # Wave-1 §11.7 follow-up TIMINGS AGGREGATOR -- the job the `affected` comment above promised.
   # NON-GATING measurement: after the floor/lens jobs finish, read THIS run's per-job wall-clock via
-  # the Actions API (scripts/ci_collect_job_timings.py) and re-emit the affected-set CI receipt with
+  # the Actions API (the shell-free .dag github.Actions extdep) and re-emit the affected-set CI receipt with
   # actual_run_minutes + wall_clock_by_job populated, so `saved_minutes` becomes measurable (closes the
   # v1 gap the kill-criterion doc flagged). Transport-only (RR-K §2.4): re-invokes the SAME emit bin
   # (single authority for the saved_minutes formula in receipt.rs); computes NO affected-set facts and
@@ -284,9 +285,12 @@ jobs:
   # `affected-set-ci-receipt` stays as the prediction-only receipt (available even on cancelled runs).
   affected_timings:
     runs-on: [self-hosted, linux, arm64]
-    # Mirrors the `affected` setup (checkout + rust + sccache bin build) + an Actions-API read + one
-    # emit. Budget rule (documented uncontended wall x2): INTERIM 8 -- sccache-warm wall is ~1m, the
-    # cold-build (sccache-miss) tail dominates at ~3-4m; 4m x2 = 8. Re-derive from the first green run.
+    # Mirrors the `affected` setup (checkout + rust + sccache bin build) + the shell-free .dag
+    # github.Actions fetch (collect-affected-set-timings, which embeds v2-compiler) + one emit.
+    # Budget rule (documented uncontended wall x2): INTERIM 8 -- v2-compiler is sccache-warm from
+    # the floor jobs that build it (ci_floor_emit), so the warm wall is ~1-2m; the cold-build
+    # (sccache-miss) tail dominates at ~3-4m; 4m x2 = 8. Re-derive from the first green run; if the
+    # v2-host build breaches it cold, restore a cached binary as the lens jobs do for claim_batch.
     timeout-minutes: 8
     needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci]
     if: always()
@@ -343,10 +347,18 @@ jobs:
     - name: Fetch main for diff base
       if: github.event_name == 'pull_request'
       run: git fetch origin main:refs/remotes/origin/main
-    - name: Collect this run's per-job wall-clock (Actions API, fail-safe)
+    - name: Collect this run's per-job wall-clock (.dag github.Actions extdep, shell-free, fail-safe)
+      # Option B host: collect-affected-set-timings embeds the v2 interpreter, binds
+      # GITHUB_RUN_ID (auto-provided by Actions) as the .dag transform's arg, and the job
+      # FETCH fires through the .dag github.Actions extdep -> dispatch_rest -> ureq (real
+      # HTTP, zero shell). Replaces scripts/ci_collect_job_timings.py. GITHUB_TOKEN (actions:read,
+      # from the permissions block) is read natively by the .dag service auth. Writes the SAME two
+      # artifacts the Python collector did, so the emit step's --job-timings contract is unchanged.
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: python3 scripts/ci_collect_job_timings.py "$RUNNER_TEMP/job-timings.json" "$RUNNER_TEMP/actual-run-minutes.txt"
+      run: |
+        bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_timings_collector --bin collect-affected-set-timings -- \
+          "$RUNNER_TEMP/job-timings.json" "$RUNNER_TEMP/actual-run-minutes.txt"
     - name: Emit timed affected-set CI receipt
       run: |
         bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- \
