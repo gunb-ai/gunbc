@@ -83,7 +83,7 @@ fn partition_boundary_free_ref_diagnostic(node: Node) -> Diagnostic {
 
 fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^partition_empty_segment,
+    reason: partition_empty_segment,
     at: node_locus(node: root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -179,7 +179,7 @@ fn facts_closure_entries_fold(
     cons: fn(acc, node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: entries, diagnostics: d } =>
+        Accepted { value: entries, diagnostics: _ } =>
           bind_outcome(
             o: partition_closure_entry_for_node(
               ambient: ambient,
@@ -189,8 +189,7 @@ fn facts_closure_entries_fold(
             ),
             f: fn(entry) {
               outcome_accepted(
-                value: list_snoc_item(xs: entries, item: entry),
-                diagnostics: d
+                value: list_snoc_item(xs: entries, item: entry)
               )
             }
           )

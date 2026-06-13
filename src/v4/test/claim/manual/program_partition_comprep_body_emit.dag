@@ -1,0 +1,125 @@
+// src/v4/test/claim/manual/program_partition_comprep_body_emit.dag
+// Scope: Wave A keystone (E-10) — emit_for_target on Arrow.body Behavior subtree only;
+//   whole COMPREP add-fn stays inferred once; partition API is the consumer.
+// Status: execute-the-carrier via `gunbc run --claim-run`.
+
+module v4.test.claim.manual.program_partition_comprep_body_emit
+
+import v4.compiler.body_producer { produce_mvp1_add_arrow_with_body }
+import v4.compiler.program_partition {
+  emit_for_target,
+  program_segment_from_section_unavailable
+}
+import v4.compiler.target_carriers { TargetSource }
+import v4.extdeps.languages.typescript {
+  ts_mvp1_source_text,
+  ts_mvp1_target_model
+}
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.node_query { find_arrow_body_child }
+import v4.std.program_segment {
+  partition_boundary_ambient_context,
+  program_segment_subtree_root,
+  program_segment_whole_program
+}
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  ManualAnchorAbsent,
+  UnifiedTestClaim
+}
+import v4.test.claim.manual.comprep_add_body_emit_typescript {
+  comprep_ts_emit_from_producer_tree,
+  comprep_ts_producer_inferred_tree
+}
+
+// Body-only partition emit must accept and differ from whole-program emit (proves segment selection).
+fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: program, diagnostics: _ } =>
+      match find_arrow_body_child(root: program.root) {
+        Accepted { value: body, diagnostics: _ } =>
+          match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+            Accepted { value: whole_source, diagnostics: whole_d } =>
+              match emit_for_target(
+                program: program,
+                segment: program_segment_subtree_root(root: body),
+                target: ts_mvp1_target_model(),
+                boundary: partition_boundary_ambient_context()
+              ) {
+                Accepted { value: body_source, diagnostics: body_d } =>
+                  (body_d == None)
+                    && (whole_d == None)
+                    && (body_source != whole_source)
+                    && (whole_source == ts_mvp1_source_text)
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Whole-program segment via emit_for_target must match direct emit (regression guard).
+fn program_partition_whole_program_emit_matches_direct() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: program, diagnostics: _ } =>
+      match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+        Accepted { value: direct_source, diagnostics: direct_d } =>
+          match emit_for_target(
+            program: program,
+            segment: program_segment_whole_program(),
+            target: ts_mvp1_target_model(),
+            boundary: partition_boundary_ambient_context()
+          ) {
+            Accepted { value: partition_source, diagnostics: partition_d } =>
+              (direct_d == None)
+                && (partition_d == None)
+                && (direct_source == partition_source)
+                && (direct_source == ts_mvp1_source_text)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Section→segment adapter is fail-closed (api-review #4792 fix).
+fn program_partition_section_adapter_unavailable_rejects() -> Bool {
+  match program_segment_from_section_unavailable() {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data unified_claim_program_partition_body_emit_keystone: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/program_partition_comprep_body_emit.dag",
+    function: program_partition_body_emit_accepts_and_differs_from_whole
+  }
+}
+
+data unified_claim_program_partition_whole_program_parity: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/program_partition_comprep_body_emit.dag",
+    function: program_partition_whole_program_emit_matches_direct
+  }
+}
+
+data unified_claim_program_partition_section_adapter_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/program_partition_comprep_body_emit.dag",
+    function: program_partition_section_adapter_unavailable_rejects
+  }
+}
