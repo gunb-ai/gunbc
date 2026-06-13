@@ -634,9 +634,9 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
+    - name: Restore gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         # claim_batch is now required by v4-lens-ci-gate.sh (multi-entry green pass).
         # Substrate-equivalence (C9) needs discover_owned_data. Use a distinct key
@@ -649,7 +649,6 @@ jobs:
         key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-
-        save-always: true
     - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
@@ -663,6 +662,15 @@ jobs:
         if [[ ! -x target/release/discover_owned_data ]]; then
           bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
         fi
+    - name: Save gunbc + claim_batch + discover_owned_data binaries (v4 lens gate)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+          target/release/discover_owned_data
+        key: gunbc-lens-gate2-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
     - name: v4 glob-discovery substrate equivalence (C9)
