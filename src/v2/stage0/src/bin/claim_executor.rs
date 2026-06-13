@@ -100,14 +100,18 @@ fn claim_ref_from_value(value: &Value, ctx: &InterpContext) -> Result<ClaimRef, 
         other => {
             return Err(format!(
                 "expected a ClaimRef record, got {}",
-                other.type_label_public()
+                ctx.format_value(other)
             ))
         }
     };
     let str_field = |name: &str| -> Result<String, String> {
         match ctx.field(fields, name) {
             Some(Value::Str(s)) => Ok(s.clone()),
-            Some(other) => Err(format!("ClaimRef.{} is {}, not String", name, other)),
+            Some(other) => Err(format!(
+                "ClaimRef.{} is {}, not String",
+                name,
+                ctx.format_value(other)
+            )),
             None => Err(format!("ClaimRef missing field `{}`", name)),
         }
     };

@@ -178,6 +178,9 @@ pub fn with_active_context<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
 }
 
 fn active_ctx() -> Option<&'static InterpContext> {
+    // SAFETY: borrows the pointer installed by `with_active_ctx`'s ActiveCtxGuard.
+    // Sound only while that guard is on-stack; callers must read-and-drop within the
+    // guard scope — do not return or store this reference past the closure.
     ACTIVE_CTX.with(|cell| cell.get().map(|ptr| unsafe { &*ptr }))
 }
 
@@ -1011,6 +1014,13 @@ impl InterpContext {
     pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
         fields.get(&self.sym(name))
     }
+
+    /// Render a `Value` for host diagnostics after evaluation (resolves interned
+    /// type/variant/field names via this context's symbol table).
+    pub fn format_value(&self, val: &Value) -> String {
+        with_active_ctx(self, || format!("{}", val))
+    }
+
     /// Snapshot of the copy-work counters accumulated by evaluations in this
     /// context (phase-0 measurement, ctrl#1533).
     pub fn mutation_counters_snapshot(&self) -> MutationCounters {

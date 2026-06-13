@@ -563,7 +563,7 @@ pub fn run_claim(ctx: &v2_interpreter::InterpContext, function: &str) -> ClaimOu
         Ok(v2_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v2_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => ClaimOutcome::NotBool {
-            got: format!("{}", other),
+            got: ctx.format_value(&other),
         },
         Err(e) => ClaimOutcome::RuntimeError {
             message: format!("{}", e),
