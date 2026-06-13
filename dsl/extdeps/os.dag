@@ -1,0 +1,79 @@
+// extdeps/os.dag — Operating-system distribution/product catalog (cited facts).
+//
+// Three real, currently-shipping operating systems modeled as CITED facts that
+// inhabit the EXISTING shared abstraction std.compute_fabric.OperatingSystemSurface.
+// No new abstraction is minted: DFS of the concept DAG (M9) finds the OS surface
+// already declared (and, until now, uninhabited) in std/compute_fabric.dag. Per
+// MODELING.md M2 (no duplicate type authorities) and the facts-before-abstraction
+// discipline, the correct move is to GROUND the existing abstraction with real
+// rows — not to introduce a parallel `OperatingSystem` type. These rows are the
+// evidence that every field of OperatingSystemSurface is real and differs across
+// vendors (kernel / filesystem / process semantics), which is what justifies the
+// abstraction's shape in the first place.
+//
+// Each row cites the vendor's own release documentation (extdeps fidelity
+// invariant: real names, real versions, real spec URLs — see extdeps.md).
+//
+// Modeled OSes (Layer 2 of extdeps.md — provider facts from upstream docs):
+//   Ubuntu 24.04 LTS (Noble Numbat) — Linux 6.8 kernel
+//     Spec: https://documentation.ubuntu.com/release-notes/24.04/
+//   Windows 11, version 24H2 (2024 Update) — OS build 26100, Windows NT kernel
+//     Spec: https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
+//   macOS 15 Sequoia — Darwin (XNU) kernel, APFS
+//     Spec: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
+//
+// Versioning (extdeps.md three-layer model):
+//   Layer 1 (upstream): the vendor version strings below (24.04 LTS, 24H2, 15).
+//   Layer 2 (snapshot): this module, git-versioned, as of 2026-06-13.
+
+module extdeps.os
+
+import std.compute_fabric {
+  OperatingSystemSurface,
+  KernelFamily,
+  FileSystemSemantics,
+  ProcessSemantics,
+}
+import std.list { List }
+
+// --- Ubuntu 24.04 LTS (Noble Numbat) ----------------------------------------
+// Linux 6.8 kernel; default ext4 (POSIX filesystem semantics); POSIX processes.
+// Spec: https://documentation.ubuntu.com/release-notes/24.04/
+data ubuntu_24_04: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: "Ubuntu",
+  version: "24.04 LTS (Noble Numbat)",
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+// --- Windows 11, version 24H2 (2024 Update) ---------------------------------
+// Windows NT kernel; NTFS; Win32 process model. OS build 26100.
+// Spec: https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
+data windows_11: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: WindowsNt,
+  distro_or_product: "Windows 11",
+  version: "24H2 (OS build 26100)",
+  filesystem_semantics: Ntfs,
+  process_semantics: WindowsProcess,
+}
+
+// --- macOS 15 Sequoia -------------------------------------------------------
+// Darwin (XNU) kernel; APFS; POSIX (BSD-derived) process model.
+// Spec: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
+data macos_15_sequoia: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Darwin,
+  distro_or_product: "macOS Sequoia",
+  version: "15",
+  filesystem_semantics: Apfs,
+  process_semantics: PosixProcess,
+}
+
+// The catalog: the three rows above as one list of OS-surface facts. Consumers
+// (e.g. compute-fabric supply/demand matching) read these instead of restating
+// kernel/filesystem/process tuples inline. Adding a fourth OS is one new row.
+data os_catalog: List<OperatingSystemSurface> = [
+  ubuntu_24_04,
+  windows_11,
+  macos_15_sequoia,
+]
