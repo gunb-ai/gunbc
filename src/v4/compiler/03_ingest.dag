@@ -34,10 +34,11 @@ import v4.std.compilers.target_model {
 }
 import v4.compiler.compile { CoreNode }
 import v4.compiler.infer { infer }
+import v4.compiler.emit { emit }
+import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate {
   coerce_grounded_node,
-  target_bundle_child,
-  translate
+  target_bundle_child
 }
 import v4.std.node { Edge, Named, Node, Positional, Symbol }
 import v4.std.diagnostic {
@@ -256,6 +257,33 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
             f: fn(result) { outcome_accepted(value: result.target) }
           )
         }
+      )
+    }
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-language compile (optional matrix convenience, signed signature #4821).
+//
+//   cross_language_compile(parse_tree, source_model, target_model)
+//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model), emit(_, target_model))
+//
+// The bridge lands the source parse at the language-neutral canonical IR core node; emit serializes
+// that node into `target_model`'s surface. The core node must be re-grounded for emit's InferredTree
+// input — `infer` supplies it GENERICALLY (CoreNode = Node = ResolvedTree), exactly as the bridge
+// does for coerce. This is the N+M-not-N×M composition end-to-end: any modeled source language in,
+// any modeled target language out, through one neutral core — no per-(source,target) pair arm.
+fn cross_language_compile(
+  parse_tree: ParseTree,
+  source_model: TargetModel,
+  target_model: TargetModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: parse_tree_to_target_model_bridge(parse_tree: parse_tree, source_model: source_model),
+    f: fn(core) {
+      bind_outcome(
+        o: infer(tree: core),
+        f: fn(inferred) { emit(tree: inferred, target: target_model) }
       )
     }
   )
