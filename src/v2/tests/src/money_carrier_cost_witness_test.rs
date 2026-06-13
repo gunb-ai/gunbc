@@ -17,7 +17,9 @@ use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResu
 use v2_compiler::v2_interpreter::{self, Value};
 use v2_compiler::v2_std_core::diagnostic_to_message;
 
-use crate::helpers::{read_v2_file, resolve_imports_transitively_with_source_roots, source_roots};
+use crate::helpers::{
+    read_v2_file, resolve_imports_transitively_with_source_roots, source_roots, workspace_root,
+};
 
 fn blocking_diagnostics(resolved: &ResolvedPipelineResult) -> Vec<String> {
     resolved
@@ -86,8 +88,9 @@ fn usd_minor() -> Int { currency_minor_unit_exponent(c: Usd) }
 #[test]
 fn cost_projection_float_witness_evaluates_true() {
     let roots = source_root_strings();
-    let entry = "dsl/examples/cost_estimate/cost_estimate.dag";
-    let sources = cli_run::load_sources_for_entry(&roots, entry)
+    let entry = workspace_root().join("dsl/examples/cost_estimate/cost_estimate.dag");
+    let entry = entry.to_string_lossy().to_string();
+    let sources = cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
     let resolved = compile_to_resolved(Rc::new(sources));
     assert!(
