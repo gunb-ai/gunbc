@@ -13320,7 +13320,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3333, 3350),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3296, 3313),
         });
         declarations.push(Declaration {
             id: DeclarationId(71),
@@ -13334,7 +13334,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3333, 3350),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3296, 3313),
         });
         declarations.push(Declaration {
             id: DeclarationId(72),
@@ -13348,14 +13348,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 6245, 6262),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 6208, 6225),
         });
         declarations.push(Declaration {
             id: DeclarationId(73),
             name: Some("Compose".to_string()),
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(474),
-                arguments: vec![],
+            connective: TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "Phantom".to_string(),
+                    ty: DeclarationId(474),
+                }],
             },
             type_params: vec![DeclarationId(74), DeclarationId(75)],
             phantom_params: Vec::new(),
@@ -13365,7 +13367,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7329, 7379),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7292, 7342),
         });
         declarations.push(Declaration {
             id: DeclarationId(74),
@@ -13379,7 +13381,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7329, 7379),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7292, 7342),
         });
         declarations.push(Declaration {
             id: DeclarationId(75),
@@ -13395,7 +13397,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7329, 7379),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7292, 7342),
         });
         declarations.push(Declaration {
             id: DeclarationId(76),
@@ -22303,9 +22305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(474),
             name: None,
-            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
-                "Phantom".to_string(),
-            )),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -22314,7 +22314,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7372, 7379),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 7335, 7342),
         });
         declarations.push(Declaration {
             id: DeclarationId(475),
