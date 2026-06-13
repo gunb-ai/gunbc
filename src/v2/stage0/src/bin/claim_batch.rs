@@ -54,14 +54,22 @@
 // main.rs carries the same allow.
 #![allow(clippy::disallowed_macros)]
 
+use std::collections::HashMap;
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::time::Instant;
 
 use v2_compiler::cli_run::{
     build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim, ClaimOutcome,
     MultiEntryIndex,
 };
+use v2_compiler::v2_compiler_compile::ResolvedGraph;
 use v2_compiler::v2_interpreter::InterpContext;
+use v2_compiler::v2_std_core::NewlineIndex;
+
+/// What `resolve_entry_with_index` hands back: the resolved import-closure graph
+/// plus the per-file newline indices used for span reporting.
+type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
 
 /// Per-phase wall-clock / closure-size accounting for the green pass.
 ///
@@ -243,13 +251,7 @@ fn resolve_timed(
     index: &MultiEntryIndex,
     entry: &str,
     timings: &mut ResolveTimings,
-) -> Result<
-    (
-        std::rc::Rc<v2_compiler::v2_compiler_compile::ResolvedGraph>,
-        std::rc::Rc<std::collections::HashMap<String, std::rc::Rc<v2_compiler::cli_run::NewlineIndex>>>,
-    ),
-    ExitCode,
-> {
+) -> Result<ResolvedEntry, ExitCode> {
     let started = Instant::now();
     match resolve_entry_with_index(index, entry) {
         Ok((graph, source_indices)) => {
@@ -338,6 +340,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
 
     let mut any_failed = false;
+    let mut timings = ResolveTimings::default();
 
     if entry_groups.len() == 1 {
         // Single-entry path: keep `ctx` alive for the full stats report.
@@ -347,33 +350,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.entry,
             group.functions.len()
         );
-        let (graph, source_indices) = match resolve_entry_with_index(&index, &group.entry) {
-            Ok(pair) => pair,
-            Err(msg) => {
-                eprintln!("claim_batch: resolve failed for {}:\n{}", group.entry, msg);
-                return Err(ExitCode::from(1));
-            }
-        };
+        let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
         let ctx = make_eval_context(&graph, source_indices);
         for function in &group.functions {
-            match run_claim(&ctx, function) {
-                ClaimOutcome::Pass => println!("PASS {}", function),
-                ClaimOutcome::Fail => {
-                    println!("FAIL {}", function);
-                    any_failed = true;
-                }
-                ClaimOutcome::NotBool { got } => {
-                    println!(
-                        "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",
-                        function, got
-                    );
-                    any_failed = true;
-                }
-                ClaimOutcome::RuntimeError { message } => {
-                    println!("FAIL {} (runtime error: {})", function, message);
-                    any_failed = true;
-                }
-            }
+            run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);
@@ -386,12 +366,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(&index, group, &mut any_failed)?;
+            run_witnesses(&index, group, &mut any_failed, &mut timings)?;
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);
         }
     }
+
+    // Phase split for the CI latency attack: confirm resolve dominates the green
+    // pass at a glance (the index build above is amortized once across all rows).
+    eprintln!(
+        "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
+        timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
+    );
 
     if any_failed {
         Ok(ExitCode::from(1))
