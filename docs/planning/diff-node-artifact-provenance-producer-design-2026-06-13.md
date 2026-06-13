@@ -77,6 +77,14 @@ fn node_artifact_provenance_from_source_root(
   downstream (in `affected_set_reading_from_git_diff_provenance`); it is **not** an input to the
   producer. This preserves RR-K §2.1 single "what changed" authority: the producer supplies the
   *map*, `edit_locus` does the *matching*.
+- **Real source, real nodes — no synthetic snapshot, no second parser** (tidy-wolf constraints,
+  `adhoc-bc4d39de-88f` / `adhoc-9bb1e6fb-9ba`, relayed 2026-06-13): the host side converts the
+  *actual* PR changed paths into a modeled `GitDiffNameOnly`, and the producer emits
+  `NodeArtifactProvenance` from **parsed/resolved real source nodes** via source_authority — never
+  from a hand-built fixture snapshot. A Rust-side source-tree scanner is a **forbidden direction**:
+  it would be a second parser authority and violate substrate-is-authority. The whole-ingest fold
+  over `source_ir_node_artifact_provenance` is the only sanctioned shape, which is exactly this
+  design.
 - **Output is the existing `FreeMonoid<NodeArtifactProvenance>`** — the exact shape
   `affected_set_reading_from_git_diff_provenance` already consumes. No new consumer type; the
   fixture rows in `affected_testgen_ci_runner.dag:150` are replaced by this producer's output.
@@ -89,6 +97,32 @@ fn node_artifact_provenance_from_source_root(
   2. the **fold** `node_artifact_provenance_from_source_root` that maps each read through the
      already-proven `source_ir_node_artifact_provenance` and concatenates, short-circuiting to
      `reject` on the first `Rejected` read (lifting the proven per-read fail-closed to the closure).
+
+### M9 — attach the ingest carrier to the discovery concept family, don't fork it
+
+DFS the concept DAG before minting `SourceRootIngest` (MODELING M9). Whole-tree enumeration prior
+art already exists in the **discovery lane** (`src/v4/test/claim/workflow/discovery_types.dag` +
+`glob_discovery_law.dag`):
+
+| discovery lane (decl enumeration) | producer (source-read enumeration) |
+|---|---|
+| glob-discovery walks the tree → `List<OwnedDataDeclRecord>` | source-root walk → `FreeMonoid<DagSourceReadWitness>` |
+| `OwnedDataDeclRecord { entry, module, decl_name, initializer }` — per-decl, carries source `entry` (file path) | `DagSourceReadWitness { source, artifact, compilation_unit }` — per-read, carries `artifact.file_path` |
+| `ResolvedDeclRef { module, name }` — resolved ref | `NodeArtifactProvenance { node, artifact }` — resolved node↔artifact |
+| `OwnedDataDiscoveryReceipt { ..._count, transport_projection_complete }` — scalar OOM-guard summary | a coverage-receipt scalar (covered-read count, `coverage_complete`) — same OOM-guard shape |
+
+These are the **same** "whole-tree enumeration → per-item resolved record → scalar receipt" shape.
+So the producer should **not** mint a parallel enumerator: it should reuse / mirror the
+glob-discovery enumeration and emit a discovery-receipt-shaped scalar coverage summary (the
+fail-closed/OOM guard below reads that scalar, not the full provenance list).
+
+**Home question (for the coordinator):** the discovery enumeration + receipt currently live under
+`test/claim/workflow`, but the producer wants them at the **compiler/source-authority layer** (where
+`source_ir_*` minting lives). Cleanest single-authority outcome: *promote* the whole-tree
+enumeration + discovery-receipt shape from `test/claim/workflow` toward the compiler layer so the
+discovery lane **and** the producer share one enumeration authority, rather than two whole-tree
+walks. This is a substrate-relocation decision, not a producer-local one — flagged for
+snappy-crab-849.
 
 ### Fail-closed law (load-bearing — this is the kill criterion)
 
@@ -107,6 +141,16 @@ The producer is the point where Part 1's silent false-negative must become a fai
 
 This is the contract that closes Part 1's gap *by construction* rather than by patching prefixes:
 `detector closure ≡ compile closure` because both are `source_ir_*` over the same ingest.
+
+**One arc with the `affects_v4` tripwire.** The separately-dispatched `affects_v4` widening-only
+patch (snappy-crab-849's tree) and this producer are not two fixes — they are the **interim guard
+and the durable replacement of the same coverage law.** The tripwire patch makes the allowlist
+fail-closed *now* (any unrecognized `src/v4/*.dag` → widen) so the gap Part 1 found cannot bite
+before the producer lands. The producer's coverage law (`coverage ⊇ ingest closure`, derived from
+the real ingest) then **subsumes** the tripwire entirely: once the path→node map *is* the ingest,
+there is no allowlist left to under-select, and the tripwire becomes dead code to retire. Sequencing
+is tripwire → producer → retire tripwire; the two changes should be read and reviewed as that single
+arc, not as competing detectors (M9: still one "what changed" authority throughout).
 
 ### Grain decision — file-level for v1, defer span-level
 
