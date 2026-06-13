@@ -68,6 +68,7 @@ host_rows_tsv() {
 tmpdir="$(mktemp -d)"
 cleanup() {
   rm -rf "$tmpdir"
+  rm -rf "$root/.parity-receipt"
   if [[ "$cleanup_legacy" -eq 1 ]]; then
     rm -f "$legacy_script"
   fi
@@ -99,10 +100,13 @@ if [[ "${SKIP_LEGACY_EXEC:-}" == "1" ]]; then
   legacy_count=8
 else
   # Frozen origin/main shell expects the pre-transport dag shape (incl. row_count binding).
-  legacy_model="$tmpdir/legacy_lens_ci_gate.dag"
-  git show origin/main:src/v4/workflow/lens_ci_gate.dag >"$legacy_model"
+  # Path must stay relative to $root — legacy script joins "$root/$ci_model".
+  legacy_model_rel=".parity-receipt/legacy_lens_ci_gate.dag"
+  legacy_model_abs="$root/$legacy_model_rel"
+  mkdir -p "$(dirname "$legacy_model_abs")"
+  git show origin/main:src/v4/workflow/lens_ci_gate.dag >"$legacy_model_abs"
   legacy_script_patched="$tmpdir/legacy-v4-lens-ci-gate.sh"
-  sed "s|^ci_model=\"src/v4/workflow/lens_ci_gate.dag\"|ci_model=\"$legacy_model\"|" \
+  sed "s|^ci_model=\"src/v4/workflow/lens_ci_gate.dag\"|ci_model=\"$legacy_model_rel\"|" \
     "$legacy_script" >"$legacy_script_patched"
   chmod +x "$legacy_script_patched"
   bash "$legacy_script_patched" --perturb-check >"$legacy_log" 2>&1 || legacy_ec=$?
