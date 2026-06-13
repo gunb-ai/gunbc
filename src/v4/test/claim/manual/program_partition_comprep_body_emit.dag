@@ -190,3 +190,17 @@ data unified_claim_program_partition_section_adapter_fail_closed: UnifiedTestCla
     function: program_partition_section_adapter_unavailable_rejects
   }
 }
+
+data unified_claim_program_partition_closure_enumeration_duplicate_free: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/program_partition_comprep_body_emit.dag",
+    function: program_partition_body_canonical_closure_enumeration_is_duplicate_free
+  }
+}
+
+data unified_claim_program_partition_fail_closed_facts_closure_fold: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/program_partition_comprep_body_emit.dag",
+    function: program_partition_body_fail_closed_facts_closure_fold_accepts
+  }
+}
