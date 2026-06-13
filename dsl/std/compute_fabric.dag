@@ -116,10 +116,16 @@ type NetworkInterface {
   locality: NetworkLocality
 }
 
+// 🟡 P-CF-OS-GROUNDING — distro_or_product/version relaxed to Option: our first real
+// provider (srv1/srv2) cannot ground them — the fleet host config lives OUTSIDE this repo,
+// and ci.yml grounds only kernel=Linux/arm64 + ghrunner de-priv + shared $HOME. This REMOVES
+// an over-assertion the exploration worksheet made (required strings no provider can fill),
+// not speculative breadth. Pin via a one-line `Some { value: ... }` data change when the
+// operator confirms the fleet distro/version.
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: NonEmptyStr
-  version: NonEmptyStr
+  distro_or_product: Option<NonEmptyStr>
+  version: Option<NonEmptyStr>
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
