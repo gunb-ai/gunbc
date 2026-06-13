@@ -8,7 +8,8 @@
 
 module std.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, Option }
+import extdeps.cloud.hetzner { cax41_catalog, hetzner_cloud_provider }
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
@@ -118,8 +119,10 @@ type NetworkInterface {
 
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: NonEmptyStr
-  version: NonEmptyStr
+  // Relaxed to Option: operator fleet and Hetzner Cloud derive distro/version at
+  // provisioning time — not fixed in either provider's offer surface (P-CF-OS).
+  distro_or_product: Option<NonEmptyStr>
+  version: Option<NonEmptyStr>
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
@@ -188,9 +191,12 @@ fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
   }
 }
 
-fn machine_view_label(_host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
-  // Label from execution surface; host identity is on MachineView.host (Worksheet A §1.4).
-  surface.os.distro_or_product
+fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
+  // Label from execution surface when grounded; else host identity (Worksheet A §1.4).
+  match surface.os.distro_or_product {
+    Some { value: distro } => distro
+    None => host.identity
+  }
 }
 
 // --- §1.4b placement projection (derived — NOT a parallel authority) ----------
