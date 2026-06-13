@@ -333,6 +333,7 @@ type ComputeLease {
   allocation: AllocationReceipt
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
+// Lens: RAII borrow — offer + demand paired for lease lifetime; allocation receipt is acquire proof.
 
 // 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
 // stays a forward Node for v4.std.witness). Isolation is an ordered lattice (chain below),
@@ -574,7 +575,7 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
   identity: hetzner_cax41_host_identity,
-  // vCPU/RAM/disk authority: extdeps.cloud.hetzner.cax41_catalog (virtual shape).
+  // vCPU/RAM/disk: extdeps.cloud.hetzner.cax41_catalog (shared Ampere; no per-thread Hz).
   processors: [],
   memory: [],
   storage: [],
@@ -645,6 +646,14 @@ fn witness_vm_admits_shared_host_home() -> Bool {
 // Cross-provider: grounded srv1 offer rejects Vm demand (operator fleet SharedHostHome).
 fn witness_srv1_offer_rejects_vm_demand() -> Bool {
   match satisfies(offer: supply_srv1_offer, demand: vm_isolation_work_demand) {
+    Rejected { reason: _ } => true
+    Eligible { witness: _ } => false
+  }
+}
+
+// Cross-provider: grounded srv2 offer rejects Vm demand (operator fleet SharedHostHome).
+fn witness_srv2_offer_rejects_vm_demand() -> Bool {
+  match satisfies(offer: supply_srv2_offer, demand: vm_isolation_work_demand) {
     Rejected { reason: _ } => true
     Eligible { witness: _ } => false
   }

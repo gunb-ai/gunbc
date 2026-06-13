@@ -38,5 +38,3 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
   pricing_citation: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/ GE-D9256 CAX41 Germany/Finland €0.0505/hr €31.49/mo ex-VAT effective 2026-04-01",
   cpu_architecture: Aarch64,
 }
-
-data hetzner_cloud_provider: NonEmptyStr = "hetzner"
