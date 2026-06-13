@@ -225,6 +225,13 @@ fn branch_if_then_else_emit_diag_cond_bare_kw_true_on_post_translate() -> Bool {
   }
 }
 
+fn branch_if_then_else_emit_diag_producer_emit_accepts() -> Bool {
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn branch_if_then_else_emit_diag_emit_eq_authority_text() -> Bool {
   match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
     Accepted { value: emitted, diagnostics: d } =>
