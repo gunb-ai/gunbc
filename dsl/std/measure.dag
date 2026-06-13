@@ -187,6 +187,49 @@ type Hertz = Measure<Frequency, One>
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One>
 
+// --- MoneyAmount<S>: price magnitude carrier ------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
+// carrier; widening is on Scale, not new variants).
+//
+// `MoneyAmount<S> = Measure<Currency, S>` -- the money carrier the design
+// doc §6 (measure-value-typing-design-2026-06-13) calls for: a fixed-point
+// magnitude tagged with the `Currency` dimension, NEVER a `Float` (floating
+// point for money is a representation defect -- the magnitude is an exact
+// integer count of a sub-major denomination).
+//
+// `<S>` is the STORAGE scale of the integer `count`: the SI `Scale` at which
+// the magnitude is denominated. The per-currency ISO 4217 minor-unit
+// exponent is a SEPARATE authority (`std.currency.currency_minor_unit_exponent`)
+// -- ISO minor units (10^-2 cents) are not SI `Scale` values, so the two
+// axes stay distinct (Q-Unit-5: no new `Scale` values for currency).
+//
+// The currency *identity* (which currency) is carried alongside as a
+// `std.currency.CurrencyCode`, not in the phantom `<Q>` (which is the
+// dimension `Currency`, shared by all currencies). A consumer that needs a
+// specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
+// e.g. `std.compute_fabric.CostEstimate { unit_price, currency }`.
+//
+// Like every `Measure` alias here, constructing/reading a `MoneyAmount` value
+// on the v2 interpreter is gated by G1–G3 (see the carrier note above);
+// `std.currency` (a plain enum) evaluates on v2 today, the money VALUE does
+// not until G1 identifier-variant type args land (#4826).
+type MoneyAmount<S> = Measure<Currency, S>
+
+// Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
+// Demanded by Hetzner cost quotes, whose source data is `*_eur_micros`
+// (e.g. 50500 micro-EUR/hour) -- micros are finer than the EUR minor unit
+// (cent), so a minor-unit `<One>` carrier could not hold them losslessly.
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros(count: Int) -> MoneyMicros {
+  MoneyMicros { count: count }
+}
+
+fn money_micros_count(m: MoneyMicros) -> Int {
+  m.count
+}
+
 fn byte_size(count: Int) -> ByteSize {
   ByteSize { count: count }
 }

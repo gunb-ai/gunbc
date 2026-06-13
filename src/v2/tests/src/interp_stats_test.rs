@@ -149,3 +149,65 @@ fn read_xs() -> List<Int> { xs }
         "3-slot list buffer"
     );
 }
+
+/// Symbol interning (#4799) receipt, pinned at the table: a name interned
+/// twice yields the SAME `Symbol`, is retained once (`distinct == 1`), and the
+/// repeat call is a hit — the `String` allocation a per-occurrence carrier
+/// would have made and interning elides. The accounting invariant
+/// `calls == distinct + hits` always holds.
+#[test]
+fn interner_dedups_repeated_name() {
+    let mut interner = v2_interpreter::SymbolInterner::default();
+    let a = interner.intern("VariantName");
+    let b = interner.intern("VariantName");
+    let c = interner.intern("OtherName");
+    assert_eq!(a, b, "same name interns to the same symbol");
+    assert_ne!(a, c, "distinct names get distinct symbols");
+
+    let stats = interner.stats();
+    assert_eq!(stats.calls, 3);
+    assert_eq!(stats.distinct, 2);
+    assert_eq!(stats.hits, 1, "the repeat lookup is an avoided allocation");
+    assert_eq!(
+        stats.calls,
+        stats.distinct + stats.hits,
+        "calls = distinct + hits invariant"
+    );
+}
+
+/// Running a witness interns its identity names (binding keys, every variable
+/// reference resolves through `ctx.sym(name)`), and the same names recur
+/// across the evaluation, so the context's interner accumulates hits — the
+/// live #4799 dedup signal the `claim_batch` `[interp-stats]` report surfaces.
+/// Here `x` is read four times: each read interns `"x"`, so at least three of
+/// those are hits. The accounting invariant must hold over a real evaluation,
+/// not just a hand-built table.
+#[test]
+fn witness_evaluation_produces_intern_hits() {
+    let src = r#"module test.stats_intern
+fn build() -> Int {
+  let x = 1
+  x + x + x + x
+}
+"#;
+    let resolved = resolve(src);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+
+    match v2_interpreter::run_in_context(&ctx, "build", false) {
+        Ok(Value::Int(4)) => {}
+        other => panic!("expected Int(4), got {other:?}"),
+    }
+
+    let stats = ctx.interner_stats_snapshot();
+    assert!(stats.calls > 0, "evaluation interned identity names");
+    assert!(
+        stats.hits >= 3,
+        "the four reads of `x` dedup to >=3 hits, got {stats:?}"
+    );
+    assert_eq!(
+        stats.calls,
+        stats.distinct + stats.hits,
+        "calls = distinct + hits invariant over a real evaluation"
+    );
+}
