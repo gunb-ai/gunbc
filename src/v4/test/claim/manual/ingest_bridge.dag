@@ -1,11 +1,15 @@
 // src/v4/test/claim/manual/ingest_bridge.dag
 // Scope: #g-ingest-bridge (#4801) — executable proof of the forward interpreter
 //   `parse_tree_to_target_model_bridge` (v4.compiler.ingest). Parses a token through a local
-//   grammar whose production emits the add type node, runs the bridge (fold -> infer -> coerce),
-//   and asserts the recovered canonical IR matches the add keystone — composing the new syntactic
-//   half with the LANDED semantic dual. Hermetic + sub-second (a 1-token local grammar, NOT the
-//   ~627s real-language parse fixtures); the python->ts matrix flip lands in the cross-language
-//   consumer claim.
+//   grammar, then FORWARD-SELECTS (signed design #4821, Option A): the parse FRONTIER (the token
+//   classes consumed) selects the source-model row whose production token-spine matches it, and the
+//   bridge carries that row's emit-side core node through infer -> coerce to canonical IR. The
+//   stamped emitted template is never trusted for selection.
+//
+//   Hermetic + sub-second: a 1-token local grammar against a custom 1-row source model that reuses
+//   dag's declared inhabitants + selection policy (so coerce grounds the add keystone) but supplies
+//   its own frontier-matching translation row. The real multi-token frontier-selection proof is the
+//   python->ts matrix flip in the cross-language consumer claim (~627s, by execution).
 
 module v4.test.claim.manual.ingest_bridge
 
@@ -23,18 +27,37 @@ import v4.std.grammar {
   GrammarProduction,
   GrammarRoot,
   Terminal,
-  grammar_empty_sync_tokens
+  grammar_concrete_fixed_token_node,
+  grammar_empty_sync_tokens,
+  grammar_relation_tokens_node
 }
 import v4.extdeps.languages.dag {
+  dag_mvp1_binding_spellings,
+  dag_mvp1_declared_inhabitants_root,
+  dag_mvp1_fidelity_quotient_node,
   dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_target_model
+  dag_mvp1_selection_policy_node,
+  dag_mvp1_serialize_source_node,
+  dag_mvp1_source_text,
+  dag_wave1_lex
 }
 import v4.std.compilers.lexing { Token }
+import v4.std.compilers.target_model {
+  TargetModel,
+  grammar_relation_field_emitted,
+  grammar_relation_field_tokens,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_fidelity_quotient,
+  target_model_edge_selection_policy,
+  target_model_edge_serialize_source,
+  target_model_edge_translation_rules
+}
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v4.std.logic { Bool }
 import v4.std.node {
   Conj,
+  Edge,
+  Named,
   Node,
   Symbol,
   SyntheticOccurrence,
@@ -55,7 +78,10 @@ import v4.std.verification {
 
 data ingest_fixture_file: Symbol = ^ingest_fixture_file
 data ingest_fixture_tok: Symbol = ^ingest_fixture_tok
+data ingest_fixture_other_tok: Symbol = ^ingest_fixture_other_tok
 data ingest_fixture_start: Symbol = ^ingest_fixture_start
+data ingest_fixture_rule: Symbol = ^ingest_fixture_rule
+data ingest_fixture_rule_alt: Symbol = ^ingest_fixture_rule_alt
 
 fn ingest_fixture_token() -> Token {
   Token {
@@ -67,16 +93,16 @@ fn ingest_fixture_token() -> Token {
   }
 }
 
-// Local single-terminal grammar whose production `emitted` IS the supplied core node — exactly
-// what the real dag/python add productions do with `<lang>_mvp1_emitted_add_fn_node()`.
-fn ingest_fixture_root(emitted: Node) -> GrammarRoot {
+// Local single-terminal grammar. Its production `emitted` is irrelevant to forward selection (the
+// stamp is not trusted) — it is the parse FRONTIER that selects the row.
+fn ingest_fixture_root() -> GrammarRoot {
   GrammarRoot {
     start: ingest_fixture_start,
     productions: Cons {
       head: GrammarProduction {
         name: ingest_fixture_start,
         expression: Terminal { token_class: ingest_fixture_tok },
-        emitted: emitted
+        emitted: dag_mvp1_fixture_emitted_add_fn
       },
       tail: Empty
     },
@@ -84,10 +110,10 @@ fn ingest_fixture_root(emitted: Node) -> GrammarRoot {
   }
 }
 
-// Parse one token through the local grammar carrying `emitted`, returning the parse tree.
-fn ingest_parse(emitted: Node) -> Outcome<Node> {
+// Parse one `ingest_fixture_tok` token through the local grammar, returning the parse tree.
+fn ingest_parse() -> Outcome<Node> {
   let at = port_locus(port: parse_stage_locus_port)
-  match grammar_validate_for_parse(root: ingest_fixture_root(emitted: emitted), at: at) {
+  match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
@@ -102,11 +128,87 @@ fn ingest_parse(emitted: Node) -> Outcome<Node> {
   }
 }
 
-// (1) The forward fold recovers the emit-side core node, row-confirmed against the source model.
+// ─────────────────────────────────────────────────────────────────────────────
+// A custom 1-row source model: dag's declared inhabitants + selection policy (so coerce grounds the
+// add keystone exactly as the dag round-trip does) wrapped around a translation row whose
+// production token-spine is `spine_class` and whose emitted is `emitted`. Forward selection matches
+// the parse frontier against that spine.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn ingest_fixture_row_node(emitted: Node, spine_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: grammar_relation_field_emitted }, target: emitted },
+      Edge {
+        label: Named { name: grammar_relation_field_tokens },
+        target: grammar_relation_tokens_node(
+          tokens: Cons { head: spine_class, tail: Empty },
+          token_to_node: grammar_concrete_fixed_token_node
+        )
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: target_model_edge_selection_policy }, target: dag_mvp1_selection_policy_node() },
+      Edge { label: Named { name: target_model_edge_declared_inhabitants }, target: dag_mvp1_declared_inhabitants_root() },
+      Edge { label: Named { name: target_model_edge_translation_rules }, target: rules },
+      Edge { label: Named { name: target_model_edge_serialize_source }, target: dag_mvp1_serialize_source_node() },
+      Edge { label: Named { name: target_model_edge_fidelity_quotient }, target: dag_mvp1_fidelity_quotient_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
+  TargetModel {
+    bundle: bundle,
+    lex: dag_wave1_lex(),
+    binding_spellings: dag_mvp1_binding_spellings(),
+    authority_source_text: dag_mvp1_source_text
+  }
+}
+
+// Single-row model: one row (spine `spine_class` -> `emitted`).
+fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
+  let rules = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+  ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
+}
+
+// Two-row model whose rows share the SAME token-spine — a non-forward-deterministic grammar (G.2).
+fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetModel {
+  let rules = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
+      Edge { label: Named { name: ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+  ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
+}
+
+// (1) Forward selection recovers the emit-side core node: the parse frontier [ingest_fixture_tok]
+//     selects the row whose spine is [ingest_fixture_tok], returning that row's emitted.
 fn ingest_recovers_emitted_holds() -> Bool {
-  match ingest_parse(emitted: dag_mvp1_fixture_emitted_add_fn) {
+  match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(parse_tree: tree, source_model: dag_mvp1_target_model()) {
+      match parse_tree_to_emitted_node(
+        parse_tree: tree,
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+      ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == dag_mvp1_fixture_emitted_add_fn
         Rejected { diagnostics: _ } => false
@@ -115,11 +217,14 @@ fn ingest_recovers_emitted_holds() -> Bool {
   }
 }
 
-// (2) End-to-end: parsed token -> bridge (fold -> infer -> coerce) -> canonical add IR.
+// (2) End-to-end: parsed token -> bridge (forward-select -> infer -> coerce) -> canonical add IR.
 fn ingest_bridge_to_canonical_holds() -> Bool {
-  match ingest_parse(emitted: dag_mvp1_fixture_emitted_add_fn) {
+  match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_target_model_bridge(parse_tree: tree, source_model: dag_mvp1_target_model()) {
+      match parse_tree_to_target_model_bridge(
+        parse_tree: tree,
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+      ) {
         Accepted { value: core, diagnostics: _ } =>
           core == dag_mvp1_fixture_emitted_add_fn
         Rejected { diagnostics: _ } => false
@@ -128,13 +233,16 @@ fn ingest_bridge_to_canonical_holds() -> Bool {
   }
 }
 
-// (3) Row-driven fail-closed: a parse tree whose emitted is NOT a declared row of source_model
-//     (here the int inhabitant, which the add target model does not emit as a top row) is Rejected
-//     — the gate reflects the source model's declared rows, not a constant.
-fn ingest_fails_closed_off_row_holds() -> Bool {
-  match ingest_parse(emitted: dag_mvp1_fixture_int_inhabitant) {
+// (3) Discrimination (perturbed selection): the same parse frontier [ingest_fixture_tok] against a
+//     model whose only row has spine [ingest_fixture_other_tok] matches NOTHING -> fail closed. The
+//     recovery in (1) is driven by the frontier, not a constant.
+fn ingest_fails_closed_off_frontier_holds() -> Bool {
+  match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(parse_tree: tree, source_model: dag_mvp1_target_model()) {
+      match parse_tree_to_emitted_node(
+        parse_tree: tree,
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_other_tok)
+      ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
       }
@@ -142,17 +250,36 @@ fn ingest_fails_closed_off_row_holds() -> Bool {
   }
 }
 
-// (4) Fail-closed: a bare node that is not a stamped production tree is Rejected.
+// (4) Forward-determinism (G.2): a frontier matching >1 row is non-deterministic -> fail closed.
+fn ingest_fails_closed_ambiguous_holds() -> Bool {
+  match ingest_parse() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_emitted_node(
+        parse_tree: tree,
+        source_model: ingest_fixture_model_ambiguous(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (5) Fail-closed: a bare node that is not a stamped production tree projects an empty frontier,
+//     which matches no row -> Rejected.
 fn ingest_unstamped_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
-  }
+}
 }
 
 fn ingest_fails_closed_on_unstamped_holds() -> Bool {
-  match parse_tree_to_emitted_node(parse_tree: ingest_unstamped_node(), source_model: dag_mvp1_target_model()) {
+  match parse_tree_to_emitted_node(
+    parse_tree: ingest_unstamped_node(),
+    source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+  ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
@@ -161,7 +288,8 @@ fn ingest_fails_closed_on_unstamped_holds() -> Bool {
 fn ingest_bridge_realized() -> Bool {
   ingest_recovers_emitted_holds()
     && ingest_bridge_to_canonical_holds()
-    && ingest_fails_closed_off_row_holds()
+    && ingest_fails_closed_off_frontier_holds()
+    && ingest_fails_closed_ambiguous_holds()
     && ingest_fails_closed_on_unstamped_holds()
 }
 
@@ -182,7 +310,7 @@ data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
-  label: "manual/ingest_bridge: ParseTree -> emit-side core node -> canonical IR by execution (forward interpreter; row-driven, fail-closed)",
+  label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),
   expected_value: ^ingest_bridge_realized,
