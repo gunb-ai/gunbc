@@ -1,0 +1,17 @@
+// std/option.dag — M6 optional generic (initial algebra F(X) = 1 + X).
+//
+// Lives outside std.types so the v2 bootstrap bridge (which seeds std.types
+// into every module) does not inject Coproduct(Option) into compiler self-
+// host modules and break regen_stage0. Consumers import explicitly.
+
+module std.option
+
+// Haskell Maybe / Rust Option / ML option. Kernel/bootstrap `Optional` (T?
+// cardinality bridge) is the sibling spelling — see is_optional_coproduct_type_name.
+type Option<element>
+  = Absent
+  | Present { value: element }
+
+fn is_optional_coproduct_type_name(name: String) -> Bool {
+  name == "Option" || name == "Optional"
+}

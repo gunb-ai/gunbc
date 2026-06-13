@@ -77,7 +77,7 @@ fn is_kernel_type(name: String) -> Bool {
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2, "Witness": 1
+  "List": 1, "Set": 1, "Map": 2, "Witness": 1, "Option": 1
 }
 
 fn is_container_type(name: String) -> Bool {

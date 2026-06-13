@@ -149,13 +149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ci_claim_gate"
-version = "0.1.0"
-dependencies = [
- "v2-compiler",
-]
-
-[[package]]
 name = "ci_timings_collector"
 version = "0.1.0"
 dependencies = [
