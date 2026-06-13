@@ -120,7 +120,9 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
     path == "src/v4/bin/main.dag"
-        || path == "src/v4/workflow/bootstrap.dag"
+        || path == "src/v4/program.dag"
+        || path.starts_with("src/v4/program/")
+        || path.starts_with("src/v4/workflow/")
         || path.starts_with("src/v4/compiler/")
         || path.starts_with("src/v4/std/")
         || path.starts_with("src/v4/extdeps/")
@@ -363,6 +365,18 @@ mod tests {
         assert!(!ci_release_distribution_only_from_changed_paths([
             "docs/README.md"
         ]));
+    }
+
+    #[test]
+    fn affects_v4_covers_full_ci_floor_compile_closure() {
+        // program.dag and program/ subdirectory are in the ci_floor compile closure
+        assert!(ci_changed_path_affects_v4("src/v4/program.dag"));
+        assert!(ci_changed_path_affects_v4("src/v4/program/program.dag"));
+        // workflow/ files (runtime_run.dag and lens_ci_gate.dag) are in the compile closure
+        assert!(ci_changed_path_affects_v4("src/v4/workflow/runtime_run.dag"));
+        assert!(ci_changed_path_affects_v4("src/v4/workflow/lens_ci_gate.dag"));
+        // bootstrap.dag still covered by the prefix
+        assert!(ci_changed_path_affects_v4("src/v4/workflow/bootstrap.dag"));
     }
 
     #[test]
