@@ -120,7 +120,9 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
     path == "src/v4/bin/main.dag"
-        || path == "src/v4/workflow/bootstrap.dag"
+        || path == "src/v4/program.dag"
+        || path.starts_with("src/v4/program/")
+        || path.starts_with("src/v4/workflow/")
         || path.starts_with("src/v4/compiler/")
         || path.starts_with("src/v4/std/")
         || path.starts_with("src/v4/extdeps/")
@@ -142,6 +144,8 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
     ci_changed_path_affects_v4(path)
         || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
+        || path == "scripts/v4-claim-witness-corpus-gate.sh"
+        || path == "src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
         || path == "scripts/v4-discover-owned-data.sh"
         || path == "scripts/v4-substrate-equivalence-gate.sh"
@@ -363,6 +367,78 @@ mod tests {
         assert!(!ci_release_distribution_only_from_changed_paths([
             "docs/README.md"
         ]));
+    }
+
+    #[test]
+    fn affects_v4_covers_full_ci_floor_compile_closure() {
+        // program.dag and program/ subdirectory are in the ci_floor compile closure
+        assert!(ci_changed_path_affects_v4("src/v4/program.dag"));
+        assert!(ci_changed_path_affects_v4("src/v4/program/program.dag"));
+        // workflow/ files (runtime_run.dag and lens_ci_gate.dag) are in the compile closure
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/workflow/runtime_run.dag"
+        ));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/workflow/lens_ci_gate.dag"
+        ));
+        // bootstrap.dag still covered by the prefix
+        assert!(ci_changed_path_affects_v4("src/v4/workflow/bootstrap.dag"));
+    }
+
+    fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
+            .filter_map(|e| e.ok())
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_dag_paths(&path, out);
+            } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                out.push(path);
+            }
+        }
+    }
+
+    // Drift tripwire: every .dag file the ci_floor compile actually reads
+    // (--source-root src/v4 walks the tree recursively) must be covered by at least one CI
+    // bucket so that no src/v4 path can silently escape all CI gating.
+    // test/claim/ files map to testclaim_corpus; install.dag maps to release_distribution;
+    // everything else must be in v4 (which is a subset of testclaim_corpus).
+    #[test]
+    fn ci_floor_compile_closure_fully_covered_by_ci_buckets() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // tools/ci_affected_components -> repo root
+        let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let src_v4 = repo_root.join("src/v4");
+        if !src_v4.exists() {
+            return; // skip if running outside repo context
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_paths(&src_v4, &mut dag_files);
+        assert!(!dag_files.is_empty(), "expected .dag files under src/v4");
+        let mut uncovered: Vec<String> = Vec::new();
+        for abs in &dag_files {
+            let rel = abs
+                .strip_prefix(repo_root)
+                .expect("dag path must be under repo root");
+            let rel_str = rel.to_str().expect("path must be valid utf-8");
+            // A file is covered if it triggers any CI bucket that runs during a PR.
+            // testclaim_corpus is a superset of v4 (it calls ci_changed_path_affects_v4 first).
+            let covered = ci_changed_path_affects_testclaim_corpus(rel_str)
+                || ci_changed_path_affects_release_distribution(rel_str);
+            if !covered {
+                uncovered.push(rel_str.to_string());
+            }
+        }
+        assert!(
+            uncovered.is_empty(),
+            "These src/v4 .dag files are compiled by ci_floor (--source-root src/v4) \
+             but do NOT trigger any CI bucket (v4 / testclaim_corpus / release_distribution). \
+             Add them to the appropriate predicate in ci_changed_path_affects_v4 or a sibling:\n  {}",
+            uncovered.join("\n  ")
+        );
     }
 
     #[test]

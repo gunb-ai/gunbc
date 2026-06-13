@@ -1,6 +1,6 @@
 // src/v4/lens/ownership.dag
 // Scope: ownership lens — proves no aliased mutation in emitted code.
-// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<OwnershipMode>`; no copied endpoints (Practice 11 sub-rule: parallel-payload vs typed-reference). Resource access/alias-mode evidence is routed via `RequiresAccessWitness`; deriving the closed access carrier is a tracked follow-up to the #3468 codex BLOCKING reviews.
+// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<OwnershipMode>`; no copied endpoints (Practice 11 sub-rule: parallel-payload vs typed-reference). Resource access/alias-mode evidence is routed via `RequiresAccessWitness`; deriving the closed access carrier is a tracked follow-up to the #3468 codex BLOCKING reviews.
 
 
 module v4.lens.ownership

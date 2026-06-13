@@ -79,9 +79,15 @@ fn missing_export_points_at_name() {
 #[test]
 fn variant_not_reexported_through_type_only_import() {
     let files = &[
-        ("def.dag", "module sg8_def\ntype E = A | B\n"),
-        ("proxy.dag", "module sg8_proxy\nimport sg8_def { E }\n"),
-        ("use_mod.dag", "module sg8_use\nimport sg8_proxy { B }\n"),
+        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
+        (
+            "proxy.dag",
+            "module self_gen8_proxy\nimport self_gen8_def { E }\n",
+        ),
+        (
+            "use_mod.dag",
+            "module self_gen8_use\nimport self_gen8_proxy { B }\n",
+        ),
     ];
     let result = compile_multi(files);
 
@@ -98,7 +104,7 @@ fn variant_not_reexported_through_type_only_import() {
         "message should name the missing variant export: {msg}"
     );
     assert!(
-        msg.contains("sg8_proxy"),
+        msg.contains("self_gen8_proxy"),
         "message should name the proxy module: {msg}"
     );
 }

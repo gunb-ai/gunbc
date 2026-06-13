@@ -1,5 +1,5 @@
 // src/v4/lens/edit_locus.dag
-// Scope: git diff name-only paths → substrate Node edit_locus for affected_set (T-21 wire).
+// Scope: git diff name-only paths → substrate Node edit_locus for affected_set.
 // Status: Wave-1 — file-level NodeArtifactProvenance is the modeled path→Node authority;
 //   EditLocusRead/PathRegex remains as a compatibility shim until Q-Regex-Primitive.
 
@@ -44,7 +44,7 @@ type EditLocusBinding {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature: Q-Regex-Primitive — bind: gunbc#3560 T-21 — dissolve-on-arrival: replace
+// feature: Q-Regex-Primitive — bind: gunbc#3560 — dissolve-on-arrival: replace
 // injected `path_regex_matches` with substrate regex primitive; forbidden: hand-maintained
 // path-regex in workflow YAML (Gate #103).
 type EditLocusRead {

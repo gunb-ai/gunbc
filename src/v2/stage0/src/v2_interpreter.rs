@@ -2,6 +2,7 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -93,6 +94,101 @@ use crate::v2_std_core::{
     UnaryOpKind,
     VarBindingKind,
 };
+
+// ---------------------------------------------------------------------------
+// Symbol interning (ctrl#1533 phase 3)
+// ---------------------------------------------------------------------------
+//
+// Runtime identity carriers (type names, variant names, record field keys,
+// env binding keys) are references into a single per-evaluation intern table,
+// not owned heap strings. Integer Symbol ids replace string hashing on the hot
+// path (v4.std.value_carrier M-D).
+
+/// Opaque interned identifier; meaningful only within the owning `SymbolInterner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Symbol(u32);
+
+/// Single intern table for one evaluation context. All `Symbol` values produced
+/// during an evaluation draw ids from this table.
+#[derive(Debug, Default)]
+pub struct SymbolInterner {
+    strings: Vec<String>,
+    index: HashMap<String, u32>,
+}
+
+impl SymbolInterner {
+    pub fn intern(&mut self, s: &str) -> Symbol {
+        if let Some(&id) = self.index.get(s) {
+            return Symbol(id);
+        }
+        let id = self.strings.len() as u32;
+        self.strings.push(s.to_string());
+        self.index.insert(s.to_string(), id);
+        Symbol(id)
+    }
+
+    pub fn resolve(&self, sym: Symbol) -> &str {
+        self.strings
+            .get(sym.0 as usize)
+            .map(|s| s.as_str())
+            .unwrap_or("<invalid-symbol>")
+    }
+
+    /// Estimated heap bytes for the intern table (string payloads + index keys).
+    fn heap_bytes(&self) -> u64 {
+        let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
+        for s in &self.strings {
+            bytes += s.len() as u64;
+        }
+        bytes += (self.index.len() * std::mem::size_of::<(String, u32)>()) as u64;
+        for key in self.index.keys() {
+            bytes += key.len() as u64;
+        }
+        bytes
+    }
+}
+
+thread_local! {
+    /// Active evaluation context for `Value` formatting (ctrl#1533 phase 3).
+    static ACTIVE_CTX: std::cell::Cell<Option<*const InterpContext>> =
+        const { std::cell::Cell::new(None) };
+}
+
+fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
+    ACTIVE_CTX.with(|cell| {
+        let prev = cell.replace(Some(ctx as *const InterpContext));
+        struct ActiveCtxGuard<'a> {
+            cell: &'a std::cell::Cell<Option<*const InterpContext>>,
+            prev: Option<*const InterpContext>,
+        }
+        impl Drop for ActiveCtxGuard<'_> {
+            fn drop(&mut self) {
+                self.cell.set(self.prev);
+            }
+        }
+        let _guard = ActiveCtxGuard { cell, prev };
+        f()
+    })
+}
+
+/// Host-transport helper: keep `InterpContext` active while inspecting or
+/// printing `Value`s whose identity carriers are interned symbols.
+pub fn with_active_context<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
+    with_active_ctx(ctx, f)
+}
+
+fn active_ctx() -> Option<&'static InterpContext> {
+    // SAFETY: borrows the pointer installed by `with_active_ctx`'s ActiveCtxGuard.
+    // Sound only while that guard is on-stack; callers must read-and-drop within the
+    // guard scope — do not return or store this reference past the closure.
+    ACTIVE_CTX.with(|cell| cell.get().map(|ptr| unsafe { &*ptr }))
+}
+
+fn resolve_sym(sym: Symbol) -> String {
+    active_ctx()
+        .map(|ctx| ctx.resolve(sym).to_string())
+        .unwrap_or_else(|| format!("#{}", sym.0))
+}
 
 // ---------------------------------------------------------------------------
 // CanonKey — finite-map key keyed by the single Value-equality authority
@@ -244,12 +340,12 @@ fn value_hash(v: &Value) -> u64 {
 /// Order-independent combination of `(field_name, field_value)` hashes, so two
 /// records/variants whose `fields` HashMaps iterate in different orders (but hold the
 /// same entries) combine to the same value — matching `Value::eq`'s HashMap compare.
-fn hash_fields_commutative(fields: &HashMap<String, Value>) -> u64 {
+fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut acc: u64 = 0;
-    for (name, val) in fields.iter() {
+    for (sym, val) in fields.iter() {
         let mut fh = DefaultHasher::new();
-        name.hash(&mut fh);
+        sym.0.hash(&mut fh);
         value_hash(val).hash(&mut fh);
         acc = acc.wrapping_add(fh.finish());
     }
@@ -277,16 +373,16 @@ pub enum Value {
     /// String membership sets (`Set<String>` in .dag).
     Set(Rc<BTreeSet<String>>),
     Record {
-        type_name: String,
-        fields: Rc<HashMap<String, Value>>,
+        type_name: Symbol,
+        fields: Rc<HashMap<Symbol, Value>>,
     },
     Variant {
-        type_name: String,
-        variant_name: String,
-        fields: Rc<HashMap<String, Value>>,
+        type_name: Symbol,
+        variant_name: Symbol,
+        fields: Rc<HashMap<Symbol, Value>>,
     },
     Closure {
-        params: Vec<String>,
+        params: Vec<Symbol>,
         body: Rc<Node>,
         env: Rc<Env>,
     },
@@ -381,12 +477,12 @@ impl fmt::Display for Value {
                 write!(f, "}}")
             }
             Value::Record { type_name, fields } => {
-                write!(f, "{} {{", type_name)?;
+                write!(f, "{} {{", resolve_sym(*type_name))?;
                 for (i, (k, v)) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ",")?;
                     }
-                    write!(f, " {}: {}", k, v)?;
+                    write!(f, " {}: {}", resolve_sym(*k), v)?;
                 }
                 write!(f, " }}")
             }
@@ -396,14 +492,14 @@ impl fmt::Display for Value {
                 fields,
             } => {
                 if fields.is_empty() {
-                    write!(f, "{}", variant_name)
+                    write!(f, "{}", resolve_sym(*variant_name))
                 } else {
-                    write!(f, "{} {{", variant_name)?;
+                    write!(f, "{} {{", resolve_sym(*variant_name))?;
                     for (i, (k, v)) in fields.iter().enumerate() {
                         if i > 0 {
                             write!(f, ",")?;
                         }
-                        write!(f, " {}: {}", k, v)?;
+                        write!(f, " {}: {}", resolve_sym(*k), v)?;
                     }
                     write!(f, " }}")
                 }
@@ -483,7 +579,7 @@ impl PartialEq for Value {
 
 #[derive(Debug, Clone)]
 pub struct Env {
-    bindings: HashMap<String, Value>,
+    bindings: HashMap<Symbol, Value>,
     parent: Option<Rc<Env>>,
 }
 
@@ -495,14 +591,14 @@ impl Env {
         })
     }
 
-    pub fn extend(parent: &Rc<Env>, bindings: HashMap<String, Value>) -> Rc<Self> {
+    pub fn extend(parent: &Rc<Env>, bindings: HashMap<Symbol, Value>) -> Rc<Self> {
         Rc::new(Env {
             bindings,
             parent: Some(parent.clone()),
         })
     }
 
-    pub fn with_binding(parent: &Rc<Env>, name: String, value: Value) -> Rc<Self> {
+    pub fn with_binding(parent: &Rc<Env>, name: Symbol, value: Value) -> Rc<Self> {
         let mut bindings = HashMap::new();
         bindings.insert(name, value);
         Rc::new(Env {
@@ -511,8 +607,8 @@ impl Env {
         })
     }
 
-    pub fn lookup(&self, name: &str) -> Option<&Value> {
-        if let Some(v) = self.bindings.get(name) {
+    pub fn lookup(&self, name: Symbol) -> Option<&Value> {
+        if let Some(v) = self.bindings.get(&name) {
             Some(v)
         } else if let Some(ref parent) = self.parent {
             parent.lookup(name)
@@ -759,10 +855,7 @@ fn account_env(
     if !accounting_first_visit(Rc::as_ptr(env) as usize, "(env)", visited, acc) {
         return;
     }
-    let mut bytes = (env.bindings.len() * std::mem::size_of::<(String, Value)>()) as u64;
-    for name in env.bindings.keys() {
-        bytes += name.len() as u64;
-    }
+    let mut bytes = (env.bindings.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
     acc.add_unique("(env)", bytes);
     for value in env.bindings.values() {
         account_value(value, visited, acc);
@@ -774,21 +867,30 @@ fn account_env(
 
 fn account_named_fields(
     label: &'static str,
-    fields: &Rc<HashMap<String, Value>>,
+    fields: &Rc<HashMap<Symbol, Value>>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
     if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
         return;
     }
-    let mut bytes = (fields.len() * std::mem::size_of::<(String, Value)>()) as u64;
-    for key in fields.keys() {
-        bytes += key.len() as u64;
-    }
+    let mut bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
     acc.add_unique(label, bytes);
     for value in fields.values() {
         account_value(value, visited, acc);
     }
+}
+
+fn account_interner(
+    ctx_ptr: usize,
+    interner: &SymbolInterner,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(ctx_ptr, "(interner)", visited, acc) {
+        return;
+    }
+    acc.add_unique("(interner)", interner.heap_bytes());
 }
 
 fn account_value(
@@ -837,19 +939,10 @@ fn account_value(
             }
             acc.add_unique(label, bytes);
         }
-        Value::Record { type_name, fields } => {
-            acc.variant(label).heap_bytes += type_name.len() as u64;
-            acc.total_heap_bytes += type_name.len() as u64;
+        Value::Record { fields, .. } => {
             account_named_fields(label, fields, visited, acc);
         }
-        Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } => {
-            let names = (type_name.len() + variant_name.len()) as u64;
-            acc.variant(label).heap_bytes += names;
-            acc.total_heap_bytes += names;
+        Value::Variant { fields, .. } => {
             account_named_fields(label, fields, visited, acc);
         }
         // The AST body is program text (shared, graph-owned), not value heap;
@@ -859,10 +952,7 @@ fn account_value(
             env,
             body: _,
         } => {
-            let mut bytes = (params.len() * std::mem::size_of::<String>()) as u64;
-            for p in params {
-                bytes += p.len() as u64;
-            }
+            let bytes = (params.len() * std::mem::size_of::<Symbol>()) as u64;
             acc.add_unique(label, bytes);
             account_env(env, visited, acc);
         }
@@ -900,9 +990,37 @@ pub struct InterpContext {
     /// copy-on-update collection primitives, scoped to this context like the
     /// caches above. Always on — a few integer adds next to O(n) clones.
     mutation_counters: std::cell::RefCell<MutationCounters>,
+    /// Single name intern table for runtime identity carriers (ctrl#1533 phase 3).
+    symbols: RefCell<SymbolInterner>,
 }
 
 impl InterpContext {
+    /// Intern a source name into this context's symbol table.
+    pub fn sym(&self, s: &str) -> Symbol {
+        self.symbols.borrow_mut().intern(s)
+    }
+
+    /// Resolve an interned symbol back to its source spelling.
+    pub fn resolve(&self, sym: Symbol) -> String {
+        self.symbols.borrow().resolve(sym).to_string()
+    }
+
+    /// True when `sym` resolves to `name` in this context's intern table.
+    pub fn sym_eq(&self, sym: Symbol, name: &str) -> bool {
+        self.symbols.borrow().resolve(sym) == name
+    }
+
+    /// Lookup a named field in an intern-keyed field map.
+    pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
+        fields.get(&self.sym(name))
+    }
+
+    /// Render a `Value` for host diagnostics after evaluation (resolves interned
+    /// type/variant/field names via this context's symbol table).
+    pub fn format_value(&self, val: &Value) -> String {
+        with_active_ctx(self, || format!("{}", val))
+    }
+
     /// Snapshot of the copy-work counters accumulated by evaluations in this
     /// context (phase-0 measurement, ctrl#1533).
     pub fn mutation_counters_snapshot(&self) -> MutationCounters {
@@ -916,6 +1034,12 @@ impl InterpContext {
     pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
         let mut visited = std::collections::HashSet::new();
         let mut acc = MemoryAccounting::default();
+        account_interner(
+            self as *const Self as usize,
+            &self.symbols.borrow(),
+            &mut visited,
+            &mut acc,
+        );
         for value in self.data_cache.borrow().values() {
             account_value(value, &mut visited, &mut acc);
         }
@@ -981,6 +1105,7 @@ impl InterpContext {
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
+            symbols: RefCell::new(SymbolInterner::default()),
         }
     }
 
@@ -1025,23 +1150,25 @@ pub fn run_in_context(
     entry_fn: &str,
     eager_data_env: bool,
 ) -> InterpResult<Value> {
-    // Find the entry function
-    let item_node = ctx
-        .lookup_fn(entry_fn)
-        .ok_or_else(|| InterpError::NoMainFunction)?
-        .clone();
+    with_active_ctx(ctx, || {
+        // Find the entry function
+        let item_node = ctx
+            .lookup_fn(entry_fn)
+            .ok_or_else(|| InterpError::NoMainFunction)?
+            .clone();
 
-    // Default: evaluate all `data` items up front (legacy `dag run` behavior).
-    // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
-    // witnesses pull only what they need via lazy data-item resolution in eval_var.
-    let env = if eager_data_env {
-        build_initial_env(ctx)?
-    } else {
-        Env::empty()
-    };
+        // Default: evaluate all `data` items up front (legacy `dag run` behavior).
+        // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
+        // witnesses pull only what they need via lazy data-item resolution in eval_var.
+        let env = if eager_data_env {
+            build_initial_env(ctx)?
+        } else {
+            Env::empty()
+        };
 
-    // Call the entry function with no arguments
-    call_function(ctx, &item_node, &[], &env)
+        // Call the entry function with no arguments
+        call_function(ctx, &item_node, &[], &env)
+    })
 }
 
 /// Evaluate all `data` items to build the initial environment.
@@ -1052,7 +1179,7 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
             if let Some(node) = ctx.lookup_fn(name) {
                 if let Some(ref body) = node.body {
                     let val = eval_expr(body, &Env::empty(), ctx)?;
-                    bindings.insert(name.clone(), val);
+                    bindings.insert(ctx.sym(name), val);
                 }
             }
         }
@@ -1103,9 +1230,9 @@ fn call_function(
         let mut positional_idx = 0;
         for (opt_name, val) in args {
             if let Some(name) = opt_name {
-                bindings.insert(name.clone(), val.clone());
+                bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
-                bindings.insert(param_names[positional_idx].clone(), val.clone());
+                bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
                 positional_idx += 1;
             }
         }
@@ -1114,10 +1241,10 @@ fn call_function(
     // Fill default values for unbound parameters
     for param in fn_node.params.iter() {
         let pname = authored_name_at(ctx.si(), param.clone());
-        if !bindings.contains_key(&pname) {
+        if !bindings.contains_key(&ctx.sym(&pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
-                bindings.insert(pname, default_val);
+                bindings.insert(ctx.sym(&pname), default_val);
             }
         }
     }
@@ -1184,9 +1311,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         }
 
         ExprData::ExprLambda => {
-            let param_names: Vec<String> = lambda_param_names_at(node.clone(), si)
+            let param_names: Vec<Symbol> = lambda_param_names_at(node.clone(), si)
                 .iter()
-                .cloned()
+                .map(|name| ctx.sym(name))
                 .collect();
             let body = lambda_body(node.clone());
             Ok(Value::Closure {
@@ -1259,14 +1386,14 @@ fn eval_var(
     // Variant constructor (unit variant, no fields)
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
         return Ok(Value::Variant {
-            type_name: parent_enum.clone(),
-            variant_name: name,
+            type_name: ctx.sym(parent_enum),
+            variant_name: ctx.sym(&name),
             fields: Rc::new(HashMap::new()),
         });
     }
 
     // Environment lookup
-    if let Some(val) = env.lookup(&name) {
+    if let Some(val) = env.lookup(ctx.sym(&name)) {
         return Ok(val.clone());
     }
 
@@ -1519,7 +1646,7 @@ fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<
 fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let name = let_binding_name_at(node.clone(), ctx.si());
     let val = eval_expr(&let_value(node.clone()), env, ctx)?;
-    let new_env = Env::with_binding(env, name, val);
+    let new_env = Env::with_binding(env, ctx.sym(&name), val);
     match let_body(node.clone()) {
         Some(body) => eval_expr(&body, &new_env, ctx),
         None => Ok(Value::Unit),
@@ -1540,7 +1667,7 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             ExprData::ExprLet => {
                 let name = let_binding_name_at(stmt.clone(), ctx.si());
                 let val = eval_expr(&let_value(stmt.clone()), &current_env, ctx)?;
-                current_env = Env::with_binding(&current_env, name, val.clone());
+                current_env = Env::with_binding(&current_env, ctx.sym(&name), val.clone());
                 last_val = val;
             }
             _ => {
@@ -1577,53 +1704,50 @@ fn char_value(c: char) -> Value {
     Value::Int(c as i64)
 }
 
-fn native_map_absent_diagnostic_value() -> Value {
+fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     let mut anchor_fields = HashMap::new();
-    anchor_fields.insert("at".to_string(), Value::Str("map_lookup_port".to_string()));
+    anchor_fields.insert(ctx.sym("at"), Value::Str("map_lookup_port".to_string()));
 
     let mut locus_fields = HashMap::new();
     locus_fields.insert(
-        "anchor".to_string(),
+        ctx.sym("anchor"),
         Value::Record {
-            type_name: "LocusAnchor".to_string(),
+            type_name: ctx.sym("LocusAnchor"),
             fields: Rc::new(anchor_fields),
         },
     );
 
     let mut correction_fields = HashMap::new();
     correction_fields.insert(
-        "reason".to_string(),
+        ctx.sym("reason"),
         Value::Variant {
-            type_name: "NoCorrectionReason".to_string(),
-            variant_name: "ExternalContractUnknown".to_string(),
+            type_name: ctx.sym("NoCorrectionReason"),
+            variant_name: ctx.sym("ExternalContractUnknown"),
             fields: Rc::new(HashMap::new()),
         },
     );
 
     let mut diagnostic_fields = HashMap::new();
+    diagnostic_fields.insert(ctx.sym("reason"), Value::Str("map_key_absent".to_string()));
     diagnostic_fields.insert(
-        "reason".to_string(),
-        Value::Str("map_key_absent".to_string()),
-    );
-    diagnostic_fields.insert(
-        "at".to_string(),
+        ctx.sym("at"),
         Value::Variant {
-            type_name: "Locus".to_string(),
-            variant_name: "PortLocus".to_string(),
+            type_name: ctx.sym("Locus"),
+            variant_name: ctx.sym("PortLocus"),
             fields: Rc::new(locus_fields),
         },
     );
     diagnostic_fields.insert(
-        "correction".to_string(),
+        ctx.sym("correction"),
         Value::Variant {
-            type_name: "Correction".to_string(),
-            variant_name: "Unavailable".to_string(),
+            type_name: ctx.sym("Correction"),
+            variant_name: ctx.sym("Unavailable"),
             fields: Rc::new(correction_fields),
         },
     );
 
     Value::Record {
-        type_name: "Diagnostic".to_string(),
+        type_name: ctx.sym("Diagnostic"),
         fields: Rc::new(diagnostic_fields),
     }
 }
@@ -1632,13 +1756,13 @@ fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
     ctx: &InterpContext,
-) -> Option<HashMap<String, Value>> {
+) -> Option<HashMap<Symbol, Value>> {
     match pattern {
         MatchPattern::Wildcard => Some(HashMap::new()),
 
         MatchPattern::Bind { name } => {
             let mut bindings = HashMap::new();
-            bindings.insert(name.clone(), value.clone());
+            bindings.insert(ctx.sym(name), value.clone());
             Some(bindings)
         }
 
@@ -1672,8 +1796,8 @@ fn match_pattern(
                     // a genuine `Holds` is handled by nominal matching below.
                     if name == "Holds"
                         && parent_enum.as_deref() == Some("Witness")
-                        && variant_name != "Holds"
-                        && variant_name != "Violates"
+                        && *variant_name != ctx.sym("Holds")
+                        && *variant_name != ctx.sym("Violates")
                     {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
@@ -1685,8 +1809,8 @@ fn match_pattern(
                     }
                     if name == "Present"
                         && parent_enum.as_deref() == Some("Optional")
-                        && variant_name != "Present"
-                        && variant_name != "Absent"
+                        && *variant_name != ctx.sym("Present")
+                        && *variant_name != ctx.sym("Absent")
                     {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
@@ -1696,7 +1820,7 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if variant_name != name {
+                    if *variant_name != ctx.sym(name) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
@@ -1704,7 +1828,10 @@ fn match_pattern(
                         let field_name =
                             field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
-                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let field_val = fields
+                            .get(&ctx.sym(&field_name))
+                            .cloned()
+                            .unwrap_or(Value::Null);
                         // Recursively match the field's binding pattern
                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
                         bindings.extend(sub_bindings);
@@ -1716,7 +1843,7 @@ fn match_pattern(
                 // name is the record type must bind its fields here — the Value::Variant arm
                 // above only covers coproduct variants.
                 Value::Record { type_name, fields } => {
-                    if type_name != name {
+                    if *type_name != ctx.sym(name) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
@@ -1724,7 +1851,10 @@ fn match_pattern(
                         let field_name =
                             field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
-                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let field_val = fields
+                            .get(&ctx.sym(&field_name))
+                            .cloned()
+                            .unwrap_or(Value::Null);
                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
                         bindings.extend(sub_bindings);
                     }
@@ -1861,7 +1991,7 @@ fn match_pattern(
                             field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
                         let field_val = match field_name.as_str() {
-                            "diagnostic" => native_map_absent_diagnostic_value(),
+                            "diagnostic" => native_map_absent_diagnostic_value(ctx),
                             _ => return None,
                         };
                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -1939,7 +2069,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else {
-        match env.lookup(&func_name) {
+        match env.lookup(ctx.sym(&func_name)) {
             Some(Value::Fn { node }) => node.clone(),
             // Calling a closure-valued parameter directly, e.g. fold_list's `cons(empty, h)`.
             // The arg names don't bind closure params (closures are positional), so pass values.
@@ -2080,7 +2210,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     // tagged AlgebraMethodSemantics — e.g. fold_node's `algebra.init(n)`/`algebra.step(...)`
     // over a NodeFold record.
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
-        if let Some(field_val) = fields.get(&method_name) {
+        if let Some(field_val) = fields.get(&ctx.sym(&method_name)) {
             match field_val {
                 Value::Closure { .. } => {
                     let f = field_val.clone();
@@ -2155,23 +2285,24 @@ fn extract_field(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    let field_sym = ctx.sym(field);
     match value {
         Value::Record { type_name, fields } => {
             fields
-                .get(field)
+                .get(&field_sym)
                 .cloned()
                 .ok_or_else(|| InterpError::NoSuchField {
-                    type_name: type_name.clone(),
+                    type_name: ctx.resolve(*type_name).to_string(),
                     field: field.to_string(),
                 })
         }
         Value::Variant {
             type_name, fields, ..
         } => fields
-            .get(field)
+            .get(&field_sym)
             .cloned()
             .ok_or_else(|| InterpError::NoSuchField {
-                type_name: type_name.clone(),
+                type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
         Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
@@ -2197,18 +2328,18 @@ fn eval_record_lit(
     for child in node.children.iter() {
         let fname = field_init_node_name_at(child.clone(), ctx.si());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
-        fields.insert(fname, fval);
+        fields.insert(ctx.sym(&fname), fval);
     }
 
     if let Some(pe) = parent_enum {
         Ok(Value::Variant {
-            type_name: pe.to_string(),
-            variant_name: type_name,
+            type_name: ctx.sym(pe),
+            variant_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
         })
     } else {
         Ok(Value::Record {
-            type_name,
+            type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
         })
     }
@@ -2268,7 +2399,7 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     let items = expect_list(&collection, "foreach")?;
     let mut results = Vec::with_capacity(items.len());
     for item in items.iter() {
-        let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
+        let iter_env = Env::with_binding(env, ctx.sym(&var_name), item.clone());
         results.push(eval_expr(&body_node, &iter_env, ctx)?);
     }
     Ok(list_value((results)))
@@ -2567,10 +2698,10 @@ fn eval_algebra_method(
                 .enumerate()
                 .map(|(i, v)| {
                     let mut fields = HashMap::new();
-                    fields.insert("index".to_string(), Value::Int(i as i64));
-                    fields.insert("value".to_string(), v.clone());
+                    fields.insert(ctx.sym("index"), Value::Int(i as i64));
+                    fields.insert(ctx.sym("value"), v.clone());
                     Value::Record {
-                        type_name: "Pair".to_string(),
+                        type_name: ctx.sym("Pair"),
                         fields: Rc::new(fields),
                     }
                 })
@@ -2838,7 +2969,7 @@ fn build_service_param_env(
     // First pass: bind named args by name
     for (opt_name, val) in args {
         if let Some(name) = opt_name {
-            bindings.insert(name.clone(), val.clone());
+            bindings.insert(ctx.sym(name), val.clone());
         }
     }
 
@@ -2851,9 +2982,9 @@ fn build_service_param_env(
         .collect();
     for param in op_node.params.iter() {
         let name = param_node_name_at(param.clone(), ctx.si());
-        if !bindings.contains_key(&name) {
+        if !bindings.contains_key(&ctx.sym(&name)) {
             if positional_idx < positional_args.len() {
-                bindings.insert(name, positional_args[positional_idx].clone());
+                bindings.insert(ctx.sym(&name), positional_args[positional_idx].clone());
                 positional_idx += 1;
             }
         }
@@ -2862,10 +2993,10 @@ fn build_service_param_env(
     // Third pass: fill defaults for any remaining unbound params
     for param in op_node.params.iter() {
         let name = param_node_name_at(param.clone(), ctx.si());
-        if !bindings.contains_key(&name) {
+        if !bindings.contains_key(&ctx.sym(&name)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
-                bindings.insert(name, default_val);
+                bindings.insert(ctx.sym(&name), default_val);
             }
         }
     }
@@ -2970,12 +3101,12 @@ fn map_shell_outputs(
                 }
             }
         };
-        fields.insert(field_name, value);
+        fields.insert(ctx.sym(&field_name), value);
     }
 
     // Return as record with the type name
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -3019,7 +3150,7 @@ fn dispatch_rest(
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
             let path_str = format!("{}", path_val);
-            substitute_template(&path_str, param_env)
+            substitute_template(&path_str, param_env, ctx)
         }
         None => String::new(),
     };
@@ -3284,7 +3415,7 @@ fn find_service_config_string(
 }
 
 /// Substitute `{param}` placeholders in a template string with values from the environment.
-fn substitute_template(template: &str, env: &Rc<Env>) -> String {
+fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> String {
     let mut result = String::new();
     let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
@@ -3296,7 +3427,7 @@ fn substitute_template(template: &str, env: &Rc<Env>) -> String {
                 }
                 var_name.push(c2);
             }
-            if let Some(val) = env.lookup(&var_name) {
+            if let Some(val) = env.lookup(ctx.sym(&var_name)) {
                 result.push_str(&format!("{}", val));
             } else {
                 // Leave unresolved placeholders as-is
@@ -3368,7 +3499,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
                 if matches!(v, Value::Null) {
                     continue;
                 }
-                obj.insert(k.clone(), value_to_json(v)?);
+                obj.insert(resolve_sym(*k), value_to_json(v)?);
             }
             serde_json::Value::Object(obj)
         }
@@ -3401,10 +3532,10 @@ fn map_response_to_value(
     let mut fields = HashMap::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        fields.insert(field_name, Value::Str(text.to_string()));
+        fields.insert(ctx.sym(&field_name), Value::Str(text.to_string()));
     }
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -3435,9 +3566,9 @@ fn map_response_to_value_json(
     if json.is_array() && !children.is_empty() {
         let mut fields = HashMap::new();
         let first_field = authored_name_at(ctx.si(), children[0].clone());
-        fields.insert(first_field, json_to_value(json));
+        fields.insert(ctx.sym(&first_field), json_to_value(json));
         return Ok(Value::Record {
-            type_name: authored_name_at(ctx.si(), op_node.clone()),
+            type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
             fields: Rc::new(fields),
         });
     }
@@ -3473,11 +3604,11 @@ fn map_response_to_value_json(
                 }
             }
         };
-        fields.insert(field_name, val);
+        fields.insert(ctx.sym(&field_name), val);
     }
 
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -3551,8 +3682,10 @@ fn eval_builtin(
         // that shadow a coproduct's arm-set with a parallel `data ctor_tag: Symbol` vocabulary.
         // The constructor's own name IS the discriminant; no per-type code is required.
         "discriminant" => match positional.first() {
-            Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
-            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            Some(Value::Variant { variant_name, .. }) => {
+                Ok(Some(Value::Str(resolve_sym(*variant_name))))
+            }
+            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(resolve_sym(*type_name)))),
             _ => Ok(None),
         },
 
@@ -3966,6 +4099,14 @@ fn record_flatten(items: usize) {
 fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
+    let monoid_syms = active_ctx().map(|ctx| {
+        (
+            ctx.sym("Empty"),
+            ctx.sym("Cons"),
+            ctx.sym("head"),
+            ctx.sym("tail"),
+        )
+    });
     loop {
         match &cur {
             Value::List(items) => {
@@ -3985,20 +4126,24 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 variant_name,
                 fields,
                 ..
-            } => match variant_name.as_str() {
-                "Empty" => {
+            } => {
+                let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
+                if *variant_name == empty_sym {
                     record_flatten(out.len());
                     return Some(out);
                 }
-                "Cons" => match (fields.get("head"), fields.get("tail")) {
-                    (Some(head), Some(tail)) => {
-                        out.push(head.clone());
-                        cur = tail.clone();
+                if *variant_name == cons_sym {
+                    match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                        (Some(head), Some(tail)) => {
+                            out.push(head.clone());
+                            cur = tail.clone();
+                        }
+                        _ => return None,
                     }
-                    _ => return None,
-                },
-                _ => return None,
-            },
+                } else {
+                    return None;
+                }
+            }
             _ => return None,
         }
     }
@@ -4035,9 +4180,9 @@ fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>>
 fn is_map_lookup_receiver(val: &Value) -> bool {
     match val {
         Value::Map(_) => true,
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            fields.contains_key("lookup")
-        }
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => active_ctx()
+            .map(|ctx| fields.contains_key(&ctx.sym("lookup")))
+            .unwrap_or(false),
         _ => false,
     }
 }
@@ -4061,9 +4206,12 @@ fn raw_map_lookup(
             None => Ok(Value::Null),
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let lookup = fields.get("lookup").ok_or_else(|| InterpError::TypeError {
-                msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
-            })?;
+            let lookup_sym = ctx.sym("lookup");
+            let lookup = fields
+                .get(&lookup_sym)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+                })?;
             match lookup {
                 Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
                 Value::Fn { node } => {
