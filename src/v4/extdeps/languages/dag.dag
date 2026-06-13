@@ -3287,14 +3287,19 @@ fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_pick_arm_literal_binding(binding: Symbol) -> Bool {
+  (binding == ^dag_binding_mvp1_pick_lit_one)
+    || (binding == ^dag_binding_mvp1_pick_lit_two)
+}
+
 fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> GrammarExpr {
   let cls = concrete_syntax_token_class(token: token)
   if cls == ^dag_token_kw_true {
     dag_grammar_pick_condition_terminal()
   } else {
     match token {
-      BoundToken { token_class: ^dag_token_ident, binding: b } =>
-        if (b == ^dag_binding_mvp1_pick_lit_one) || (b == ^dag_binding_mvp1_pick_lit_two) {
+      BoundToken { token_class: c, binding: b } =>
+        if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal(token_class: cls)
