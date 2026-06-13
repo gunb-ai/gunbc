@@ -383,6 +383,56 @@ mod tests {
         assert!(ci_changed_path_affects_v4("src/v4/workflow/bootstrap.dag"));
     }
 
+    fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
+            .filter_map(|e| e.ok())
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_dag_paths(&path, out);
+            } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                out.push(path);
+            }
+        }
+    }
+
+    // Drift tripwire: every .dag file the ci_floor compile actually reads
+    // (--source-root src/v4 walks the tree recursively) must be covered by the allowlist.
+    // A new src/v4/<dir>/x.dag that escapes all prefixes will fail here before CI silently skips it.
+    #[test]
+    fn affects_v4_allowlist_covers_all_src_v4_dag_files() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // tools/ci_affected_components -> repo root
+        let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let src_v4 = repo_root.join("src/v4");
+        if !src_v4.exists() {
+            return; // skip if running outside repo context
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_paths(&src_v4, &mut dag_files);
+        assert!(!dag_files.is_empty(), "expected .dag files under src/v4");
+        let mut uncovered: Vec<String> = Vec::new();
+        for abs in &dag_files {
+            let rel = abs
+                .strip_prefix(repo_root)
+                .expect("dag path must be under repo root");
+            let rel_str = rel.to_str().expect("path must be valid utf-8");
+            if !ci_changed_path_affects_v4(rel_str) {
+                uncovered.push(rel_str.to_string());
+            }
+        }
+        assert!(
+            uncovered.is_empty(),
+            "ci_changed_path_affects_v4 is NARROWER than the ci_floor compile closure.\n\
+             These src/v4 .dag files are compiled by ci_floor (--source-root src/v4) \
+             but NOT covered by the allowlist — add them:\n  {}",
+            uncovered.join("\n  ")
+        );
+    }
+
     #[test]
     fn release_distribution_includes_release_authority_paths() {
         assert!(ci_changed_path_affects_release_distribution(
