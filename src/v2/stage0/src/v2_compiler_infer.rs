@@ -5258,49 +5258,65 @@ pub fn peel_alias_once_for_field_access_bounded(
     mut depth: i64,
 ) -> Rc<Node> {
     loop {
-        if depth > 20 {
-            break n.clone();
-        }
-        let once = resolve_node(n.clone(), env.clone(), module_name.clone())
-            .resolved
-            .clone();
-        if ((once.connective.clone() == Connective::Conj)
-            || (once.connective.clone() == Connective::Disj))
-        {
-            break once.clone();
-        } else if (((once.connective.clone() == Connective::NoConnective)
-            && ((once.children.clone().len() as i64) > 0))
-            && (once.inferred.clone() == None))
-        {
-            n = resolve_node_bounded(once.clone(), env.clone(), module_name.clone(), 0)
+        if (depth.clone() > 20) {
+            break n;
+        } else {
+            let once = resolve_node(n, env.clone(), module_name.clone())
                 .resolved
                 .clone();
-            depth += 1;
-            continue;
-        } else if (once.inferred.clone() != None) {
-            match once.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    if ((target.connective.clone() == Connective::Conj)
-                        || (target.connective.clone() == Connective::Disj))
+            if ((once.connective.clone() == Connective::Conj)
+                || (once.connective.clone() == Connective::Disj))
+            {
+                break once.clone();
+            } else {
+                if (((once.connective.clone() == Connective::NoConnective)
+                    && ((once.children.clone().len() as i64) > 0))
+                    && (once.inferred.clone() == None))
+                {
                     {
-                        break once.clone();
-                    } else {
-                        n = resolve_node_bounded(
-                            target.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                            0,
-                        )
-                        .resolved
-                        .clone();
-                        depth += 1;
+                        let __tco_0 =
+                            resolve_node_bounded(once.clone(), env.clone(), module_name.clone(), 0)
+                                .resolved
+                                .clone();
+                        let __tco_1 = (depth + 1);
+                        n = __tco_0;
+                        depth = __tco_1;
                         continue;
                     }
+                } else {
+                    if (once.inferred.clone() != None) {
+                        match once.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: target, .. }) => {
+                                if ((target.connective.clone() == Connective::Conj)
+                                    || (target.connective.clone() == Connective::Disj))
+                                {
+                                    break once.clone();
+                                } else {
+                                    {
+                                        let __tco_0 = resolve_node_bounded(
+                                            target.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                            0,
+                                        )
+                                        .resolved
+                                        .clone();
+                                        let __tco_1 = (depth + 1);
+                                        n = __tco_0;
+                                        depth = __tco_1;
+                                        continue;
+                                    }
+                                }
+                            }
+                            _ => {
+                                break once.clone();
+                            }
+                        }
+                    } else {
+                        break once.clone();
+                    }
                 }
-                _ => break once.clone(),
             }
-        } else {
-            break once.clone();
         }
     }
 }
