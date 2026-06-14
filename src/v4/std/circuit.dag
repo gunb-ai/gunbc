@@ -131,9 +131,7 @@ type CapacitorFold {
   rating: CapacitorRating
 }
 
-// v[t] = v[t-1] + (1/C)·i·dt — normalized S1: when microfarads = 1_000_000,
-// dv_microvolts = i_microamperes * dt_microseconds / 1_000_000; we accumulate
-// charge and mirror dv into voltage in micro-unit fixed point (C absorbed into scale).
+// v[t] = v[t-1] + (i·dt)/C — micro-unit fixed point; microfarads must be non-zero.
 fn capacitor_fold_step(
   element: CapacitorFold,
   state: CapacitorState,
@@ -142,7 +140,7 @@ fn capacitor_fold_step(
 ) -> CapacitorState {
   let charge_delta = int_mul(a: current.microamperes, b: dt.dt_microseconds)
   let new_charge = int_add(a: state.charge_microcoulombs, b: charge_delta)
-  let dv = int_mul(a: charge_delta, b: element.rating.microfarads)
+  let dv = charge_delta / element.rating.microfarads
   CapacitorState {
     voltage: PotentialDifference {
       microvolts: int_add(a: state.voltage.microvolts, b: dv)
@@ -195,7 +193,7 @@ fn inductor_fold_step(
 ) -> InductorState {
   let flux_delta = int_mul(a: voltage.difference.microvolts, b: dt.dt_microseconds)
   let new_flux = int_add(a: state.flux_microwebers, b: flux_delta)
-  let di = int_mul(a: flux_delta, b: element.rating.microhenries)
+  let di = flux_delta / element.rating.microhenries
   InductorState {
     current: BranchCurrent {
       microamperes: int_add(a: state.current.microamperes, b: di)

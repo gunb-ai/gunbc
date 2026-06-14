@@ -7,10 +7,14 @@ module v4.test.claim.manual.circuit_passive_map_fold_anchor
 import v4.std.algebra { Cons, Empty }
 import v4.std.circuit {
   BranchCurrent,
+  BranchVoltage,
   CapacitorFold,
   CapacitorRating,
   CapacitorState,
   FoldStep,
+  InductorFold,
+  InductorRating,
+  InductorState,
   MapStep,
   PotentialDifference,
   ResistorMap,
@@ -19,6 +23,7 @@ import v4.std.circuit {
   TimeSeriesSignal,
   TimeStep,
   capacitor_fold_step,
+  inductor_fold_step,
   resistor_map_voltage,
 }
 import v4.std.logic { Bool }
@@ -42,12 +47,26 @@ data circuit_anchor_current: BranchCurrent = BranchCurrent { microamperes: 2 }
 
 data circuit_anchor_capacitor: CapacitorFold = CapacitorFold {
   kind: FoldStep
-  rating: CapacitorRating { microfarads: 1 }
+  rating: CapacitorRating { microfarads: 2 }
 }
 
 data circuit_anchor_cap_initial: CapacitorState = CapacitorState {
   voltage: PotentialDifference { microvolts: 0 }
   charge_microcoulombs: 0
+}
+
+data circuit_anchor_inductor: InductorFold = InductorFold {
+  kind: FoldStep
+  rating: InductorRating { microhenries: 2 }
+}
+
+data circuit_anchor_ind_initial: InductorState = InductorState {
+  current: BranchCurrent { microamperes: 0 }
+  flux_microwebers: 0
+}
+
+data circuit_anchor_voltage: BranchVoltage = BranchVoltage {
+  difference: PotentialDifference { microvolts: 4 }
 }
 
 data circuit_anchor_dt: TimeStep = TimeStep { dt_microseconds: 1000 }
@@ -72,6 +91,18 @@ fn circuit_anchor_capacitor_fold_holds() -> Bool {
     dt: circuit_anchor_dt,
   )
   stepped.charge_microcoulombs == 2000
+    && stepped.voltage.microvolts == 1000
+}
+
+fn circuit_anchor_inductor_fold_holds() -> Bool {
+  let stepped = inductor_fold_step(
+    element: circuit_anchor_inductor,
+    state: circuit_anchor_ind_initial,
+    voltage: circuit_anchor_voltage,
+    dt: circuit_anchor_dt,
+  )
+  stepped.flux_microwebers == 4000
+    && stepped.current.microamperes == 2000
 }
 
 data claim_circuit_passive_map_fold_compiles: TestClaim = CompilesClaim {
