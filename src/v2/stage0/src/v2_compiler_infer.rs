@@ -5371,6 +5371,7 @@ pub fn expand_alias_chain_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
+    origin_name: String,
     seen: Rc<std::collections::BTreeSet<String>>,
     lossy: bool,
 ) -> Rc<Node> {
@@ -5381,55 +5382,22 @@ pub fn expand_alias_chain_for_field_access(
     };
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
-    if std::env::var("DBG_CHAIN").is_ok() {
-        let fields: Vec<String> = structural
-            .children
-            .clone()
-            .iter()
-            .map(|f| {
-                let ft = crate::v2_compiler_infer_lookup::product_field_result_type(f.clone());
-                match ft {
-                    Some(t) => format!(
-                        "field({})=type[name={} conn={:?} ch={} inf={} istv_name={}]",
-                        f.name.clone(),
-                        t.name.clone(),
-                        t.connective.clone(),
-                        t.children.clone().len(),
-                        match t.inferred.clone() {
-                            Some(i) => format!("{}", is_type_variable(i.clone())),
-                            None => "none".to_string(),
-                        },
-                        is_type_variable_name(t.name.clone()),
-                    ),
-                    None => format!("field({})=type[none]", f.name.clone()),
-                }
-            })
-            .collect();
-        eprintln!(
-            "DBG chain n.name={} structural.name={} conn={:?} ch={} lossy={} has_unres={} fields={:?}",
-            n.name.clone(),
-            structural.name.clone(),
-            structural.connective.clone(),
-            structural.children.clone().len(),
-            lossy,
-            record_has_unresolved_param_field(structural.clone(), env.clone()),
-            fields,
-        );
-    }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
         if (lossy && record_has_unresolved_param_field(structural.clone(), env.clone())) {
-            n.clone()
+            // Fail closed: the reached record has a field typed by a param the
+            // dropped-arg chain cannot substitute. Return a bare nominal leaf so
+            // field lookup yields a "no field" diagnostic instead of silently
+            // resolving to the raw type variable.
+            nominal_type_ref(origin_name.clone())
         } else {
             structural.clone()
         }
     } else {
         {
             let next_name = structural.name.clone();
-            if ((next_name.as_str() == "".to_string().as_str())
-                || seen.contains(&next_name))
-            {
+            if ((next_name.as_str() == "".to_string().as_str()) || seen.contains(&next_name)) {
                 structural.clone()
             } else {
                 match lookup_type_by_name(env.clone(), next_name.clone()) {
@@ -5445,6 +5413,7 @@ pub fn expand_alias_chain_for_field_access(
                             target.clone(),
                             env.clone(),
                             module_name.clone(),
+                            origin_name.clone(),
                             next_seen,
                             next_lossy,
                         )
