@@ -303,6 +303,42 @@ pub struct MultiEntryIndex {
     typed_module_cache: RefCell<HashMap<String, Rc<v2_compiler_infer::TypecheckModuleResult>>>,
 }
 
+/// Pre-seed `table` with the fixed type-name set that `build_type_env`
+/// (v2_compiler_infer) interns AT TYPE TIME: `kernel_type_set()` (String, Int,
+/// Bool, Json, Unit, …), the Optional family (`Optional`/`Present`/`Absent`/
+/// `value`/`none`), and `compiler_recursive_types()`.
+///
+/// Why this is REQUIRED for the typed-module cache to be sound: `build_type_env`
+/// interns these names into a *local clone* of whatever intern table it is given,
+/// so their ids land after the parse tokens already in that table — i.e. they are
+/// table-SIZE dependent. The shared index table grows as each entry parses, so
+/// without this seed a module typed for an early entry bakes its kernel-type ids
+/// at that entry's table size, while a module typed fresh for a later entry uses
+/// different kernel-type ids; a reused binding (keyed by the early ids) then
+/// misses on lookup and the type collapses to the `Json` fallback — an
+/// order-dependent, verdict-affecting miscompile. Seeding these names into the
+/// SHARED table BEFORE any parse makes `intern()` return the same ids for every
+/// entry's `build_type_env`, so cached and freshly-typed modules cross-reference
+/// correctly.
+///
+/// This only ADDS names `build_type_env` would intern anyway (idempotent intern);
+/// it changes no typecheck semantics. The full claim-witness corpus across
+/// permuted entry orders (vs the no-cache cold resolve as oracle) is the proof
+/// that the seed is complete — see `resolve_typed_cache_equivalence_test`.
+fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
+    let mut t = table;
+    for name in v2_rt::map_keys(&kernel_type_set()).iter().cloned() {
+        t = intern(t, name).table.clone();
+    }
+    for name in ["Optional", "Present", "Absent", "value", "none"] {
+        t = intern(t, name.to_string()).table.clone();
+    }
+    for name in v2_rt::map_keys(&compiler_recursive_types()).iter().cloned() {
+        t = intern(t, name).table.clone();
+    }
+    t
+}
+
 /// Scan the given source roots once and return a `MultiEntryIndex`. Only the
 /// filesystem scan happens here; tokenise+parse work is deferred to the first
 /// `resolve_entry_with_index` call that needs each file, so the index build cost
@@ -310,7 +346,7 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     MultiEntryIndex {
         source_files: build_module_index(source_roots),
-        intern_table: RefCell::new(empty_intern_table()),
+        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
     }
