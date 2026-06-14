@@ -9,11 +9,12 @@
 // fact as fold-over-dt passive integration in the parent lane thesis
 // (circuit = dataflow DAG of stream operators over time-series signals).
 //
-// Consumes: std.types List/Nat; downstream analog_passive step operators.
+// Consumes: std.types List/Float, std.nat Nat; downstream analog_passive step operators.
 
 module std.time_series_signal
 
-import std.types { List, Nat, Float }
+import std.types { List, Float }
+import std.nat { Nat }
 
 type TimeSeriesSample<T> {
   step_index: Nat

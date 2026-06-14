@@ -17,14 +17,13 @@
 
 module std.analog_passive
 
-import std.float { Float }
+import std.types { Float, List }
 import std.time_series_signal {
   TimeSeriesSample,
   TimeSeriesSignal,
   time_series_sample,
   time_series_signal,
 }
-import std.types { List }
 
 // --- Affine voltage types ---------------------------------------------------
 //
@@ -109,10 +108,14 @@ fn inductor_fold_step(
 }
 
 // --- Signal-level operators (map / fold over TimeSeriesSignal) --------------
+//
+// Fold accumulators are Float-specific (v2 generic record params not yet
+// available for accumulator carriers — dissolve-on: substrate G3/parametric
+// records).
 
-type PassiveFoldAcc<T> {
+type PassiveFoldAcc {
   state: Float
-  samples: List<TimeSeriesSample<T>>
+  samples: List<TimeSeriesSample<Float>>
 }
 
 fn resistor_map_signal(
@@ -133,14 +136,14 @@ fn capacitor_fold_signal(
   current: TimeSeriesSignal<Float>
 ) -> TimeSeriesSignal<Float> {
   let folded = current.samples |> fold(
-    init: PassiveFoldAcc<Float> { state: initial_voltage, samples: [] },
+    init: PassiveFoldAcc { state: initial_voltage, samples: [] },
     f: fn(acc, s) {
       let v = capacitor_fold_step(
         step: step,
         prev_voltage: acc.state,
         current_amperes: s.value
       )
-      PassiveFoldAcc<Float> {
+      PassiveFoldAcc {
         state: v,
         samples: list_push(acc.samples, time_series_sample(step_index: s.step_index, value: v))
       }
@@ -155,14 +158,14 @@ fn inductor_fold_signal(
   voltage: TimeSeriesSignal<Float>
 ) -> TimeSeriesSignal<Float> {
   let folded = voltage.samples |> fold(
-    init: PassiveFoldAcc<Float> { state: initial_current, samples: [] },
+    init: PassiveFoldAcc { state: initial_current, samples: [] },
     f: fn(acc, s) {
       let i = inductor_fold_step(
         step: step,
         prev_current: acc.state,
         voltage_volts: s.value
       )
-      PassiveFoldAcc<Float> {
+      PassiveFoldAcc {
         state: i,
         samples: list_push(acc.samples, time_series_sample(step_index: s.step_index, value: i))
       }

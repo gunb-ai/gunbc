@@ -20,6 +20,7 @@ import std.analog_passive {
   affine_voltage,
   affine_voltage_add,
   voltage_difference,
+  affine_voltage_volts,
 }
 import std.logic { Bool }
 
@@ -31,11 +32,11 @@ fn analog_passive_rlc_step_witness() -> Bool {
   )
   let resistor_ok = (v_r > 1.99) && (v_r < 2.01)
 
-  // Capacitor FOLD: C=1µF, dt=1µs, i=1mA, v0=0 → Δv = 1 V
+  // Capacitor FOLD: C=1µF, dt=1µs, i=1A, v0=0 → Δv = 1 V
   let v_c = capacitor_fold_step(
     step: CapacitorFoldStep { capacitance_farads: 0.000001, dt_seconds: 0.000001 },
     prev_voltage: 0.0,
-    current_amperes: 0.001
+    current_amperes: 1.0
   )
   let capacitor_ok = (v_c > 0.99) && (v_c < 1.01)
 
@@ -51,7 +52,8 @@ fn analog_passive_rlc_step_witness() -> Bool {
   let v0 = affine_voltage(volts: 1.5)
   let dv = voltage_difference(delta_volts: 0.5)
   let v1 = affine_voltage_add(v: v0, d: dv)
-  let affine_ok = (v1.volts > 1.99) && (v1.volts < 2.01)
+  let v1_volts = affine_voltage_volts(v: v1)
+  let affine_ok = (v1_volts > 1.99) && (v1_volts < 2.01)
 
   resistor_ok && capacitor_ok && inductor_ok && affine_ok
 }
