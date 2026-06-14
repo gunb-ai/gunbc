@@ -36,7 +36,7 @@ fallback — an order-dependent verdict flip.
   (`src/v2/tests/src/resolve_typed_cache_equivalence_test.rs:1-19`).
 
 **First inhabitant on the substrate path:** PR1 is also the live first chapter of the
-`cache_interface` story — resolve-cost PR2 (swift-lark-563, in flight) grounds the staged
+`cache_interface` story — resolve-cost PR2 (in flight) grounds the staged
 dims as the first real consumer; PR1's manual seed + falsifier is what exists today.
 
 Model authority for the type-time interning shape:
@@ -179,7 +179,7 @@ triggers — not a separate product idea.
 | **Structure on v2** | Partially resolves | Type shapes load; full claim-**run** not wired end-to-end |
 | **End-to-end eval on self-hosted compiler** | Not yet wired | Three resolve gaps (workers in flight): optional fields; one-of-one enum tags; multi-hop type-alias chains (money/Measure carrier) |
 | **PR1 (#4867)** | Manual discharge | `seed_kernel_intern_names` + equivalence falsifier |
-| **PR2 (swift-lark-563)** | First real consumer | Structural grounding + Rust behavioral proof; substrate eval honest-dormant |
+| **PR2 (resolve-cost, in flight)** | First real consumer | Structural grounding + Rust behavioral proof; substrate eval honest-dormant |
 
 **Do not read this doc as "the fix already works."** TARGET properties below are what the
 substrate is built **toward**.
