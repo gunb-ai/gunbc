@@ -17,11 +17,13 @@ use crate::v2_compiler_parse;
 use crate::v2_compiler_resolve;
 use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
+use crate::std_node::compiler_recursive_types;
+use crate::std_types::kernel_type_set;
 use crate::v2_rt;
 use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
-    field_init_node_value, has_child_named, is_error_diagnostic,
+    field_init_node_value, has_child_named, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
     NewlineIndex, Node,
 };
