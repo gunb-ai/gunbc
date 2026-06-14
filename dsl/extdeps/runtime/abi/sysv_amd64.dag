@@ -2,11 +2,13 @@
 //
 // Scope: Slice-1 Linux x86-64 syscall register convention cited to the real kernel/psABI docs.
 // Args flow rdi → rsi → rdx → r10 → r8 → r9; syscall NR and return value in rax. The fourth
-// argument uses r10 (not rcx) because the SYSCALL instruction clobbers rcx — a review spot-check.
+// argument uses r10 (not rcx) because SYSCALL saves rip to rcx and rflags to r11 — both clobbered.
 //
 // Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (x86-64 psABI register roles)
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/entry_64.S
+//         (entry_SYSCALL_64 header comment: rax=nr, rdi/rsi/rdx/r10/r8/r9=args, rcx/r11 clobbered)
 // Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
-//         (Linux x86-64 syscall convention; see arch/x86/include/asm/syscall.h)
+//         (Linux x86-64 syscall number table)
 
 module extdeps.runtime.abi.sysv_amd64
 
@@ -47,7 +49,7 @@ data sysv_amd64_linux_syscall_convention: CallingConvention = CallingConvention 
   return_register: ReturnValue,
 }
 
-// Green-by-execution: the fourth syscall arg uses r10, not rcx (SYSCALL clobbers rcx).
+// Green-by-execution: the fourth syscall arg uses r10, not rcx (SYSCALL clobbers rcx and r11).
 fn witness_arg3_register_is_r10() -> Bool { sysv_amd64_arg3_binding.gpr == R10 }
 fn witness_number_register_is_rax() -> Bool { sysv_amd64_number_binding.gpr == Rax }
 fn witness_return_register_is_rax() -> Bool { sysv_amd64_return_binding.gpr == Rax }
