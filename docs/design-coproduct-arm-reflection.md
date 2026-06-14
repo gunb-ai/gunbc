@@ -126,11 +126,14 @@ variant type in a Disj coproduct by label"), confirming arms are label→payload
 edges.
 
 So the primitive **attaches to `v4.std.node`** as a derived operation over the
-existing `Disj` connective. This is exactly INVARIANTS P2's prescription
-("extend the substrate reflection *first*, then migrate consumers") and the
-§"Reflection evidence" guidance ("extend the `substrate_reflection` submodule …
-rather than ad hoc mirrors"). It adds **no 7th connective and no 6th behavior**,
-so it does not trip the THESIS substrate-extension stop-signal.
+existing `Disj` connective. INVARIANTS P2 prescribes extending substrate
+reflection *before* migrating consumers; here that means adding the capability to
+**v4 `.dag` substrate** (`std/node.dag`), not extending the v3-Rust
+`substrate_reflection` seed (`lens_declaration_apply.rs` — see §4.3). INVARIANTS
+§"Reflection evidence" (:385) "extend the `substrate_reflection` submodule"
+refers to that v3 seed submodule; this lane's deliverable is the v4 analogue. It
+adds **no 7th connective and no 6th behavior**, so it does not trip the THESIS
+substrate-extension stop-signal.
 
 This is the **Track 2 cure** named in the L1.1 anchor: "the substrate lets you
 *declare* an algebraic type but does not *derive its canonical operations*, so
@@ -422,3 +425,9 @@ the one piece snappy-crab asked to re-read before Phase-2 (it is the whole
 gate. Remaining sub-question: for non-roster coproducts not covered by v3, is
 Path 3 (syntactic count) sufficient as the sole independent factor, or is a
 cross-generation/third path also required?
+
+**Design position (pending sign):** for gated coproducts outside v3 coverage and
+outside C5 rosters, **Path 3 alone discharges the independence obligation** (§5.2
+already marks it "primary, required for non-roster coproducts"). Cross-generation
+is additive where v3 covers the carrier; frontier-discovery is roster-scoped
+only. No third mandatory path is proposed for the general case.
