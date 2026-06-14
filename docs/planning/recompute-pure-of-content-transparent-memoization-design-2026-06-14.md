@@ -92,19 +92,37 @@ intern-table *size*).
 ### Portfolio vocabulary — three primitives + carrier *(ctrl/ROADMAP.md)*
 
 The §2 spine (missing receipt carrier → two invariant faces) maps onto ROADMAP's shared
-vocabulary without respining:
+vocabulary without respining. **Three primitives ↔ three §4.3 TARGET properties — 1:1,
+no fourth primitive, no parallel digest/receipt type:**
 
-| ROADMAP primitive | Meaning | This doc's face |
+| ROADMAP primitive | §4.3 TARGET | Substrate attach |
 | --- | --- | --- |
-| **Content identity** | Key = hash over the transitive closure of declared inputs | §5.1; falsifier input-set |
-| **Hermetic realization** | Realizer reads only inputs in the key — enforced, not hoped | §5.2; un-enforced-purity face |
-| **Receipt + change-driven reconcile** | Persist `key → output`; on change, realize only the gap | §5.3; §6; `RecomputePlan` / `AffectedSet` |
+| **Content identity** | **(c) Content-keyed invalidation** | `ContentHash` / `ExecutionReceiptRef<T> { receipt_digest }` digest seam (`cache_interface.dag:203-204`) — memo-hit-vs-recompute key |
+| **Hermetic realization** | **(b) Enforced purity at boundary** | Equivalence falsifier (§5) — **purity IS the falsifier**, not a new mechanism |
+| **Receipt + change-driven reconcile** | **(a) Automatic memo** | `cache_interface` store/lookup semantics + `ExecutionReceipt<T>` persistence |
 
-**Substrate carrier (the N+M move):** `Realization<Spec, Effect>` — pure Node spec +
-content-hash identity + receipt + locality, **parameterized by an algebraic effect
-handler**. One kernel, N handlers (compute, build, provision, migrate, schedule). Partial
-pieces scatter in `cache_identity`, `cache_interface`, `compute_fabric`, and `v4.std.change`;
-the carrier is **staged-not-inhabited** — the root cause named in §2.
+**Substrate carrier (the N+M move):** `Realization<Spec, Effect>` names the **existing**
+`compute_fabric` ↔ `cache_interface` composition — **not** new types. Abstraction over the
+pair where `ExecutionReceipt` **is** a cache entry on the compute timeline (§4.4):
+
+| Parameter | Existing substrate attach |
+| --- | --- |
+| **Spec** | `WorkUnit<T>` / `ArtifactSpec<T>` — what to compute (`compute_fabric.dag:398-403`), keyed by `ContentHash` |
+| **Effect** | `ExecutionReceipt<T>` / `Outcome<ArtifactRef<T>>` — realized outcome (`compute_fabric.dag:448-451`) |
+| **Handler** | `WorkDemand.effects: List<EffectBoundary>` — std effect/capability discipline (`compute_fabric.dag:274`; `EffectBoundary` forward-stub; inhabited pattern `v4.std.runtime.ResourceEffectBoundary`) — **not** a bespoke effect type |
+| **Digest seam** | `ContentHash` / `ExecutionReceiptRef<T>` — content-addressed reconciliation across the acyclic firewall (`cache_interface.dag:203-204`) |
+
+One kernel, N handlers (compute, build, provision, migrate, schedule). Partial pieces
+already scatter in `cache_identity`, `cache_interface`, `compute_fabric`, and
+`v4.std.change`.
+
+**Inhabitation target (staged):** `CacheInterfaceFacts`, staged dims (`PersistenceLocality`,
+`ArtifactKindId`, …), + `ExecutionReceipt<T>`. ARC inhabitant #1: `#4878` (resolve-cost).
+
+**Staging guard (hard):** `Realization<Spec, Effect>` is a **TARGET / design-of-record
+carrier name** — **not** a minted realized kernel type — until ≥2 **cross-layer**
+inhabitants prove it (resolve #1, sccache #2, provisioning #3). Same ≥2 restraint as
+`CacheFabric<T>` (§4.4). Frame as target, not built type.
 
 **Sharpened findings (portfolio review, 2026-06-14):**
 
@@ -158,11 +176,11 @@ across an impurity boundary. Portfolio authority:
 (operator-elevated 2026-06-14; supersedes ctrl#1607 dep-graph trees). **ARC inhabitant #1:**
 `resolve-cost PR2` (#4878, in flight) — the deepest place is resolve.
 
-**Systemic fix (TARGET, staged):** transparent memoization = inhabited
-`Realization<Spec, Effect>` via `cache_identity` / `cache_interface` / `compute_fabric` —
-the receipt carrier that makes the run reifiable, keys results by content identity, and
-wires the purity-oracle falsifier as standing enforcement (§5–§6). Not claimed working
-today (§4.2).
+**Systemic fix (TARGET, staged):** transparent memoization = TARGET
+`Realization<Spec, Effect>` over `cache_identity` / `cache_interface` / `compute_fabric`
+(§4.4 M9 attach) — the receipt carrier that makes the run reifiable, keys results by
+content identity, and wires the purity-oracle falsifier as standing enforcement (§5–§6).
+Not claimed working today (§4.2).
 
 **Sharpest operator rule:** sharing must be the **same code among our own code**, not two
 abstractions that happen to agree — dogfood the fabric by dogfooding the compiler.
@@ -248,12 +266,12 @@ projects it** (`tools/ci_affected_components/src/receipt.rs:11-13`).
 
 ## 4. Systemic fix — transparent memoization (TARGET, staged)
 
-**Transparent memoization** = inhabited `Realization<Spec, Effect>`: first-class
-pure-content-addressed computation keyed on **content identity**, hermetically realized,
-with **receipt + change-driven reconcile** — observationally equivalent to full
-re-execution, inserted when purity + content key are known — not part of the user-facing
-contract. Effect handler parameterizes the realize step; identity + receipt kernel is shared
-(Finding C).
+**Transparent memoization** = TARGET `Realization<Spec, Effect>` (§2 M9 attach; staging
+guard §4.4): first-class pure-content-addressed computation keyed on **content identity**,
+hermetically realized, with **receipt + change-driven reconcile** — observationally
+equivalent to full re-execution, inserted when purity + content key are known — not part of
+the user-facing contract. Effect handler parameterizes the realize step via
+`WorkDemand.effects`; identity + receipt kernel is shared (Finding C).
 
 ### 4.1 Two scopes, one mechanism
 
