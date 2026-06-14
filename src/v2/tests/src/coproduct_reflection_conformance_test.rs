@@ -47,6 +47,8 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 
 #[test]
 fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
+    // gunbc claim-run resolves sources relative to workspace root; mirror that here.
+    std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved

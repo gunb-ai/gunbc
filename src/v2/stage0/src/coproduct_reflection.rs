@@ -76,10 +76,41 @@ fn variant_is_nullary(variant: &Rc<Node>, ctx: &InterpContext) -> bool {
     payload.connective == Connective::NoConnective && payload.children.is_empty()
 }
 
+fn resolve_source_file_path(file: &str) -> InterpResult<String> {
+    let path = std::path::Path::new(file);
+    if path.is_absolute() && path.exists() {
+        return Ok(file.to_string());
+    }
+    if path.exists() {
+        return Ok(file.to_string());
+    }
+    if let Ok(mut dir) = std::env::current_dir() {
+        loop {
+            let candidate = dir.join(file);
+            if candidate.exists() {
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+    if let Ok(root) = std::env::var("GUNBC_ROOT") {
+        let candidate = std::path::Path::new(&root).join(file);
+        if candidate.exists() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(InterpError::TypeError {
+        msg: format!("coproduct reflection: cannot resolve source path `{file}`"),
+    })
+}
+
 /// Path 3: grammar-level arm labels from `type Name = Arm | Arm | ...` in source text.
 pub fn syntactic_coproduct_arm_labels(file: &str, type_name: &str) -> InterpResult<Vec<String>> {
-    let content = std::fs::read_to_string(file).map_err(|e| InterpError::TypeError {
-        msg: format!("syntactic coproduct arm keys: cannot read `{file}`: {e}"),
+    let resolved = resolve_source_file_path(file)?;
+    let content = std::fs::read_to_string(&resolved).map_err(|e| InterpError::TypeError {
+        msg: format!("syntactic coproduct arm keys: cannot read `{resolved}`: {e}"),
     })?;
     extract_type_sum_arm_labels(&content, type_name).ok_or_else(|| InterpError::TypeError {
         msg: format!("syntactic coproduct arm keys: `{type_name}` not found in `{file}`"),
