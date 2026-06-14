@@ -77,7 +77,7 @@ pub use crate::v2_compiler_infer_patterns::{
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
     is_user_generic_use_site, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-    resolve_item_types, resolve_node,
+    resolve_item_types, resolve_node, resolve_node_bounded,
 };
 pub use crate::v2_compiler_infer_resolve::{ItemResult, NodeResolveResult};
 pub use crate::v2_compiler_infer_service::{
