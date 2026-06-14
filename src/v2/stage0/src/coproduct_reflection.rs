@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v2_compiler_infer_items::ItemKind;
-use crate::v2_interpreter::{InterpContext, InterpError, InterpResult, Value};
 use crate::v2_compiler_infer_types::child_type_node;
+use crate::v2_interpreter::{InterpContext, InterpError, InterpResult, Value};
 use crate::v2_std_core::{authored_name_at, Connective, Node};
 
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
@@ -67,7 +67,10 @@ fn disj_variant_labels(item: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Vec
 }
 
 fn symbol_list_value(labels: &[String]) -> Value {
-    let items: Vec<Value> = labels.iter().map(|label| Value::Str(label.clone())).collect();
+    let items: Vec<Value> = labels
+        .iter()
+        .map(|label| Value::Str(label.clone()))
+        .collect();
     crate::v2_interpreter::list_value(items)
 }
 
@@ -296,27 +299,29 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_finds_connective_arms() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../src/v4/std/node.dag");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v4/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Connective").expect("Connective arms");
         assert_eq!(
             arms,
             vec![
-                "Atom", "Conj", "Disj", "Arrow", "Cardinality", "Instantiation"
+                "Atom",
+                "Conj",
+                "Disj",
+                "Arrow",
+                "Cardinality",
+                "Instantiation"
             ]
         );
     }
 
     #[test]
     fn syntactic_extractor_finds_behavior_arms() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../src/v4/std/node.dag");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v4/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-        assert_eq!(
-            arms,
-            vec!["Value", "Transform", "Branch", "Loop", "Bind"]
-        );
+        assert_eq!(arms, vec!["Value", "Transform", "Branch", "Loop", "Bind"]);
     }
 }

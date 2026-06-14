@@ -20,6 +20,8 @@ mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod coproduct_reflection_conformance_test;
+#[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -29,8 +31,6 @@ mod diagnostics;
 mod effects;
 #[cfg(test)]
 mod fn_as_value_test;
-#[cfg(test)]
-mod coproduct_reflection_conformance_test;
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod generator_match_arm_test;
