@@ -1,9 +1,12 @@
-//! G2: single-hop alias field access through parametric carriers (Measure / ByteSize).
+//! G2/G3: alias field access through parametric carriers (Measure / ByteSize).
 //!
-//! Both tests pin the contract end-to-end via `compile_dag_resolved` and assert
-//! zero hard diagnostics (TESTING.md: behavior-driven, hermetic, one claim per
-//! test). The multi-hop alias case (MoneyMicros = MoneyAmount<Micro> =
-//! Measure<Currency, Micro>) is a G3 follow-up; see the note at the bottom.
+//! G2 (single-hop): ByteSize = Measure<Memory, One>, NatBox = Box<Nat>.
+//! G3 (multi-hop): MoneyMicros = MoneyAmount<Micro> = Measure<Currency, Micro>
+//! resolves through the alias chain; a param-DEPENDENT field threaded through a
+//! parametric-alias chain fails closed (boundary witness); and all of
+//! `dsl/std/measure.dag` loads with zero hard diagnostics. Tests pin the
+//! contract end-to-end and assert zero hard diagnostics (TESTING.md:
+//! behavior-driven, one claim per test).
 
 use v2_compiler::v2_std_core::diagnostic_to_message;
 
@@ -134,11 +137,26 @@ fn money_micros_count(m: MoneyMicros) -> Nat {
     );
 }
 
-// NOTE: a `measure_dag_v2_loads_without_field_errors` test (asserting all of
-// measure.dag loads on v2 with zero diagnostics) is deliberately NOT in this
-// proven-G1+G2 slice. It currently fails with `no field 'count' on type
-// 'MoneyMicros'`: MoneyMicros = MoneyAmount<Micro> = Measure<Currency, Micro>
-// is a MULTI-HOP alias chain, and G2 alias-field expansion only resolves the
-// single-hop case so far (ByteSize.count, covered above). Multi-hop alias
-// field access lands with the G3 follow-up; the full-load test moves there
-// where it goes green.
+// G3 landing site (moved here from the parked G1+G2 NOTE): the whole of
+// `dsl/std/measure.dag` loads on v2 with zero hard diagnostics. Before G3 this
+// failed with `no field 'count' on type 'MoneyMicros'` -- the multi-hop chain
+// MoneyMicros = MoneyAmount<Micro> = Measure<Currency, Micro>. With multi-hop
+// alias field-access it resolves end-to-end (transitive import closure).
+#[test]
+fn measure_dag_v2_loads_without_field_errors() {
+    use std::rc::Rc;
+    let roots: Vec<String> = crate::helpers::source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
+    let entry = entry.to_string_lossy().to_string();
+    let sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let msgs = hard_diagnostic_messages(resolved.as_ref());
+    assert!(
+        msgs.is_empty(),
+        "measure.dag should load on v2 with zero hard diagnostics, got: {msgs:?}"
+    );
+}
