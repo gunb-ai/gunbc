@@ -8,11 +8,8 @@ module v4.test.claim.manual.coproduct_reflection_conformance
 
 import v4.std.algebra { bag_eq }
 import v4.std.logic { Bool }
-import v4.std.node {
-  Symbol,
-  coproduct_arm_keys,
-  syntactic_coproduct_arm_keys
-}
+import v4.std.node { Symbol, syntactic_coproduct_arm_keys }
+import v4.std.node_query { coproduct_arm_keys }
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior

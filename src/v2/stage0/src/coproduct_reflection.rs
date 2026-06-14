@@ -1,12 +1,10 @@
-//! Coproduct-arm reflection — Phase 2a compile-time key enumeration (R-reflect).
+//! R-reflect Phase 2a — minimal dissolving bridges (substrate-native target).
 //!
-//! Bootstrap seam: v2 interpreter intercept over the resolved compile graph (Disj walk).
-//! Path 3 (syntactic): raw source-text scan of `|`-separated arm labels — independent of the
-//! Disj resolver (design-coproduct-arm-reflection.md §5.2).
-//!
-//! Dissolve-on-arrival: substrate compiler builtin once type-name → resolved Disj Node is
-//! expressible in v4 `.dag` (analogous to node_labeled_child_edges for value-level queries).
+//! - `resolve_type_node`: compiler Disj type item → substrate `Node` Value (dissolves when v4
+//!   gains compile-graph access).
+//! - `syntactic_coproduct_arm_keys`: Path-3 raw-source text scan (irreducible I/O boundary; stays Rust).
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v2_compiler_infer_items::ItemKind;
@@ -22,7 +20,7 @@ fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a s
     }
 }
 
-fn type_item_by_name<'a>(
+pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
 ) -> InterpResult<(&'a Rc<Node>, String)> {
@@ -49,30 +47,95 @@ fn type_item_by_name<'a>(
         }
     }
     Err(InterpError::TypeError {
-        msg: format!("coproduct reflection: unknown closed type `{type_name}`"),
+        msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
     })
 }
 
-fn disj_variant_labels(item: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Vec<String>> {
+fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Connective"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(HashMap::new()),
+    }
+}
+
+fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("NodeKind"),
+        variant_name: ctx.sym("TypeNode"),
+        fields: Rc::new(HashMap::from([(ctx.sym("connective"), connective)])),
+    }
+}
+
+fn synthetic_occurrence(ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("NodeOccurrenceId"),
+        variant_name: ctx.sym("SyntheticOccurrence"),
+        fields: Rc::new(HashMap::new()),
+    }
+}
+
+fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Node"),
+        fields: Rc::new(HashMap::from([
+            (ctx.sym("kind"), kind),
+            (
+                ctx.sym("children"),
+                crate::v2_interpreter::list_value(children),
+            ),
+            (ctx.sym("occurrence_id"), synthetic_occurrence(ctx)),
+        ])),
+    }
+}
+
+fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(HashMap::from([
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("Named"),
+                    fields: Rc::new(HashMap::from([(
+                        ctx.sym("name"),
+                        Value::Str(name.to_string()),
+                    )])),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+fn placeholder_arm_target(ctx: &InterpContext) -> Value {
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    )
+}
+
+/// Marshal a resolved closed-coproduct (Disj) type item to substrate `Node` with Named arm edges.
+pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
-            msg: "coproduct reflection: type is not a closed coproduct (Disj)".to_string(),
+            msg: "resolve_type_node: type is not a closed coproduct (Disj)".to_string(),
         });
     }
     let si = ctx.source_indices();
-    Ok(item
-        .children
-        .iter()
-        .map(|child| authored_name_at(si.clone(), child.clone()))
-        .collect())
-}
-
-fn symbol_list_value(labels: &[String]) -> Value {
-    let items: Vec<Value> = labels
-        .iter()
-        .map(|label| Value::Str(label.clone()))
-        .collect();
-    crate::v2_interpreter::list_value(items)
+    let placeholder = placeholder_arm_target(ctx);
+    let mut edges = Vec::with_capacity(item.children.len());
+    for child in item.children.iter() {
+        let label = authored_name_at(si.clone(), child.clone());
+        edges.push(edge_named(ctx, &label, placeholder.clone()));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
+        edges,
+    ))
 }
 
 /// Bootstrap only: resolve declaring source path via cwd walk + optional GUNBC_ROOT.
@@ -119,7 +182,6 @@ pub fn syntactic_coproduct_arm_labels(file: &str, type_name: &str) -> InterpResu
     })
 }
 
-/// Scan source for `type <name> = <arm> (| <arm>)*` without invoking the type resolver.
 fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Option<Vec<String>> {
     let start = find_type_decl_start(source, type_name)?;
     let needle = format!("type {type_name}");
@@ -153,7 +215,6 @@ fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Option<Vec<Stri
     }
 }
 
-/// Word-boundary match: `type Connective` must not match `type ConnectiveCoproductVariant`.
 fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
     let needle = format!("type {type_name}");
     let mut search_from = 0usize;
@@ -209,35 +270,90 @@ fn skip_braced(s: &str) -> Option<&str> {
     None
 }
 
-pub fn eval_coproduct_arm_keys(
+pub fn eval_resolve_type_node(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "coproduct_arm_keys")?;
+    let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
-    let labels = disj_variant_labels(item, ctx)?;
-    Ok(symbol_list_value(&labels))
+    marshal_disj_type_item(ctx, item)
 }
 
 pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
+    let type_name = expect_symbol(
+        args.first().map(|(_, v)| v),
+        "syntactic_coproduct_arm_keys",
+    )?;
     let (_, file) = type_item_by_name(ctx, type_name)?;
     let labels = syntactic_coproduct_arm_labels(&file, type_name)?;
-    Ok(symbol_list_value(&labels))
+    let items: Vec<Value> = labels
+        .iter()
+        .map(|label| Value::Str(label.clone()))
+        .collect();
+    Ok(crate::v2_interpreter::list_value(items))
 }
 
-/// Mechanism-drift probe: drop the last Disj child and compare key sets (test-only).
-pub fn eval_coproduct_arm_keys_with_dropped_last_arm(
+/// Mechanism-drift probe: drop the last Named arm edge from a marshaled Disj node.
+pub fn eval_resolve_type_node_with_dropped_last_arm(
     ctx: &InterpContext,
     type_name: &str,
 ) -> InterpResult<Value> {
     let (item, _) = type_item_by_name(ctx, type_name)?;
-    let mut labels = disj_variant_labels(item, ctx)?;
-    labels.pop();
-    Ok(symbol_list_value(&labels))
+    let node = marshal_disj_type_item(ctx, item)?;
+    let Value::Record { fields, .. } = node else {
+        return Err(InterpError::TypeError {
+            msg: "resolve_type_node: expected Node record".to_string(),
+        });
+    };
+    let children = fields
+        .get(&ctx.sym("children"))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "resolve_type_node: Node missing children".to_string(),
+        })?;
+    let Some(items) = crate::v2_interpreter::free_monoid_to_vec(children) else {
+        return Err(InterpError::TypeError {
+            msg: "resolve_type_node: children not a list".to_string(),
+        });
+    };
+    if items.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "resolve_type_node: Disj has no arms".to_string(),
+        });
+    }
+    let mut trimmed = items[..items.len() - 1].to_vec();
+    if trimmed.is_empty() {
+        trimmed = vec![];
+    }
+    Ok(Value::Record {
+        type_name: ctx.sym("Node"),
+        fields: Rc::new(HashMap::from([
+            (
+                ctx.sym("kind"),
+                fields
+                    .get(&ctx.sym("kind"))
+                    .cloned()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "resolve_type_node: Node missing kind".to_string(),
+                    })?,
+            ),
+            (
+                ctx.sym("children"),
+                crate::v2_interpreter::list_value(trimmed),
+            ),
+            (
+                ctx.sym("occurrence_id"),
+                fields
+                    .get(&ctx.sym("occurrence_id"))
+                    .cloned()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "resolve_type_node: Node missing occurrence_id".to_string(),
+                    })?,
+            ),
+        ])),
+    })
 }
 
 #[cfg(test)]
@@ -274,7 +390,8 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_rejects_connective_prefix_of_longer_type_name() {
-        let source = "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
+        let source =
+            "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
         assert_eq!(
             extract_type_sum_arm_labels(source, "ConnectiveCoproductVariant").expect("variant"),
             vec!["Foo", "Bar"]

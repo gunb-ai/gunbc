@@ -2117,10 +2117,10 @@ fn match_pattern(
 // v4.std.node coproduct reflection intercept (module-scoped bootstrap seam)
 // ---------------------------------------------------------------------------
 
-const STD_NODE_REFLECTION_FNS: &[&str] = &["coproduct_arm_keys", "syntactic_coproduct_arm_keys"];
+const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node", "syntactic_coproduct_arm_keys"];
 
-fn is_v4_std_node_reflection_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_NODE_REFLECTION_FNS.contains(&func_name) {
+fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_NODE_BRIDGE_FNS.contains(&func_name) {
         return false;
     }
     ctx.item_registry
@@ -2146,17 +2146,14 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // R-reflect Phase 2a: compile-time coproduct-arm reflection (intercept-only for
-    // v4.std.node substrate fns; self-recursive .dag stubs trap if bypassed).
-    if is_v4_std_node_reflection_call(ctx, &func_name) {
+    // R-reflect Phase 2a: minimal v4.std.node bridges (resolve_type_node + Path-3 syntactic scan).
+    if is_v4_std_node_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
-            "coproduct_arm_keys" => {
-                crate::coproduct_reflection::eval_coproduct_arm_keys(ctx, &args)
-            }
+            "resolve_type_node" => crate::coproduct_reflection::eval_resolve_type_node(ctx, &args),
             "syntactic_coproduct_arm_keys" => {
                 crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)
             }
-            _ => unreachable!("reflection fn set mismatch"),
+            _ => unreachable!("bridge fn set mismatch"),
         };
     }
 
@@ -4196,7 +4193,7 @@ fn record_flatten(items: usize) {
 /// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
 /// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
 /// raises a type error rather than fabricating an empty/partial list.
-fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
     let monoid_syms = active_ctx().map(|ctx| {

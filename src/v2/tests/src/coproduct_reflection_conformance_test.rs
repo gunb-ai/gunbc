@@ -1,5 +1,6 @@
 //! R-reflect Phase 2a: Path-3 key-set conformance on Connective/Behavior by execution.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use v2_compiler::cli_run;
@@ -56,6 +57,58 @@ fn run_witness(resolved: &ResolvedPipelineResult, function: &str) -> Value {
         .unwrap_or_else(|e| panic!("run {function}: {e}"))
 }
 
+fn symbol_list_strings(val: &Value) -> Vec<String> {
+    let items = match val {
+        Value::List(xs) => xs.iter().cloned().collect::<Vec<_>>(),
+        _ => panic!("expected list, got {val:?}"),
+    };
+    items
+        .iter()
+        .map(|v| match v {
+            Value::Str(s) => s.clone(),
+            other => panic!("expected Str in symbol list, got {other:?}"),
+        })
+        .collect()
+}
+
+fn edge_list_from_node_children(children: &Value) -> Vec<Value> {
+    match children {
+        Value::List(xs) => xs.iter().cloned().collect(),
+        _ => panic!("expected edge list, got {children:?}"),
+    }
+}
+
+fn arm_key_list_from_node(node: &Value) -> Vec<String> {
+    let Value::Record { fields, .. } = node else {
+        panic!("expected Node record, got {node:?}");
+    };
+    let children = fields.get("children").expect("children field");
+    let edges = edge_list_from_node_children(children);
+    let mut keys = Vec::with_capacity(edges.len());
+    for edge in edges {
+        let Value::Record { fields: ef, .. } = edge else {
+            panic!("expected Edge record");
+        };
+        let label = ef.get("label").expect("label");
+        let Value::Variant {
+            variant_name,
+            fields: lf,
+            ..
+        } = label
+        else {
+            panic!("expected EdgeLabel variant");
+        };
+        if variant_name.0 != "Named" {
+            continue;
+        }
+        let Value::Str(name) = lf.get("name").expect("name field") else {
+            panic!("expected Symbol string");
+        };
+        keys.push(name.clone());
+    }
+    keys
+}
+
 #[test]
 fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
     std::env::set_var("GUNBC_ROOT", workspace_root());
@@ -95,21 +148,27 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
     let connective = (None, Value::Str("Connective".to_string()));
 
-    let reflection_keys =
-        coproduct_reflection::eval_coproduct_arm_keys(&ctx, &[connective.clone()])
-            .expect("reflection keys");
-    let corrupted =
-        coproduct_reflection::eval_coproduct_arm_keys_with_dropped_last_arm(&ctx, "Connective")
-            .expect("corrupted keys");
-    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(&ctx, &[connective])
-        .expect("syntactic keys");
+    let reflection_node =
+        coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()])
+            .expect("resolved node");
+    let corrupted = coproduct_reflection::eval_resolve_type_node_with_dropped_last_arm(
+        &ctx,
+        "Connective",
+    )
+    .expect("corrupted node");
+    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(
+        &ctx,
+        &[connective],
+    )
+    .expect("syntactic keys");
 
+    let good_keys = arm_key_list_from_node(&reflection_node);
+    let bad_keys = arm_key_list_from_node(&corrupted);
+    let syntactic_keys = symbol_list_strings(&syntactic);
+
+    assert_eq!(good_keys, syntactic_keys, "baseline keys must match syntactic");
     assert_ne!(
-        reflection_keys, corrupted,
-        "dropped-arm corruption must change reflection output"
-    );
-    assert_ne!(
-        corrupted, syntactic,
-        "mechanism drift (dropped Disj arm) must break Path-3 bag_eq witness"
+        bad_keys, syntactic_keys,
+        "dropped Disj arm must break Path-3 bag_eq witness"
     );
 }
