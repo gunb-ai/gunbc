@@ -100,7 +100,7 @@ run_row() {
 
 batch_green_pass() {
   local title="$1"
-  local entry functions=""
+  local entry="" functions=""
   local _label _entry fn
   while IFS=$'\t' read -r _label _entry fn; do
     [[ -z "$_entry" ]] && continue
