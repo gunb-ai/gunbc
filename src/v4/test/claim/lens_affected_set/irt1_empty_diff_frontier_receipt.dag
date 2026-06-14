@@ -5,6 +5,7 @@
 module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v4.lens.affected_set {
+  ChangedDimensions,
   ChangedSubgraphFrontier,
   DoesNotPropagate,
   EditDimension,
@@ -14,6 +15,7 @@ import v4.lens.affected_set {
   FrontierProduced,
   affected_set_boundary_pure_receipt_node,
   affected_set,
+  canonical_changed_dimension_receipt,
   canonical_transitive_frontier,
   canonical_propagation_receipt,
   empty_affected_fold_acc,
@@ -24,11 +26,24 @@ import v4.lens.affected_set_examples {
   affected_set_claim_failure_node,
   affected_set_example_node
 }
-import v4.std.algebra { length }
+import v4.std.algebra { contains, length }
 import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DataDependsOn, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.node {
+  Atom,
+  Conj,
+  Diff,
+  Edge,
+  Edit,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+  canonical_tag_conj
+}
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -229,22 +244,49 @@ fn irt1_public_affected_set_fails_closed_with_malformed_purity_receipt() -> Bool
   }
 }
 
-fn irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() -> Bool {
-  match affected_set(
+fn irt1_public_changed_dimension_receipt_classifies_union() -> Bool {
+  match canonical_changed_dimension_receipt(
     dag: affected_set_example_node,
-    diff: Diff { edits: [irt1_public_changed_edit] }
+    edit: irt1_public_changed_edit
   ) {
-    Holds { value: FailClosed { reason: _ } } => true
+    ChangedDimensions { first: first, rest: rest } =>
+      (first == canonical_tag_conj)
+        && contains(
+          xs: rest,
+          item: ^affected_set_claim_failure_symbol,
+          eq: fn(left, right) { left == right }
+        )
     _ => false
   }
 }
 
-fn irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt() -> Bool {
+fn irt1_dimension_classification_conservative_discriminates() -> Bool {
+  match canonical_changed_dimension_receipt(
+    dag: affected_set_example_node,
+    edit: irt1_public_changed_edit
+  ) {
+    ChangedDimensions { first: _, rest: rest } =>
+      length(xs: rest) >= 1
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_changed_edit_yields_changed_subgraph() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [irt1_public_changed_edit] }
+  ) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph() -> Bool {
   match affected_set(
     dag: affected_set_root,
     diff: Diff { edits: [irt1_public_nonroot_changed_edit] }
   ) {
-    Holds { value: FailClosed { reason: _ } } => true
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } } => true
     _ => false
   }
 }
@@ -360,16 +402,32 @@ fn irt1_public_affected_set_malformed_boundary_fail_closed_claim_rhs() -> Node {
   }
 }
 
-fn irt1_public_affected_set_changed_edit_fail_closed_claim_rhs() -> Node {
-  if irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() {
+fn irt1_public_changed_dimension_receipt_classifies_union_claim_rhs() -> Node {
+  if irt1_public_changed_dimension_receipt_classifies_union() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
   }
 }
 
-fn irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs() -> Node {
-  if irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt() {
+fn irt1_dimension_classification_conservative_discriminates_claim_rhs() -> Node {
+  if irt1_dimension_classification_conservative_discriminates() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_changed_edit_yields_changed_subgraph_claim_rhs() -> Node {
+  if irt1_public_affected_set_changed_edit_yields_changed_subgraph() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph_claim_rhs() -> Node {
+  if irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
@@ -464,19 +522,35 @@ data claim_irt1_public_affected_set_malformed_boundary_fail_closed: TestClaim = 
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_irt1_public_affected_set_changed_edit_fail_closed: TestClaim = EqualsClaim {
-  label: "lens_affected_set/irt1_public_changed_edit_fail_closed: changed root edit fails closed without dimension receipt",
+data claim_irt1_public_changed_dimension_receipt_classifies_union: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_dimension_receipt: Conj→Atom edit classifies conservative dimension union",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: irt1_public_affected_set_changed_edit_fail_closed_claim_rhs(),
+  rhs: irt1_public_changed_dimension_receipt_classifies_union_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_irt1_public_affected_set_nonroot_changed_edit_fail_closed: TestClaim = EqualsClaim {
-  label: "lens_affected_set/irt1_public_nonroot_changed_edit_fail_closed: non-root edit fails closed without dimension receipt",
+data claim_irt1_dimension_classification_conservative_discriminates: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_dimension_classification_conservative: union reports ≥2 families for Conj→Atom (perturb-red)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs(),
+  rhs: irt1_dimension_classification_conservative_discriminates_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_changed_edit_yields_changed_subgraph: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_edit: classified root edit yields ChangedSubgraphFrontier not FailClosed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_changed_edit_yields_changed_subgraph_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_changed_edit: classified non-root edit yields ChangedSubgraphFrontier not FailClosed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
