@@ -531,10 +531,22 @@ fn inhabitant_neutralization_python_to_go_translate_reject_coercion_not_realized
   )
 }
 
-fn inhabitant_neutralization_python_to_go_translate_reject_grammar_inverse() -> Bool {
-  inhabitant_neutralization_python_to_go_translate_reject_reason(
-    expected: translate_grammar_inverse_not_realized
-  )
+fn inhabitant_neutralization_python_to_go_translate_reject_grammar_inverse_caret() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: d } => d.head.reason == ^translate_grammar_inverse_not_realized
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
