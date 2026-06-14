@@ -6,16 +6,12 @@ module std.os.invocation
 
 import std.types { NonEmptyStr }
 
-// One entry in a flat syscall table: the stable (number, name, arity) fact a kernel publishes.
-// number = the architecture's real syscall NR; arg_count = the documented man(2) argument count.
 type SyscallEntry {
   number: Int
   name: NonEmptyStr
   arg_count: Int
 }
 
-// The SyscallAbi paradigm: the syscall numbers + a named register convention ARE the stable public
-// contract (e.g. Linux). `convention` names the ABI modeled in extdeps/runtime/abi/*.dag.
 type SyscallAbi {
   table: List<SyscallEntry>
   convention: NonEmptyStr  // 🟡 feature:sysv-amd64-abi-module
