@@ -75,6 +75,7 @@ import v4.std.compilers.lexing {
 import v4.std.node {
   Arrow,
   Atom,
+  Bind,
   Branch,
   ComputationNode,
   Conj,
@@ -200,6 +201,25 @@ fn dag_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
     FixedToken { token_class: ^dag_token_kw_else },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_two },
+    FixedToken { token_class: ^dag_token_rbrace }
+  ]
+}
+
+fn dag_mvp1_bind_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace },
+    FixedToken { token_class: ^dag_token_kw_let },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^dag_token_eq },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^dag_token_kw_in },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
     FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
@@ -3864,8 +3884,7 @@ fn dag_mvp1_bind_arrow_with_body_wrong_value_node() -> Node {
 
 data dag_mvp1_bind_let_body_fixture: Node = dag_mvp1_bind_let_body_node()
 data dag_mvp1_bind_arrow_with_body_fixture: Node = dag_mvp1_bind_arrow_with_body_node()
-data dag_mvp1_bind_arrow_with_body_wrong_value_fixture: Node =
-  dag_mvp1_bind_arrow_with_body_wrong_value_node()
+data dag_mvp1_bind_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_bind_arrow_with_body_wrong_value_node()
 
 fn dag_formal_production_mvp1_fn_bind() -> FormalProduction {
   grammar_formal_production(
