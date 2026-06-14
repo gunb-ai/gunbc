@@ -7,24 +7,7 @@ module v4.test.claim.manual.inhabitant_neutralization
 import v4.compiler.emit { emit }
 import v4.compiler.ingest { cross_language_compile }
 import v4.compiler.infer { infer }
-import v4.compiler.translate {
-  translate,
-  translate_binding_spelling_not_found,
-  translate_conj_invalid_edge,
-  translate_conj_named_child_missing,
-  translate_concrete_token_class_missing,
-  translate_concrete_token_kind_invalid,
-  translate_grammar_inverse_not_realized,
-  translate_grammar_relation_row_not_found,
-  translate_lex_rule_literal_not_found,
-  translate_serialize_recursion_limit_exhausted,
-  translate_sg_rc_bundle_partial,
-  translate_target_atom_realization_not_found,
-  translate_target_bundle_duplicate_edge,
-  translate_target_bundle_malformed,
-  translate_type_expression_shape_missing,
-  translate_type_expr_kind_authority_invalid
-}
+import v4.compiler.translate { translate }
 import v4.extdeps.languages.go {
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
@@ -45,34 +28,9 @@ import v4.std.inhabitant_neutralization {
   neutralize_core_for_target,
   target_inhabitant_for_std_projection
 }
-import v4.std.coercion {
-  AmbiguousTargetCandidate,
-  NoTargetCandidate,
-  StructuralMismatch,
-  WouldLoseInformation,
-  coercion_find_witness_reason_unmapped,
-  coercion_mismatch_candidate_set_not_closed,
-  coercion_not_realized
-}
-import v4.std.find_witness {
-  find_witness_reason_ambiguous_candidate,
-  find_witness_reason_invalid_witness,
-  find_witness_reason_no_candidate,
-  find_witness_reason_not_realized
-}
-import v4.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  outcome_rejected,
-  node_locus
-}
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.inhabitant_bridge { std_projection_additive_numeric }
 import v4.std.logic { Bool }
-import v4.std.node { Symbol }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -304,7 +262,16 @@ fn inhabitant_neutralization_python_to_go_holds() -> Bool {
     && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
 }
 
-// Emit-RED localization probes (draft-until-sign): stage isolate for python fixture → go target.
+// Emit-RED localization (draft-until-sign; NOT BoolWitnessed):
+// Stage chain for python_mvp1_emitted_add_fn_node -> go_mvp1_target_model:
+//   neutralize PASS | infer PASS | translate REJECT | emit REJECT (emit = translate ∘ serialize).
+// Reject site: v4.compiler.emit::emit -> translate::translate -> translate_node_mvp1
+//   (grammar row miss on python Arrow skeleton) -> translate_mvp1_fold_init Arrow arm
+//   -> coerce_grounded_node -> coercion_fold_exact_structural / find_witness
+//   (preservation_rule_exact_structural_equality_zip_fold) -> CoercionMismatchKind diagnostic
+//   (discriminant; NOT inhabitant_neutralization_*). Python Arrow lacks go_surface_fn_item edge
+//   present on native go_mvp1_emitted_add_fn_node — structural emit-breadth gap, independent of
+//   int64 vs platform-int inhabitant routing (same failure on main with int64 lookup route).
 fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
   match neutralize_core_for_target(
     core: python_mvp1_emitted_add_fn_node(),
@@ -323,38 +290,6 @@ fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_python_to_go_translate_accepts() -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match translate(tree: inferred, target: go_mvp1_target_model()) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_infer_rejects() -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
   match neutralize_core_for_target(
     core: python_mvp1_emitted_add_fn_node(),
@@ -366,270 +301,6 @@ fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
           match emit(tree: inferred, target: go_mvp1_target_model()) {
             Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_reason(
-  expected: Symbol
-) -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: go_mvp1_target_model()) {
-            Rejected { diagnostics: d } => d.head.reason == expected
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_grammar_inverse() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_grammar_inverse_not_realized
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_grammar_row_not_found() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_grammar_relation_row_not_found
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_conj_named_child_missing() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_conj_named_child_missing
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_target_atom_not_found() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_target_atom_realization_not_found
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_conj_invalid_edge() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_conj_invalid_edge
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_binding_spelling_not_found() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_binding_spelling_not_found
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_lex_rule_literal_not_found() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_lex_rule_literal_not_found
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_concrete_token_class_missing() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_concrete_token_class_missing
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_concrete_token_kind_invalid() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_concrete_token_kind_invalid
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_serialize_recursion_limit() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_serialize_recursion_limit_exhausted
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_target_bundle_malformed() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_target_bundle_malformed
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_target_bundle_duplicate_edge() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_target_bundle_duplicate_edge
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_sg_rc_bundle_partial() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_sg_rc_bundle_partial
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_type_expression_shape_missing() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_type_expression_shape_missing
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_type_expr_kind_authority_invalid() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: translate_type_expr_kind_authority_invalid
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_coercion_not_realized() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: coercion_not_realized
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_coercion_candidate_set_not_closed() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: coercion_mismatch_candidate_set_not_closed
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_find_witness_no_candidate() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: find_witness_reason_no_candidate
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_find_witness_ambiguous() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: find_witness_reason_ambiguous_candidate
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_find_witness_not_realized() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: find_witness_reason_not_realized
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_find_witness_invalid() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(
-    expected: find_witness_reason_invalid_witness
-  )
-}
-
-fn inhabitant_neutralization_python_to_go_translate_reject_reason(
-  expected: Symbol
-) -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match translate(tree: inferred, target: go_mvp1_target_model()) {
-            Rejected { diagnostics: d } => d.head.reason == expected
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_translate_reject_coercion_not_realized() -> Bool {
-  inhabitant_neutralization_python_to_go_translate_reject_reason(
-    expected: coercion_not_realized
-  )
-}
-
-// Draft probe: surface translate rejection reason for emit-RED localization (NOT BoolWitnessed).
-fn inhabitant_neutralization_python_to_go_translate_reject_reason_symbol() -> Outcome<Symbol> {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match translate(tree: inferred, target: go_mvp1_target_model()) {
-            Rejected { diagnostics: d } =>
-              Accepted { value: d.head.reason, diagnostics: None }
-            Accepted { value: _, diagnostics: _ } =>
-              outcome_rejected(
-                Diagnostic {
-                  reason: translate_target_bundle_malformed,
-                  at: node_locus(node: python_mvp1_emitted_add_fn_node()),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-          }
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_no_target_candidate() -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: go_mvp1_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == discriminant(v: NoTargetCandidate {})
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_structural_mismatch() -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: go_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: go_mvp1_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == discriminant(v: StructuralMismatch {})
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_ambiguous_target_candidate() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(expected: AmbiguousTargetCandidate)
-}
-
-fn inhabitant_neutralization_python_to_go_emit_reject_would_lose_information() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(expected: WouldLoseInformation)
-}
-
-// Stage isolate: python core neutralized to ts still translates (emit breadth differs by target).
-fn inhabitant_neutralization_neutralize_python_to_ts_translate_accepts() -> Bool {
-  match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: ts_mvp1_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match translate(tree: inferred, target: ts_mvp1_target_model()) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
