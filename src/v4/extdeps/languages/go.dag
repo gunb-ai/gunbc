@@ -60,6 +60,9 @@ import v4.std.model_core {
 }
 import v4.std.inhabitant_bridge {
   facts_field_std_projection,
+  facts_field_surface_spelling,
+  facts_field_width,
+  inhabitant_field_atom,
   std_projection_additive_numeric
 }
 import v4.std.grounding {
@@ -521,11 +524,11 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: ^go_facts_field_surface_spelling,
+          name: facts_field_surface_spelling,
           target: go_inhabitant_atom(id: surface_spelling)
         ),
         go_named_edge(
-          name: ^go_facts_field_width,
+          name: facts_field_width,
           target: go_signed_int_width_node(width: width)
         ),
         go_named_edge(
@@ -1475,7 +1478,7 @@ fn go_int_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
     ],
     occurrence_id: SyntheticOccurrence
