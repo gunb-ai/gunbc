@@ -428,7 +428,7 @@ pub enum Value {
 
 /// Wrap a list carrier (or anything convertible to one, e.g. `Vec<Value>`)
 /// into a `Value::List`.
-fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
+pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
@@ -1152,6 +1152,10 @@ impl InterpContext {
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
         self.source_indices.clone()
+    }
+
+    pub(crate) fn source_indices(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+        self.si()
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {

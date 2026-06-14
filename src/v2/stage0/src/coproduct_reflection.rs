@@ -24,9 +24,10 @@ fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
 ) -> InterpResult<(&'a Rc<Node>, String)> {
+    let si = ctx.source_indices();
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
-            let name = authored_name_at(ctx.si(), item.clone());
+            let name = authored_name_at(si.clone(), item.clone());
             if name != type_name {
                 continue;
             }
@@ -56,18 +57,16 @@ fn disj_variant_labels(item: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Vec
             msg: "coproduct reflection: type is not a closed coproduct (Disj)".to_string(),
         });
     }
+    let si = ctx.source_indices();
     Ok(item
         .children
         .iter()
-        .map(|child| authored_name_at(ctx.si(), child.clone()))
+        .map(|child| authored_name_at(si.clone(), child.clone()))
         .collect())
 }
 
-fn symbol_list_value(ctx: &InterpContext, labels: &[String]) -> Value {
-    let items: Vec<Value> = labels
-        .iter()
-        .map(|label| Value::Str(ctx.sym(label)))
-        .collect();
+fn symbol_list_value(labels: &[String]) -> Value {
+    let items: Vec<Value> = labels.iter().map(|label| Value::Str(label.clone())).collect();
     super::v2_interpreter::list_value(items)
 }
 
@@ -159,7 +158,7 @@ pub fn eval_coproduct_arm_keys(
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "coproduct_arm_keys")?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
     let labels = disj_variant_labels(item, ctx)?;
-    Ok(Some(symbol_list_value(ctx, &labels)))
+    Ok(Some(symbol_list_value(&labels)))
 }
 
 pub fn eval_syntactic_coproduct_arm_keys(
@@ -169,7 +168,7 @@ pub fn eval_syntactic_coproduct_arm_keys(
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
     let (_, file) = type_item_by_name(ctx, type_name)?;
     let labels = syntactic_coproduct_arm_labels(&file, type_name)?;
-    Ok(Some(symbol_list_value(ctx, &labels)))
+    Ok(Some(symbol_list_value(&labels)))
 }
 
 pub fn eval_coproduct_arms(
@@ -178,31 +177,34 @@ pub fn eval_coproduct_arms(
 ) -> InterpResult<Option<Value>> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "coproduct_arms")?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
+    let si = ctx.source_indices();
     let labels = disj_variant_labels(item, ctx)?;
     let mut arms = Vec::with_capacity(labels.len());
     for (variant, label) in item.children.iter().zip(labels.iter()) {
-        let payload = child_type_node(variant.clone());
         let payload_shape = if variant_is_nullary(variant, ctx) {
             Value::Variant {
-                variant_name: ctx.sym("Value"),
-                fields: Rc::new(HashMap::new()),
+                type_name: ctx.sym("NodeKind"),
+                variant_name: ctx.sym("ComputationNode"),
+                fields: Rc::new(HashMap::from([(
+                    ctx.sym("behavior"),
+                    Value::Variant {
+                        type_name: ctx.sym("Behavior"),
+                        variant_name: ctx.sym(label),
+                        fields: Rc::new(HashMap::new()),
+                    },
+                )])),
             }
         } else {
-            Value::Record {
-                type_name: ctx.sym("NodeShape"),
+            let payload = child_type_node(variant.clone());
+            Value::Variant {
+                type_name: ctx.sym("NodeKind"),
+                variant_name: ctx.sym("TypeNode"),
                 fields: Rc::new(HashMap::from([(
-                    ctx.sym("kind"),
-                    Value::Record {
-                        type_name: ctx.sym("NodeKind"),
-                        fields: Rc::new(HashMap::from([(
-                            ctx.sym("connective"),
-                            Value::Variant {
-                                variant_name: ctx.sym(
-                                    &authored_name_at(ctx.si(), payload.clone()),
-                                ),
-                                fields: Rc::new(HashMap::new()),
-                            },
-                        )])),
+                    ctx.sym("connective"),
+                    Value::Variant {
+                        type_name: ctx.sym("Connective"),
+                        variant_name: ctx.sym(&authored_name_at(si.clone(), payload.clone())),
+                        fields: Rc::new(HashMap::new()),
                     },
                 )])),
             }
@@ -210,8 +212,14 @@ pub fn eval_coproduct_arms(
         arms.push(Value::Record {
             type_name: ctx.sym("CoproductArm"),
             fields: Rc::new(HashMap::from([
-                (ctx.sym("label"), Value::Str(ctx.sym(label))),
-                (ctx.sym("payload"), payload_shape),
+                (ctx.sym("label"), Value::Str(label.clone())),
+                (
+                    ctx.sym("payload"),
+                    Value::Record {
+                        type_name: ctx.sym("NodeShape"),
+                        fields: Rc::new(HashMap::from([(ctx.sym("kind"), payload_shape)])),
+                    },
+                ),
             ])),
         });
     }
@@ -227,12 +235,13 @@ pub fn eval_coproduct_nullary_inhabitants(
         "coproduct_nullary_inhabitants",
     )?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
+    let si = ctx.source_indices();
     for variant in item.children.iter() {
         if !variant_is_nullary(variant, ctx) {
             return Err(InterpError::TypeError {
                 msg: format!(
                     "coproduct_nullary_inhabitants: arm `{}` carries a payload — fail closed",
-                    authored_name_at(ctx.si(), variant.clone())
+                    authored_name_at(si.clone(), variant.clone())
                 ),
             });
         }
@@ -240,7 +249,7 @@ pub fn eval_coproduct_nullary_inhabitants(
     let inhabitants: Vec<Value> = item
         .children
         .iter()
-        .map(|variant| Value::Str(ctx.sym(&authored_name_at(ctx.si(), variant.clone()))))
+        .map(|variant| Value::Str(authored_name_at(si.clone(), variant.clone())))
         .collect();
     Ok(Some(super::v2_interpreter::list_value(inhabitants)))
 }
