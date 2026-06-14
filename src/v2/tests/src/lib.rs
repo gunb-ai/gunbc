@@ -64,6 +64,8 @@ mod rc_probe_wire_decode_call_test;
 #[cfg(test)]
 mod render_repeat_test;
 #[cfg(test)]
+mod resolve_typed_cache_equivalence_test;
+#[cfg(test)]
 mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
