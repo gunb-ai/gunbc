@@ -7,6 +7,13 @@ module v4.test.claim.manual.inhabitant_neutralization
 import v4.compiler.emit { emit }
 import v4.compiler.ingest { cross_language_compile }
 import v4.compiler.infer { infer }
+import v4.compiler.translate {
+  translate,
+  translate_conj_named_child_missing,
+  translate_grammar_inverse_not_realized,
+  translate_grammar_relation_row_not_found,
+  translate_target_atom_realization_not_found
+}
 import v4.extdeps.languages.go {
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
