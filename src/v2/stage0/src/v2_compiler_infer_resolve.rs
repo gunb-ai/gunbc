@@ -55,6 +55,91 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
+    ((variant.children.clone().len() as i64) == 0)
+}
+
+pub fn unit_variant_in_coproduct(
+    env: Rc<TypeEnv>,
+    ty: Rc<Node>,
+    variant_name: String,
+) -> Option<Rc<Node>> {
+    match ty.connective.clone() {
+        Connective::Disj => {
+            ty.children
+                .clone()
+                .iter()
+                .cloned()
+                .fold(None, |acc: _, v: Rc<Node>| {
+                    if (acc.clone() != None) {
+                        acc.clone()
+                    } else {
+                        if ((authored_name_at(env.source_indices.clone(), v.clone()).as_str()
+                            == variant_name.clone().as_str())
+                            && is_unit_variant_node(v.clone()))
+                        {
+                            Some(v.clone())
+                        } else {
+                            None
+                        }
+                    }
+                })
+        }
+        _ => None,
+    }
+}
+
+pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<Node> {
+    if ((ty.connective.clone() == Connective::NoConnective) && (ty.inferred.clone() != None)) {
+        match ty.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => ty.clone(),
+        }
+    } else {
+        ty.clone()
+    }
+}
+
+pub fn lookup_unit_variant_phantom_type(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Option<Rc<Node>> {
+    {
+        let matches = collect_unit_variant_phantom_matches(env, variant_name);
+        if ((matches.clone().len() as i64) == 1) {
+            match matches.clone().first().cloned() {
+                Some(variant) => Some(variant.clone()),
+                None => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
+pub fn collect_unit_variant_phantom_matches(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new(v2_rt::map_keys(&env.bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<Node>>>, ident: i64| match lookup_type(env.clone(), ident.clone()) {
+                Some(ty_node) => match unit_variant_in_coproduct(
+                    env.clone(),
+                    structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
+                    variant_name.clone(),
+                ) {
+                    Some(variant) => v2_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
+                    None => acc.clone(),
+                },
+                None => acc.clone(),
+            },
+        )
+}
+
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. } => {
@@ -252,29 +337,56 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
     resolve_node_bounded(n, env, module_name, 0)
 }
 
+pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
+    {
+        let brand = authored_name(env.clone(), n.clone());
+        match lookup_type_for(env.clone(), n.clone()) {
+            Some(decl) => {
+                if ((decl.params.clone().len() as i64) > 0) {
+                    decl.clone()
+                } else {
+                    if ((((n.children.clone().len() as i64) > 0)
+                        && (n.name.clone().as_str() != "".to_string().as_str()))
+                        && (n.name.clone().as_str() != brand.as_str()))
+                    {
+                        match lookup_type_by_name(env.clone(), n.name.clone()) {
+                            Some(structural) => structural.clone(),
+                            None => decl.clone(),
+                        }
+                    } else {
+                        decl.clone()
+                    }
+                }
+            }
+            None => match lookup_type_by_name(env.clone(), n.name.clone()) {
+                Some(decl) => decl.clone(),
+                None => n.clone(),
+            },
+        }
+    }
+}
+
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         if has_structure {
             false
         } else {
-            match lookup_type_for(env.clone(), n.clone()) {
-                Some(decl) => {
-                    if ((decl.params.clone().len() as i64) > 0) {
-                        if is_container_type(authored_name(env.clone(), n.clone())) {
-                            false
-                        } else {
-                            if (decl.inferred.clone() != None) {
-                                true
-                            } else {
-                                true
-                            }
-                        }
-                    } else {
+            {
+                let decl = resolve_generic_use_decl(env, n.clone());
+                if ((decl.params.clone().len() as i64) > 0) {
+                    if is_container_type(n.name.clone()) {
                         false
+                    } else {
+                        if (decl.inferred.clone() != None) {
+                            true
+                        } else {
+                            true
+                        }
                     }
+                } else {
+                    false
                 }
-                None => false,
             }
         }
     }
@@ -890,10 +1002,7 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
-                    let decl = match lookup_type_for(env.clone(), n.clone()) {
-                        Some(d) => d.clone(),
-                        None => n.clone(),
-                    };
+                    let decl = resolve_generic_use_decl(env.clone(), n.clone());
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
                     let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
@@ -1397,21 +1506,19 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: n.clone(),
-                                                    diagnostics: Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnresolvedType {
-                                                                name: authored_name(
-                                                                    env.clone(),
-                                                                    n.clone(),
-                                                                ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )]),
-                                                })
+                                                match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
+    Some(phantom) => Rc::new(NodeResolveResult {
+    resolved: phantom.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+    None => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())]),
+}),
+}
                                             }
                                         }
                                     }

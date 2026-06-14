@@ -149,7 +149,16 @@ pub fn lookup_field_type_node(
                         }
                     }
                 } else {
-                    None
+                    match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            lookup_field_type_node(
+                                target.clone(),
+                                field_name.clone(),
+                                source_indices.clone(),
+                            )
+                        }
+                        _ => None,
+                    }
                 }
             }
         }

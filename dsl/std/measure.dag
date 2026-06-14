@@ -171,9 +171,10 @@ fn scale_exponent(s: Scale) -> Int {
 //   - No `Refined<Measure<…>, predicate>` at this layer per option (c).
 //   - No mechanical Measure-witness derivation declared here -- same
 //     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
-//   - v2 claim-run on alias field access / parametric literals remains
-//     gated (G1–G3); consumers use constructor/projection fns below until
-//     the v2 interpreter lane lands (see measure-value-typing-design).
+//   - v2 claim-run: phantom type-arg resolution (G1) and single-hop alias
+//     field access (G2) now resolve on the v2 interpreter; parametric record
+//     literals (G3) and multi-hop alias field-access chains remain gated.
+//     Consumers use the constructor/projection fns below until G3 lands.
 type Measure<Q, S> {
   count: Nat
 }
@@ -210,10 +211,11 @@ type HardwareThreadCount = Measure<Count, One>
 // specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
 // e.g. `std.compute_fabric.CostEstimate { unit_price, currency }`.
 //
-// Like every `Measure` alias here, constructing/reading a `MoneyAmount` value
-// on the v2 interpreter is gated by G1–G3 (see the carrier note above);
-// `std.currency` (a plain enum) evaluates on v2 today, the money VALUE does
-// not until G1 identifier-variant type args land (#4826).
+// `MoneyAmount` is a MULTI-HOP alias (MoneyMicros = MoneyAmount<Micro> =
+// Measure<Currency, Micro>); its phantom type args resolve on v2 (G1 landed),
+// but reading its `.count` is the multi-hop alias field-access case that the
+// single-hop G2 does not yet cover -- the money VALUE on v2 lands with the G3
+// follow-up. `std.currency` (a plain enum) evaluates on v2 today.
 type MoneyAmount<S> = Measure<Currency, S>
 
 // Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
@@ -222,34 +224,34 @@ type MoneyAmount<S> = Measure<Currency, S>
 // (cent), so a minor-unit `<One>` carrier could not hold them losslessly.
 type MoneyMicros = MoneyAmount<Micro>
 
-fn money_micros(count: Int) -> MoneyMicros {
+fn money_micros(count: Nat) -> MoneyMicros {
   MoneyMicros { count: count }
 }
 
-fn money_micros_count(m: MoneyMicros) -> Int {
+fn money_micros_count(m: MoneyMicros) -> Nat {
   m.count
 }
 
-fn byte_size(count: Int) -> ByteSize {
+fn byte_size(count: Nat) -> ByteSize {
   ByteSize { count: count }
 }
 
-fn byte_size_count(b: ByteSize) -> Int {
+fn byte_size_count(b: ByteSize) -> Nat {
   b.count
 }
 
-fn hertz(count: Int) -> Hertz {
+fn hertz(count: Nat) -> Hertz {
   Hertz { count: count }
 }
 
-fn hertz_count(h: Hertz) -> Int {
+fn hertz_count(h: Hertz) -> Nat {
   h.count
 }
 
-fn hardware_thread_count(count: Int) -> HardwareThreadCount {
+fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
   HardwareThreadCount { count: count }
 }
 
-fn hardware_thread_count_value(t: HardwareThreadCount) -> Int {
+fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   t.count
 }
