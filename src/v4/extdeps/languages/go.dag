@@ -1490,18 +1490,18 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: ^go_facts_field_surface_spelling,
+              name: facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
             ),
             go_named_edge(
-              name: ^go_facts_field_width,
+              name: facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
             ),
             go_named_edge(
@@ -1537,18 +1537,18 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: ^go_facts_field_surface_spelling,
+              name: facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
             ),
             go_named_edge(
-              name: ^go_facts_field_width,
+              name: facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int64.width)
             ),
             go_named_edge(
@@ -1597,7 +1597,8 @@ fn go_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
-      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() }
+      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
