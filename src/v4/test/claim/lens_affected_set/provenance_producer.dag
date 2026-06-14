@@ -237,26 +237,22 @@ fn provenance_producer_selectivity_superset_holds() -> Bool {
 }
 
 fn provenance_producer_selectivity_superset_discriminates_holds() -> Bool {
-  match provenance_producer_reading_from_provenance(
+  match affected_set_reading_from_git_diff_provenance(
+    graph: affected_set_claim_tree(),
     git_diff: provenance_producer_narrow_git_diff,
     provenance: provenance_producer_node_precision_provenance
   ) {
     Holds { value: narrow } =>
-      match provenance_producer_reading_from_provenance(
+      match affected_set_reading_from_git_diff_provenance(
+        graph: affected_set_claim_tree(),
         git_diff: provenance_producer_wide_git_diff,
         provenance: provenance_producer_node_precision_provenance
       ) {
         Holds { value: wide } =>
-          (length(xs: narrow) == 3)
-            && (length(xs: wide) == 3)
-            && provenance_producer_node_in_reading_affected(
-              nodes: narrow,
-              needle: affected_set_mid
-            )
-            && provenance_producer_node_in_reading_affected(
-              nodes: wide,
-              needle: affected_set_root
-            )
+          (narrow.edit_locus == affected_set_mid)
+            && (wide.edit_locus == affected_set_root)
+            && (length(xs: narrow.affected) == 3)
+            && (length(xs: wide.affected) == 3)
         Violates { diagnostic: _ } => false
       }
     Violates { diagnostic: _ } => false
