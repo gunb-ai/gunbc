@@ -543,7 +543,8 @@ fn reconcile_with_typed_cache(
         diag_chunks.push(tc_result.diagnostics.clone());
     }
 
-    let expanded_registry = v2_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let expanded_registry =
+        v2_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
     let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
         let mut acc = Vec::new();
         for chunk in &diag_chunks {

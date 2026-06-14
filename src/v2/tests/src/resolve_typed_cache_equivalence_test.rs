@@ -112,7 +112,10 @@ fn typed_module_cache_preserves_witness_verdicts_byte_identical() {
     // Resolve A a second time through the same (now-warm) index: A's own modules
     // are served entirely from the cache; the verdict must be unchanged.
     let warm_a = cached_outcome(&index, &a_path, "witness_a_true");
-    assert_eq!(warm_a, "PASS", "warm-cache re-resolve of A flipped its verdict");
+    assert_eq!(
+        warm_a, "PASS",
+        "warm-cache re-resolve of A flipped its verdict"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
