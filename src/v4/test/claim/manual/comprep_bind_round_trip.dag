@@ -135,7 +135,7 @@ fn comprep_bind_canonical_grounding_for(node: Node) -> Witness<CanonicalGroundin
   }
 }
 
-fn comprep_bind_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+fn comprep_bind_round_trip_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   match comprep_bind_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => Violates { diagnostic: d }
     Holds { value: grounding } =>
@@ -152,14 +152,14 @@ fn comprep_bind_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn comprep_bind_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  comprep_bind_inferred_facts_for(node: key)
+fn comprep_bind_round_trip_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  comprep_bind_round_trip_inferred_facts_for(node: key)
 }
 
 data comprep_bind_inferred_tree: InferredTree = InferredTree {
   root: comprep_bind_emitted_root,
   facts: Map {
-    lookup: comprep_bind_facts_lookup
+    lookup: comprep_bind_round_trip_facts_lookup
   }
 }
 
