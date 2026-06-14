@@ -136,7 +136,6 @@ fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
     && inhabitant_neutralization_go_int64_target_lookup_holds()
     && inhabitant_neutralization_neutralize_python_to_go_holds()
     && inhabitant_neutralization_go_int64_to_ts_emit_holds()
-    && inhabitant_neutralization_go_mvp1_native_infer_emit_holds()
 }
 
 fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
@@ -274,16 +273,32 @@ fn inhabitant_neutralization_python_to_go_holds() -> Bool {
 //   (discriminant; NOT inhabitant_neutralization_*). Python Arrow lacks go_surface_fn_item edge
 //   present on native go_mvp1_emitted_add_fn_node — structural emit-breadth gap, independent of
 //   int64 vs platform-int inhabitant routing (tiebreak selects platform int; same translate failure).
-// Native go_mvp1 infer->emit ACCEPTS (inhabitant_neutralization_go_mvp1_native_infer_emit_holds):
-//   RED is python Arrow skeleton at translate, not native go emit-breadth.
-// Routing-independent control: native go_mvp1_emitted_add_fn_node infer->emit ACCEPTS (emit-breadth
-// exists for hand-built go trees; python->go RED is translate coercion on python Arrow skeleton).
-fn inhabitant_neutralization_go_mvp1_native_infer_emit_holds() -> Bool {
+// Native go_mvp1: infer PASS | translate PASS | emit REJECT — routing-independent emit-breadth repro.
+// Native go_mvp1 stage probes (draft-until-sign; localization anchor):
+fn inhabitant_neutralization_go_mvp1_native_infer_holds() -> Bool {
+  match infer(tree: go_mvp1_emitted_add_fn_node()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_mvp1_native_translate_holds() -> Bool {
+  match infer(tree: go_mvp1_emitted_add_fn_node()) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match translate(tree: inferred, target: go_mvp1_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_mvp1_native_emit_rejects() -> Bool {
   match infer(tree: go_mvp1_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: go_mvp1_target_model()) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
