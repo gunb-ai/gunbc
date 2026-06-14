@@ -296,13 +296,13 @@ triggers — not a separate product idea.
 **Do not read this doc as "the fix already works."** TARGET properties below are what the
 substrate is built **toward**.
 
-### 4.3 Three TARGET properties (not claimed working)
+### 4.3 Three TARGET properties = three ROADMAP primitives *(1:1, substrate-attached)*
 
-| Property | Target meaning | Today |
-| --- | --- | --- |
-| **(a) Automatic memo** | Compiler/runner inserts memo; authors don't hand-roll | Eleven hand-rolls; v2/v4 local memos |
-| **(b) Enforced purity at boundary** | Non-pure units cannot be soundly memoized | Manual seeds + standing gates (PR1); purity oracle (§5) |
-| **(c) Content-keyed invalidation** | Merkle/content-hash invalidation, not heuristic deps | Partially in `CacheInterfaceFacts`; sccache still interim host |
+| Property | ROADMAP primitive | Target meaning | Substrate attach | Today |
+| --- | --- | --- | --- | --- |
+| **(a) Automatic memo** | Receipt + change-driven reconcile | Compiler/runner inserts memo; authors don't hand-roll | `cache_interface` store/lookup semantics; `ExecutionReceipt<T>` | Eleven hand-rolls; v2/v4 local memos |
+| **(b) Enforced purity at boundary** | Hermetic realization | Non-pure units cannot be soundly memoized | Equivalence falsifier (§5) — purity **is** the falsifier | Manual seeds + standing gates (PR1) |
+| **(c) Content-keyed invalidation** | Content identity | Merkle/content-hash invalidation, not heuristic deps | `ContentHash` / `ExecutionReceiptRef` digest seam | Partially in `CacheInterfaceFacts`; sccache interim host |
 
 ### 4.4 Acyclic composition law *(quoted from substrate headers)*
 
@@ -323,24 +323,26 @@ authorities. Do not re-architect; motivate what is already landed:
 `ExecutionReceipt` **is** a cache entry on the compute timeline; `PersistenceLocality` aligns
 with `ComputeArtifactLocality` — one placement-with-eviction kernel, two views.
 
-**Do not claim** unified `CacheFabric<T>` is built. Extract shared kernel only when ≥2
-inhabitants share content-key / eviction / locality shape — PR2 is the ≥2 trigger to watch.
+**Do not claim** unified `CacheFabric<T>` or minted `Realization<Spec, Effect>` kernel
+types are built. Both are TARGET names under the same **≥2 cross-layer inhabitant** restraint
+(resolve #1, sccache #2, provisioning #3). Extract shared kernel only when inhabitants
+prove the identity+receipt shape carries — PR2 is the first trigger to watch.
 
 ---
 
 ## 5. Enforcement mechanism — the cache as purity oracle
 
-Maps ROADMAP's three primitives to standing enforcement:
+§4.3 **(b) / hermetic realization** in operational detail:
 
-1. **Content identity** — memoized unit **declares** its input content-set; **content-key** =
-   `content-hash(f-identity, input-content-hashes)` over the transitive closure of those
-   inputs only.
-2. **Hermetic realization** — read **outside** declared set = **impurity** (ambient intern
-   table, mutable env, unmodeled host state). Discharge: **(a)** effect discipline makes
-   read impossible; **(b)** key misses hidden input → cached-vs-cold divergence → falsifier
-   fires.
-3. **Receipt + reconcile** — persist `key → output`; on content-key change,
-   `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6).
+1. **Content identity (§4.3 (c))** — memoized unit **declares** its input content-set;
+   **content-key** = `content-hash(f-identity, input-content-hashes)` over the transitive
+   closure of those inputs only — realized as `ContentHash` / `ExecutionReceiptRef` digest.
+2. **Hermetic realization (§4.3 (b))** — read **outside** declared set = **impurity**
+   (ambient intern table, mutable env, unmodeled host state). Discharge: **(a)** effect
+   discipline (`WorkDemand.effects`) makes read impossible; **(b)** key misses hidden input
+   → cached-vs-cold divergence → falsifier fires.
+3. **Receipt + reconcile (§4.3 (a))** — persist `key → output` via `ExecutionReceipt<T>`;
+   on content-key change, `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6).
 
 **Finding B — oracle splits on reversibility:** the byte-identical cached-vs-cold falsifier
 (reversible handlers — compute, build/sccache) **is** the enforcement for closed-world
@@ -397,7 +399,8 @@ is met; see [ctrl/ROADMAP.md ARC §3](https://github.com/gunb-ai/ctrl/blob/main/
 ## 8. Non-goals
 
 - Not a parallel ledger (marks win; §3 is one roster, not a second census).
-- Not claiming automatic enforcement, `CacheFabric<T>`, or full collapse before inhabitation.
+- Not claiming automatic enforcement, `CacheFabric<T>`, minted `Realization<Spec, Effect>`
+  kernel types, or full collapse before inhabitation.
 - Not citing consumed scaffolding worksheets from early `.dag` headers.
 - Not expanding eleven → thirteen (v4 footnotes only).
 - Not benchmark-driven proof.
@@ -424,5 +427,6 @@ at the model→host boundary: redundancy violates Performance / Facts-Flow-Forwa
 impurity violates Fail-Closed (PR1 #4867). v4 recurs the pattern because the carrier is
 staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** =
 inhabited `Realization<Spec, Effect>` ([ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern);
-staged in `cache_identity` / `cache_interface` / `compute_fabric`) is the TARGET receipt
-carrier — ARC #1 resolve (#4878), #2 sccache, #3 provisioning.
+staged in `cache_identity` / `cache_interface` / `compute_fabric`; TARGET carrier name only
+per §4.4 staging guard) is the receipt carrier — ARC #1 resolve (#4878), #2 sccache,
+#3 provisioning.
