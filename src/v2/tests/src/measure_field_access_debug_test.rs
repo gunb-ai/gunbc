@@ -186,7 +186,32 @@ fn money_micros_count(m: MoneyMicros) -> Nat {
     let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
     assert!(
         msgs.is_empty(),
-        "MoneyMicros alias field access should resolve, got: {msgs:?}"
+        "MoneyMicros field access should resolve, got: {msgs:?}"
+    );
+
+    let src_lit = r#"
+module m
+
+type Nat
+
+type Quantity = Memory | Count | Currency | Frequency
+type Scale = One | Micro
+
+type Measure<Q, S> {
+  count: Nat
+}
+
+type MoneyAmount<S> = Measure<Currency, S>
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros(count: Nat) -> MoneyMicros {
+  MoneyMicros { count: count }
+}
+"#;
+    let lit_msgs = hard_diagnostic_messages(&compile_dag_resolved(src_lit));
+    assert!(
+        lit_msgs.is_empty(),
+        "MoneyMicros record literal should resolve, got: {lit_msgs:?}"
     );
 }
 
