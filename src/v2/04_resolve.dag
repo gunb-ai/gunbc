@@ -2,7 +2,7 @@
 
 module v2.compiler.infer_resolve
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, container_param_name, kernel_type_set }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
@@ -103,6 +103,58 @@ fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> L
       Absent => acc
     }
   )
+}
+
+// v3 bare-RHS parity: `type T = U` at EOL is a single-variant nullary enum when
+// `U` is not a known type reference (kernel + env bindings). Parse classifies
+// these as alias nodes; coalesce before resolve so `NobleNumbat2404Lts`-style
+// variant tags do not surface as UnresolvedType.
+fn is_alias_rhs_bare_leaf(rhs: Node) -> Bool {
+  rhs.connective == NoConnective && rhs.children |> count == 0 && rhs.ident_span != none
+}
+
+fn bare_rhs_alias_reference_names(env: TypeEnv) -> List<String> {
+  concat(map_keys(kernel_type_set), ["Optional"], map(env.bindings |> map_values, b => b.name))
+}
+
+fn is_bare_rhs_alias_reference_name(name: String, refs: List<String>) -> Bool {
+  refs |> any(r => r == name)
+}
+
+fn coalesce_single_variant_nullary_enum_binding(binding: TypeBinding, bare_rhs_refs: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  let resolved = binding.resolved
+  if resolved.connective != NoConnective || resolved.inferred == none {
+    binding
+  } else {
+    match resolved.inferred {
+      Present { value: Resolved { node: rhs } } =>
+        if !is_alias_rhs_bare_leaf(rhs: rhs) || is_bare_rhs_alias_reference_name(name: authored_name_at(source_indices: source_indices, node: rhs), refs: bare_rhs_refs) {
+          binding
+        } else {
+          let rhs_name = authored_name_at(source_indices: source_indices, node: rhs)
+          let variant = Node {
+            name: rhs_name, span: rhs.span, ident_span: rhs.ident_span,
+            children: [], connective: NoConnective, params: [], inferred: none,
+            return_cardinality: Required, uses: [], body: none, transport: none,
+            properties: [], type_annotation: none, is_self_recursive: false,
+            has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+          }
+          TypeBinding {
+            name: binding.name,
+            resolved: Node {
+              name: resolved.name, span: resolved.span, ident_span: resolved.ident_span,
+              children: [variant], connective: Disj, params: [], inferred: none,
+              return_cardinality: resolved.return_cardinality,
+              uses: [], body: none, transport: none, properties: [],
+              type_annotation: none, is_self_recursive: false,
+              has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+            },
+            provenance: binding.provenance
+          }
+        }
+      _ => binding
+    }
+  }
 }
 
 // Gate #60 Slice Z: anonymous decimal width literals in `<…>` type-arg position.

@@ -102,6 +102,7 @@ import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   is_user_generic_use_site,
+  coalesce_single_variant_nullary_enum_binding, bare_rhs_alias_reference_names,
   NodeResolveResult, ItemResult
 }
 import v2.compiler.infer_sigs {
@@ -6074,13 +6075,16 @@ fn topo_resolve_types(
     }
   )
 
+  let bare_rhs_refs = bare_rhs_alias_reference_names(env: env)
+
   if ready |> count == 0 {
     let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
       let ident = intern(table: env.intern_table, s: name).id
-      match map_get(env.bindings, ident) {
+      match map_get(acc.bindings, ident) {
         Present { value: binding } =>
+          let binding = coalesce_single_variant_nullary_enum_binding(binding: binding, bare_rhs_refs: bare_rhs_refs, source_indices: env.source_indices)
           let pre = binding.resolved
-          let result = resolve_node(n: pre, env: env, module_name: module_name)
+          let result = resolve_node(n: pre, env: TypeEnv { bindings: acc.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table }, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
             identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
           BindingsAccum {
@@ -6098,10 +6102,11 @@ fn topo_resolve_types(
 
   let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
     let ident = intern(table: env.intern_table, s: name).id
-    match map_get(env.bindings, ident) {
+    match map_get(acc.bindings, ident) {
       Present { value: binding } =>
+        let binding = coalesce_single_variant_nullary_enum_binding(binding: binding, bare_rhs_refs: bare_rhs_refs, source_indices: env.source_indices)
         let pre = binding.resolved
-        let result = resolve_node(n: pre, env: env, module_name: module_name)
+        let result = resolve_node(n: pre, env: TypeEnv { bindings: acc.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table }, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
           identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
         BindingsAccum {

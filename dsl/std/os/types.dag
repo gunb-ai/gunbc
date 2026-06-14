@@ -2,7 +2,7 @@
 
 module std.os.types
 
-import std.types { NonEmptyStr, Option }
+import std.types { NonEmptyStr }
 
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
@@ -13,8 +13,8 @@ type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 // is bound at provision time, so stays None on the offer surface.
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: Option<NonEmptyStr>
-  version: Option<NonEmptyStr>
+  distro_or_product: NonEmptyStr?
+  version: NonEmptyStr?
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
@@ -39,7 +39,7 @@ type UbuntuDistributionCatalogRow {
   kernel_version: NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   security_maintenance_until: NonEmptyStr
 }
 
@@ -49,16 +49,16 @@ type WindowsDistributionCatalogRow {
   os_build: NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   end_of_servicing: NonEmptyStr
 }
 
 type MacosDistributionCatalogRow {
   distribution: MacosDistribution
   release_label: NonEmptyStr
-  darwin_version: Option<NonEmptyStr>
+  darwin_version: NonEmptyStr?
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   annual_release_label: NonEmptyStr
 }
