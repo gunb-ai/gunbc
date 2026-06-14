@@ -88,7 +88,9 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth
+  ModelCoreFactAxisWidth,
+  facts_field_std_projection,
+  std_projection_additive_numeric
 }
 import v4.std.diagnostic {
   Accepted,
@@ -280,7 +282,7 @@ data ts_mvp1_source_text: String = "function add(x: number, y: number): number {
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_number,
   ieee754_binary: ^ts_ieee754_binary64,
-  std_projection: ^ts_std_projection_float64,
+  std_projection: std_projection_additive_numeric,
 }
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
@@ -355,7 +357,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -376,7 +378,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -401,7 +403,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_bool_operation_semantics_node(facts: facts)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -517,7 +519,7 @@ fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
     ),
     ts_named_edge(
       name: ^ts_coercion_field_number_std_projection,
-      target: ts_inhabitant_atom(id: ^ts_std_projection_float64)
+      target: ts_inhabitant_atom(id: std_projection_additive_numeric)
     )
   ]
 }
@@ -2213,7 +2215,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2234,7 +2236,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3138,7 +3140,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3174,7 +3176,7 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],

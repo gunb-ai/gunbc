@@ -40,6 +40,7 @@ import v4.compiler.translate {
   coerce_grounded_node,
   target_bundle_child
 }
+import v4.std.inhabitant_neutralization { neutralize_core_for_target }
 import v4.std.node { Edge, Named, Node, Positional, Symbol }
 import v4.std.diagnostic {
   Accepted,
@@ -266,23 +267,19 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
 // Cross-language compile (optional matrix convenience, signed signature #4821).
 //
 //   cross_language_compile(parse_tree, source_model, target_model)
-//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model), emit(_, target_model))
+//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model),
+//         bind(neutralize_core_for_target(_, target_model),
+//           bind(infer, emit(_, target_model))))
 //
-// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model. emit
-// then serializes it into `target_model`'s surface — proven WHERE source and target share the core
-// inhabitant flavor (e.g. dag->dag, and any source whose grounded core the target's rows key on).
+// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model.
+// neutralize_core_for_target (std/inhabitant_neutralization.dag: source inhabitant -> canonical
+// std_projection -> target inhabitant) rewrites inhabitants when flavors differ; same-flavor paths
+// are identity when std_projection already matches. emit then serializes into `target_model`'s surface.
 //
-// SCOPE / KNOWN GAP (cross-language inhabitant neutralization — surfaced as a Finding, NOT shimmed):
-// when source and target are DIFFERENT languages, the bridge core carries the SOURCE language's
-// inhabitants (e.g. python `int`) but the target's translation rows are keyed on the TARGET's own
-// inhabitants (e.g. TypeScript `number`), and `emit` fails closed at row lookup. `coerce_grounded_node`
-// does NOT bridge this — it grounds a node against a model's OWN candidates and REJECTS a foreign
-// inhabitant (verified by execution: coerce(python core, target: ts) -> Rejected). No generic
-// language-neutralization step (source inhabitant -> canonical std fact -> target inhabitant) exists
-// yet; it is downstream of this bridge and lives in EMIT-surface territory. So this fn realizes the
-// SAME-flavor composition and fails closed (named) on the cross-flavor step — see the matrix cell
-// `cross_language_emit_inhabitant_neutralization_not_realized` in the python->ts consumer claim.
-// `infer` supplies emit's InferredTree GENERICALLY (CoreNode = Node = ResolvedTree).
+// SCOPE: combinator realized + wired; hermetic receipt in manual/inhabitant_neutralization.dag.
+// python→ts cross_language_emit_matrix row is ChainProven when
+// cross_language_add_python_to_typescript_chain_status_holds exercises this full composition on the
+// real parse tree (~627s by-execution receipt).
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
@@ -292,8 +289,13 @@ fn cross_language_compile(
     o: parse_tree_to_target_model_bridge(parse_tree: parse_tree, source_model: source_model),
     f: fn(core) {
       bind_outcome(
-        o: infer(tree: core),
-        f: fn(inferred) { emit(tree: inferred, target: target_model) }
+        o: neutralize_core_for_target(core: core, target: target_model),
+        f: fn(neutralized) {
+          bind_outcome(
+            o: infer(tree: neutralized),
+            f: fn(inferred) { emit(tree: inferred, target: target_model) }
+          )
+        }
       )
     }
   )
