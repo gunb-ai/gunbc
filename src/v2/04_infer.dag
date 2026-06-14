@@ -2796,7 +2796,11 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
     } else { structural }
   } else {
     let next_name = structural.name
-    let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
+    // Optional types carry `.value` via the optional-unwrap path downstream; do
+    // not chain-follow them (following strips the cardinality). Also stop at an
+    // empty name or an already-visited hop (self-reference / cycle).
+    let is_optional = structural.return_cardinality == CardOptional
+    let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
       structural
     } else {
