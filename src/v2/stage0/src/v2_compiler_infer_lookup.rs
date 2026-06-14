@@ -149,31 +149,15 @@ pub fn lookup_field_type_node(
                         }
                     }
                 } else {
-                    if (((n.connective.clone() == Connective::NoConnective)
-                        && ((n.children.clone().len() as i64) > 0))
-                        && (n.inferred.clone() != None))
-                    {
-                        match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => {
-                                lookup_field_type_node(
-                                    target.clone(),
-                                    field_name.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                            _ => None,
+                    match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            lookup_field_type_node(
+                                target.clone(),
+                                field_name.clone(),
+                                source_indices.clone(),
+                            )
                         }
-                    } else {
-                        match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => {
-                                lookup_field_type_node(
-                                    target.clone(),
-                                    field_name.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                            _ => None,
-                        }
+                        _ => None,
                     }
                 }
             }
