@@ -84,8 +84,21 @@ fn byte_size_count(b: ByteSize) -> Nat {
 // param list is dropped on the resolved binding), so it MUST error -- never
 // silently resolve to the raw type variable. This case is uninhabited in dsl
 // today; the test pins the honest fail so a future regression to silent-wrong
-// is caught. `Wrap<T> = Box<T>` then `IntWrap = Wrap<Int>`; `w.value` would be
-// `T`, unsubstitutable through the parametric-alias hop.
+// is caught. `Wrap<T> = Box<T>` then `IntWrap = Wrap<Int>`; `w.value` is `T`,
+// unsubstitutable through the parametric-alias hop.
+//
+// By-execution at this head (probe in expand_alias_chain_for_field_access): the
+// chain reaches the structural record `Wrap` (NOT a fully-instantiated `Box<Int>`
+// with `value: Int`) with `lossy=true` and `record_has_unresolved_param_field=true`,
+// so the `lossy && record_has_unresolved_param_field` branch (04_infer.dag:2793)
+// fires and returns `nominal_type_ref(origin_name="IntWrap")`. We therefore assert
+// the SPECIFIC origin-nominal diagnostic, not merely non-emptiness, so the test
+// can only pass when the documented fail-closed branch fired (not for an unrelated
+// diagnostic, and not if generic instantiation silently resolved it). Its twin
+// `param_independent_field_through_parametric_alias_chain_resolves` is the positive
+// control: the identical chain shape with a phantom (param-independent) field
+// resolves cleanly, isolating that fail-closed is driven by the param-DEPENDENT
+// field, not by the chain being unreachable.
 #[test]
 fn g3_param_dependent_field_through_parametric_alias_chain_fails_closed() {
     let src = r#"
@@ -104,8 +117,45 @@ fn unwrap(w: IntWrap) -> Int {
 "#;
     let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
     assert!(
-        !msgs.is_empty(),
-        "param-dependent field through a parametric-alias chain must fail closed (got no diagnostics: silent-wrong)"
+        msgs.iter()
+            .any(|m| m.contains("no field 'value' on type 'IntWrap'")),
+        "param-dependent field through a parametric-alias chain must fail closed with the \
+         origin-nominal `no field 'value' on type 'IntWrap'` diagnostic (proving \
+         nominal_type_ref(origin) fired at the lossy && unresolved-param boundary), got: {msgs:?}"
+    );
+}
+
+// Positive control twin for the fail-closed boundary above: the IDENTICAL
+// parametric-alias chain shape (parametric record <- parametric alias <- concrete
+// alias) but with a phantom, param-INDEPENDENT field resolves cleanly. This proves
+// the chain genuinely REACHES the structural record through the lossy hop -- so the
+// fail-closed in the twin is caused specifically by the param-DEPENDENT field, not
+// by the chain being broken or unreachable. `Tagged<T>` carries `tag: Nat` (T is
+// phantom), so `record_has_unresolved_param_field` is false and field access
+// resolves end-to-end. Mirrors the MoneyMicros (count: Nat) shape minimally.
+#[test]
+fn param_independent_field_through_parametric_alias_chain_resolves() {
+    let src = r#"
+module m
+
+type Nat
+
+type Tagged<T> {
+  tag: Nat
+}
+
+type WrapTagged<T> = Tagged<T>
+type IntTagged = WrapTagged<Int>
+
+fn get_tag(w: IntTagged) -> Nat {
+  w.tag
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        msgs.is_empty(),
+        "param-independent (phantom) field through the same parametric-alias chain shape should \
+         resolve, isolating fail-closed to param-dependent fields, got: {msgs:?}"
     );
 }
 
