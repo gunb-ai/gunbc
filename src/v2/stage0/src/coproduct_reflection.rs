@@ -223,10 +223,7 @@ pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let type_name = expect_symbol(
-        args.first().map(|(_, v)| v),
-        "syntactic_coproduct_arm_keys",
-    )?;
+    let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
     let (_, file) = type_item_by_name(ctx, type_name)?;
     let labels = syntactic_coproduct_arm_labels(&file, type_name)?;
     Ok(symbol_list_value(&labels))
@@ -277,8 +274,7 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_rejects_connective_prefix_of_longer_type_name() {
-        let source =
-            "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
+        let source = "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
         assert_eq!(
             extract_type_sum_arm_labels(source, "ConnectiveCoproductVariant").expect("variant"),
             vec!["Foo", "Bar"]

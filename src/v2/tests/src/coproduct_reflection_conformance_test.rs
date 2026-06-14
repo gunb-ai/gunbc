@@ -74,7 +74,10 @@ fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
     std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
-    match run_witness(&resolved, "witness_connective_behavior_arm_sets_are_distinct") {
+    match run_witness(
+        &resolved,
+        "witness_connective_behavior_arm_sets_are_distinct",
+    ) {
         Value::Bool(true) => {}
         other => panic!("expected distinct arm sets, got {other:?}"),
     }
@@ -95,16 +98,11 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     let reflection_keys =
         coproduct_reflection::eval_coproduct_arm_keys(&ctx, &[connective.clone()])
             .expect("reflection keys");
-    let corrupted = coproduct_reflection::eval_coproduct_arm_keys_with_dropped_last_arm(
-        &ctx,
-        "Connective",
-    )
-    .expect("corrupted keys");
-    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(
-        &ctx,
-        &[connective],
-    )
-    .expect("syntactic keys");
+    let corrupted =
+        coproduct_reflection::eval_coproduct_arm_keys_with_dropped_last_arm(&ctx, "Connective")
+            .expect("corrupted keys");
+    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(&ctx, &[connective])
+        .expect("syntactic keys");
 
     assert_ne!(
         reflection_keys, corrupted,
