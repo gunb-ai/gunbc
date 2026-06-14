@@ -497,6 +497,18 @@ data ci_runner_gate_row_provenance_producer_rejects_malformed: AffectedSetNodeFr
   function: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds"
 }
 
+data ci_runner_gate_row_provenance_producer_rejects_beyond_mvp1_surface: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set provenance producer rejects beyond-mvp1 fn surface (parse-coverage)",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface_ingest_holds"
+}
+
+data ci_runner_gate_row_provenance_producer_parse_coverage_known_diff_fail_closed: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set provenance parse-coverage gap fail-closed on known diff (perturb-red)",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds"
+}
+
 data ci_runner_gate_row_provenance_producer_coverage_receipt: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
   label: "affected-set provenance producer coverage receipt complete",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
@@ -544,6 +556,8 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_changed_edit_yields_changed_subgraph,
   ci_runner_gate_row_provenance_producer_single_read,
   ci_runner_gate_row_provenance_producer_rejects_malformed,
+  ci_runner_gate_row_provenance_producer_rejects_beyond_mvp1_surface,
+  ci_runner_gate_row_provenance_producer_parse_coverage_known_diff_fail_closed,
   ci_runner_gate_row_provenance_producer_coverage_receipt,
   ci_runner_gate_row_provenance_producer_git_diff_wire,
   ci_runner_gate_row_provenance_producer_unknown_diff_fail_closed,
@@ -551,4 +565,4 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_provenance_producer_selectivity_superset_discriminates
 ]
 
-data ci_runner_node_frontier_claim_run_row_count: String = "21"
+data ci_runner_node_frontier_claim_run_row_count: String = "23"

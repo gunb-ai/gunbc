@@ -48,6 +48,8 @@ data provenance_producer_compilation_unit: Symbol = ^provenance_producer_compila
 
 data provenance_producer_fixture_source: DagSource = dag_mvp1_source_text
 data provenance_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
+// Valid wave-1 module surface — outside mvp1 fn-only parse coverage (fn-surface under-read axis).
+data provenance_producer_module_surface_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
 
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -67,9 +69,17 @@ data provenance_producer_malformed_source_read: DagSourceReadWitness = DagSource
   compilation_unit: provenance_producer_compilation_unit
 }
 
+data provenance_producer_module_surface_source_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: provenance_producer_module_surface_source,
+  artifact: provenance_producer_fixture_artifact,
+  compilation_unit: provenance_producer_compilation_unit
+}
+
 data provenance_producer_single_read_ingest: SourceRootIngest = [provenance_producer_fixture_source_read]
 
 data provenance_producer_malformed_ingest: SourceRootIngest = [provenance_producer_malformed_source_read]
+
+data provenance_producer_module_surface_ingest: SourceRootIngest = [provenance_producer_module_surface_source_read]
 
 data provenance_producer_fixture_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [provenance_producer_path_fixture]
@@ -137,6 +147,28 @@ fn provenance_producer_single_read_emits_row_holds() -> Bool {
 fn provenance_producer_rejects_malformed_ingest_holds() -> Bool {
   match node_artifact_provenance_from_source_root(ingest: provenance_producer_malformed_ingest) {
     Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
+  match node_artifact_provenance_from_source_root(ingest: provenance_producer_module_surface_ingest) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
+  match node_artifact_provenance_from_source_root(ingest: provenance_producer_module_surface_ingest) {
+    Accepted { value: provenance, diagnostics: _ } =>
+      match affected_set_reading_from_git_diff_provenance(
+        graph: affected_set_claim_tree(),
+        git_diff: provenance_producer_fixture_git_diff,
+        provenance: provenance
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
     Rejected { diagnostics: _ } => true
   }
 }
