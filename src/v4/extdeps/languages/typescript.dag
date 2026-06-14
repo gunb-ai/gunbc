@@ -641,8 +641,6 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       if_token: ^ts_token_kw_if,
       then_token: ^ts_token_kw_then,
       else_token: ^ts_token_kw_else
-<<<<<<< HEAD
-=======
     },
     // 🟡 stub — TS has no `in` for let-in; bind emit not wired for TS yet (M0 dag only).
     // `in_token` is intentionally absent from ts lex so bind-let serialize fails closed if
@@ -652,7 +650,6 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       let_token: ^ts_token_kw_let,
       assign_token: ^ts_token_eq,
       in_token: ^ts_token_unwired_bind_in
->>>>>>> ae7d143c54 (fix(v4): TS bind let_form.in_token fails closed (lex-absent sentinel))
     }
   }
 }
