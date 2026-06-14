@@ -1,0 +1,176 @@
+// std/object_store.dag — Content-addressed object store: blob/tree/commit + refs.
+//
+// Foundation for forge plumbing (gunbhub S1). Models the three DAG object kinds
+// and name→object ref bindings. Read-only — no effectful store operations here
+// (write paths and service operations belong in gunbhub S2+).
+//
+// Content-identity rule: all object hashes are ContentHash from std.types —
+// the same carrier used in std.cache_identity / std.cache_interface for the
+// Realization pattern (ctrl ROADMAP §"Cross-cutting requirement — the
+// Realization pattern"). No hand-rolled hash type; compose the existing
+// content-identity primitive.
+//
+// Object-kind tags use ArtifactKindId from cache_identity — same axis as
+// cache_interface's ArtifactIdentity.artifact_kind; no parallel discriminant.
+
+module std.object_store
+
+import std.types { ContentHash, NonEmptyStr, Timestamp, Int }
+import std.cache_identity { ArtifactKindId }
+
+// --- Object-kind discriminants -----------------------------------------------
+//
+// ArtifactKindId values for blob/tree/commit. Compose cache_identity's
+// content-identity axis rather than inventing a separate discriminant type.
+
+data blob_object_kind: ArtifactKindId = "object_store.blob"
+data tree_object_kind: ArtifactKindId = "object_store.tree"
+data commit_object_kind: ArtifactKindId = "object_store.commit"
+
+type ObjectKind
+  = BlobKind
+  | TreeKind
+  | CommitKind
+
+// --- Blob --------------------------------------------------------------------
+//
+// A blob is a raw byte sequence addressed by its content hash.
+// size allows metadata queries without fetching content bytes.
+
+type Blob {
+  hash: ContentHash
+  size: Int
+  content: Bytes
+}
+
+// --- Tree --------------------------------------------------------------------
+//
+// A tree maps entry names to object hashes. Each entry carries the kind of
+// its target so consumers can traverse the object graph without re-reading
+// every object header.
+
+type TreeEntry {
+  name: NonEmptyStr
+  kind: ObjectKind
+  hash: ContentHash
+}
+
+// Tree identity is derived from the ordered sequence of entries.
+// entries are sorted by name (lexicographic); consumers MUST preserve order.
+type Tree {
+  hash: ContentHash
+  entries: List<TreeEntry>
+}
+
+// --- Commit ------------------------------------------------------------------
+//
+// CommitAuthor records who wrote the change (author) and who applied it
+// (committer). Both fields are kept for SLSA provenance and attribution
+// in automated workflows (e.g. merge queues, CI bots).
+
+type CommitAuthor {
+  name: String
+  email: String
+  timestamp: Timestamp
+}
+
+// A commit is a snapshot: root tree hash + provenance + parent chain.
+//   parent_hashes is empty for a root commit, has one entry for an ordinary
+//   commit, and has two or more entries for a merge commit.
+// Commit identity is derived from tree_hash + parent_hashes + author
+// + committer + message.
+type Commit {
+  hash: ContentHash
+  tree_hash: ContentHash
+  parent_hashes: List<ContentHash>
+  author: CommitAuthor
+  committer: CommitAuthor
+  message: NonEmptyStr
+}
+
+// --- Object union ------------------------------------------------------------
+//
+// StoreObject: the three content-addressed object kinds as a closed coproduct.
+// Consumers match on this to dispatch over the stored value.
+
+type StoreObject
+  = ObjectBlob { blob: Blob }
+  | ObjectTree { tree: Tree }
+  | ObjectCommit { commit: Commit }
+
+// ObjectRef: typed pointer into the object graph (hash + kind).
+// Composes ArtifactIdentity semantics from cache_interface:
+//   subject_digest → hash, artifact_kind → {blob,tree,commit}_object_kind.
+type ObjectRef {
+  hash: ContentHash
+  kind: ObjectKind
+}
+
+// Single lookup outcome (M6 — one result pattern, not N bespoke result types).
+type ObjectLookupResult
+  = ObjectFound { object: StoreObject }
+  | ObjectNotFound
+
+// --- Refs: name → object bindings -------------------------------------------
+//
+// A ref binds a human-readable name to an object hash (direct ref) or to
+// another ref name (symbolic ref). Examples:
+//   DirectRef:   refs/heads/main → commit hash
+//   SymbolicRef: HEAD → refs/heads/main
+//
+// S1 models the types; reading and mutating refs is an effectful forge service
+// operation (gunbhub S2+).
+
+type RefKind
+  = DirectRef
+  | SymbolicRef
+
+type RefTarget
+  = DirectTarget { hash: ContentHash }
+  | SymbolicTarget { ref_name: NonEmptyStr }
+
+// NamedRef: a name → target binding.
+// "named" distinguishes the forge ref record from any language `ref` keyword.
+type NamedRef {
+  name: NonEmptyStr
+  kind: RefKind
+  target: RefTarget
+}
+
+// RefResolutionResult: outcome of following a ref chain to a commit hash.
+// SymbolicCycle signals that ref resolution encountered a cycle before
+// reaching a DirectRef (fail-closed: surface the error, never loop forever).
+type RefResolutionResult
+  = RefResolved { hash: ContentHash }
+  | RefNotFound
+  | SymbolicCycle
+
+// --- Structural projections (read-only, no effects) --------------------------
+//
+// These functions project facts already present in a StoreObject.
+// Effectful store I/O (read, write, list) belongs in the forge service layer.
+
+fn store_object_hash(object: StoreObject) -> ContentHash {
+  match object {
+    ObjectBlob { blob: b } => b.hash
+    ObjectTree { tree: t } => t.hash
+    ObjectCommit { commit: c } => c.hash
+  }
+}
+
+fn store_object_kind(object: StoreObject) -> ObjectKind {
+  match object {
+    ObjectBlob { blob: _ } => BlobKind
+    ObjectTree { tree: _ } => TreeKind
+    ObjectCommit { commit: _ } => CommitKind
+  }
+}
+
+// Derive a typed ObjectRef from a StoreObject.
+// Composes store_object_hash + store_object_kind without duplicating dispatch.
+fn object_ref_of(object: StoreObject) -> ObjectRef {
+  ObjectRef {
+    hash: store_object_hash(object: object)
+    kind: store_object_kind(object: object)
+  }
+}
