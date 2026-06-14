@@ -1,5 +1,6 @@
 // src/v4/test/claim/workflow/probe_selector_ci_runner.dag
 // Scope: ProbeSelector keystone claims — ONE select kernel + availability conditioning.
+// Host gate: scripts/v4-probe-selector-keystone-gate.sh (v4_lens_ci, --perturb-check).
 
 module v4.test.claim.workflow.probe_selector_ci_runner
 
@@ -38,16 +39,37 @@ fn probe_selector_srv2_walkthrough_spine_holds() -> Bool {
   length(xs: selected) == 1
 }
 
+// ── probe-selector keystone claim-run gate authority (host: scripts/v4-probe-selector-keystone-gate.sh) ──
+type ProbeSelectorKeystoneClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
 data probe_selector_gate_entry: String = "src/v4/test/claim/workflow/probe_selector_ci_runner.dag"
 
-data probe_selector_claim_run_row_availability: String = "probe-selector availability conditioning keystone"
-data probe_selector_claim_run_row_one_kernel: String = "probe-selector one select kernel inhabited"
-data probe_selector_claim_run_row_srv2_spine: String = "probe-selector srv2 walkthrough spine"
+data probe_selector_gate_row_availability: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector availability conditioning keystone",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_availability_holds"
+}
 
-data probe_selector_claim_run_rows: List<String> = [
-  probe_selector_claim_run_row_availability,
-  probe_selector_claim_run_row_one_kernel,
-  probe_selector_claim_run_row_srv2_spine
+data probe_selector_gate_row_one_kernel: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector one select kernel inhabited",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_one_kernel_holds"
+}
+
+data probe_selector_gate_row_srv2_spine: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector srv2 walkthrough spine",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_srv2_spine_holds"
+}
+
+data probe_selector_claim_run_rows: List<ProbeSelectorKeystoneClaimRunRow> = [
+  probe_selector_gate_row_availability,
+  probe_selector_gate_row_one_kernel,
+  probe_selector_gate_row_srv2_spine
 ]
 
 data probe_selector_claim_run_row_count: String = "3"

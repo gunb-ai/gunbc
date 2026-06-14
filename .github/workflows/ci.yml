@@ -794,6 +794,8 @@ jobs:
     # matrix leg to succeed (fail-closed-on-skip).
     - name: affected-set node-frontier + testgen GREEN must-pass witnesses
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
+    - name: probe-selector keystone must-pass witnesses (PS-0 host-health)
+      run: bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
