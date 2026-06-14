@@ -1,0 +1,86 @@
+// src/v4/extdeps/protocols/redfish.dag
+// Scope: DMTF Redfish out-of-band BMC REST interface — sensor/state read via HTTP.
+// Anchor: DMTF Redfish Specification DSP0266 1.20.0
+//         https://www.dmtf.org/sites/default/files/standards/documents/DSP0266_1.20.0.pdf
+//         DMTF Redfish Schema DSP8010 — Thermal, Power, Systems resources
+//         https://redfish.dmtf.org/schemas/
+//         RFC 9110 (HTTP Semantics — Redfish uses HTTP/1.1 or HTTP/2)
+//         https://www.rfc-editor.org/rfc/rfc9110
+// Role in ProbeSelector: PS-0 DiagnosticInterface for out-of-band BMC observation via REST.
+//   Redfish is the modern successor to raw IPMI-over-LAN; same out-of-band role, structured
+//   JSON schema instead of binary SDR. On hosts that expose Redfish (BMC firmware with Redfish
+//   support), it provides richer structured sensor/chassis data than ipmitool parsing.
+//   On srv1/srv2, Redfish availability depends on BMC firmware version — 🟡 inventory pending.
+// Status: L-10 extdeps carrier; cited by v4.std.probe_selector PS-0.
+
+module v4.extdeps.protocols.redfish
+
+import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.integer { Int }
+
+// --- Resource identifiers ------------------------------------------------
+
+// Redfish resource @odata.id path (DSP0266 §7.3 — all resources have @odata.id).
+// Anchor: DSP0266 §7.3 (Resource Identifier).
+type RedfishResourceId {
+  odata_id: Symbol  // e.g. /redfish/v1/Systems/1 or /redfish/v1/Chassis/1/Thermal
+}
+
+// --- Sensor reading (Thermal / Power schemas) ----------------------------
+
+// DSP0266 §7.3 + DSP8010 Thermal.json: temperature sensor reading from /Thermal.
+// Anchor: DSP8010 Thermal schema (TemperatureCollection, Temperature members).
+type RedfishThermalReading {
+  name: Symbol           // "Name" field in Temperature member
+  reading_celsius: Int   // "ReadingCelsius" (Int approximation; fractional in real schema)
+  upper_threshold_fatal: Symbol  // "UpperThresholdFatal" string (may be null)
+  status_health: Symbol  // "Status"."Health": "OK" | "Warning" | "Critical"
+}
+
+// DSP8010 Power.json: voltage rail reading from /Power.
+// Anchor: DSP8010 Power schema (VoltageCollection, Voltage members).
+type RedfishVoltageReading {
+  name: Symbol
+  reading_volts: Symbol   // Symbol to tolerate fractional (DSP8010 Number type)
+  status_health: Symbol
+}
+
+// DSP8010 Power.json: power consumption reading.
+type RedfishPowerReading {
+  name: Symbol
+  consumed_watts: Symbol
+  status_health: Symbol
+}
+
+// --- Chassis / Memory ECC -----------------------------------------------
+
+// DSP8010 Memory.json: memory device status including ECC counts.
+// Anchor: DSP8010 Memory schema (MemoryMetrics.HealthData.AlarmTrips).
+type RedfishMemoryHealth {
+  device_locator: Symbol  // DIMM slot label (e.g. "DIMM_A0")
+  status_health: Symbol   // "OK" | "Warning" | "Critical"
+  correctable_ecc_errors: Int
+  uncorrectable_ecc_errors: Int
+}
+
+// --- Session / availability ----------------------------------------------
+
+// Redfish session token (DSP0266 §13.3 — Session-based authentication).
+// Anchor: DSP0266 §13.3 (Sessions), /redfish/v1/SessionService/Sessions.
+type RedfishSession {
+  base_url: Symbol      // https://<BMC-IP>/redfish/v1
+  x_auth_token: Symbol  // X-Auth-Token header value (DSP0266 §13.3.2)
+  session_id: RedfishResourceId
+}
+
+// A host exposes RedfishAvailability when:
+//   - BMC firmware supports DSP0266 Redfish (not all IPMI BMCs do)
+//   - /redfish/v1 ServiceRoot is reachable and returns 200 OK
+//   - Session auth succeeds (POST /redfish/v1/SessionService/Sessions)
+// On bare-metal srv1/srv2, confirm BMC firmware version before asserting.
+type RedfishAvailability {
+  service_root: RedfishResourceId  // /redfish/v1
+  authenticated: Bool
+  redfish_version: Symbol  // "RedfishVersion" from service root (e.g. "1.16.0")
+}

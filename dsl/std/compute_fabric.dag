@@ -19,6 +19,13 @@ import std.placement_supply { HostIdentity, PlacementSupplyRow, cpu_capacity_hz_
 type ComputeWitness<C> = Node
 type Outcome<T> = Node
 
+// 🟡 forward — v4.std.probe_selector.DiagnosticCapabilityFacts (L-9-DIAG).
+// Per-host: which diagnostic interfaces/sensors/probes this host actually has.
+// Availability variance (bare-metal srv1/srv2 vs cloud VM) is the layering driver.
+// Dissolves when harness wires cross-module check between dsl.std and v4.std.probe_selector.
+// Attaches to ComputeSupplyFacts.diagnostic_availability below (alongside physical/execution).
+type DiagnosticCapabilityFacts = Node
+
 // 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
 type UpsertInputRef = Node
 type ChangeSet = Node
@@ -164,6 +171,10 @@ type ComputeSupplyFacts {
   execution: ExecutionSurface
   cost: Option<CostModel>
   observed_performance: List<PerformanceReceipt>
+  // 🟡 L-9-DIAG — per-host diagnostic interface availability (ssh/ipmi/redfish).
+  // Type dissolves from Node to v4.std.probe_selector.DiagnosticCapabilityFacts
+  // when harness wires cross-module check. Absence = degenerate (SSH-only) probe set.
+  diagnostic_availability: Option<DiagnosticCapabilityFacts>
 }
 
 type ProviderConstraint

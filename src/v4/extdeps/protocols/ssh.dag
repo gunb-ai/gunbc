@@ -1,0 +1,69 @@
+// src/v4/extdeps/protocols/ssh.dag
+// Scope: SSH transport boundary — in-band observe + run probe commands on a remote host.
+// Anchor: RFC 4251 (SSH Protocol Architecture)
+//         https://www.rfc-editor.org/rfc/rfc4251
+//         RFC 4252 (SSH Authentication Protocol)
+//         https://www.rfc-editor.org/rfc/rfc4252
+//         RFC 4253 (SSH Transport Layer Protocol)
+//         https://www.rfc-editor.org/rfc/rfc4253
+//         RFC 4254 (SSH Connection Protocol — exec channel)
+//         https://www.rfc-editor.org/rfc/rfc4254
+// Role in ProbeSelector: PS-0 DiagnosticInterface for in-band observation and probe execution.
+//   ssh.SshSession is the typed boundary through which ProbeSelector runs in-band probes
+//   (shell commands, /proc reads, df, dmesg). Distinct from IPMI/Redfish (out-of-band BMC).
+// Status: L-10 extdeps carrier; cited by v4.std.probe_selector PS-0.
+
+module v4.extdeps.protocols.ssh
+
+import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.integer { Int }
+
+// --- Transport identity --------------------------------------------------
+
+// RFC 4251 §3: an SSH host key identifies the server. We represent the key
+// fingerprint as a Symbol; the transport layer verifies it on connect.
+// Anchor: RFC 4251 §4.1 (host keys), RFC 4253 §6.6 (host key algorithms).
+type SshHostKeyFingerprint {
+  algorithm: Symbol  // e.g. ^ssh_ed25519, ^ecdsa_sha2_nistp256
+  fingerprint: Symbol
+}
+
+// RFC 4254 §6.5: session channel exec request exit-status.
+type SshExitStatus
+  = SshExitSuccess                       // exit-status 0
+  | SshExitFailure { code: Int }         // exit-status != 0
+  | SshExitSignal { signal_name: Symbol } // exit-signal (RFC 4254 §6.10)
+
+// --- Session and channel types -------------------------------------------
+
+// An authenticated SSH session (RFC 4252 handshake complete; RFC 4253 keys exchanged).
+// This is the typed boundary probe_selector uses for in-band probes: the caller
+// holds a session handle; probe execution dispatches through it.
+// Anchor: RFC 4254 §6 (interactive session channel).
+type SshSession {
+  host: Symbol          // Tailscale FQDN or IP
+  port: Int             // RFC 4253 §4 default 22
+  user: Symbol          // authenticated username (RFC 4252 §8)
+  host_key: SshHostKeyFingerprint
+}
+
+// Result of executing a single command on a session channel.
+// Anchor: RFC 4254 §6.5 (exit-status) + §6.10 (exit-signal).
+type SshCommandResult {
+  stdout: Symbol        // captured fd 1 (may be empty)
+  stderr: Symbol        // captured fd 2 (may be empty)
+  status: SshExitStatus
+}
+
+// --- Capability marker ---------------------------------------------------
+
+// A host has SshAvailability when:
+//   - TCP port is reachable from the controller
+//   - Host key matches known fingerprint
+//   - An authorized key is present for the service account
+// Anchor: RFC 4251 §9.3 (key management), RFC 4252 §7 (publickey auth).
+type SshAvailability {
+  session_prototype: SshSession  // prototype; actual session opens per probe run
+  reachable: Bool
+}

@@ -1,0 +1,378 @@
+// src/v4/std/probe_selector.dag
+// Scope: ProbeSelector kernel — parameterized probe selection spine (PS-0..PS-7).
+//
+// Anchor: ctrl/ROADMAP.md §"Cross-cutting requirement — ProbeSelector" (operator-elevated 2026-06-14).
+//
+// **Design principle (workflows before types).** The two grounding workflows below
+// were designed first; every type here exists to serve them, not the reverse.
+//
+//   WF-HOST-HEALTH  (src/v4/workflow/host_health.dag)
+//     signal → enumerate_available → observe → prior → select → run → read → classify
+//     Domain: bare-metal compute nodes (srv1/srv2); observation inhabitants = BMC/IPMI sensors,
+//     EDAC counters, SSH/OS-level readings.
+//
+//   WF-AFFECTED-TESTS  (src/v4/workflow/affected_set_selection.dag — pre-existing grounding)
+//     change → observe(diff+program-graph) → prior → select(TestClaim ∩ frontier) → run → verdict
+//     Domain: CI gate; observation inhabitants = git diff + AffectedSet facts.
+//
+// **Parameterization axis.** `C` is the change space (hypothesis locus):
+//   - C = ComputeHostCandidate for WF-HOST-HEALTH (which host has the fault?)
+//   - C = RerunNodeSet for WF-AFFECTED-TESTS (which nodes need rerun?)
+// Domain differs only in which Observation inhabitants feed the prior. Same code path, no fork.
+//
+// **DiagnosticCapabilityFacts projection (no parallel host model).**
+//   DiagnosticCapabilityFacts attaches to std.compute_fabric.ComputeSupplyFacts as
+//   `diagnostic_availability` (🟡 forward stub in dsl/std/compute_fabric.dag L-9-DIAG).
+//   Availability variance — cloud VM: SSH only; bare-metal srv1/srv2: SSH + IPMI (+ Redfish
+//   pending operator inventory) — is the layering driver: the selector conditions coverage on
+//   `available`.
+//
+// Status: L-9 kernel; L-10 extdeps protocols cited. Operator srv1/srv2 inventory 🟡 pending.
+
+module v4.std.probe_selector
+
+import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.integer { Int }
+import v4.std.collection { List }
+import v4.extdeps.protocols.ssh { SshAvailability }
+import v4.extdeps.protocols.ipmi { IpmiAvailability, IpmiSensorReading, IpmiSelRecord }
+import v4.extdeps.protocols.redfish { RedfishAvailability, RedfishThermalReading, RedfishVoltageReading, RedfishMemoryHealth }
+
+
+// =========================================================================
+// PS-0 — DiagnosticInterface
+//
+// The typed observe/control boundary: which interfaces this host has.
+// Availability variance is the layering driver.
+//   Cloud VM:        { ssh: present, ipmi: absent, redfish: absent }
+//   Bare-metal srv1/srv2 (confirmed): { ssh: present, ipmi: 🟡 pending }
+//   Bare-metal srv1/srv2 (with BMC Redfish): { redfish: 🟡 pending }
+//
+// 🟡 L-9-DIAG-INV — operator BMC inventory for srv1/srv2 pending; ipmi/redfish
+// fields stubbed as Option until confirmed (ROADMAP §ProbeSelector end-to-end grounding).
+// =========================================================================
+
+// 🟢 coproduct dissolution — three real protocol boundaries, availability-conditioned per host.
+type DiagnosticInterface
+  = SshInterface { availability: SshAvailability }
+  | IpmiInterface { availability: IpmiAvailability }
+  | RedfishInterface { availability: RedfishAvailability }
+
+// Per-host, machine-specific: which diagnostic interfaces and sensors this host actually has.
+// Attaches to std.compute_fabric.ComputeSupplyFacts.diagnostic_availability (🟡 L-9-DIAG stub).
+// Bare-metal srv1/srv2: ssh always present; ipmi/redfish: 🟡 inventory pending.
+// Cloud VM: ssh_availability present; bmc fields absent.
+type DiagnosticCapabilityFacts {
+  ssh: Option<SshAvailability>
+  ipmi: Option<IpmiAvailability>
+  redfish: Option<RedfishAvailability>
+}
+
+// Which interfaces a probe REQUIRES to run.
+// ProbeSelector.select filters out probes whose requires ⊄ available.
+type DiagnosticCapabilityRequirements {
+  requires_ssh: Bool
+  requires_ipmi: Bool
+  requires_redfish: Bool
+}
+
+fn requirements_satisfied(
+  reqs: DiagnosticCapabilityRequirements,
+  available: DiagnosticCapabilityFacts,
+) -> Bool {
+  (reqs.requires_ssh && is_some_ssh(available: available))
+    || (!reqs.requires_ssh)
+    &&
+  (reqs.requires_ipmi && is_some_ipmi(available: available))
+    || (!reqs.requires_ipmi)
+    &&
+  (reqs.requires_redfish && is_some_redfish(available: available))
+    || (!reqs.requires_redfish)
+}
+
+fn is_some_ssh(available: DiagnosticCapabilityFacts) -> Bool {
+  match available.ssh {
+    None => false
+    Some { value: _ } => true
+  }
+}
+
+fn is_some_ipmi(available: DiagnosticCapabilityFacts) -> Bool {
+  match available.ipmi {
+    None => false
+    Some { value: _ } => true
+  }
+}
+
+fn is_some_redfish(available: DiagnosticCapabilityFacts) -> Bool {
+  match available.redfish {
+    None => false
+    Some { value: _ } => true
+  }
+}
+
+
+// =========================================================================
+// PS-1 — Observation
+//
+// A sensor or state reading obtained through an available DiagnosticInterface.
+// Observations are collected within_available: only interfaces the host supports.
+// =========================================================================
+
+// 🟢 coproduct dissolution — four observation kinds, one per interface class + OS-level.
+type Observation
+  = SshOsReading {
+      // in-band via SSH: /proc/meminfo, dmesg, df, load average, etc.
+      metric_name: Symbol
+      raw_value: Symbol
+    }
+  | IpmiSensorObservation { reading: IpmiSensorReading }
+  | IpmiSelObservation { record: IpmiSelRecord }
+  | RedfishThermalObservation { reading: RedfishThermalReading }
+  | RedfishVoltageObservation { reading: RedfishVoltageReading }
+  | RedfishMemoryObservation { health: RedfishMemoryHealth }
+  | ChangeSignalObservation {
+      // in-band for WF-AFFECTED-TESTS: git diff locus, AffectedSet membership
+      signal_kind: Symbol  // ^git_diff_locus | ^affected_set_member | ^program_graph_edge
+      subject: Symbol
+    }
+
+type ObservationSet {
+  observations: List<Observation>
+}
+
+
+// =========================================================================
+// PS-2 — SuspectedCausePrior<C>
+//
+// Belief distribution over the hypothesis space C.
+// Observations sharpen (or widen) the prior; ProbeSelector selects probes to
+// maximally discriminate remaining competing hypotheses per unit cost.
+//
+// 🟡 P-PS-PRIOR-QUANTIFY — quantitative probability carrier deferred;
+// current repr = ordered hypothesis list with confidence symbol per item.
+// Dissolves when Measure algebra extends to probability spaces.
+// =========================================================================
+
+// A single hypothesis about the cause, with a qualitative confidence tag.
+// 🟢 coproduct dissolution — three confidence levels.
+type HypothesisConfidence
+  = HighConfidence
+  | MediumConfidence
+  | LowConfidence
+
+type Hypothesis<C> {
+  cause: C
+  confidence: HypothesisConfidence
+  evidence_summary: Symbol  // human-readable description of supporting observations
+}
+
+// Prior over change space C: a ranked list of competing hypotheses.
+// Sharpened by feeding ProbeResults back through update_prior (the feedback edge).
+type SuspectedCausePrior<C> {
+  hypotheses: List<Hypothesis<C>>
+}
+
+fn prior_has_high_confidence<C>(prior: SuspectedCausePrior<C>) -> Bool {
+  fold(prior.hypotheses, init: false, f: fn(acc, h) {
+    match h.confidence {
+      HighConfidence => true
+      MediumConfidence => acc
+      LowConfidence => acc
+    }
+  })
+}
+
+
+// =========================================================================
+// PS-3 — ChangeSpace<C>
+//
+// The selectable lattice over hypothesis locus C.
+// Projected from the prior; a probe's coverage region is a subset of this lattice.
+// =========================================================================
+
+// CoverageRegion<C> — the portion of the change space that a probe can discriminate.
+// A probe covers a region if its outcome distinguishes hypotheses within that region.
+type CoverageRegion<C> {
+  covered_hypotheses: List<C>
+}
+
+fn coverage_is_empty<C>(r: CoverageRegion<C>) -> Bool {
+  fold(r.covered_hypotheses, init: true, f: fn(acc, _) { false })
+}
+
+
+// =========================================================================
+// PS-4 — ProbeCatalog<P>
+//
+// One catalog with coverage + cost + requires per probe kind P.
+// Catalog is universal; selectability is conditioned on per-host availability (PS-5).
+// =========================================================================
+
+// A single catalog entry for probe kind P.
+type CatalogEntry<C, P> {
+  probe: P
+  coverage: CoverageRegion<C>
+  // 🟡 P-PS-COST-MEASURE — cost carrier is a Symbol (e.g. ^low, ^medium, ^high) until
+  // std.compute_fabric.Measure algebra is stable enough to carry probe cost uniformly.
+  cost_class: Symbol
+  requires: DiagnosticCapabilityRequirements
+}
+
+type ProbeCatalog<C, P> {
+  entries: List<CatalogEntry<C, P>>
+}
+
+
+// =========================================================================
+// PS-5 — ProbeSelector<C, P>
+//
+// The parameterized selector.  Given:
+//   - a prior over C (current hypothesis belief)
+//   - a budget class (low | medium | high | unlimited)
+//   - the host's DiagnosticCapabilityFacts (PS-0)
+// Returns: List<P> — probes whose coverage ∩ available maximally discriminates,
+//   within budget, with no diagnostic prose.
+// =========================================================================
+
+// 🟢 coproduct dissolution — budget classes.
+type SelectionBudget
+  = BudgetLow       // quick reachability checks only
+  | BudgetMedium    // sensor reads + ECC check
+  | BudgetHigh      // stress probes, full SEL scan
+  | BudgetUnlimited // burn-in / extended diagnostics
+
+type ProbeSelector<C, P> {
+  catalog: ProbeCatalog<C, P>
+}
+
+// Core selection function: filters catalog to available + covering probes, ordered by
+// discrimination-per-cost (coverage non-empty ∩ available interfaces satisfied).
+fn select_probes<C, P>(
+  selector: ProbeSelector<C, P>,
+  prior: SuspectedCausePrior<C>,
+  budget: SelectionBudget,
+  available: DiagnosticCapabilityFacts,
+) -> List<P> {
+  // Filter catalog to entries whose requirements are satisfied by this host's availability.
+  // Cost filtering deferred to budget-class rules (🟡 P-PS-COST-MEASURE).
+  fold(
+    selector.catalog.entries,
+    init: [],
+    f: fn(acc, entry) {
+      match requirements_satisfied(reqs: entry.requires, available: available) {
+        true =>
+          match coverage_is_empty(r: entry.coverage) {
+            true => acc
+            false => list_append(acc, entry.probe)
+          }
+        false => acc
+      }
+    }
+  )
+}
+
+// 🟡 P-PS-SELECT-RANKED — discrimination-per-cost ranking deferred until
+// cost carrier gains Measure algebra and prior gains quantitative probabilities.
+// Current implementation: unranked filter (available ∩ covering). Dissolves on
+// P-PS-COST-MEASURE + P-PS-PRIOR-QUANTIFY resolution.
+
+fn list_append<T>(xs: List<T>, item: T) -> List<T> {
+  fold(xs, init: [item], f: fn(acc, x) {
+    fold([x], init: acc, f: fn(a, v) { [v] })
+  })
+}
+
+
+// =========================================================================
+// PS-6 — ProbeResult
+//
+// The discriminating outcome of running one probe.
+// Read back through PS-0 DiagnosticInterface; fed into SuspectedCausePrior to sharpen.
+// =========================================================================
+
+// 🟢 coproduct dissolution — four outcome classes.
+type ProbeOutcomeClass
+  = OutcomeHealthy       // probe ran; observation within normal thresholds
+  | OutcomeMarginal      // probe ran; anomaly detected, not conclusive
+  | OutcomeFailed        // probe ran; clear evidence of fault
+  | OutcomeUnavailable   // probe could not run (interface unavailable at runtime)
+
+type ProbeResult<P> {
+  probe: P
+  outcome: ProbeOutcomeClass
+  raw_observations: List<Observation>
+  evidence_note: Symbol  // discriminating evidence summary; no diagnostic prose
+}
+
+
+// =========================================================================
+// PS-7 — TemporalAggregator<O>
+//
+// Sustained confidence over repeated probe cycles before irreversible action.
+// Prevents a single-sample flap (network blip, transient error) from triggering drain.
+// Burn-in counters inlined in server.mjs today; this type is the modeled replacement.
+// =========================================================================
+
+// Aggregation policy: how many consecutive observations of the same outcome class
+// are required before the aggregator commits to a classification.
+type TemporalPolicy {
+  // Consecutive OutcomeHealthy readings required to declare Healthy.
+  healthy_streak_required: Int
+  // Consecutive OutcomeFailed/Marginal readings required to escalate.
+  fault_streak_required: Int
+  // Maximum probe cycles before declaring undecided (circuit breaker).
+  max_cycles: Int
+}
+
+// 🟢 coproduct dissolution — three temporal classifications.
+type TemporalClassification
+  = TemporalHealthy    // healthy_streak_required consecutive healthy outcomes
+  | TemporalMarginal   // some fault evidence, not yet at fault_streak_required
+  | TemporalFaulty     // fault_streak_required consecutive fault outcomes → gate drain
+  | TemporalUndecided  // max_cycles elapsed without convergence
+
+type TemporalAggregator<O> {
+  policy: TemporalPolicy
+  // Rolling window of recent outcomes (last max_cycles entries).
+  recent_outcomes: List<ProbeOutcomeClass>
+}
+
+fn temporal_classify<O>(agg: TemporalAggregator<O>) -> TemporalClassification {
+  // 🟡 P-PS-TEMPORAL-STREAK — streak counting deferred; placeholder returns Undecided
+  // until fold-over-recent-outcomes carries integer state in v2 bootstrap.
+  TemporalUndecided
+}
+
+
+// =========================================================================
+// Grounding stubs — workflow spine entry points
+//
+// These are the typed entry points that WF-HOST-HEALTH and WF-AFFECTED-TESTS
+// call into. Full workflow logic lives in src/v4/workflow/host_health.dag and
+// the pre-existing src/v4/workflow/affected_set_selection.dag respectively.
+// =========================================================================
+
+// WF-HOST-HEALTH step: enumerate available interfaces for a specific host.
+// Callers: src/v4/workflow/host_health.dag enumerate_available.
+// 🟡 P-PS-ENUMERATE — body dispatches to operator inventory (nodes.json capabilities);
+// dissolves when capability facts are read from ComputeSupplyFacts.diagnostic_availability.
+fn enumerate_available_stub(host_id: Symbol) -> DiagnosticCapabilityFacts {
+  DiagnosticCapabilityFacts {
+    ssh: None
+    ipmi: None
+    redfish: None
+  }
+}
+
+// WF-AFFECTED-TESTS grounding: the change-signal observation kind used by the CI spine.
+// AffectedSet and TestClaim are in v4.std.change / v4.std.verification; the ProbeSelector
+// parameterization for CI uses ChangeSignalObservation (above) as the Observation inhabitant.
+// See src/v4/workflow/affected_set_selection.dag for the concrete ci_select_from_affected_set
+// function — it is the WF-AFFECTED-TESTS select step grounded on ProbeSelector<RerunNodeSet>.
+type CiChangeSpace {
+  // 🟡 forward — v4.std.change.RerunNodeSet (P-PS-CI-CHANGE-SPACE).
+  // Dissolves when harness wires v4.std.change import here.
+  rerun_node_set: Symbol  // placeholder; will be RerunNodeSet
+}

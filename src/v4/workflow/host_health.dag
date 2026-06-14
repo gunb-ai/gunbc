@@ -1,0 +1,199 @@
+// src/v4/workflow/host_health.dag
+// Scope: WF-HOST-HEALTH — end-to-end host health workflow using the ProbeSelector spine.
+//
+// Anchor: ctrl/ROADMAP.md §ProbeSelector "WF-HOST-HEALTH (burn-in domain — srv1/srv2)".
+//
+// Workflow shape (designed first; types in probe_selector.dag serve this spine):
+//
+//   UnhealthySignal | MarginalSignal
+//     → enumerate_available(host)           // DiagnosticCapabilityFacts for THIS host
+//     → observe_within_available(host)      // PS-1: only interfaces host supports
+//     → update_prior(observations)          // PS-2: sharpen hypotheses (standoff | cap | VDDQ | ...)
+//     → select_probes(prior, budget, avail) // PS-5: coverage ∩ available, max discrim/cost
+//     → run_probe(via DiagnosticInterface)  // PS-0: typed interface (SSH/IPMI/Redfish)
+//     → read_sensors / ProbeResult          // PS-6
+//     → sharpen_prior(result)               // feedback edge → back to update_prior
+//     → classify(TemporalAggregator)        // PS-7: sustained Healthy | Marginal | Faulty
+//
+// End-to-end grounding: srv1/srv2 (live bare-metal nodes).
+//   - Signal: marginal memory/power symptom (degraded DIMMs on srv1; cap repair on srv2)
+//   - Available: SSH confirmed; IPMI/Redfish 🟡 operator inventory pending
+//   - Hypotheses: standoff | cap failure | VDDQ rail fault | EDAC correctable errors
+//   - Probe example: ECC-watched stress via IPMI + SSH (runs only if IPMI ∈ available)
+//   - Degenerate case today: available ≈ { SSH } → wide prior, docker reachability only
+//
+// Contrast (availability variance): cloud VM: available = { SSH } only → same workflow,
+// narrower probe set.  Selection is conditioned on DiagnosticCapabilityFacts.
+//
+// Status: L-9 workflow structure; blocked on operator srv1/srv2 BMC inventory 🟡.
+
+module v4.workflow.host_health
+
+import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.integer { Int }
+import v4.std.collection { List }
+import v4.std.probe_selector {
+  DiagnosticCapabilityFacts,
+  DiagnosticInterface,
+  Observation,
+  ObservationSet,
+  SuspectedCausePrior,
+  Hypothesis,
+  HypothesisConfidence,
+  ProbeSelector,
+  SelectionBudget,
+  ProbeResult,
+  ProbeOutcomeClass,
+  TemporalAggregator,
+  TemporalPolicy,
+  TemporalClassification,
+  temporal_classify,
+  select_probes,
+  enumerate_available_stub,
+}
+
+
+// =========================================================================
+// Host health hypothesis space
+//
+// Change space C for WF-HOST-HEALTH: the hypothesis set for bare-metal faults.
+// Availability variance (bare-metal vs VM) determines which hypotheses are plausible
+// and which probes can discriminate them.
+// =========================================================================
+
+// 🟢 coproduct dissolution — hardware fault hypotheses grounded in srv1/srv2 incidents.
+type HostFaultHypothesis
+  = DimmStandoffFault          // DIMM not fully seated — correctable ECC errors, marginal
+  | CapacitorFailure           // failed MLCC → rail sag → VDDQ instability (srv2 cap repair)
+  | VddqRailFault              // VDDQ power rail fault — memory error storms
+  | EdacCorrectableErrors      // correctable ECC errors accumulating (srv1: 2 dead DIMMs)
+  | DockerReachabilityFault    // docker daemon unreachable (degenerate probe — SSH only)
+  | UnknownFault               // prior before any observation sharpens it
+
+
+// =========================================================================
+// Health signal
+//
+// What triggers the workflow. Both marginal (warning) and definitive (unhealthy)
+// signals enter the same spine; the prior starts wider for marginal signals.
+// =========================================================================
+
+// 🟢 coproduct dissolution — two signal classes.
+type HostHealthSignal
+  = UnhealthySignal {
+      host_id: Symbol
+      trigger: Symbol   // e.g. ^docker_unreachable | ^placement_refused
+    }
+  | MarginalSignal {
+      host_id: Symbol
+      trigger: Symbol   // e.g. ^ecc_counter_increment | ^oom_kill_observed
+    }
+
+
+// =========================================================================
+// Workflow steps
+// =========================================================================
+
+// Step 1 — enumerate_available: read DiagnosticCapabilityFacts for this host.
+// Today: dispatches to operator inventory (nodes.json capabilities 🟡).
+// Future: reads ComputeSupplyFacts.diagnostic_availability directly.
+fn enumerate_available(host_id: Symbol) -> DiagnosticCapabilityFacts {
+  // 🟡 P-WF-HH-ENUMERATE — wire to ComputeSupplyFacts.diagnostic_availability when
+  // L-9-DIAG stub in compute_fabric.dag dissolves. Current body: all absent (degenerate).
+  enumerate_available_stub(host_id: host_id)
+}
+
+// Step 2 — observe_within_available: collect observations through available interfaces.
+// Only interfaces the host supports are exercised (PS-1).
+fn observe_within_available(
+  host_id: Symbol,
+  available: DiagnosticCapabilityFacts,
+) -> ObservationSet {
+  // 🟡 P-WF-HH-OBSERVE — dispatch to SSH/IPMI/Redfish observation runners per available.
+  // Placeholder: empty observation set.  Dissolves when host_run.dag wires probe dispatch.
+  ObservationSet { observations: [] }
+}
+
+// Step 3 — update_prior: fold observations into the suspected-cause prior.
+fn update_prior(
+  prior: SuspectedCausePrior<HostFaultHypothesis>,
+  observations: ObservationSet,
+) -> SuspectedCausePrior<HostFaultHypothesis> {
+  // 🟡 P-WF-HH-PRIOR — observation→hypothesis sharpening logic pending operator
+  // inventory walk-through (srv2 cap repair grounding). Placeholder: prior unchanged.
+  prior
+}
+
+// Step 5 — select: coverage ∩ available, max discrimination/cost.
+fn select_host_probes<P>(
+  selector: ProbeSelector<HostFaultHypothesis, P>,
+  prior: SuspectedCausePrior<HostFaultHypothesis>,
+  budget: SelectionBudget,
+  available: DiagnosticCapabilityFacts,
+) -> List<P> {
+  select_probes(selector: selector, prior: prior, budget: budget, available: available)
+}
+
+// Step 6 + feedback — read and sharpen: after running a probe, sharpen the prior.
+fn sharpen_prior(
+  prior: SuspectedCausePrior<HostFaultHypothesis>,
+  result: ProbeResult<HostFaultHypothesis>,
+) -> SuspectedCausePrior<HostFaultHypothesis> {
+  // 🟡 P-WF-HH-SHARPEN — feedback edge logic (outcome→confidence adjustment) pending
+  // quantitative prior (P-PS-PRIOR-QUANTIFY) and srv2 grounding walk-through.
+  prior
+}
+
+// Step 7 — classify: temporal aggregation before irreversible drain action.
+fn classify_health<O>(agg: TemporalAggregator<O>) -> TemporalClassification {
+  temporal_classify(agg: agg)
+}
+
+
+// =========================================================================
+// Degenerate grounding: today's docker-reachability probe
+//
+// Current node_health.mjs equivalent: available ≈ { SSH, docker_reachability }.
+// This is the WF-HOST-HEALTH degenerate case — wide prior, minimal discrimination.
+// The ProbeSelector spine runs even in this case; it just returns only the
+// DockerReachabilityFault hypothesis with low confidence until more sensors land.
+// =========================================================================
+
+type DockerReachabilityProbe {
+  host_id: Symbol
+}
+
+fn docker_reachability_probe_coverage(
+  _probe: DockerReachabilityProbe,
+) -> Bool {
+  // Covers DockerReachabilityFault hypothesis only.
+  true
+}
+
+// Initial wide prior for a host before any observations are collected.
+fn initial_host_prior(host_id: Symbol) -> SuspectedCausePrior<HostFaultHypothesis> {
+  SuspectedCausePrior {
+    hypotheses: [
+      Hypothesis {
+        cause: UnknownFault,
+        confidence: LowConfidence,
+        evidence_summary: ^no_observations_yet,
+      }
+    ]
+  }
+}
+
+// Initial temporal aggregator with a conservative policy.
+// fault_streak_required = 3 consecutive failures before gating drain (replaces
+// inlined burn-in counter in server.mjs TemporalAggregator predecessor).
+fn initial_temporal_aggregator<O>() -> TemporalAggregator<O> {
+  TemporalAggregator {
+    policy: TemporalPolicy {
+      healthy_streak_required: 2,
+      fault_streak_required: 3,
+      max_cycles: 10,
+    },
+    recent_outcomes: [],
+  }
+}

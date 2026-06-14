@@ -1,0 +1,81 @@
+// src/v4/extdeps/protocols/ipmi.dag
+// Scope: IPMI out-of-band BMC interface — sensor/SEL read via ipmitool.
+// Anchor: IPMI Specification v2.0
+//         https://www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html
+//         IPMI Platform Management FRU Information Storage Definition v1.0
+//         https://www.intel.com/content/www/us/en/products/docs/servers/ipmi/fru-storage-definition.html
+// Role in ProbeSelector: PS-0 DiagnosticInterface for out-of-band BMC observation.
+//   IPMI gives access to sensor data records (SDR), system event log (SEL), field-replaceable
+//   unit (FRU) data, and chassis power control — all without requiring the OS to be alive.
+//   On srv1/srv2 (Ampere Altra Max bare-metal), IPMI access is via ipmitool over BMC LAN channel.
+// Status: L-10 extdeps carrier; cited by v4.std.probe_selector PS-0.
+
+module v4.extdeps.protocols.ipmi
+
+import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.integer { Int }
+
+// --- IPMI sensor reading -------------------------------------------------
+
+// IPMI v2.0 §35: Sensor Data Record types.
+// A sensor reading as returned by `ipmitool sensor` or `ipmitool sdr`.
+// Anchor: IPMI v2.0 §35.2 (Full Sensor Record), §35.3 (Compact Sensor Record).
+type IpmiSensorKind
+  = Temperature   // °C, IPMI entity: processors, memory, chassis
+  | Voltage       // V, IPMI entity: VDDQ, VR rails, 12V, 5V, 3.3V
+  | Fan           // RPM, IPMI entity: fan modules
+  | Current       // A, IPMI entity: power supply rails
+  | Power         // W, aggregate
+  | Presence      // discrete: present/absent (for FRU like DIMMs, PCIe cards)
+  | EventDriven   // discrete sensors — threshold not applicable
+
+// IPMI v2.0 §41.1: sensor threshold access — used for health classification.
+type IpmiThresholdStatus
+  = WithinNormal
+  | LowerNonCritical
+  | LowerCritical
+  | LowerNonRecoverable
+  | UpperNonCritical
+  | UpperCritical
+  | UpperNonRecoverable
+  | NotApplicable   // discrete sensor
+
+type IpmiSensorReading {
+  name: Symbol                     // SDR sensor name string
+  kind: IpmiSensorKind
+  value: Symbol                    // raw reading string (numeric or discrete state)
+  unit: Symbol                     // unit string from SDR (e.g. ^degrees_c, ^volts)
+  threshold_status: IpmiThresholdStatus
+}
+
+// --- System Event Log ----------------------------------------------------
+
+// IPMI v2.0 §32: System Event Log record.
+// Anchor: IPMI v2.0 §32.1 (SEL Record Formats), §32.2 (System Event Record).
+type IpmiSelSeverity
+  = IpmiSelInfo
+  | IpmiSelWarning
+  | IpmiSelCritical
+
+type IpmiSelRecord {
+  record_id: Int
+  timestamp: Symbol  // ISO 8601 string from ipmitool
+  sensor_name: Symbol
+  event_description: Symbol
+  severity: IpmiSelSeverity
+}
+
+// --- Availability marker -------------------------------------------------
+
+// A host exposes IpmiAvailability when:
+//   - BMC is reachable on the management network (LAN channel, IPMI v2.0 §12)
+//   - ipmitool can authenticate (RAKP or pre-shared key, IPMI v2.0 §13)
+//   - Sensor data records (SDR) have been enumerated at least once
+// On cloud VMs, IpmiAvailability is absent — hypervisor metrics replace it.
+type IpmiAvailability {
+  bmc_address: Symbol    // IP or hostname of the BMC LAN interface
+  channel: Int           // IPMI LAN channel number (default 1)
+  authenticated: Bool    // RAKP auth succeeded (IPMI v2.0 §13.28)
+  sensor_count: Int      // number of SDR entries enumerated
+}
