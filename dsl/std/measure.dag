@@ -182,7 +182,13 @@ type Measure<Q, S> {
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One>
 
-// Information magnitude at unit scale (bit-width / word-width dimensional carrier).
+// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
+// carrier; Information's FIRST inhabitant — sets precedent: Information = digital
+// bits, atomic unit at scale One).
+// 🟡 feature:memory-information-byte-bit-conversion — bind first cross-conversion
+// consumer needing Memory <-> Information (byte <-> bit x8). x8 is non-decimal so
+// it will NOT be an SI Scale; lands as a separate sub-unit authority (same pattern
+// as currency ISO minor-unit at lines 205-209). Dissolve-on: first consumer.
 type BitWidth = Measure<Information, One>
 
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
@@ -231,8 +237,9 @@ fn money_micros(count: Nat) -> MoneyMicros {
   MoneyMicros { count: count }
 }
 
-// Parameter uses single-hop `Measure<Currency, Micro>` so `.count` resolves on v2 (G3
-// multi-hop alias field access on `MoneyMicros` alone remains gated).
+// 🟡 consumer:G3-multi-hop-alias-field-access — bind gunbc#4885 (G3 flip lane).
+// Inline `Measure<Currency, Micro>` dodges v2 multi-hop `.count` on `MoneyMicros` pre-flip.
+// Dissolve-on: #4885 merge — repoint param to `MoneyMicros`; coordinate with snappy-stag-903.
 fn money_micros_count(m: Measure<Currency, Micro>) -> Nat {
   m.count
 }
