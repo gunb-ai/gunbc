@@ -1,0 +1,41 @@
+// src/v4/workflow/probe_selector_affected_tests.dag
+// WF-AFFECTED-TESTS — CI domain call site; same spine, CI observation inhabitants.
+
+module v4.workflow.probe_selector_affected_tests
+
+import v4.std.algebra { length }
+import v4.std.change { AffectedSet }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.probe_selector {
+  CostBudget,
+  DiagnosticCapabilityFacts,
+  SuspectedCausePrior,
+  diagnostic_capability_degenerate_today,
+  probe_select_host_health
+}
+import v4.std.verification { TestClaim }
+import v4.workflow.affected_set_selection { ci_select_from_affected_set }
+
+// CI observation surface is always available in-repo (git + program graph).
+fn wf_affected_tests_enumerate_available() -> DiagnosticCapabilityFacts {
+  diagnostic_capability_degenerate_today()
+}
+
+fn wf_affected_tests_select_claims(
+  roster: List<TestClaim>,
+  affected: AffectedSet
+) -> List<TestClaim> {
+  ci_select_from_affected_set(roster: roster, affected: affected)
+}
+
+// ONE select kernel: host-health uses probe_select; CI uses ci_select_from_affected_set
+// as the domain call site over the same prior→select spine (different P, same shape).
+fn wf_affected_tests_one_kernel_with_host_health_holds() -> Bool {
+  let host_selected = probe_select_host_health(
+    prior: SuspectedCausePrior { hypothesis: "host-health" },
+    budget: CostBudget { max_cost: 100 },
+    available: wf_affected_tests_enumerate_available()
+  )
+  length(xs: host_selected) > 0
+}

@@ -1,0 +1,418 @@
+// src/v4/std/probe_selector.dag
+// Scope: ProbeSelector kernel (PS-1..PS-7) — ONE select() for host-health + affected-tests.
+// Status: modeled 2026-06-14; ctrl ROADMAP #1612 / L-9 authority.
+
+module v4.std.probe_selector
+
+import v4.std.algebra {
+  Cons,
+  Empty,
+  contains,
+  count_where,
+  filter,
+  fold_list,
+  length
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.text { String }
+
+// PS-0 — diagnostic interface kinds (parallel extdeps diagnostic/* cited protocols).
+// 🟢 coproduct dissolution — terminal at protocol boundary.
+type DiagnosticInterfaceKind
+  = DiagnosticSsh
+  | DiagnosticIpmi
+  | DiagnosticRedfish
+  | DiagnosticEdac
+  | DiagnosticDockerReachability
+  | DiagnosticBmcSensors
+
+type DiagnosticCapabilityFacts {
+  interfaces: List<DiagnosticInterfaceKind>
+}
+
+// Projection input — mirrors std.compute_fabric ComputeHost.identity +
+// ExecutionSurface.isolation (SharedHostHome vs Vm) without forking a parallel
+// host model. Grounded rows cite supply_srv{1,2}_offer / supply_hetzner_cax41_offer.
+type HostSupplyProjectionInput {
+  identity: String
+  isolation_is_vm: Bool
+  has_out_of_band_bmc: Bool
+}
+
+type CostBudget {
+  max_cost: Int
+}
+
+// PS-2 — suspected-cause prior (hypothesis tag over change space C).
+type SuspectedCausePrior<C> {
+  hypothesis: C
+}
+
+// PS-4 — catalog row: coverage + cost + requires interfaces.
+type ProbeCatalogEntry {
+  label: String
+  coverage: Int
+  cost: Int
+  requires: List<DiagnosticInterfaceKind>
+}
+
+type ProbeCatalog<P> {
+  entries: List<ProbeCatalogEntry>
+}
+
+// PS-6
+type ProbeResult {
+  passed: Bool
+}
+
+// PS-7 — burn-in over repeated loop cycles.
+type TemporalAggregator {
+  consecutive_failures: Int
+  first_failed_at_ms: Int
+  min_failures: Int
+  min_down_ms: Int
+}
+
+fn diagnostic_interface_kind_eq(
+  left: DiagnosticInterfaceKind,
+  right: DiagnosticInterfaceKind
+) -> Bool {
+  match left {
+    DiagnosticSsh =>
+      match right {
+        DiagnosticSsh => true
+        _ => false
+      }
+    DiagnosticIpmi =>
+      match right {
+        DiagnosticIpmi => true
+        _ => false
+      }
+    DiagnosticRedfish =>
+      match right {
+        DiagnosticRedfish => true
+        _ => false
+      }
+    DiagnosticEdac =>
+      match right {
+        DiagnosticEdac => true
+        _ => false
+      }
+    DiagnosticDockerReachability =>
+      match right {
+        DiagnosticDockerReachability => true
+        _ => false
+      }
+    DiagnosticBmcSensors =>
+      match right {
+        DiagnosticBmcSensors => true
+        _ => false
+      }
+  }
+}
+
+fn diagnostic_capability_contains(
+  available: DiagnosticCapabilityFacts,
+  required: DiagnosticInterfaceKind
+) -> Bool {
+  contains(
+    xs: available.interfaces,
+    item: required,
+    eq: diagnostic_interface_kind_eq
+  )
+}
+
+fn diagnostic_all_requires_available(
+  requires: List<DiagnosticInterfaceKind>,
+  available: DiagnosticCapabilityFacts
+) -> Bool {
+  fold_list(
+    xs: requires,
+    empty: true,
+    cons: fn(acc, req) {
+      acc && diagnostic_capability_contains(available: available, required: req)
+    }
+  )
+}
+
+fn probe_catalog_entry_cost(entry: ProbeCatalogEntry) -> Int {
+  entry.cost
+}
+
+fn probe_catalog_entry_coverage(entry: ProbeCatalogEntry) -> Int {
+  entry.coverage
+}
+
+fn probe_catalog_entry_label(entry: ProbeCatalogEntry) -> String {
+  entry.label
+}
+
+fn probe_catalog_entry_requires(
+  entry: ProbeCatalogEntry
+) -> List<DiagnosticInterfaceKind> {
+  entry.requires
+}
+
+fn probe_catalog_entry_selectable(
+  entry: ProbeCatalogEntry,
+  available: DiagnosticCapabilityFacts
+) -> Bool {
+  diagnostic_all_requires_available(
+    requires: probe_catalog_entry_requires(entry: entry),
+    available: available
+  )
+    && probe_catalog_entry_coverage(entry: entry) > 0
+    && probe_catalog_entry_cost(entry: entry) > 0
+}
+
+fn probe_catalog_entry_within_budget(
+  entry: ProbeCatalogEntry,
+  budget: CostBudget
+) -> Bool {
+  probe_catalog_entry_cost(entry: entry) <= budget.max_cost
+}
+
+fn probe_discrimination_beats(
+  challenger: ProbeCatalogEntry,
+  incumbent: ProbeCatalogEntry
+) -> Bool {
+  let challenger_coverage = probe_catalog_entry_coverage(entry: challenger)
+  let challenger_cost = probe_catalog_entry_cost(entry: challenger)
+  let incumbent_coverage = probe_catalog_entry_coverage(entry: incumbent)
+  let incumbent_cost = probe_catalog_entry_cost(entry: incumbent)
+  challenger_coverage * incumbent_cost > incumbent_coverage * challenger_cost
+}
+
+fn probe_select_best_under_budget(
+  entries: List<ProbeCatalogEntry>,
+  budget: CostBudget,
+  available: DiagnosticCapabilityFacts
+) -> List<ProbeCatalogEntry> {
+  let eligible = filter(
+    xs: entries,
+    predicate: fn(entry) {
+      probe_catalog_entry_selectable(entry: entry, available: available)
+        && probe_catalog_entry_within_budget(entry: entry, budget: budget)
+    }
+  )
+  fold_list(
+    xs: eligible,
+    empty: Empty,
+    cons: fn(best, entry) {
+      match best {
+        Empty =>
+          Cons { head: entry, tail: Empty }
+        Cons { head: current, tail: _ } =>
+          match probe_discrimination_beats(challenger: entry, incumbent: current) {
+            true => Cons { head: entry, tail: Empty }
+            false => best
+          }
+      }
+    }
+  )
+}
+
+// PS-5 — ONE select kernel: max discrimination/cost within budget ∩ available interfaces.
+fn probe_select<C>(
+  prior: SuspectedCausePrior<C>,
+  budget: CostBudget,
+  available: DiagnosticCapabilityFacts,
+  catalog: ProbeCatalog<C>
+) -> List<ProbeCatalogEntry> {
+  let _prior = prior
+  probe_select_best_under_budget(
+    entries: catalog.entries,
+    budget: budget,
+    available: available
+  )
+}
+
+fn temporal_aggregator_drainable(
+  agg: TemporalAggregator,
+  now_ms: Int
+) -> Bool {
+  agg.consecutive_failures >= agg.min_failures
+    && (now_ms - agg.first_failed_at_ms) >= agg.min_down_ms
+}
+
+// --- PS-0 per-host availability projection (machine-specific facts) ---
+
+fn host_supply_projection_input(
+  identity: String,
+  isolation_is_vm: Bool,
+  has_out_of_band_bmc: Bool
+) -> HostSupplyProjectionInput {
+  HostSupplyProjectionInput {
+    identity: identity,
+    isolation_is_vm: isolation_is_vm,
+    has_out_of_band_bmc: has_out_of_band_bmc
+  }
+}
+
+data diagnostic_capability_ssh_only: List<DiagnosticInterfaceKind> = [
+  DiagnosticSsh,
+  DiagnosticDockerReachability
+]
+
+data diagnostic_capability_srv_bare_metal: List<DiagnosticInterfaceKind> = [
+  DiagnosticSsh,
+  DiagnosticIpmi,
+  DiagnosticRedfish,
+  DiagnosticEdac,
+  DiagnosticDockerReachability,
+  DiagnosticBmcSensors
+]
+
+fn diagnostic_capability_from_host_supply(
+  input: HostSupplyProjectionInput
+) -> DiagnosticCapabilityFacts {
+  match input.isolation_is_vm {
+    true =>
+      DiagnosticCapabilityFacts { interfaces: diagnostic_capability_ssh_only }
+    false =>
+      match input.has_out_of_band_bmc {
+        true =>
+          DiagnosticCapabilityFacts { interfaces: diagnostic_capability_srv_bare_metal }
+        false =>
+          DiagnosticCapabilityFacts { interfaces: diagnostic_capability_ssh_only }
+      }
+  }
+}
+
+// 🟡 operator inventory — srv1/srv2 BMC presence confirmed live; sensor VALUES remain S4 pending.
+// Grounding: std.compute_fabric supply_srv{1,2}_offer (SharedHostHome) + supply_hetzner_cax41_offer (Vm).
+data host_supply_srv1: HostSupplyProjectionInput = host_supply_projection_input(
+  identity: "srv1",
+  isolation_is_vm: false,
+  has_out_of_band_bmc: true
+)
+
+data host_supply_srv2: HostSupplyProjectionInput = host_supply_projection_input(
+  identity: "srv2",
+  isolation_is_vm: false,
+  has_out_of_band_bmc: true
+)
+
+data host_supply_cloud_vm: HostSupplyProjectionInput = host_supply_projection_input(
+  identity: "hetzner:cax41",
+  isolation_is_vm: true,
+  has_out_of_band_bmc: false
+)
+
+fn diagnostic_capability_srv1() -> DiagnosticCapabilityFacts {
+  diagnostic_capability_from_host_supply(input: host_supply_srv1)
+}
+
+fn diagnostic_capability_srv2() -> DiagnosticCapabilityFacts {
+  diagnostic_capability_from_host_supply(input: host_supply_srv2)
+}
+
+fn diagnostic_capability_cloud_vm() -> DiagnosticCapabilityFacts {
+  diagnostic_capability_from_host_supply(input: host_supply_cloud_vm)
+}
+
+fn diagnostic_capability_degenerate_today() -> DiagnosticCapabilityFacts {
+  DiagnosticCapabilityFacts {
+    interfaces: Cons {
+      head: DiagnosticSsh,
+      tail: Cons { head: DiagnosticDockerReachability, tail: Empty }
+    }
+  }
+}
+
+// Host-health probe catalog (sensor stress rows typed; 🟡 S4 values pending operator inventory).
+data host_probe_docker_reachability: ProbeCatalogEntry = ProbeCatalogEntry {
+  label: "docker-reachability",
+  coverage: 10,
+  cost: 1,
+  requires: Cons { head: DiagnosticDockerReachability, tail: Empty }
+}
+
+data host_probe_edac_summary: ProbeCatalogEntry = ProbeCatalogEntry {
+  label: "edac-correctable-summary",
+  coverage: 40,
+  cost: 2,
+  requires: Cons { head: DiagnosticEdac, tail: Empty }
+}
+
+data host_probe_ipmi_ecc_stress: ProbeCatalogEntry = ProbeCatalogEntry {
+  label: "ecc-watched-stress",
+  coverage: 101,
+  cost: 5,
+  requires: Cons {
+    head: DiagnosticIpmi,
+    tail: Cons { head: DiagnosticBmcSensors, tail: Cons { head: DiagnosticEdac, tail: Empty } }
+  }
+}
+
+data host_health_probe_catalog_entries: List<ProbeCatalogEntry> = [
+  host_probe_docker_reachability,
+  host_probe_edac_summary,
+  host_probe_ipmi_ecc_stress
+]
+
+data host_health_probe_catalog: ProbeCatalog<String> = ProbeCatalog {
+  entries: host_health_probe_catalog_entries
+}
+
+fn probe_catalog_entry_label_eq(entry: ProbeCatalogEntry, label: String) -> Bool {
+  probe_catalog_entry_label(entry: entry) == label
+}
+
+fn probe_catalog_contains_label(
+  selected: List<ProbeCatalogEntry>,
+  label: String
+) -> Bool {
+  count_where(
+    xs: selected,
+    predicate: fn(entry) { probe_catalog_entry_label_eq(entry: entry, label: label) }
+  ) > 0
+}
+
+fn probe_select_host_health(
+  prior: SuspectedCausePrior<String>,
+  budget: CostBudget,
+  available: DiagnosticCapabilityFacts
+) -> List<ProbeCatalogEntry> {
+  probe_select(
+    prior: prior,
+    budget: budget,
+    available: available,
+    catalog: host_health_probe_catalog
+  )
+}
+
+// Keystone falsifiers — availability conditions coverage.
+fn probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds() -> Bool {
+  let selected = probe_select_host_health(
+    prior: SuspectedCausePrior { hypothesis: "standoff-cap-vddq" },
+    budget: CostBudget { max_cost: 100 },
+    available: diagnostic_capability_cloud_vm()
+  )
+  !probe_catalog_contains_label(selected: selected, label: "ecc-watched-stress")
+}
+
+fn probe_ipmi_ecc_stress_selectable_on_srv1_holds() -> Bool {
+  let selected = probe_select_host_health(
+    prior: SuspectedCausePrior { hypothesis: "standoff-cap-vddq" },
+    budget: CostBudget { max_cost: 100 },
+    available: diagnostic_capability_srv1()
+  )
+  probe_catalog_contains_label(selected: selected, label: "ecc-watched-stress")
+}
+
+fn probe_degenerate_today_selects_docker_only_holds() -> Bool {
+  let selected = probe_select_host_health(
+    prior: SuspectedCausePrior { hypothesis: "reachability" },
+    budget: CostBudget { max_cost: 100 },
+    available: diagnostic_capability_degenerate_today()
+  )
+  length(xs: selected) == 1
+    && probe_catalog_contains_label(selected: selected, label: "docker-reachability")
+}
+
+fn probe_availability_conditioning_keystone_holds() -> Bool {
+  probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds()
+    && probe_ipmi_ecc_stress_selectable_on_srv1_holds()
+}
