@@ -5,21 +5,27 @@
 module v4.test.claim.manual.inhabitant_neutralization
 
 import v4.compiler.emit { emit }
+import v4.compiler.ingest { cross_language_compile }
 import v4.compiler.infer { infer }
-import v4.extdeps.languages.go { go_mvp1_target_model }
+import v4.extdeps.languages.go {
+  go_int64_additive_numeric_inhabitant_node,
+  go_int64_falsifier_emitted_add_fn_node,
+  go_mvp1_target_model
+}
 import v4.extdeps.languages.python {
   python_int_inhabitant_node,
   python_mvp1_emitted_add_fn_node,
   python_mvp1_target_model
 }
 import v4.test.claim.manual.ingest_bridge { ingest_cross_language_compile_holds }
-import v4.extdeps.languages.typescript { ts_mvp1_target_model }
+import v4.test.claim.manual.python_mvp1_grammar_claim { python_mvp1_grammar_parse_fixture }
+import v4.extdeps.languages.typescript { ts_mvp1_source_text, ts_mvp1_target_model }
 import v4.std.inhabitant_neutralization {
   inhabitant_std_projection_symbol,
   neutralize_core_for_target,
   target_inhabitant_for_std_projection
 }
-import v4.std.model_core { std_projection_additive_numeric }
+import v4.std.inhabitant_bridge { std_projection_additive_numeric }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
@@ -52,6 +58,15 @@ fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(
+    inhabitant: go_int64_additive_numeric_inhabitant_node()
+  ) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: std_projection_additive_numeric,
@@ -62,8 +77,28 @@ fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: go_int64_falsifier_emitted_add_fn_node(),
+    target: ts_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
-  inhabitant_neutralization_go_int64_target_lookup_holds()
+  inhabitant_neutralization_go_int64_std_projection_holds()
+    && inhabitant_neutralization_go_int64_target_lookup_holds()
+    && inhabitant_neutralization_go_int64_to_ts_emit_holds()
 }
 
 fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
@@ -124,6 +159,25 @@ fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
   inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
     && inhabitant_neutralization_same_flavor_python_emit_holds()
     && inhabitant_neutralization_raw_emit_still_fails_closed()
+}
+
+// HEAVY (~627s): real python source -> parse -> cross_language_compile (bridge -> neutralize -> infer -> emit)
+// on the live parse tree. Each stage feeds the next — NOT independent conjuncts / NOT fixture-fed core.
+// Asserts emitted TS source equals pinned ts_mvp1_source_text (cross-language analogue of #4850 source==).
+// Matrix file stays 0-diff (ChainFailsClosedAtCheck); cell-flip is parent E-10 ruling, not self-flip.
+fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_mvp1_target_model(),
+        target_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
