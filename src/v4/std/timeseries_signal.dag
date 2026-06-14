@@ -19,9 +19,10 @@ import v4.std.algebra {
   Empty,
   fold_list,
   fold_list_right,
-  list_snoc_item
+  list_snoc_item,
+  FreeMonoid
 }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.collection { Optional, Absent, Present }
 import v4.std.float { Float, Finite }
 import v4.std.nat { Zero }
 import v4.std.node { Symbol }
@@ -68,23 +69,23 @@ type TimeStepDelta {
   seconds: Float
 }
 
-type TimeSeriesSample {
+type SignalSample {
   value: Int
 }
 
-type TimeSeriesSignal = List<TimeSeriesSample>
+type SignalStream = FreeMonoid<SignalSample>
 
-type CurrentTimeSeriesSample {
+type CurrentSignalSample {
   current: AffineCurrent
 }
 
-type CurrentTimeSeriesSignal = List<CurrentTimeSeriesSample>
+type CurrentSignalStream = FreeMonoid<CurrentSignalSample>
 
-type VoltageTimeSeriesSample {
+type VoltageSignalSample {
   voltage: AffineVoltage
 }
 
-type VoltageTimeSeriesSignal = List<VoltageTimeSeriesSample>
+type VoltageSignalStream = FreeMonoid<VoltageSignalSample>
 
 data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
   seconds: Float {
@@ -98,11 +99,11 @@ data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
 
 // --- Stateless map step (Resistor = map) -----------------------------------
 
-fn map_int_sample_double(sample: TimeSeriesSample) -> TimeSeriesSample {
-  TimeSeriesSample { value: sample.value * 2 }
+fn map_int_sample_double(sample: SignalSample) -> SignalSample {
+  SignalSample { value: sample.value * 2 }
 }
 
-fn map_time_series_int(signal: TimeSeriesSignal) -> TimeSeriesSignal {
+fn map_time_series_int(signal: SignalStream) -> SignalStream {
   fold_list_right(
     xs: signal,
     empty: Empty,
@@ -116,24 +117,24 @@ fn map_time_series_int(signal: TimeSeriesSignal) -> TimeSeriesSignal {
 
 type IntFoldScanAcc {
   state: Int
-  outputs: TimeSeriesSignal
+  outputs: SignalStream
 }
 
 fn fold_running_sum_step(
   acc: IntFoldScanAcc,
-  sample: TimeSeriesSample
+  sample: SignalSample
 ) -> IntFoldScanAcc {
   let next = acc.state + sample.value
   IntFoldScanAcc {
     state: next,
     outputs: list_snoc_item(
       xs: acc.outputs,
-      item: TimeSeriesSample { value: next }
+      item: SignalSample { value: next }
     )
   }
 }
 
-fn fold_running_sum_int(signal: TimeSeriesSignal) -> TimeSeriesSignal {
+fn fold_running_sum_int(signal: SignalStream) -> SignalStream {
   let scanned = fold_list(
     xs: signal,
     empty: IntFoldScanAcc { state: 0, outputs: Empty },
@@ -171,9 +172,9 @@ type ResistorMapContext {
 
 fn resistor_map_apply(
   ctx: ResistorMapContext,
-  sample: CurrentTimeSeriesSample
-) -> VoltageTimeSeriesSample {
-  VoltageTimeSeriesSample {
+  sample: CurrentSignalSample
+) -> VoltageSignalSample {
+  VoltageSignalSample {
     voltage: AffineVoltage {
       reference: GroundReference,
       magnitude: ctx.field.mul(sample.current.magnitude, ctx.resistance.ohms)
@@ -182,10 +183,10 @@ fn resistor_map_apply(
 }
 
 fn map_resistor_current_to_voltage(
-  signal: CurrentTimeSeriesSignal,
+  signal: CurrentSignalStream,
   resistance: Resistance,
   field: PassiveFieldOps
-) -> VoltageTimeSeriesSignal {
+) -> VoltageSignalStream {
   let ctx = ResistorMapContext { resistance: resistance, field: field }
   fold_list_right(
     xs: signal,
@@ -198,12 +199,12 @@ fn map_resistor_current_to_voltage(
 
 type CapacitorFoldAcc {
   voltage: AffineVoltage
-  outputs: VoltageTimeSeriesSignal
+  outputs: VoltageSignalStream
 }
 
 fn capacitor_fold_step(
   acc: CapacitorFoldAcc,
-  sample: CurrentTimeSeriesSample,
+  sample: CurrentSignalSample,
   dt: TimeStepDelta,
   capacitance: Capacitance,
   field: PassiveFieldOps
@@ -218,18 +219,18 @@ fn capacitor_fold_step(
     voltage: next_v,
     outputs: list_snoc_item(
       xs: acc.outputs,
-      item: VoltageTimeSeriesSample { voltage: next_v }
+      item: VoltageSignalSample { voltage: next_v }
     )
   }
 }
 
 fn fold_capacitor_current_to_voltage(
-  signal: CurrentTimeSeriesSignal,
+  signal: CurrentSignalStream,
   capacitance: Capacitance,
   initial_voltage: AffineVoltage,
   dt: TimeStepDelta,
   field: PassiveFieldOps
-) -> VoltageTimeSeriesSignal {
+) -> VoltageSignalStream {
   let scanned = fold_list(
     xs: signal,
     empty: CapacitorFoldAcc { voltage: initial_voltage, outputs: Empty },
@@ -248,12 +249,12 @@ fn fold_capacitor_current_to_voltage(
 
 type InductorFoldAcc {
   current: AffineCurrent
-  outputs: CurrentTimeSeriesSignal
+  outputs: CurrentSignalStream
 }
 
 fn inductor_fold_step(
   acc: InductorFoldAcc,
-  sample: VoltageTimeSeriesSample,
+  sample: VoltageSignalSample,
   dt: TimeStepDelta,
   inductance: Inductance,
   field: PassiveFieldOps
@@ -267,18 +268,18 @@ fn inductor_fold_step(
     current: next_i,
     outputs: list_snoc_item(
       xs: acc.outputs,
-      item: CurrentTimeSeriesSample { current: next_i }
+      item: CurrentSignalSample { current: next_i }
     )
   }
 }
 
 fn fold_inductor_voltage_to_current(
-  signal: VoltageTimeSeriesSignal,
+  signal: VoltageSignalStream,
   inductance: Inductance,
   initial_current: AffineCurrent,
   dt: TimeStepDelta,
   field: PassiveFieldOps
-) -> CurrentTimeSeriesSignal {
+) -> CurrentSignalStream {
   let scanned = fold_list(
     xs: signal,
     empty: InductorFoldAcc { current: initial_current, outputs: Empty },
