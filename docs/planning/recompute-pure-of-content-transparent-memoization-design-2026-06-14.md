@@ -202,9 +202,9 @@ remain in source marks — this section cites them, does not mirror them.
 
 | Instance | Structural redundancy | Cite |
 | --- | --- | --- |
-| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `v2_interpreter.rs:1286-1317`; per-instruction eval profiler `:4250-4269`, `eval_expr` hook `:1336-1362` (#4865) |
+| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `src/v2/stage0/src/v2_interpreter.rs` `param_names` (`:1286-1317`); eval profiler — `eval_profile_enabled` (`:1339`), `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EVAL_SELF_NANOS` (`:4334-4381`) (#4865) |
 | **Resolve overlapping closure** | Each entry re-ran tokenize→parse→resolve→reconcile over overlapping modules before shared index | `cli_run.rs:270-303`; cold oracle vs `resolve_entry_with_index` |
-| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v4/lens/complexity.dag`; `v2_interpreter.rs:4253-4269` (lens-eval wall); `eval_profile_*` at `:4348-4383` |
+| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v4/lens/complexity.dag`; `src/v2/stage0/src/v2_interpreter.rs` lens-eval wall (`:4253-4269`); `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EvalProfile` (`:4334-4381`) |
 
 `src/v2/stage0/src/v2_interpreter.rs:1286-1297`
 
