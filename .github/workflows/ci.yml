@@ -492,6 +492,16 @@ jobs:
     # itself is fast file I/O (source tree walk + text scan, no runtime compilation).
     - name: get-off-v3 compile_to_dag caller ceiling (census ratchet, #4652)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet
+    # resolve-cost lever (PR1, #4867): the per-module typed-graph cache on MultiEntryIndex is
+    # content-addressable ONLY because the type-time kernel intern ids are content-stable
+    # (seed_kernel_intern_names). This guards that soundness property by execution: it resolves a
+    # corpus through fresh indices in multiple entry orders and asserts every witness verdict is
+    # byte-identical to the no-cache cold single-entry oracle. Without this wire it was a local
+    # guard + tripwire only -- a future kernel-set change would not trip CI. Runs here because
+    # ci_floor_parity already compiles v2-compiler-tests --release for the parity receipt above, so
+    # this reuses that crate and adds only the test's own ~ms of file I/O + resolve.
+    - name: resolve typed-cache equivalence (order-permuted cold-oracle guard, #4867)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release resolve_typed_cache_equivalence_test::typed_module_cache_matches_cold_oracle_in_every_order -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
