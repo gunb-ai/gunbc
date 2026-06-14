@@ -9,13 +9,23 @@ import extdeps.formats.elf.primitives {
   ElfDataEncoding,
   ElfFileType,
   ElfMachine,
+  elf_class_32,
   elf_class_64,
+  elf_class_none,
   elf_data_2lsb,
+  elf_data_2msb,
+  elf_data_none,
   elf_mag0,
   elf_mag1,
   elf_mag2,
   elf_mag3,
+  elf64_ehdr_size,
+  et_core,
+  et_dyn,
   et_exec,
+  et_none,
+  et_rel,
+  em_none,
   em_x86_64,
 }
 import std.exec_format { EntryPoint }
@@ -50,77 +60,119 @@ type Elf64Ehdr {
   shstrndx: Int
 }
 
-// 🟡 fail-open: OOB offset yields 0 (a valid byte value). Bounded by callers that always pass a
-//    full-length fixture. dissolve-on: decode-result carrier + bounds-checked access primitive.
-fn byte_at(bytes: List<Int>, offset: Int) -> Int {
+type ElfDecodeReason
+  = Truncated { required_bytes: Int, available_bytes: Int }
+  | UnsupportedElfClass { raw: Int }
+  | UnsupportedElfData { raw: Int }
+  | UnsupportedElfFileType { raw: Int }
+  | UnsupportedElfMachine { raw: Int }
+
+type ElfDecodeOutcome<T>
+  = ElfDecoded { value: T }
+  | ElfRejected { reason: ElfDecodeReason }
+
+// Caller must guarantee offset in bounds — used only after a length guard.
+fn byte_at_in_bounds(bytes: List<Int>, offset: Int) -> Int {
   match bytes |> get(offset) {
     null => 0
     other => other
   }
 }
 
-fn read_u16_le(bytes: List<Int>, offset: Int) -> Int {
-  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256
+fn read_u16_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256
 }
 
-fn read_u32_le(bytes: List<Int>, offset: Int) -> Int {
-  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) * 65536 + byte_at(bytes, offset + 3) * 16777216
+fn read_u32_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256 + byte_at_in_bounds(bytes, offset + 2) * 65536 + byte_at_in_bounds(bytes, offset + 3) * 16777216
 }
 
-fn read_u64_le(bytes: List<Int>, offset: Int) -> Int {
-  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) * 65536 + byte_at(bytes, offset + 3) * 16777216 + byte_at(bytes, offset + 4) * 4294967296 + byte_at(bytes, offset + 5) * 1099511627776 + byte_at(bytes, offset + 6) * 281474976710656 + byte_at(bytes, offset + 7) * 72057594037927936
+fn read_u64_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256 + byte_at_in_bounds(bytes, offset + 2) * 65536 + byte_at_in_bounds(bytes, offset + 3) * 16777216 + byte_at_in_bounds(bytes, offset + 4) * 4294967296 + byte_at_in_bounds(bytes, offset + 5) * 1099511627776 + byte_at_in_bounds(bytes, offset + 6) * 281474976710656 + byte_at_in_bounds(bytes, offset + 7) * 72057594037927936
 }
 
-// 🟡 decode-overload: unknown raw bytes collapse into spec-defined *None arms (ElfClassNone etc.)
-//    which conflates "gABI ELFCLASSNONE" with "decode failed / unsupported class". Safe for
-//    Slice 1's single-fixture witness (the fixture has known-good class/data/type/machine values).
-//    dissolve-on: a separate ElfDecodeUnknown arm (or decode-result coproduct) for unknown raw bytes.
-fn decode_elf_class(raw: Int) -> ElfClass {
-  if raw == elf_class_64 { ElfClass64 } else { ElfClassNone }
+fn decode_elf_class(raw: Int) -> ElfDecodeOutcome<ElfClass> {
+  if raw == elf_class_none { ElfDecoded { value: ElfClassNone } }
+  else if raw == elf_class_32 { ElfDecoded { value: ElfClass32 } }
+  else if raw == elf_class_64 { ElfDecoded { value: ElfClass64 } }
+  else { ElfRejected { reason: UnsupportedElfClass { raw: raw } } }
 }
 
-fn decode_elf_data(raw: Int) -> ElfDataEncoding {
-  if raw == elf_data_2lsb { ElfData2Lsb } else { ElfDataNone }
+fn decode_elf_data(raw: Int) -> ElfDecodeOutcome<ElfDataEncoding> {
+  if raw == elf_data_none { ElfDecoded { value: ElfDataNone } }
+  else if raw == elf_data_2lsb { ElfDecoded { value: ElfData2Lsb } }
+  else if raw == elf_data_2msb { ElfDecoded { value: ElfData2Msb } }
+  else { ElfRejected { reason: UnsupportedElfData { raw: raw } } }
 }
 
-fn decode_elf_type(raw: Int) -> ElfFileType {
-  if raw == et_exec { EtExec } else { EtNone }
+fn decode_elf_type(raw: Int) -> ElfDecodeOutcome<ElfFileType> {
+  if raw == et_none { ElfDecoded { value: EtNone } }
+  else if raw == et_rel { ElfDecoded { value: EtRel } }
+  else if raw == et_exec { ElfDecoded { value: EtExec } }
+  else if raw == et_dyn { ElfDecoded { value: EtDyn } }
+  else if raw == et_core { ElfDecoded { value: EtCore } }
+  else { ElfRejected { reason: UnsupportedElfFileType { raw: raw } } }
 }
 
-fn decode_elf_machine(raw: Int) -> ElfMachine {
-  if raw == em_x86_64 { EmX86_64 } else { EmNone }
+fn decode_elf_machine(raw: Int) -> ElfDecodeOutcome<ElfMachine> {
+  if raw == em_none { ElfDecoded { value: EmNone } }
+  else if raw == em_x86_64 { ElfDecoded { value: EmX86_64 } }
+  else { ElfRejected { reason: UnsupportedElfMachine { raw: raw } } }
 }
 
-fn decode_elf_ident(bytes: List<Int>) -> ElfIdent {
-  ElfIdent {
-    mag0: byte_at(bytes, 0),
-    mag1: byte_at(bytes, 1),
-    mag2: byte_at(bytes, 2),
-    mag3: byte_at(bytes, 3),
-    class: decode_elf_class(byte_at(bytes, 4)),
-    data: decode_elf_data(byte_at(bytes, 5)),
-    version: byte_at(bytes, 6),
-    osabi: byte_at(bytes, 7),
-    abiversion: byte_at(bytes, 8),
+fn decode_elf_ident(bytes: List<Int>) -> ElfDecodeOutcome<ElfIdent> {
+  match decode_elf_class(byte_at_in_bounds(bytes, 4)) {
+    ElfDecoded { value: class } => match decode_elf_data(byte_at_in_bounds(bytes, 5)) {
+      ElfDecoded { value: encoding } => ElfDecoded {
+        value: ElfIdent {
+          mag0: byte_at_in_bounds(bytes, 0),
+          mag1: byte_at_in_bounds(bytes, 1),
+          mag2: byte_at_in_bounds(bytes, 2),
+          mag3: byte_at_in_bounds(bytes, 3),
+          class: class,
+          data: encoding,
+          version: byte_at_in_bounds(bytes, 6),
+          osabi: byte_at_in_bounds(bytes, 7),
+          abiversion: byte_at_in_bounds(bytes, 8),
+        },
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
+    ElfRejected { reason: r } => ElfRejected { reason: r }
   }
 }
 
-fn decode_elf64_ehdr(bytes: List<Int>) -> Elf64Ehdr {
-  Elf64Ehdr {
-    ident: decode_elf_ident(bytes),
-    file_type: decode_elf_type(read_u16_le(bytes, 16)),
-    machine: decode_elf_machine(read_u16_le(bytes, 18)),
-    version: read_u32_le(bytes, 20),
-    entry: read_u64_le(bytes, 24),
-    phoff: read_u64_le(bytes, 32),
-    shoff: read_u64_le(bytes, 40),
-    flags: read_u32_le(bytes, 48),
-    ehsize: read_u16_le(bytes, 52),
-    phentsize: read_u16_le(bytes, 54),
-    phnum: read_u16_le(bytes, 56),
-    shentsize: read_u16_le(bytes, 58),
-    shnum: read_u16_le(bytes, 60),
-    shstrndx: read_u16_le(bytes, 62),
+fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
+  if count(bytes) < elf64_ehdr_size {
+    ElfRejected { reason: Truncated { required_bytes: elf64_ehdr_size, available_bytes: count(bytes) } }
+  } else {
+    match decode_elf_ident(bytes) {
+      ElfDecoded { value: ident } => match decode_elf_type(read_u16_le_in_bounds(bytes, 16)) {
+        ElfDecoded { value: file_type } => match decode_elf_machine(read_u16_le_in_bounds(bytes, 18)) {
+          ElfDecoded { value: machine } => ElfDecoded {
+            value: Elf64Ehdr {
+              ident: ident,
+              file_type: file_type,
+              machine: machine,
+              version: read_u32_le_in_bounds(bytes, 20),
+              entry: read_u64_le_in_bounds(bytes, 24),
+              phoff: read_u64_le_in_bounds(bytes, 32),
+              shoff: read_u64_le_in_bounds(bytes, 40),
+              flags: read_u32_le_in_bounds(bytes, 48),
+              ehsize: read_u16_le_in_bounds(bytes, 52),
+              phentsize: read_u16_le_in_bounds(bytes, 54),
+              phnum: read_u16_le_in_bounds(bytes, 56),
+              shentsize: read_u16_le_in_bounds(bytes, 58),
+              shnum: read_u16_le_in_bounds(bytes, 60),
+              shstrndx: read_u16_le_in_bounds(bytes, 62),
+            },
+          }
+          ElfRejected { reason: r } => ElfRejected { reason: r }
+        }
+        ElfRejected { reason: r } => ElfRejected { reason: r }
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
   }
 }
 

@@ -21,17 +21,19 @@ import extdeps.formats.elf.primitives {
   pf_r,
 }
 import extdeps.formats.elf.segments {
-  Elf64Phdr,
+  PhdrDecoded,
+  PhdrRejected,
   decode_elf64_phdr,
   elf64_phdr_to_load_segment,
 }
 import extdeps.formats.elf.types {
-  Elf64Ehdr,
+  ElfDecoded,
+  ElfRejected,
   decode_elf64_ehdr,
   elf64_ehdr_entry_point,
   elf_ident_has_valid_magic,
 }
-import std.exec_format { Elf, EntryPoint, LoadSegment }
+import std.exec_format { Elf }
 
 // Real static hello — ELF-64 Ehdr (64 bytes).
 data static_hello_elf64_ehdr_bytes: List<Int> = [
@@ -49,18 +51,14 @@ data static_hello_first_phdr_bytes: List<Int> = [
   0, 16, 0, 0, 0, 0, 0, 0,
 ]
 
-data static_hello_decoded_ehdr: Elf64Ehdr = decode_elf64_ehdr(static_hello_elf64_ehdr_bytes)
+data static_hello_truncated_ehdr_bytes: List<Int> = [127, 69, 76, 70, 2]
 
-data static_hello_decoded_first_phdr: Elf64Phdr = decode_elf64_phdr(
-  static_hello_first_phdr_bytes,
-  0,
-)
-
-data static_hello_first_load_segment: LoadSegment = elf64_phdr_to_load_segment(
-  static_hello_decoded_first_phdr,
-)
-
-data static_hello_entry_point: EntryPoint = elf64_ehdr_entry_point(static_hello_decoded_ehdr)
+data static_hello_bad_class_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 99, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
 
 // Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
@@ -69,75 +67,142 @@ fn witness_format_atom_is_elf() -> Bool {
   linux_x86_64_elf_format.family == Elf
 }
 
+fn witness_truncated_ehdr_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_truncated_ehdr_bytes) {
+    ElfRejected { reason: Truncated { required_bytes: _, available_bytes: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_unknown_class_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
+    ElfRejected { reason: UnsupportedElfClass { raw: 99 } } => true
+    _ => false
+  }
+}
+
 fn witness_ident_magic() -> Bool {
-  elf_ident_has_valid_magic(static_hello_decoded_ehdr.ident)
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => elf_ident_has_valid_magic(hdr.ident)
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_ident_class_is_elf64() -> Bool {
-  static_hello_decoded_ehdr.ident.class == ElfClass64
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ident.class == ElfClass64
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_ident_data_is_little_endian() -> Bool {
-  static_hello_decoded_ehdr.ident.data == ElfData2Lsb
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ident.data == ElfData2Lsb
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_file_type_is_exec() -> Bool {
-  static_hello_decoded_ehdr.file_type == EtExec
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.file_type == EtExec
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_machine_is_x86_64() -> Bool {
-  static_hello_decoded_ehdr.machine == EmX86_64
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.machine == EmX86_64
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_entry_point_address() -> Bool {
-  static_hello_entry_point.virtual_address == 4198443
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => elf64_ehdr_entry_point(hdr).virtual_address == 4198443
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_phoff_is_64() -> Bool {
-  static_hello_decoded_ehdr.phoff == 64
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phoff == 64
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_shoff_is_43576() -> Bool {
-  static_hello_decoded_ehdr.shoff == 43576
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.shoff == 43576
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_ehsize_is_64() -> Bool {
-  static_hello_decoded_ehdr.ehsize == elf64_ehdr_size
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ehsize == elf64_ehdr_size
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_phentsize_is_56() -> Bool {
-  static_hello_decoded_ehdr.phentsize == elf64_phdr_size
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phentsize == elf64_phdr_size
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_phnum_is_9() -> Bool {
-  static_hello_decoded_ehdr.phnum == 9
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phnum == 9
+    ElfRejected { reason: _ } => false
+  }
 }
 
 fn witness_first_segment_is_pt_load() -> Bool {
-  static_hello_decoded_first_phdr.segment_type == PtLoad
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => phdr.segment_type == PtLoad
+    PhdrRejected { reason: _ } => false
+  }
 }
 
 fn witness_first_segment_is_read_only() -> Bool {
-  static_hello_decoded_first_phdr.flags == pf_r
-    && static_hello_first_load_segment.permissions.readable == true
-    && static_hello_first_load_segment.permissions.writable == false
-    && static_hello_first_load_segment.permissions.executable == false
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => {
+      let seg = elf64_phdr_to_load_segment(phdr)
+      phdr.flags == pf_r
+        && seg.permissions.readable == true
+        && seg.permissions.writable == false
+        && seg.permissions.executable == false
+    }
+    PhdrRejected { reason: _ } => false
+  }
 }
 
 fn witness_first_load_segment_vaddr() -> Bool {
-  static_hello_first_load_segment.virtual_address == 4194304
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).virtual_address == 4194304
+    PhdrRejected { reason: _ } => false
+  }
 }
 
 fn witness_first_load_segment_filesz() -> Bool {
-  static_hello_first_load_segment.file_size == 652
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).file_size == 652
+    PhdrRejected { reason: _ } => false
+  }
 }
 
 fn witness_first_load_segment_align() -> Bool {
-  static_hello_first_load_segment.alignment == 4096
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).alignment == 4096
+    PhdrRejected { reason: _ } => false
+  }
 }
 
 fn main() -> Bool {
   witness_format_atom_is_elf()
+    && witness_truncated_ehdr_rejects()
+    && witness_unknown_class_rejects()
     && witness_ident_magic()
     && witness_ident_class_is_elf64()
     && witness_ident_data_is_little_endian()
