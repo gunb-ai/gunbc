@@ -98,6 +98,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
+    "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
     "v2_compiler_dag_collect.rs",
     "v2_interpreter.rs",
@@ -239,6 +240,9 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
         patch_bootstrap_dag_collect(&fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_resolved_graph_cache_module", || {
+        patch_resolved_graph_cache_module(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
@@ -780,6 +784,21 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
         patch.support_text,
     )
     .map_err(|e| format!("write dag collect support: {e}"))
+}
+
+/// Wire hand-maintained cross-process resolved-graph cache into generated lib.rs.
+fn patch_resolved_graph_cache_module(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let mut lib_text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    if lib_text.contains("pub mod resolved_graph_cache;") {
+        return Ok(());
+    }
+    lib_text = lib_text.replace(
+        "pub mod generated_method_template_projection;\n",
+        "pub mod generated_method_template_projection;\npub mod resolved_graph_cache;\n",
+    );
+    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))
 }
 
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
