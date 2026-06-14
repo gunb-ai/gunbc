@@ -22,6 +22,8 @@ data linux_x86_64_syscall_abi: SyscallAbi = {
   convention: sysv_amd64_linux_syscall_convention,
 }
 
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until swift-stag dsl corpus gate lands.
 fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
 fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
 fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }

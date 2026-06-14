@@ -51,12 +51,12 @@ data sysv_amd64_wrong_arg3_convention: CallingConvention = {
   return_value: amd64_inhabitant_rax,
 }
 
-// Green-by-execution: arg3 identity through CallingConvention (abstract ArchitecturalRegister seam).
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until swift-stag dsl corpus gate lands.
 fn witness_convention_arg3_identity() -> Bool {
   sysv_amd64_linux_syscall_convention.arg3 == amd64_inhabitant_r10
 }
 
-// Green-by-execution: amd64 inhabitant resolves the identity to cited Amd64Gpr.R10.
 fn witness_convention_arg3_resolves_to_r10() -> Bool {
   sysv_amd64_linux_syscall_convention.arg3 == R10
 }
@@ -69,7 +69,6 @@ fn witness_convention_return_resolves_to_rax() -> Bool {
   sysv_amd64_linux_syscall_convention.return_value == Rax
 }
 
-// Green-by-execution: distinct conventions are not equal (no injectivity — nr/ret share rax).
 fn witness_distinct_conventions_not_equal() -> Bool {
   sysv_amd64_linux_syscall_convention != sysv_amd64_wrong_arg3_convention
 }
