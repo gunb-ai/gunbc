@@ -87,8 +87,10 @@ import v4.std.model_core {
   PrimitiveOperationRef,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth,
+  primitive_fact_axis_unbound_diagnostic
+}
+import v4.std.inhabitant_bridge {
   facts_field_std_projection,
   std_projection_additive_numeric
 }

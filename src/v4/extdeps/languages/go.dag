@@ -56,9 +56,11 @@ import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  facts_field_std_projection,
-  std_projection_additive_numeric,
   primitive_fact_axis_unbound_diagnostic
+}
+import v4.std.inhabitant_bridge {
+  facts_field_std_projection,
+  std_projection_additive_numeric
 }
 import v4.std.grounding {
   empty_per_language_fact_bundle_registry,
@@ -1514,6 +1516,20 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
           occurrence_id: SyntheticOccurrence
         }
       )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Cond-3 falsifier carrier: python_mvp1_emitted_add_fn_node shape (3 positional inhabitants)
+// with go-int64 wired to shared std_projection_additive_numeric (extdeps-only, zero new bridge key).
+fn go_int64_falsifier_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

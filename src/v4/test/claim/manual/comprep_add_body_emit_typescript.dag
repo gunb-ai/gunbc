@@ -44,7 +44,7 @@ import v4.extdeps.languages.typescript {
 }
 import v4.std.algebra { Cons, Empty, list_append }
 import v4.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v4.std.model_core { std_projection_additive_numeric }
+import v4.std.inhabitant_bridge { std_projection_additive_numeric }
 import v4.std.compilers.target_model {
   InfixToken,
   TargetModel,

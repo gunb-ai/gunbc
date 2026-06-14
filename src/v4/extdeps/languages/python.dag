@@ -72,7 +72,9 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   PartialitySemanticsDecl,
-  PrimitiveFactBundle,
+  PrimitiveFactBundle
+}
+import v4.std.inhabitant_bridge {
   facts_field_std_projection,
   std_projection_additive_numeric
 }
