@@ -7,7 +7,6 @@ module v4.test.claim.std.timeseries_signal_passives
 import v4.std.algebra { Cons, Empty, length }
 import v4.std.collection { Absent, Present }
 import v4.std.logic { Bool }
-import v4.std.node { Symbol }
 import v4.std.timeseries_signal {
   TimeSeriesMapStep,
   TimeSeriesSample,
@@ -18,7 +17,6 @@ import v4.std.timeseries_signal {
   timeseries_unit_dt
 }
 import v4.extdeps.formats.spice {
-  Component,
   Ground,
   Named,
   NamedNode,
@@ -75,7 +73,7 @@ fn fold_running_sum_holds() -> Bool {
 }
 
 fn spice_resistor_projects_passive_spec_holds() -> Bool {
-  let component: Component = Resistor {
+  let component = Resistor {
     name: ^r1,
     n_plus: Named { node: NamedNode { name: ^n1 } },
     n_minus: Ground,
