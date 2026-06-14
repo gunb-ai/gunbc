@@ -1,0 +1,28 @@
+// extdeps/runtime/syscalls/linux.dag — Linux x86-64 system-call surface (cited facts).
+// Scope: Slice-1 subset inhabiting std.os.invocation.SyscallAbi.
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
+
+module extdeps.runtime.syscalls.linux
+
+import std.os.invocation { SyscallEntry, SyscallAbi }
+
+data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
+data sys_write: SyscallEntry  = SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
+data sys_mmap: SyscallEntry   = SyscallEntry { number: 9,  name: "mmap",   arg_count: 6 }
+data sys_execve: SyscallEntry = SyscallEntry { number: 59, name: "execve", arg_count: 3 }
+data sys_exit: SyscallEntry   = SyscallEntry { number: 60, name: "exit",   arg_count: 1 }
+
+data linux_x86_64_syscall_subset: List<SyscallEntry> = [
+  sys_read, sys_write, sys_mmap, sys_execve, sys_exit
+]
+
+data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
+  table: linux_x86_64_syscall_subset,
+  convention: "sysv_amd64_syscall"  // 🟡 feature:sysv-amd64-abi-module
+}
+
+fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
+fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
+fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }
+fn witness_execve_number_is_59() -> Bool { sys_execve.number == 59 }
+fn witness_exit_number_is_60() -> Bool   { sys_exit.number == 60 }

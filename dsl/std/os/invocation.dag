@@ -1,0 +1,18 @@
+// std/os/invocation.dag — open invocation-surface model for the §10 execution-contract layer.
+// Scope: the stable contract a binary binds to, modeled OPEN over invocation paradigms (Slice 1: SyscallAbi).
+// Anchor: per-inhabitant spec URLs live with the inhabiting data (extdeps/runtime/*).
+
+module std.os.invocation
+
+import std.types { NonEmptyStr }
+
+type SyscallEntry {
+  number: Int
+  name: NonEmptyStr
+  arg_count: Int
+}
+
+type SyscallAbi {
+  table: List<SyscallEntry>
+  convention: NonEmptyStr  // 🟡 feature:sysv-amd64-abi-module
+}
