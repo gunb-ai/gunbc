@@ -2,10 +2,8 @@
 
 Work item: `node://adhoc-4a3d8313-94c` (sleek-bee-765) · CI-investigation tree.
 
-**Status: DRAFT — for operator framing review.** Not done. Structure and verified content
-first; prose polish second. Awaiting operator confirmation of the **spine** (§2 thesis +
-two-faces framing) before closeout. §1 centerpiece and §3 instance roster are evidence
-sections — thesis reframe should not require rewriting them.
+**Status: DRAFT — operator framing locked (2026-06-14).** Spine confirmed; §2 + §10
+reflect operator reframe. §1 centerpiece and §3 instance roster unchanged.
 
 **Map / motivation only** — points at inline marks as durable authority; not a parallel
 ledger for per-cache facts (operator standing principle, 2026-05-19).
@@ -48,54 +46,70 @@ is resolve-stage typed-graph cache + intern-id content-stability; do not collaps
 
 ---
 
-## 2. Thesis — one root, two faces *(spine; subject to operator refinement)*
+## 2. Thesis — one missing carrier, two invariant faces *(operator-confirmed spine)*
 
-> **Modular thesis block.** If the operator sharpens the root articulation, revise this
-> section (and §10 summary) only. §1 centerpiece and §3 roster stay.
+### Root cause: no reified execution receipt at the model→host boundary
 
-The language/compiler has **no first-class notion** that *a value is a pure function of its
-inputs' content*. Because of that gap, every consumer that needs an already-computed result
-either:
+The root defect is **not** “the language has no notion of pure-of-content.” The v4
+five-`Behavior` kernel already has **purity by construction** at the model layer. The gap
+is at the **execution boundary**: a pure model is run by an impure host, and nothing
+**reifies the receipt** of that run — no carrier where declared purity meets host
+impurity and records what was actually executed, on what inputs, with what result.
 
-1. **Recomputes from scratch** — redundant work (perf face), or
-2. **Hand-rolls a local cache** — necessary but **unsafe** when purity was never checked
-   (correctness face).
+Without that receipt carrier, every consumer that needs an already-computed result either:
 
-These are not two bug classes. They are one root defect with two symptoms.
+1. **Recomputes from scratch** — redundant work, or
+2. **Hand-rolls a local cache** — necessary but **unsafe** when the host run was never
+   reconciled to the model’s purity claim.
 
-| Face | Symptom | Structural shape |
+These are not two bug classes. They are **one missing carrier** surfacing on **two
+invariants**:
+
+| Face | Invariant | Symptom |
 | --- | --- | --- |
-| **Redundancy** | Pure-of-content work repeated when the content key is unchanged | Same content-determined value derived again instead of projected from a memo |
-| **Un-enforced purity** | Hand-rolled cache returns wrong answers silently | Hidden input (ambient state) leaked into a result claimed to be content-keyed |
+| **Redundancy** | **Performance / Facts-Flow-Forward** | Pure-of-content work repeated when the content key is unchanged — facts recomputed instead of projected forward from a receipt |
+| **Un-enforced purity** | **Fail-Closed** | Hand-rolled cache returns wrong answers silently; **verdict flips** when hidden host state leaks in (§1 PR1 #4867) |
+
+Do not collapse both faces under “no duplicate representations” alone — that is the weakest
+joint. The unification is **one missing execution-receipt carrier**, visible on two
+existing invariant axes.
 
 **Named error class:** *recompute pure-of-content* — executing or re-deriving work whose
-result is already determined by declared **content facts** when memoization or cache lookup
-on those facts would be observationally equivalent.
+result is already determined by declared **content facts** when a reified receipt (or
+memo/cache keyed on it) would make recomputation unnecessary and falsify impurity.
 
-**Pure-of-content predicate** (the positive law the error violates):
+### Why v4 recurs — staged carrier, not v2 sloppiness
 
-- **Pure:** no side effects; same declared inputs ⇒ same outputs within the modeled strategy.
-- **Of-content:** lookup identity is a **content fact** — structural form, `content_hash`,
-  source span, declared input digests — not a mutable context id (intern-table slot without
-  stability proof, env generation, host path without modeled invalidation, declaration name
-  alone).
+The pattern is **not** “v2 was sloppy and v4 will be clean.” v4 **already** stages the
+same hand-rolled compute-once-store pattern because the receipt carrier is
+**staged-not-inhabited**:
 
-### Duplicate representation — enforcing an existing invariant, not inventing a rule
+- `ParseTable` — memoized `(position × production)` at `02_parse.dag:155-161`
+- `TestClaimCacheKey` / `interpretation_hash` — eval cache boundary at `05_eval.dag:526+`
 
-Per INVARIANTS **no duplicate representations**: maintaining the same content-determined
-value in many recomputed or separately-cached forms is a **duplicate-representation
-violation**. The redundancy face is not merely "slow" — it is the same fact represented
-many times by recomputation. Transparent memoization enforces the invariant the thesis
-already commits to: **one authoritative representation keyed by content**, projected
-everywhere else.
+Eleven v2 hand-rolls (§3.3) plus these v4 instances are **the same theorem recurring**:
+without an inhabited execution receipt, each layer re-implements store-and-project locally.
+That recurrence is **systemic**, not a cleanup backlog.
 
-**Sharpest statement (operator governing rule):** the sharing must be the **same code among
-our own code**, not two abstractions that happen to agree. Dogfood the compute fabric by
-dogfooding the compiler — one placement-with-eviction kernel, not eleven ad-hoc stores.
+### Anchor — recurrence is a theorem (Build Systems à la Carte)
 
-**This doc must not duplicate rosters.** §3 below is the **single standing instance roster**;
-it subsumes the sunny-lynx eleven-cache census (internal work-item census = facts-before-
-abstraction evidence for ONE interface). Lens by failure mode; one authority.
+Per *Build Systems à la Carte* (Mok et al.): build/caching recurrence across layers is a
+**structural consequence** of missing a shared, content-addressed reconciliation of
+**spec → effect** — not an accident of engineer discipline. gunbc’s version is the
+**Realization** pattern: content-addressed reconciliation of model spec to host effect
+across an impurity boundary. It is a **critical portfolio requirement** (ctrl#1607).
+**PR2 #4878** (resolve-cost, in flight) is inhabitant #1 — the deepest place is resolve.
+
+**Systemic fix (TARGET, staged):** transparent memoization via
+`cache_identity` / `cache_interface` / `compute_fabric` — an execution receipt carrier
+that makes the run reifiable, keys results by content, and wires the purity-oracle
+falsifier as standing enforcement (§5–§6). Not claimed working today (§4.2).
+
+**Sharpest operator rule:** sharing must be the **same code among our own code**, not two
+abstractions that happen to agree — dogfood the fabric by dogfooding the compiler.
+
+**This doc must not duplicate rosters.** §3 is the **single standing instance roster**;
+it subsumes the sunny-lynx eleven-cache census. Lens by failure mode; marks are authority.
 
 ---
 
@@ -197,7 +211,7 @@ triggers — not a separate product idea.
 | **Structure on v2** | Partially resolves | Type shapes load; full claim-**run** not wired end-to-end |
 | **End-to-end eval on self-hosted compiler** | Not yet wired | Three resolve gaps (workers in flight): optional fields; one-of-one enum tags; multi-hop type-alias chains (money/Measure carrier) |
 | **PR1 (#4867)** | Manual discharge | `seed_kernel_intern_names` + equivalence falsifier |
-| **PR2 (resolve-cost, in flight)** | First real consumer | Structural grounding + Rust behavioral proof; substrate eval honest-dormant |
+| **PR2 (resolve-cost #4878, in flight)** | First real consumer / inhabitant #1 | Structural grounding + Rust behavioral proof; substrate eval honest-dormant |
 
 **Do not read this doc as "the fix already works."** TARGET properties below are what the
 substrate is built **toward**.
@@ -310,7 +324,9 @@ PR2 = **(a)+(b)** for row 5; **(c)** honest-dormant until substrate eval lands.
 
 ## 10. One-line summary
 
-**Recompute pure-of-content** duplicates content-determined facts — a duplicate-representation
-violation; hand-rolled caches hide impurity until a falsifier fires (PR1 #4867). **Transparent
-memoization** (staged in `cache_identity` / `cache_interface` / `compute_fabric`) is the
-TARGET: purity-oracle gates today; automatic content-keyed memo tomorrow.
+**Recompute pure-of-content** is what happens when there is **no reified execution receipt**
+at the model→host boundary: redundancy violates Performance / Facts-Flow-Forward; silent
+impurity violates Fail-Closed (PR1 #4867). v4 recurs the pattern because the carrier is
+staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** (Realization;
+ctrl#1607; staged in `cache_identity` / `cache_interface` / `compute_fabric`) is the TARGET
+receipt carrier — PR2 #4878 is inhabitant #1 at resolve.
