@@ -16,6 +16,7 @@ import std.os.invocation { SyscallAbi }
 // Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
 type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
+// 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
 type Endianness = LittleEndian | BigEndian
 
 type ArchitectureProfile {
