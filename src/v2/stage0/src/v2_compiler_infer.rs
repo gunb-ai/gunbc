@@ -5320,7 +5320,9 @@ pub fn expand_type_for_field_access(
                 None => "None".to_string(),
             };
             eprintln!(
-                "DBG expand IN name={} conn={:?} children={} childnames={:?} inferred={} needs={} ugus={} lookup_type_for={}",
+                "DBG expand IN rawname={} brand={} name={} conn={:?} children={} childnames={:?} inferred={} needs={} ugus={} lookup_type_for={}",
+                n.name.clone(),
+                crate::v2_compiler_infer_env::authored_name(env.clone(), n.clone()),
                 dbgname,
                 n.connective.clone(),
                 n.children.clone().len(),
