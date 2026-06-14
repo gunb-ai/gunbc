@@ -2,6 +2,8 @@
 
 use std::rc::Rc;
 
+use v2_compiler::cli_run;
+use v2_compiler::coproduct_reflection;
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v2_compiler::v2_interpreter::{self, Value};
 
@@ -45,9 +47,41 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
     );
 }
 
+fn run_witness(resolved: &ResolvedPipelineResult, function: &str) -> Value {
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    v2_interpreter::run(graph, resolved.source_indices.clone(), function)
+        .unwrap_or_else(|e| panic!("run {function}: {e}"))
+}
+
 #[test]
 fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
-    // gunbc claim-run resolves sources relative to workspace root; mirror that here.
+    std::env::set_var("GUNBC_ROOT", workspace_root());
+    let resolved = compile_to_resolved(Rc::new(cert_sources()));
+    assert_resolved_ok(&resolved);
+    match run_witness(&resolved, WITNESS_FN) {
+        Value::Bool(true) => {}
+        other => panic!(
+            "expected Bool(true) from {WITNESS_FN} (Path-3 key-set conformance), got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
+    std::env::set_var("GUNBC_ROOT", workspace_root());
+    let resolved = compile_to_resolved(Rc::new(cert_sources()));
+    assert_resolved_ok(&resolved);
+    match run_witness(&resolved, "witness_connective_behavior_arm_sets_are_distinct") {
+        Value::Bool(true) => {}
+        other => panic!("expected distinct arm sets, got {other:?}"),
+    }
+}
+
+#[test]
+fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
@@ -55,10 +89,29 @@ fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
         .graph
         .as_ref()
         .expect("graph after successful resolve");
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), WITNESS_FN) {
-        Ok(Value::Bool(true)) => {}
-        other => panic!(
-            "expected Bool(true) from {WITNESS_FN} (Path-3 key-set conformance), got {other:?}"
-        ),
-    }
+    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let connective = (None, Value::Str("Connective".to_string()));
+
+    let reflection_keys =
+        coproduct_reflection::eval_coproduct_arm_keys(&ctx, &[connective.clone()])
+            .expect("reflection keys");
+    let corrupted = coproduct_reflection::eval_coproduct_arm_keys_with_dropped_last_arm(
+        &ctx,
+        "Connective",
+    )
+    .expect("corrupted keys");
+    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(
+        &ctx,
+        &[connective],
+    )
+    .expect("syntactic keys");
+
+    assert_ne!(
+        reflection_keys, corrupted,
+        "dropped-arm corruption must change reflection output"
+    );
+    assert_ne!(
+        corrupted, syntactic,
+        "mechanism drift (dropped Disj arm) must break Path-3 bag_eq witness"
+    );
 }

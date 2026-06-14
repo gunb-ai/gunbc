@@ -160,10 +160,10 @@ fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
     while let Some(rel) = source[search_from..].find(&needle) {
         let start = search_from + rel;
         let after = start + needle.len();
-        let boundary_ok = source
-            .as_bytes()
-            .get(after)
-            .is_none_or(|b| matches!(*b, b' ' | b'=' | b'{'));
+        let boundary_ok = source[after..]
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || c == '=' || c == '{');
         let prefix_ok = start == 0
             || source
                 .as_bytes()
