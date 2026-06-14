@@ -32,7 +32,9 @@ import v4.std.verification {
   test_claim_label
 }
 
-// PS-0 — diagnostic interface kinds (parallel extdeps diagnostic/* cited protocols).
+// 🟢 coproduct dissolution — TERMINAL. Closed diagnostic-transport enumeration at the
+// probe-selector availability boundary; arms mirror cited dsl/extdeps/diagnostic/* protocols.
+// No richer carrier to dissolve into without collapsing distinct transport facts.
 type DiagnosticInterfaceKind
   = DiagnosticSsh
   | DiagnosticIpmi
@@ -59,27 +61,25 @@ type CostBudget {
   max_cost: Int
 }
 
-type ChangeSpace<C> {
-  change: C
-}
-
 type SuspectedCausePrior<C> {
   hypothesis: C
 }
 
-type CoverageRegion<C> {
-  region: C
-}
-
+// 🟢 coproduct dissolution — TERMINAL. Closed host-health burn-in hypothesis set at the
+// prior boundary (ctrl ROADMAP #1612 PS-0); arms are irreducible suspected-cause tags.
 type HostHealthHypothesis
   = HostHealthHypothesisReachability
   | HostHealthHypothesisStandoffCapVddq
 
+// 🟢 coproduct dissolution — TERMINAL. Closed host probe catalog discriminant for the
+// three canonical burn-in entries (`host_health_probe_canonical_entry` authority).
 type HostHealthProbeKind
   = HostHealthProbeDockerReachability
   | HostHealthProbeEdacSummary
   | HostHealthProbeEccWatchedStress
 
+// 🟢 coproduct dissolution — TERMINAL. ONE-kernel prior union routing host-health vs CI
+// selection; consumed by `probe_select`, `probe_effective_coverage`, and keystone gate.
 type ProbePrior
   = HostHealthPrior { hypothesis: HostHealthHypothesis }
   | CiAffectedPrior { affected: AffectedSet }
