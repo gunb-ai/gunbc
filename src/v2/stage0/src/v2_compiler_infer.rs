@@ -5288,54 +5288,32 @@ pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn expand_type_for_field_access(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Node> {
-    if is_deferred_field_access_base(n.clone(), env.clone()) {
-        n.clone()
-    } else {
-        {
-            let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
-            expand_alias_chain_for_field_access(
-                n,
-                env,
-                module_name,
-                origin_name,
-                Rc::new(std::collections::BTreeSet::new()),
-                false,
-            )
-        }
-    }
-}
-
-// A record (Conj/Disj) field whose resolved TYPE is still one of the record's own
-// declared generic params — i.e. an unsubstituted param (a bare leaf named after
-// a param the chain could not substitute, such as `T`/`S`/`U`). Used to fail
-// closed when a parametric alias chain dropped the substitution this field needs.
-// A concrete field type (Nat, Int, ...) is not among the record's params, so it
-// is never flagged; an explicit TypeVariable field is also flagged.
 pub fn record_field_type_is_unresolved_param(
     field: Rc<Node>,
     param_names: Rc<Vec<String>>,
     env: Rc<TypeEnv>,
 ) -> bool {
-    match crate::v2_compiler_infer_lookup::product_field_result_type(field.clone()) {
+    match product_field_result_type(field) {
         Some(ft) => {
-            if (((ft.connective.clone() == Connective::NoConnective)
-                && ((ft.children.clone().len() as i64) == 0)))
+            if ((ft.connective.clone() == Connective::NoConnective)
+                && ((ft.children.clone().len() as i64) == 0))
             {
                 match ft.inferred.clone() {
                     Some(inf) => is_type_variable(inf.clone()),
                     None => {
                         let fname = authored_name_at(env.source_indices.clone(), ft.clone());
-                        // Flag a bare-leaf field type that is an unsubstituted param:
-                        // either explicitly named among the record's retained params,
-                        // or matching the codebase type-var-name convention (T/K/V/...).
-                        // (The reached record's `params` are often dropped along with the
-                        // alias args, so the convention check carries the common case.)
-                        (param_names.contains(&fname) || is_type_variable_name(fname.clone()))
+                        let in_params = {
+                            let mut __found = false;
+                            for pn in param_names.iter().cloned() {
+                                if (pn.clone().as_str() == fname.clone().as_str()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let conv = is_type_variable_name(fname.clone());
+                        (in_params || conv)
                     }
                 }
             } else {
@@ -5347,102 +5325,107 @@ pub fn record_field_type_is_unresolved_param(
 }
 
 pub fn record_has_unresolved_param_field(record: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    let param_names = Rc::new(
-        record
-            .params
-            .clone()
-            .iter()
-            .map(|p| crate::v2_std_core::generic_param_name_at(p.clone(), env.source_indices.clone()))
-            .collect::<Vec<String>>(),
-    );
-    record
-        .children
-        .clone()
-        .iter()
-        .any(|f| record_field_type_is_unresolved_param(f.clone(), param_names.clone(), env.clone()))
+    {
+        let param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in record.params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+            }
+            __result
+        });
+        {
+            let mut __found = false;
+            for f in record.children.clone().iter().cloned() {
+                if record_field_type_is_unresolved_param(
+                    f.clone(),
+                    param_names.clone(),
+                    env.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
 }
 
-// Multi-hop alias field-access (G3): follow the alias chain to the structural
-// record (Conj/Disj) that actually carries the field. Each hop reuses the
-// single-hop machinery (parametric-struct generic instantiation + leaf-alias
-// scrutinee resolution); when that does not reach a record, follow ONE
-// STRUCTURAL-NAME hop (n.name, not the preserved brand) and recurse. The
-// structural name is the next link in the chain (e.g. MoneyMicros's resolved
-// carrier names MoneyAmount, which names Measure); the brand stays pinned to
-// the alias's own name, so chain-following must key on the structural name.
-// `seen` (structural names already visited) terminates genuine self-references
-// (`type Nat` resolving to itself) and cycles.
-//
-// SCOPE BOUNDARY (G3 fail-closed, condition #1): following a STRUCTURAL-NAME hop
-// drops the use-site's type args (the alias param list is not retained on the
-// resolved binding — TypeBinding stores only `resolved`, see 04_env.dag). When
-// the chain is `lossy` (a name-hop dropped args) AND the reached record still
-// has a field typed by an unsubstituted param, we CANNOT type that field, so we
-// fail closed (return the un-expanded use-site -> "no field" diagnostic) rather
-// than silently returning the raw type variable. Param-INDEPENDENT fields
-// (e.g. Measure.count: Nat, where the alias param is phantom) resolve normally.
-// Dissolution trigger: the first real consumer with a param-DEPENDENT field
-// reached through a parametric-alias chain -> follow-up "TypeBinding param-list
-// preservation for param-substitution through parametric-alias chains".
 pub fn expand_alias_chain_for_field_access(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-    origin_name: String,
-    seen: Rc<std::collections::BTreeSet<String>>,
-    lossy: bool,
+    mut n: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+    mut module_name: String,
+    mut origin_name: String,
+    mut seen: Rc<HashMap<String, bool>>,
+    mut lossy: bool,
 ) -> Rc<Node> {
-    let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-        peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
-    } else {
-        n.clone()
-    };
-    let structural =
-        structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
-    if ((structural.connective.clone() == Connective::Conj)
-        || (structural.connective.clone() == Connective::Disj))
-    {
-        if (lossy && record_has_unresolved_param_field(structural.clone(), env.clone())) {
-            // Fail closed: the reached record has a field typed by a param the
-            // dropped-arg chain cannot substitute. Return a bare nominal leaf so
-            // field lookup yields a "no field" diagnostic instead of silently
-            // resolving to the raw type variable.
-            nominal_type_ref(origin_name.clone())
+    loop {
+        let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
         } else {
-            structural.clone()
-        }
-    } else {
-        {
+            n.clone()
+        };
+        let structural =
+            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+        let is_record = ((structural.connective.clone() == Connective::Conj)
+            || (structural.connective.clone() == Connective::Disj));
+        if is_record {
+            let fail_closed =
+                (lossy && record_has_unresolved_param_field(structural.clone(), env.clone()));
+            if fail_closed {
+                break nominal_type_ref(origin_name);
+            } else {
+                break structural.clone();
+            }
+        } else {
             let next_name = structural.name.clone();
-            let is_optional =
-                (structural.return_cardinality.clone() == Cardinality::CardOptional);
-            if (is_optional
-                || (next_name.as_str() == "".to_string().as_str())
-                || seen.contains(&next_name))
-            {
-                structural.clone()
+            let is_optional = (structural.return_cardinality.clone() == Cardinality::CardOptional);
+            let stop = ((is_optional || (next_name.clone().as_str() == "".to_string().as_str()))
+                || emit_map_has(seen.clone(), next_name.clone()));
+            if stop {
+                break structural.clone();
             } else {
                 match lookup_type_by_name(env.clone(), next_name.clone()) {
                     Some(target) => {
-                        let next_seen = {
-                            let mut s = (*seen).clone();
-                            s.insert(next_name.clone());
-                            Rc::new(s)
-                        };
-                        let next_lossy =
-                            (lossy || ((structural.children.clone().len() as i64) > 0));
-                        expand_alias_chain_for_field_access(
-                            target.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                            origin_name.clone(),
-                            next_seen,
-                            next_lossy,
-                        )
+                        let next_seen = v2_rt::rc_map_insert(seen.clone(), next_name.clone(), true);
+                        let dropped_args = ((structural.children.clone().len() as i64) > 0);
+                        let next_lossy = (lossy || dropped_args);
+                        {
+                            let __tco_0 = target.clone();
+                            let __tco_1 = next_seen;
+                            let __tco_2 = next_lossy;
+                            n = __tco_0;
+                            seen = __tco_1;
+                            lossy = __tco_2;
+                            continue;
+                        }
                     }
-                    None => structural.clone(),
+                    None => {
+                        break structural.clone();
+                    }
                 }
             }
+        }
+    }
+}
+
+pub fn expand_type_for_field_access(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    if is_deferred_field_access_base(n.clone(), env.clone()) {
+        n.clone()
+    } else {
+        {
+            let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
+            expand_alias_chain_for_field_access(
+                n.clone(),
+                env.clone(),
+                module_name,
+                origin_name,
+                v2_rt::rc_empty_map::<String, bool>(),
+                false,
+            )
         }
     }
 }
