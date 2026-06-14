@@ -1,0 +1,127 @@
+// extdeps/formats/elf/types.dag — ELF-64 carriers and header decode (Slice 1).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+
+module extdeps.formats.elf.types
+
+import extdeps.formats.elf.primitives {
+  ElfClass,
+  ElfDataEncoding,
+  ElfFileType,
+  ElfMachine,
+  elf_class_64,
+  elf_data_2lsb,
+  elf_mag0,
+  elf_mag1,
+  elf_mag2,
+  elf_mag3,
+  et_exec,
+  em_x86_64,
+}
+import std.exec_format { EntryPoint }
+import std.types { Bool }
+
+type ElfIdent {
+  mag0: Int
+  mag1: Int
+  mag2: Int
+  mag3: Int
+  class: ElfClass
+  data: ElfDataEncoding
+  version: Int
+  osabi: Int
+  abiversion: Int
+}
+
+type Elf64Ehdr {
+  ident: ElfIdent
+  file_type: ElfFileType
+  machine: ElfMachine
+  version: Int
+  entry: Int
+  phoff: Int
+  shoff: Int
+  flags: Int
+  ehsize: Int
+  phentsize: Int
+  phnum: Int
+  shentsize: Int
+  shnum: Int
+  shstrndx: Int
+}
+
+fn byte_at(bytes: List<Int>, offset: Int) -> Int {
+  match bytes |> get(offset) {
+    null => 0
+    other => other
+  }
+}
+
+fn read_u16_le(bytes: List<Int>, offset: Int) -> Int {
+  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256
+}
+
+fn read_u32_le(bytes: List<Int>, offset: Int) -> Int {
+  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) * 65536 + byte_at(bytes, offset + 3) * 16777216
+}
+
+fn read_u64_le(bytes: List<Int>, offset: Int) -> Int {
+  byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) * 65536 + byte_at(bytes, offset + 3) * 16777216 + byte_at(bytes, offset + 4) * 4294967296 + byte_at(bytes, offset + 5) * 1099511627776 + byte_at(bytes, offset + 6) * 281474976710656 + byte_at(bytes, offset + 7) * 72057594037927936
+}
+
+fn decode_elf_class(raw: Int) -> ElfClass {
+  if raw == elf_class_64 { ElfClass64 } else { ElfClassNone }
+}
+
+fn decode_elf_data(raw: Int) -> ElfDataEncoding {
+  if raw == elf_data_2lsb { ElfData2Lsb } else { ElfDataNone }
+}
+
+fn decode_elf_type(raw: Int) -> ElfFileType {
+  if raw == et_exec { EtExec } else { EtNone }
+}
+
+fn decode_elf_machine(raw: Int) -> ElfMachine {
+  if raw == em_x86_64 { EmX86_64 } else { EmNone }
+}
+
+fn decode_elf_ident(bytes: List<Int>) -> ElfIdent {
+  ElfIdent {
+    mag0: byte_at(bytes, 0),
+    mag1: byte_at(bytes, 1),
+    mag2: byte_at(bytes, 2),
+    mag3: byte_at(bytes, 3),
+    class: decode_elf_class(byte_at(bytes, 4)),
+    data: decode_elf_data(byte_at(bytes, 5)),
+    version: byte_at(bytes, 6),
+    osabi: byte_at(bytes, 7),
+    abiversion: byte_at(bytes, 8),
+  }
+}
+
+fn decode_elf64_ehdr(bytes: List<Int>) -> Elf64Ehdr {
+  Elf64Ehdr {
+    ident: decode_elf_ident(bytes),
+    file_type: decode_elf_type(read_u16_le(bytes, 16)),
+    machine: decode_elf_machine(read_u16_le(bytes, 18)),
+    version: read_u32_le(bytes, 20),
+    entry: read_u64_le(bytes, 24),
+    phoff: read_u64_le(bytes, 32),
+    shoff: read_u64_le(bytes, 40),
+    flags: read_u32_le(bytes, 48),
+    ehsize: read_u16_le(bytes, 52),
+    phentsize: read_u16_le(bytes, 54),
+    phnum: read_u16_le(bytes, 56),
+    shentsize: read_u16_le(bytes, 58),
+    shnum: read_u16_le(bytes, 60),
+    shstrndx: read_u16_le(bytes, 62),
+  }
+}
+
+fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
+  EntryPoint { virtual_address: hdr.entry }
+}
+
+fn elf_ident_has_valid_magic(ident: ElfIdent) -> Bool {
+  ident.mag0 == elf_mag0 && ident.mag1 == elf_mag1 && ident.mag2 == elf_mag2 && ident.mag3 == elf_mag3
+}

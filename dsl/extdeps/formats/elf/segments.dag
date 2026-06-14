@@ -1,0 +1,63 @@
+// extdeps/formats/elf/segments.dag — ELF-64 program header decode (Slice 1: PT_LOAD subset).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+
+module extdeps.formats.elf.segments
+
+import extdeps.formats.elf.primitives {
+  ElfSegmentType,
+  pf_r,
+  pf_w,
+  pf_x,
+  pt_load,
+}
+import extdeps.formats.elf.types { byte_at, read_u32_le, read_u64_le }
+import std.exec_format { LoadSegment, SegmentPermission }
+import std.types { Bool }
+
+type Elf64Phdr {
+  segment_type: ElfSegmentType
+  flags: Int
+  offset: Int
+  vaddr: Int
+  paddr: Int
+  filesz: Int
+  memsz: Int
+  align: Int
+}
+
+fn decode_elf_segment_type(raw: Int) -> ElfSegmentType {
+  if raw == pt_load { PtLoad } else { PtNull }
+}
+
+fn decode_segment_permissions(flags: Int) -> SegmentPermission {
+  SegmentPermission {
+    readable: flags == pf_r || flags == (pf_r + pf_w) || flags == (pf_r + pf_x) || flags == (pf_r + pf_w + pf_x),
+    writable: flags == pf_w || flags == (pf_r + pf_w) || flags == (pf_w + pf_x) || flags == (pf_r + pf_w + pf_x),
+    executable: flags == pf_x || flags == (pf_r + pf_x) || flags == (pf_w + pf_x) || flags == (pf_r + pf_w + pf_x),
+  }
+}
+
+fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> Elf64Phdr {
+  Elf64Phdr {
+    segment_type: decode_elf_segment_type(read_u32_le(bytes, offset)),
+    flags: read_u32_le(bytes, offset + 4),
+    offset: read_u64_le(bytes, offset + 8),
+    vaddr: read_u64_le(bytes, offset + 16),
+    paddr: read_u64_le(bytes, offset + 24),
+    filesz: read_u64_le(bytes, offset + 32),
+    memsz: read_u64_le(bytes, offset + 40),
+    align: read_u64_le(bytes, offset + 48),
+  }
+}
+
+fn elf64_phdr_to_load_segment(phdr: Elf64Phdr) -> LoadSegment {
+  LoadSegment {
+    file_offset: phdr.offset,
+    virtual_address: phdr.vaddr,
+    file_size: phdr.filesz,
+    memory_size: phdr.memsz,
+    permissions: decode_segment_permissions(phdr.flags),
+    alignment: phdr.align,
+  }
+}

@@ -1,0 +1,157 @@
+// extdeps/formats/elf/hello_static_witness.dag — end-to-end decode of one real static hello ELF.
+//
+// Fixture: musl-static x86-64 hello built in Alpine 3.20 (linux/amd64):
+//   cc -static -o hello 'write(1,"Hello\n",6); return 0;'
+// Bytes are the on-disk ELF-64 Ehdr (64 B) + first PT_LOAD Phdr (56 B) — verified with readelf.
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+
+module extdeps.formats.elf.hello_static_witness
+
+import extdeps.formats.elf.primitives {
+  ElfClass64,
+  ElfData2Lsb,
+  EtExec,
+  EmX86_64,
+  PtLoad,
+  elf64_ehdr_size,
+  elf64_phdr_size,
+  linux_x86_64_elf_format,
+  pf_r,
+}
+import extdeps.formats.elf.segments {
+  Elf64Phdr,
+  decode_elf64_phdr,
+  elf64_phdr_to_load_segment,
+}
+import extdeps.formats.elf.types {
+  Elf64Ehdr,
+  decode_elf64_ehdr,
+  elf64_ehdr_entry_point,
+  elf_ident_has_valid_magic,
+}
+import std.exec_format { EntryPoint, LoadSegment }
+
+// Real static hello — ELF-64 Ehdr (64 bytes).
+data static_hello_elf64_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+// Continuation at file offset 64 — first PT_LOAD program header (56 bytes).
+data static_hello_first_phdr_bytes: List<Int> = [
+  1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0,
+  140, 2, 0, 0, 0, 0, 0, 0, 140, 2, 0, 0, 0, 0, 0, 0,
+  0, 16, 0, 0, 0, 0, 0, 0,
+]
+
+data static_hello_decoded_ehdr: Elf64Ehdr = decode_elf64_ehdr(static_hello_elf64_ehdr_bytes)
+
+data static_hello_decoded_first_phdr: Elf64Phdr = decode_elf64_phdr(
+  static_hello_first_phdr_bytes,
+  0,
+)
+
+data static_hello_first_load_segment: LoadSegment = elf64_phdr_to_load_segment(
+  static_hello_decoded_first_phdr,
+)
+
+data static_hello_entry_point: EntryPoint = elf64_ehdr_entry_point(static_hello_decoded_ehdr)
+
+// Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+
+fn witness_format_atom_is_elf() -> Bool {
+  linux_x86_64_elf_format.family == "elf"
+}
+
+fn witness_ident_magic() -> Bool {
+  elf_ident_has_valid_magic(static_hello_decoded_ehdr.ident)
+}
+
+fn witness_ident_class_is_elf64() -> Bool {
+  static_hello_decoded_ehdr.ident.class == ElfClass64
+}
+
+fn witness_ident_data_is_little_endian() -> Bool {
+  static_hello_decoded_ehdr.ident.data == ElfData2Lsb
+}
+
+fn witness_file_type_is_exec() -> Bool {
+  static_hello_decoded_ehdr.file_type == EtExec
+}
+
+fn witness_machine_is_x86_64() -> Bool {
+  static_hello_decoded_ehdr.machine == EmX86_64
+}
+
+fn witness_entry_point_address() -> Bool {
+  static_hello_entry_point.virtual_address == 4198443
+}
+
+fn witness_phoff_is_64() -> Bool {
+  static_hello_decoded_ehdr.phoff == 64
+}
+
+fn witness_shoff_is_43576() -> Bool {
+  static_hello_decoded_ehdr.shoff == 43576
+}
+
+fn witness_ehsize_is_64() -> Bool {
+  static_hello_decoded_ehdr.ehsize == elf64_ehdr_size
+}
+
+fn witness_phentsize_is_56() -> Bool {
+  static_hello_decoded_ehdr.phentsize == elf64_phdr_size
+}
+
+fn witness_phnum_is_9() -> Bool {
+  static_hello_decoded_ehdr.phnum == 9
+}
+
+fn witness_first_segment_is_pt_load() -> Bool {
+  static_hello_decoded_first_phdr.segment_type == PtLoad
+}
+
+fn witness_first_segment_is_read_only() -> Bool {
+  static_hello_decoded_first_phdr.flags == pf_r
+    && static_hello_first_load_segment.permissions.readable == true
+    && static_hello_first_load_segment.permissions.writable == false
+    && static_hello_first_load_segment.permissions.executable == false
+}
+
+fn witness_first_load_segment_vaddr() -> Bool {
+  static_hello_first_load_segment.virtual_address == 4194304
+}
+
+fn witness_first_load_segment_filesz() -> Bool {
+  static_hello_first_load_segment.file_size == 652
+}
+
+fn witness_first_load_segment_align() -> Bool {
+  static_hello_first_load_segment.alignment == 4096
+}
+
+fn main() -> Bool {
+  witness_format_atom_is_elf()
+    && witness_ident_magic()
+    && witness_ident_class_is_elf64()
+    && witness_ident_data_is_little_endian()
+    && witness_file_type_is_exec()
+    && witness_machine_is_x86_64()
+    && witness_entry_point_address()
+    && witness_phoff_is_64()
+    && witness_shoff_is_43576()
+    && witness_ehsize_is_64()
+    && witness_phentsize_is_56()
+    && witness_phnum_is_9()
+    && witness_first_segment_is_pt_load()
+    && witness_first_segment_is_read_only()
+    && witness_first_load_segment_vaddr()
+    && witness_first_load_segment_filesz()
+    && witness_first_load_segment_align()
+}
