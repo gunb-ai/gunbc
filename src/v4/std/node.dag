@@ -57,6 +57,28 @@ fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
   syntactic_coproduct_arm_keys(type_name: type_name)
 }
 
+fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
+  syntactic_coproduct_arm_pairs(type_name: type_name)
+}
+
+
+// R-reflect Phase 2b — reflected arm carrier (positive nullary vs typed payload).
+type ArmPayload
+  = Nullary
+  | Typed { target_ref: Symbol }
+
+type CoproductArm {
+  label: Symbol
+  payload: ArmPayload
+}
+
+type CoproductArmPayloadPair {
+  label: Symbol
+  payload_type_name: Symbol
+}
+
+data coproduct_nullary_payload_type_name: Symbol = ^coproduct_nullary_payload
+
 
 // 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.

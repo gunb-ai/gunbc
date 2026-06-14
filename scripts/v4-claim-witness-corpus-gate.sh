@@ -131,6 +131,20 @@ run_row() {
   "$bin" run --source-root "$source_root" --entry "$entry" --function "$function" --claim-run
 }
 
+# Derives the --source-root for an entry path by matching its prefix.
+# Fails hard on an unrecognized prefix so new roots must be added explicitly.
+derive_source_root() {
+  local entry="$1"
+  case "$entry" in
+    src/v4/*) echo "src/v4" ;;
+    dsl/*)    echo "dsl" ;;
+    *)
+      echo "error: cannot derive source-root from entry: ${entry}" >&2
+      exit 2
+      ;;
+  esac
+}
+
 classify_stdout() {
   local out="$1"
   if printf '%s\n' "$out" | grep -qx 'true'; then
@@ -144,31 +158,46 @@ classify_stdout() {
   echo error
 }
 
-# GREEN pass: group functions by entry, then one multi-entry claim_batch call so the
-# module source index is built once (same pattern as v4-lens-ci-gate.sh). The prior
-# per-entry loop spawned a new process per distinct entry and paid a full index scan
-# each time (~90s recoverable overhead on shard a at CI uncontended).
+# GREEN pass: group functions by (source-root, entry), then one claim_batch call per
+# unique source-root so the module index is built once per root.  The prior version
+# hardcoded --source-root src/v4; this version derives the root from each entry's path
+# prefix (see derive_source_root), enabling dsl/-rooted entries alongside src/v4 ones.
 batch_green_pass() {
   local title="$1"
   local -A entry_fns=()
-  local -a entry_order=()
-  local entry function
+  local -A entry_root=()
+  local -A root_entries=()
+  local -a root_order=()
+  local -A root_seen=()
+  local entry function source_root
+
   while IFS=$'\t' read -r entry function; do
     [[ -z "$entry" ]] && continue
+    source_root="$(derive_source_root "$entry")"
     if [[ -z "${entry_fns[$entry]+x}" ]]; then
-      entry_order+=("$entry")
+      entry_root[$entry]="$source_root"
+      if [[ -z "${root_seen[$source_root]+x}" ]]; then
+        root_seen[$source_root]=1
+        root_order+=("$source_root")
+        root_entries[$source_root]=""
+      fi
+      root_entries[$source_root]+="${entry}"$'\n'
     fi
     entry_fns[$entry]+="${function},"
   done
-  local args=(--source-root src/v4)
-  local e fns
-  for e in "${entry_order[@]}"; do
-    fns="${entry_fns[$e]%,}"
-    args+=(--entry "$e" --functions "$fns")
+
+  local e fns args
+  for source_root in "${root_order[@]}"; do
+    args=(--source-root "$source_root")
+    while IFS= read -r e; do
+      [[ -z "$e" ]] && continue
+      fns="${entry_fns[$e]%,}"
+      args+=(--entry "$e" --functions "$fns")
+    done <<< "${root_entries[$source_root]}"
+    echo "::group::${title} (batch green, root=${source_root})"
+    "$bin_batch" "${args[@]}" --claim-run
+    echo "::endgroup::"
   done
-  echo "::group::${title} (batch green)"
-  "$bin_batch" "${args[@]}" --claim-run
-  echo "::endgroup::"
 }
 
 perturb_function_to_false() {
@@ -207,15 +236,17 @@ PY
 perturb_one_row() {
   local row="$1"
   IFS=$'\t' read -r label entry function _expect _bind <<< "$row"
+  local source_root
+  source_root="$(derive_source_root "$entry")"
   local tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   mkdir -p "$tmp"
-  cp -a src/v4 "$tmp/src"
-  local perturbed_entry="$tmp/src/${entry#src/v4/}"
+  cp -a "$source_root" "$tmp/root"
+  local perturbed_entry="$tmp/root/${entry#${source_root}/}"
   perturb_function_to_false "$perturbed_entry" "$function"
   echo "::group::claim witness corpus perturb: ${label}"
-  if run_row "$tmp/src" "$perturbed_entry" "$function"; then
+  if run_row "$tmp/root" "$perturbed_entry" "$function"; then
     echo "::error::perturbed witness still passed: ${label}"
     exit 1
   fi
@@ -286,7 +317,7 @@ failures=0
 for row in "${fail_rows[@]}"; do
   IFS=$'\t' read -r label entry function _expect bind_anchor <<< "$row"
   echo "::group::claim witness corpus (ExpectFail): ${label}"
-  out="$(run_row "src/v4" "$entry" "$function" 2>&1)" || true
+  out="$(run_row "$(derive_source_root "$entry")" "$entry" "$function" 2>&1)" || true
   echo "$out"
   actual="$(classify_stdout "$out")"
   echo "::endgroup::"
