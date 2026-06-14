@@ -10,6 +10,8 @@ import v4.compiler.infer { infer }
 import v4.extdeps.languages.go {
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
+  go_int_additive_numeric_inhabitant_node,
+  go_mvp1_source_text,
   go_mvp1_target_model
 }
 import v4.extdeps.languages.python {
@@ -67,6 +69,25 @@ fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
   }
 }
 
+fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(
+    inhabitant: go_int_additive_numeric_inhabitant_node()
+  ) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: std_projection_additive_numeric,
@@ -97,6 +118,8 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
 
 fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
   inhabitant_neutralization_go_int64_std_projection_holds()
+    && inhabitant_neutralization_go_int_additive_numeric_std_projection_holds()
+    && inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds()
     && inhabitant_neutralization_go_int64_target_lookup_holds()
     && inhabitant_neutralization_go_int64_to_ts_emit_holds()
 }
@@ -180,6 +203,48 @@ fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> 
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+// HEAVY (~627s): python->go cross-language cell — mirrors python->ts e2e above.
+// CONNECTED: live parse_tree is the literal cross_language_compile input (no fixture-fed core).
+// CORRECT-SOURCE: source == pinned go_mvp1_source_text (NOT non-empty / Cons overclaim).
+// GENERIC: routes through cross_language_compile + neutralize_core_for_target — NO go-specific arm.
+fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_mvp1_target_model(),
+        target_model: go_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source == go_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// DISCRIMINATION: same REAL parsed tree against ts target must yield pinned ts source (positive control).
+// Proves the witness exercises target-specific emit — ts path is ChainProven (#4858), not vacuous !=/Rejected.
+fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_mvp1_target_model(),
+        target_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Composite heavy receipt (NOT BoolWitnessed — slow-lane / draft-until-sign).
+fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+  inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
+    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
 }
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {

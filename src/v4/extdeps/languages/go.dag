@@ -322,6 +322,14 @@ data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   std_projection: ^go_std_projection_int,
 }
 
+// Platform-int slice for cross-language neutralization (python int -> go int, NOT int64).
+data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int,
+  width: SignedPlatformInt,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: std_projection_additive_numeric,
+}
+
 data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_uint8,
   width: UnsignedBits8,
@@ -1474,6 +1482,21 @@ fn go_int_inhabitant_node() -> Node {
 }
 }
 
+// Neutralization route: python int -> std_projection_additive_numeric -> go platform int (MVP1 emit surface).
+fn go_int_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: go_integer_facts_node(facts: go_facts_int_additive_numeric)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
 // Third-inhabitant falsifier slice: int64 wired to shared std_projection_additive_numeric via
 // facts_field_std_projection (design-sign cond 3) — zero new combinator arms.
 fn go_int64_additive_numeric_inhabitant_node() -> Node {
@@ -1540,7 +1563,7 @@ fn go_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
