@@ -330,16 +330,14 @@ pub fn arm_labels_from_marshaled_node(
             ..
         } = label
         else {
-            return Err(InterpError::TypeError {
-                msg: "expected EdgeLabel variant".to_string(),
-            });
+            continue;
         };
         if ctx.resolve(*variant_name) != "Named" {
             continue;
         }
-        let Value::Str(name) = lf.get(&ctx.sym("name")).ok_or_else(|| InterpError::TypeError {
-            msg: "Named edge missing name".to_string(),
-        })?;
+        let Some(Value::Str(name)) = lf.get(&ctx.sym("name")) else {
+            continue;
+        };
         labels.push(name.clone());
     }
     Ok(labels)
