@@ -425,15 +425,14 @@ anticipated "proper mechanism," not its repeal.
 substrate**, analogous to (not an extension of) the v3-Rust `substrate_reflection`
 seed, which shrinks while v4 grows (§4.3).
 
-**Residual for snappy-crab re-read + operator:** the revised §5.2 gate spec is
-the one piece snappy-crab asked to re-read before Phase-2 (it is the whole
-2FA-replacement); the operator ban-lift should be predicated on this corrected
-gate. Remaining sub-question: for non-roster coproducts not covered by v3, is
-Path 3 (syntactic count) sufficient as the sole independent factor, or is a
-cross-generation/third path also required?
+**§5.2 re-read — CONFIRMED (snappy-crab-849, post-0071c645):** design-sign
+carries on the corrected gate. Binding sharpening applied: Path 3 is a **syntactic
+arm key-set** (label set-compared to `coproduct_arm_keys(T)`), not a cardinality
+count — count alone passes falsely on arity-preserving relabel. With Path 3 as
+key-set, **no third path is required** for non-roster/non-v3 coproducts; it
+discharges the independence obligation alone. Cross-generation is additive where
+v3 covers the carrier; frontier-discovery is roster-scoped only. The 2FA guarantee
+proves in Phase-2 when Path 3 (key-set) lands GREEN before any consumer migrates.
 
-**Design position (pending sign):** for gated coproducts outside v3 coverage and
-outside C5 rosters, **Path 3 alone discharges the independence obligation** (§5.2
-already marks it "primary, required for non-roster coproducts"). Cross-generation
-is additive where v3 covers the carrier; frontier-discovery is roster-scoped
-only. No third mandatory path is proposed for the general case.
+**Operator gate (still open):** BAN-LIFT ruling (routed via zesty-swift-79),
+predicated on this corrected 3-factor gate.
