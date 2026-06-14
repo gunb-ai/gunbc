@@ -47,7 +47,7 @@ type DiagnosticCapabilityFacts {
 
 // 🟡 P-PROBE-CF-IMPORT — v4 cannot import dsl/std/compute_fabric (Option<T> vs Optional<T>;
 // std.* namespace collides under dual source-root). Escalation: zesty-swift-79 /
-// work-item adhoc-20b17ff7-932. Repro: probe_selector_compute_fabric_import_repro.dag.
+// work-item adhoc-20b17ff7-932. Repro: scripts/v4-probe-selector-compute-fabric-import-repro.sh
 // Dissolution: diagnostic_capability_from_offer(offer: ComputeOffer) reading
 // offer.supply.execution.isolation; delete HostSupplyProjectionInput on arrival.
 type HostSupplyProjectionInput {
