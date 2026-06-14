@@ -11,7 +11,9 @@ import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.os.invocation { SyscallAbi }
 
 // 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
-// Option import — dissolve-on: repoint architecture to std.cpu.types.CpuArchitecture when importable.
+// Option import. `import std.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
+// fails: std.cpu.types imports named Option from std.types (unexported on v2; snappy-stag-903).
+// Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
 type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
 type Endianness = LittleEndian | BigEndian
@@ -32,8 +34,9 @@ type ArchitectureProfile {
 
 // DeploymentTarget composes profile + invocation surface (zesty ruling §5).
 // operating_system attach is 🟡-gated on std.os.types v2 catalog flip (Option + single-variant enum).
-// invocation uses SyscallAbi until StableInvocationSurface coproduct lands (Slice 2).
 type DeploymentTarget {
   profile: ArchitectureProfile
+  // 🟡 feature:stable-invocation-surface-coproduct — bind exec-contract Slice 2 (LibraryApiBoundary);
+  // dissolve-on: repoint invocation to StableInvocationSurface when macOS/Windows inhabitants land.
   invocation: SyscallAbi
 }
