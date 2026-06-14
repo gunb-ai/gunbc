@@ -99,7 +99,7 @@ no fourth primitive, no parallel digest/receipt type:**
 | --- | --- | --- |
 | **Content identity** | **(c) Content-keyed invalidation** | `ContentHash` / `ExecutionReceiptRef<T> { receipt_digest }` digest seam (`cache_interface.dag:203-204`) — memo-hit-vs-recompute key |
 | **Hermetic realization** | **(b) Enforced purity at boundary** | Equivalence falsifier (§5) — **purity IS the falsifier**, not a new mechanism |
-| **Receipt + change-driven reconcile** | **(a) Automatic memo** | `cache_interface` store/lookup semantics + `ExecutionReceipt<T>` persistence; change-driven gap model: `RecomputePlan` / `AffectedSet` (`v4.std.change` — outside compute-fabric substrate co-sign; pending v4-owner confirmation) |
+| **Receipt + change-driven reconcile** | **(a) Automatic memo** | **Persistence:** `cache_interface` store/lookup + `ExecutionReceipt<T>` (`key → output` on the compute_fabric lane). **Change-consequence:** `RecomputePlan` / `AffectedSet` (`v4.std.change` — v4-owner confirmed: rerun-scope / what dependencies must rerun **only**; does **not** hold persistence). **TARGET composition:** `(ExecutionReceipt persistence) × (AffectedSet/RecomputePlan rerun-scope)` — not a field on `AffectedSet` today |
 
 **Substrate carrier (the N+M move):** `Realization<Spec, Effect>` names the **existing**
 `compute_fabric` ↔ `cache_interface` composition — **not** new types. Abstraction over the
@@ -300,7 +300,7 @@ substrate is built **toward**.
 
 | Property | ROADMAP primitive | Target meaning | Substrate attach | Today |
 | --- | --- | --- | --- | --- |
-| **(a) Automatic memo** | Receipt + change-driven reconcile | Compiler/runner inserts memo; authors don't hand-roll | `cache_interface` store/lookup semantics; `ExecutionReceipt<T>` | Eleven hand-rolls; v2/v4 local memos |
+| **(a) Automatic memo** | Receipt + change-driven reconcile | Compiler/runner inserts memo; authors don't hand-roll | **Persistence:** `cache_interface` + `ExecutionReceipt<T>`. **Rerun-scope:** `RecomputePlan` / `AffectedSet` (`v4.std.change`) — composed at TARGET, not one substrate field | Eleven hand-rolls; v2/v4 local memos |
 | **(b) Enforced purity at boundary** | Hermetic realization | Non-pure units cannot be soundly memoized | Equivalence falsifier (§5) — purity **is** the falsifier | Manual seeds + standing gates (PR1) |
 | **(c) Content-keyed invalidation** | Content identity | Merkle/content-hash invalidation, not heuristic deps | `ContentHash` / `ExecutionReceiptRef` digest seam | Partially in `CacheInterfaceFacts`; sccache interim host |
 
@@ -341,10 +341,13 @@ prove the identity+receipt shape carries — PR2 is the first trigger to watch.
    (ambient intern table, mutable env, unmodeled host state). Discharge: **(a)** effect
    discipline (`WorkDemand.effects`) makes read impossible; **(b)** key misses hidden input
    → cached-vs-cold divergence → falsifier fires.
-3. **Receipt + reconcile (§4.3 (a))** — persist `key → output` via `ExecutionReceipt<T>`;
-   on content-key change, `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6;
-   `v4.std.change` attach point — outside compute-fabric substrate co-sign; pending v4-owner
-   confirmation).
+3. **Receipt + reconcile (§4.3 (a))** — two halves, distinct authorities:
+   - **Persistence** — `key → output` via `ExecutionReceipt<T>` + `cache_interface` store/lookup
+     (compute_fabric / cache_interface lane; snappy substrate co-sign).
+   - **Change-consequence** — on content-key change, `RecomputePlan` / `AffectedSet`
+     (`v4.std.change`; v4-owner confirmed) names **what dependencies/layers must rerun** —
+     not `key → output` persistence. Gap selection is the TARGET composition
+     `(ExecutionReceipt persistence) × (AffectedSet/RecomputePlan rerun-scope)` (§6).
 
 **Finding B — oracle splits on reversibility:** the byte-identical cached-vs-cold falsifier
 (reversible handlers — compute, build/sccache) **is** the enforcement for closed-world
@@ -360,10 +363,13 @@ mechanism. PR1 (#4867) is the canonical receipt on the compute handler.
 
 **Not every recompute is the error class.** When the content key **changes** — source edit,
 dependency change, invalidation trigger — re-executing dependent work is **correct**
-receipt + change-driven reconcile: realize only the gap. `RecomputePlan` / `AffectedSet`
-(`v4.std.change` — outside compute-fabric substrate co-sign; pending v4-owner confirmation)
-model *what must rerun after change*; that is incremental execution done
-right.
+receipt + change-driven reconcile: realize only the gap. **`RecomputePlan` / `AffectedSet`**
+(`v4.std.change`; v4-owner confirmed) model **change-consequence** — what dependencies/layers
+must rerun after change — **not** `key → output` persistence (that is `ExecutionReceipt` +
+`cache_interface`; §5.3). That is incremental execution done right.
+
+*Footnote:* `v4.lens.affected_set` projects `AffectedSet` → `RerunNodeSet` for CI witness
+selection (`affected_set_selection.dag`) — same authority family, different projection.
 
 **Spurious recompute** is the error: same content key, full re-derivation anyway — or a
 cache hit that diverges from cold oracle because purity was violated. Caching does not mean
