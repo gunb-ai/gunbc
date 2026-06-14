@@ -1,0 +1,185 @@
+// src/v4/std/timeseries_signal.dag
+// Scope: discrete time-series signals and map/fold step operators for analog passive elements.
+// Anchor: SPICE3 transient (.tran) uniform time-step discretization; Ohm's law; capacitor/inductor
+//         Euler integration (i = C·dv/dt, v = L·di/dt).
+// Status: S1 modeled 2026-06-14 (sleek-eagle-185).
+//
+// M9 DFS receipt:
+// - `List<T>` / `fold_list` from v4.std.algebra (Layer-3 collection catamorphism).
+// - `SignalMapStep` / `SignalFoldStep` mirror iteration.dag map/fold primitives (Layer-4).
+// - Affine voltage types name the nodal-analysis reference + offset decomposition.
+// - R/L/C passive step carriers ground external physics facts; SPICE lexeme interchange is separate.
+
+
+module v4.std.timeseries_signal
+
+
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_right }
+import v4.std.collection { List }
+import v4.std.integer { Int, int_add, int_mul }
+import v4.std.node { Symbol }
+
+
+type TimeStep {
+  dt_lexeme: String
+}
+
+
+type TimeSeriesSignal<T> {
+  samples: List<T>
+  dt: TimeStep
+}
+
+
+// Affine voltage decomposition: V_node = V_reference + V_offset (nodal datum + increment).
+// Named carriers keep reference and offset facts separate — no silent ground fabrication.
+type AffineVoltageReference {
+  magnitude_lexeme: String
+}
+
+
+type AffineVoltageOffset {
+  magnitude_lexeme: String
+}
+
+
+type AffineNodeVoltage {
+  reference: AffineVoltageReference
+  offset: AffineVoltageOffset
+}
+
+
+// Branch voltage is the affine difference between two node voltages (KVL fact).
+type AffineBranchVoltage {
+  positive_node: AffineNodeVoltage
+  negative_node: AffineNodeVoltage
+}
+
+
+// Stateless per-sample transform — Resistor: v = R·i (freq-flat, no memory).
+type SignalMapStep<In, Out> {
+  apply: fn(In) -> Out
+}
+
+
+// Stateful sample integration — Capacitor/Inductor: fold over dt with accumulated state.
+type SignalFoldStep<State, In> {
+  init: State
+  step: fn(State, In, TimeStep) -> State
+}
+
+
+// Passive element value interchange (SPICE lexeme authority lives in extdeps/formats/spice.dag).
+type PassiveValue {
+  lexeme: String
+}
+
+
+type ResistorVoltageMapStep {
+  resistance: PassiveValue
+  resistance_magnitude: Int
+  map: SignalMapStep<Int, Int>
+}
+
+
+type CapacitorVoltageFoldStep {
+  capacitance: PassiveValue
+  capacitance_magnitude: Int
+  fold: SignalFoldStep<Int, Int>
+}
+
+
+type InductorCurrentFoldStep {
+  inductance: PassiveValue
+  inductance_magnitude: Int
+  fold: SignalFoldStep<Int, Int>
+}
+
+
+// 🟢 TERMINAL coproduct — passive step operator classified by memory model (map vs fold).
+type PassiveStepOperator
+  = PassiveResistorStep { step: ResistorVoltageMapStep }
+  | PassiveCapacitorStep { step: CapacitorVoltageFoldStep }
+  | PassiveInductorStep { step: InductorCurrentFoldStep }
+
+
+fn passive_value_from_lexeme(lexeme: String) -> PassiveValue {
+  PassiveValue { lexeme: lexeme }
+}
+
+
+fn resistor_voltage_map_step(
+  resistance_magnitude: Int,
+  resistance_lexeme: String,
+) -> ResistorVoltageMapStep {
+  ResistorVoltageMapStep {
+    resistance: passive_value_from_lexeme(lexeme: resistance_lexeme),
+    resistance_magnitude: resistance_magnitude,
+    map: SignalMapStep {
+      apply: fn(current) { int_mul(resistance_magnitude, current) }
+    }
+  }
+}
+
+
+fn capacitor_voltage_fold_step(
+  capacitance_magnitude: Int,
+  capacitance_lexeme: String,
+  dt_over_capacitance: Int,
+) -> CapacitorVoltageFoldStep {
+  CapacitorVoltageFoldStep {
+    capacitance: passive_value_from_lexeme(lexeme: capacitance_lexeme),
+    capacitance_magnitude: capacitance_magnitude,
+    fold: SignalFoldStep {
+      init: 0,
+      step: fn(voltage, current, _dt) {
+        int_add(voltage, int_mul(current, dt_over_capacitance))
+      }
+    }
+  }
+}
+
+
+fn inductor_current_fold_step(
+  inductance_magnitude: Int,
+  inductance_lexeme: String,
+  dt_over_inductance: Int,
+) -> InductorCurrentFoldStep {
+  InductorCurrentFoldStep {
+    inductance: passive_value_from_lexeme(lexeme: inductance_lexeme),
+    inductance_magnitude: inductance_magnitude,
+    fold: SignalFoldStep {
+      init: 0,
+      step: fn(current, voltage, _dt) {
+        int_add(current, int_mul(voltage, dt_over_inductance))
+      }
+    }
+  }
+}
+
+
+fn timeseries_map<In, Out>(
+  signal: TimeSeriesSignal<In>,
+  step: SignalMapStep<In, Out>,
+) -> TimeSeriesSignal<Out> {
+  TimeSeriesSignal {
+    samples: fold_list_right(
+      xs: signal.samples,
+      empty: Empty,
+      snoc: fn(acc, sample) { Cons { head: step.apply(sample), tail: acc } }
+    ),
+    dt: signal.dt
+  }
+}
+
+
+fn timeseries_fold<In, State>(
+  signal: TimeSeriesSignal<In>,
+  step: SignalFoldStep<State, In>,
+) -> State {
+  fold_list(
+    xs: signal.samples,
+    empty: step.init,
+    cons: fn(acc, sample) { step.step(acc, sample, signal.dt) }
+  )
+}

@@ -1,0 +1,167 @@
+// src/v4/extdeps/formats/spice_analog.dag
+// Scope: bridge SPICE netlist passive components to std time-series map/fold step operators.
+// Anchor: v4.extdeps.formats.spice Component (Resistor/Capacitor/Inductor arms).
+// Status: S1 modeled 2026-06-14 (sleek-eagle-185).
+//
+// Magnitude integers are explicit boundary inputs — SpiceValue lexeme parsing is deferred;
+// the lexeme is carried for SPICE interchange without fabricating a parsed magnitude.
+// dt_over_* factors are pre-divided boundary inputs (i·dt/C, v·dt/L) until lexeme parse lands.
+
+
+module v4.extdeps.formats.spice_analog
+
+
+import v4.extdeps.formats.spice { Component, SpiceValue }
+import v4.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Accepted,
+  None,
+  diagnostics_singleton,
+  port_locus
+}
+import v4.std.integer { Int }
+import v4.std.node { Symbol }
+import v4.std.timeseries_signal {
+  CapacitorVoltageFoldStep,
+  InductorCurrentFoldStep,
+  PassiveStepOperator,
+  PassiveCapacitorStep,
+  PassiveInductorStep,
+  PassiveResistorStep,
+  PassiveValue,
+  ResistorVoltageMapStep,
+  capacitor_voltage_fold_step,
+  inductor_current_fold_step,
+  passive_value_from_lexeme,
+  resistor_voltage_map_step
+}
+
+
+fn spice_passive_value(value: SpiceValue) -> PassiveValue {
+  passive_value_from_lexeme(lexeme: value.lexeme)
+}
+
+
+fn spice_passive_kind_mismatch_diagnostic(expected: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^spice_passive_component_kind_mismatch,
+    at: port_locus(port: expected),
+    correction: None
+  }
+}
+
+
+fn spice_resistor_to_map_step(
+  component: Component,
+  resistance_magnitude: Int,
+) -> Outcome<ResistorVoltageMapStep> {
+  match component {
+    Resistor { name: _, n_plus: _, n_minus: _, value } =>
+      Accepted {
+        value: resistor_voltage_map_step(
+          resistance_magnitude: resistance_magnitude,
+          resistance_lexeme: value.lexeme
+        ),
+        diagnostics: None
+      }
+    _ => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: spice_passive_kind_mismatch_diagnostic(expected: ^spice_component_resistor)
+      )
+    }
+  }
+}
+
+
+fn spice_capacitor_to_fold_step(
+  component: Component,
+  capacitance_magnitude: Int,
+  dt_over_capacitance: Int,
+) -> Outcome<CapacitorVoltageFoldStep> {
+  match component {
+    Capacitor { name: _, n_plus: _, n_minus: _, value } =>
+      Accepted {
+        value: capacitor_voltage_fold_step(
+          capacitance_magnitude: capacitance_magnitude,
+          capacitance_lexeme: value.lexeme,
+          dt_over_capacitance: dt_over_capacitance
+        ),
+        diagnostics: None
+      }
+    _ => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: spice_passive_kind_mismatch_diagnostic(expected: ^spice_component_capacitor)
+      )
+    }
+  }
+}
+
+
+fn spice_inductor_to_fold_step(
+  component: Component,
+  inductance_magnitude: Int,
+  dt_over_inductance: Int,
+) -> Outcome<InductorCurrentFoldStep> {
+  match component {
+    Inductor { name: _, n_plus: _, n_minus: _, value } =>
+      Accepted {
+        value: inductor_current_fold_step(
+          inductance_magnitude: inductance_magnitude,
+          inductance_lexeme: value.lexeme,
+          dt_over_inductance: dt_over_inductance
+        ),
+        diagnostics: None
+      }
+    _ => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: spice_passive_kind_mismatch_diagnostic(expected: ^spice_component_inductor)
+      )
+    }
+  }
+}
+
+
+fn spice_passive_to_step_operator(
+  component: Component,
+  magnitude: Int,
+  dt_factor: Int,
+) -> Outcome<PassiveStepOperator> {
+  match component {
+    Resistor { name: _, n_plus: _, n_minus: _, value: _ } =>
+      match spice_resistor_to_map_step(
+        component: component,
+        resistance_magnitude: magnitude
+      ) {
+        Accepted { value: step, diagnostics: _ } =>
+          Accepted { value: PassiveResistorStep { step: step }, diagnostics: None }
+        Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      }
+    Capacitor { name: _, n_plus: _, n_minus: _, value: _ } =>
+      match spice_capacitor_to_fold_step(
+        component: component,
+        capacitance_magnitude: magnitude,
+        dt_over_capacitance: dt_factor
+      ) {
+        Accepted { value: step, diagnostics: _ } =>
+          Accepted { value: PassiveCapacitorStep { step: step }, diagnostics: None }
+        Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      }
+    Inductor { name: _, n_plus: _, n_minus: _, value: _ } =>
+      match spice_inductor_to_fold_step(
+        component: component,
+        inductance_magnitude: magnitude,
+        dt_over_inductance: dt_factor
+      ) {
+        Accepted { value: step, diagnostics: _ } =>
+          Accepted { value: PassiveInductorStep { step: step }, diagnostics: None }
+        Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      }
+    _ => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: spice_passive_kind_mismatch_diagnostic(expected: ^spice_component_passive_rlc)
+      )
+    }
+  }
+}

@@ -1,0 +1,206 @@
+// src/v4/test/claim/manual/timeseries_signal_anchor.dag
+// Scope: S1 compile anchor — TimeSeriesSignal + R/L/C map/fold step operators + spice bridge.
+// Status: compile-only IN-B anchor; resistor map witness uses Int dogfood.
+
+module v4.test.claim.manual.timeseries_signal_anchor
+
+import v4.extdeps.formats.spice {
+  Capacitor,
+  Component,
+  Inductor,
+  Named,
+  NamedNode,
+  NodeRef,
+  Resistor,
+  SpiceValue
+}
+import v4.extdeps.formats.spice_analog {
+  spice_capacitor_to_fold_step,
+  spice_inductor_to_fold_step,
+  spice_passive_to_step_operator,
+  spice_resistor_to_map_step
+}
+import v4.std.algebra { Cons, Empty }
+import v4.std.diagnostic { Accepted }
+import v4.std.integer { Int }
+import v4.std.node { Node }
+import v4.std.timeseries_signal {
+  AffineBranchVoltage,
+  AffineNodeVoltage,
+  AffineVoltageOffset,
+  AffineVoltageReference,
+  PassiveCapacitorStep,
+  PassiveInductorStep,
+  PassiveResistorStep,
+  TimeSeriesSignal,
+  TimeStep,
+  timeseries_fold,
+  timeseries_map
+}
+import v4.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
+
+data anchor_dt: TimeStep = TimeStep { dt_lexeme: "1u" }
+
+data anchor_current_samples: TimeSeriesSignal<Int> = TimeSeriesSignal {
+  samples: [2, 3],
+  dt: anchor_dt
+}
+
+data anchor_resistor_component: Component = Resistor {
+  name: ^r1,
+  n_plus: Named { node: NamedNode { name: ^n1 } },
+  n_minus: Named { node: NamedNode { name: ^n2 } },
+  value: SpiceValue { lexeme: "1k" }
+}
+
+data anchor_capacitor_component: Component = Capacitor {
+  name: ^c1,
+  n_plus: Named { node: NamedNode { name: ^n1 } },
+  n_minus: Named { node: NamedNode { name: ^n2 } },
+  value: SpiceValue { lexeme: "1u" }
+}
+
+data anchor_inductor_component: Component = Inductor {
+  name: ^l1,
+  n_plus: Named { node: NamedNode { name: ^n1 } },
+  n_minus: Named { node: NamedNode { name: ^n2 } },
+  value: SpiceValue { lexeme: "1m" }
+}
+
+data anchor_affine_node_voltage: AffineNodeVoltage = AffineNodeVoltage {
+  reference: AffineVoltageReference { magnitude_lexeme: "0" },
+  offset: AffineVoltageOffset { magnitude_lexeme: "3.3" }
+}
+
+data anchor_affine_branch_voltage: AffineBranchVoltage = AffineBranchVoltage {
+  positive_node: anchor_affine_node_voltage,
+  negative_node: AffineNodeVoltage {
+    reference: AffineVoltageReference { magnitude_lexeme: "0" },
+    offset: AffineVoltageOffset { magnitude_lexeme: "0" }
+  }
+}
+
+fn witness_resistor_map_v_equals_r_times_i() -> Bool {
+  match spice_resistor_to_map_step(
+    component: anchor_resistor_component,
+    resistance_magnitude: 1000
+  ) {
+    Accepted { value: step, diagnostics: _ } => {
+      let mapped = timeseries_map(signal: anchor_current_samples, step: step.map)
+      match mapped.samples {
+        Cons { head: h, tail: Cons { head: t, tail: Empty } } => h == 2000 && t == 3000
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+fn witness_capacitor_fold_accepts() -> Bool {
+  match spice_capacitor_to_fold_step(
+    component: anchor_capacitor_component,
+    capacitance_magnitude: 1,
+    dt_over_capacitance: 1
+  ) {
+    Accepted { value: step, diagnostics: _ } =>
+      timeseries_fold(signal: anchor_current_samples, step: step.fold) == 5
+    _ => false
+  }
+}
+
+fn witness_inductor_fold_accepts() -> Bool {
+  match spice_inductor_to_fold_step(
+    component: anchor_inductor_component,
+    inductance_magnitude: 1,
+    dt_over_inductance: 1
+  ) {
+    Accepted { value: step, diagnostics: _ } =>
+      timeseries_fold(signal: anchor_current_samples, step: step.fold) == 5
+    _ => false
+  }
+}
+
+fn witness_spice_passive_operator_classifies_rlc() -> Bool {
+  match spice_passive_to_step_operator(
+    component: anchor_resistor_component,
+    magnitude: 1,
+    dt_factor: 1
+  ) {
+    Accepted { value: PassiveResistorStep { step: _ }, diagnostics: _ } => true
+    _ => false
+  }
+    && match spice_passive_to_step_operator(
+      component: anchor_capacitor_component,
+      magnitude: 1,
+      dt_factor: 1
+    ) {
+      Accepted { value: PassiveCapacitorStep { step: _ }, diagnostics: _ } => true
+      _ => false
+    }
+    && match spice_passive_to_step_operator(
+      component: anchor_inductor_component,
+      magnitude: 1,
+      dt_factor: 1
+    ) {
+      Accepted { value: PassiveInductorStep { step: _ }, diagnostics: _ } => true
+      _ => false
+    }
+}
+
+fn anchor_claim_input(ok: Bool) -> Node {
+  if ok {
+    stub_empty_conj
+  } else {
+    stub_empty_disj
+  }
+}
+
+data claim_timeseries_signal_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/timeseries_signal: S1 std + spice_analog module compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: anchor_affine_branch_voltage,
+  expected_value: anchor_affine_branch_voltage,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resistor_map_v_equals_r_times_i: TestClaim = EqualsClaim {
+  label: "manual/timeseries_signal: resistor map step v=R·i on Int samples",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: anchor_claim_input(ok: witness_resistor_map_v_equals_r_times_i()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_capacitor_fold_integrates: TestClaim = EqualsClaim {
+  label: "manual/timeseries_signal: capacitor fold step integrates current samples",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: anchor_claim_input(ok: witness_capacitor_fold_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_inductor_fold_integrates: TestClaim = EqualsClaim {
+  label: "manual/timeseries_signal: inductor fold step integrates voltage samples",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: anchor_claim_input(ok: witness_inductor_fold_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_spice_passive_operator_rlc: TestClaim = EqualsClaim {
+  label: "manual/timeseries_signal: spice passive bridge classifies R/L/C step operators",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: anchor_claim_input(ok: witness_spice_passive_operator_classifies_rlc()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
