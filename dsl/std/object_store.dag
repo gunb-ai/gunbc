@@ -18,7 +18,8 @@
 
 module std.object_store
 
-import std.types { ContentHash, NonEmptyStr, Timestamp, Int }
+import std.types { ContentHash, NonEmptyStr, Timestamp }
+import std.measure { ByteSize }
 
 // --- Object-kind discriminant ------------------------------------------------
 
@@ -38,7 +39,7 @@ type ObjectKind
 // size allows metadata queries without fetching content bytes.
 
 type Blob {
-  size: Int
+  size: ByteSize
   content: Bytes
 }
 
