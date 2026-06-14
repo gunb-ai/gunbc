@@ -93,22 +93,22 @@ fn requirements_satisfied(
 
 fn is_some_ssh(available: DiagnosticCapabilityFacts) -> Bool {
   match available.ssh {
-    None => false
-    Some { value: _ } => true
+    Absent => false
+    Present { value: _ } => true
   }
 }
 
 fn is_some_ipmi(available: DiagnosticCapabilityFacts) -> Bool {
   match available.ipmi {
-    None => false
-    Some { value: _ } => true
+    Absent => false
+    Present { value: _ } => true
   }
 }
 
 fn is_some_redfish(available: DiagnosticCapabilityFacts) -> Bool {
   match available.redfish {
-    None => false
-    Some { value: _ } => true
+    Absent => false
+    Present { value: _ } => true
   }
 }
 
@@ -360,9 +360,9 @@ fn temporal_classify<O>(agg: TemporalAggregator<O>) -> TemporalClassification {
 // dissolves when capability facts are read from ComputeSupplyFacts.diagnostic_availability.
 fn enumerate_available_stub(host_id: Symbol) -> DiagnosticCapabilityFacts {
   DiagnosticCapabilityFacts {
-    ssh: None
-    ipmi: None
-    redfish: None
+    ssh: Absent
+    ipmi: Absent
+    redfish: Absent
   }
 }
 
