@@ -38,9 +38,10 @@ data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
 // Verified via a `dsl`-rooted claim-run (`--source-root dsl`). NOT enrolled in the v4
 // claim-witness corpus (src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag): that
 // gate hardcodes `--source-root src/v4`, under which `std.os.invocation` / `std.types` don't
-// resolve (they live in the `dsl/` tree) — a dsl-tree entry there fails to load. A dsl-rooted
-// claim-run standing gate is the right home for these (follow-up); for now they stand as
-// in-file falsifiers verified out of band.
+// resolve (they live in the `dsl/` tree) — a dsl-tree entry there fails to load. The right
+// standing home is a dsl-rooted claim-run gate (mirror the v4 corpus gate but `--source-root
+// dsl`), routed to swift-stag (CI owner) as a §10 enabler with THESE witnesses as first
+// consumer. Until it lands these stand as in-file falsifiers verified out of band.
 fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
 fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
 fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }
