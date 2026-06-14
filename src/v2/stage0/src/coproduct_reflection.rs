@@ -261,7 +261,9 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_finds_connective_arms() {
-        let source = std::fs::read_to_string("src/v4/std/node.dag").expect("read node.dag");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/v4/std/node.dag");
+        let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Connective").expect("Connective arms");
         assert_eq!(
             arms,
@@ -273,7 +275,9 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_finds_behavior_arms() {
-        let source = std::fs::read_to_string("src/v4/std/node.dag").expect("read node.dag");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/v4/std/node.dag");
+        let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
         assert_eq!(
             arms,
