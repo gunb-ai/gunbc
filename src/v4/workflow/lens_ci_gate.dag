@@ -78,6 +78,31 @@ data lens_ci_claim_run_row_complexity_gate_budget_roster_completeness: LensCiCla
   function: "complexity_budget_roster_family_gate_holds"
 }
 
+// R-reflect Phase 2a: Path-3 key-set conformance (2FA proof) — Connective/Behavior FIRST.
+data lens_ci_claim_run_row_coproduct_reflection_connective_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/connective_path3",
+  entry: "src/v4/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_arm_key_set_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_behavior_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/behavior_path3",
+  entry: "src/v4/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_behavior_arm_key_set_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/distinct_arm_sets",
+  entry: "src/v4/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_behavior_arm_sets_are_distinct"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/conformance",
+  entry: "src/v4/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "coproduct_reflection_conformance_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
@@ -86,7 +111,11 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_provenance_occurrence_id_model,
   lens_ci_claim_run_row_provenance_parse_stamp_span_index,
   lens_ci_claim_run_row_complexity_gate_source_bridged_add,
-  lens_ci_claim_run_row_complexity_gate_budget_roster_completeness
+  lens_ci_claim_run_row_complexity_gate_budget_roster_completeness,
+  lens_ci_claim_run_row_coproduct_reflection_connective_path3,
+  lens_ci_claim_run_row_coproduct_reflection_behavior_path3,
+  lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets,
+  lens_ci_claim_run_row_coproduct_reflection_conformance
 ]
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.

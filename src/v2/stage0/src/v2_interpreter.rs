@@ -429,7 +429,7 @@ pub enum Value {
 
 /// Wrap a list carrier (or anything convertible to one, e.g. `Vec<Value>`)
 /// into a `Value::List`.
-fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
+pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
@@ -1153,6 +1153,10 @@ impl InterpContext {
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
         self.source_indices.clone()
+    }
+
+    pub(crate) fn source_indices(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+        self.si()
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
@@ -2134,6 +2138,27 @@ fn match_pattern(
 }
 
 // ---------------------------------------------------------------------------
+// v4.std.node coproduct reflection intercept (module-scoped bootstrap seam)
+// ---------------------------------------------------------------------------
+
+pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] =
+    &["resolve_type_node", "syntactic_coproduct_arm_keys"];
+
+/// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
+pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
+    STD_NODE_BRIDGE_FNS
+}
+
+fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_NODE_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v4.std.node")
+}
+
+// ---------------------------------------------------------------------------
 // Function call (ExprCall)
 // ---------------------------------------------------------------------------
 
@@ -2150,6 +2175,17 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Ok((name, val))
         })
         .collect::<InterpResult<_>>()?;
+
+    // R-reflect Phase 2a: minimal v4.std.node bridges (resolve_type_node + Path-3 syntactic scan).
+    if is_v4_std_node_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "resolve_type_node" => crate::coproduct_reflection::eval_resolve_type_node(ctx, &args),
+            "syntactic_coproduct_arm_keys" => {
+                crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)
+            }
+            _ => unreachable!("bridge fn set mismatch"),
+        };
+    }
 
     // Check for built-in runtime functions
     if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
@@ -4322,7 +4358,7 @@ pub fn eval_profile_reset() {
 /// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
 /// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
 /// raises a type error rather than fabricating an empty/partial list.
-fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
     let monoid_syms = active_ctx().map(|ctx| {
