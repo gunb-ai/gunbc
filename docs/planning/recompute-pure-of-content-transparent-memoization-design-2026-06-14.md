@@ -99,7 +99,7 @@ no fourth primitive, no parallel digest/receipt type:**
 | --- | --- | --- |
 | **Content identity** | **(c) Content-keyed invalidation** | `ContentHash` / `ExecutionReceiptRef<T> { receipt_digest }` digest seam (`cache_interface.dag:203-204`) — memo-hit-vs-recompute key |
 | **Hermetic realization** | **(b) Enforced purity at boundary** | Equivalence falsifier (§5) — **purity IS the falsifier**, not a new mechanism |
-| **Receipt + change-driven reconcile** | **(a) Automatic memo** | `cache_interface` store/lookup semantics + `ExecutionReceipt<T>` persistence |
+| **Receipt + change-driven reconcile** | **(a) Automatic memo** | `cache_interface` store/lookup semantics + `ExecutionReceipt<T>` persistence; change-driven gap model: `RecomputePlan` / `AffectedSet` (`v4.std.change` — outside compute-fabric substrate co-sign; pending v4-owner confirmation) |
 
 **Substrate carrier (the N+M move):** `Realization<Spec, Effect>` names the **existing**
 `compute_fabric` ↔ `cache_interface` composition — **not** new types. Abstraction over the
@@ -342,7 +342,9 @@ prove the identity+receipt shape carries — PR2 is the first trigger to watch.
    discipline (`WorkDemand.effects`) makes read impossible; **(b)** key misses hidden input
    → cached-vs-cold divergence → falsifier fires.
 3. **Receipt + reconcile (§4.3 (a))** — persist `key → output` via `ExecutionReceipt<T>`;
-   on content-key change, `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6).
+   on content-key change, `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6;
+   `v4.std.change` attach point — outside compute-fabric substrate co-sign; pending v4-owner
+   confirmation).
 
 **Finding B — oracle splits on reversibility:** the byte-identical cached-vs-cold falsifier
 (reversible handlers — compute, build/sccache) **is** the enforcement for closed-world
@@ -359,7 +361,8 @@ mechanism. PR1 (#4867) is the canonical receipt on the compute handler.
 **Not every recompute is the error class.** When the content key **changes** — source edit,
 dependency change, invalidation trigger — re-executing dependent work is **correct**
 receipt + change-driven reconcile: realize only the gap. `RecomputePlan` / `AffectedSet`
-(`v4.std.change`) model *what must rerun after change*; that is incremental execution done
+(`v4.std.change` — outside compute-fabric substrate co-sign; pending v4-owner confirmation)
+model *what must rerun after change*; that is incremental execution done
 right.
 
 **Spurious recompute** is the error: same content key, full re-derivation anyway — or a
