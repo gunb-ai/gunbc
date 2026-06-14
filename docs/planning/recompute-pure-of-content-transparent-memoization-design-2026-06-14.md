@@ -102,9 +102,10 @@ abstraction evidence for ONE interface). Lens by failure mode; one authority.
 ## 3. Instance roster — single catalog *(subsumes sunny-lynx eleven-cache census)*
 
 §3 is the **only** instance catalog in this doc. It **subsumes** the sunny-lynx eleven-hand-
-rolled-cache census: every census inhabitant appears in §3.2. §3.1 adds non-cache redundancy
-instances; §3.3 adds parallel-derivation instances (not caches, same error class). Per-cache
-dimension facts remain in source marks — this section cites them, does not mirror them.
+rolled-cache census: every census inhabitant appears in **§3.3**. **§3.1** adds non-cache
+redundancy instances; **§3.2** adds the PR1 (#4867) purity-exposed instance; **§3.4** adds
+parallel-derivation instances (not caches, same error class). Per-cache dimension facts
+remain in source marks — this section cites them, does not mirror them.
 
 ### 3.1 Redundancy — pure-of-content work recomputed (no cache yet)
 
