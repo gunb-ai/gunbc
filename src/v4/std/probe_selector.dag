@@ -35,6 +35,7 @@ import v4.std.node { Symbol }
 import v4.std.logic { Bool }
 import v4.std.integer { Int }
 import v4.std.collection { List }
+import v4.std.algebra { is_empty }
 import v4.extdeps.protocols.ssh { SshAvailability }
 import v4.extdeps.protocols.ipmi { IpmiAvailability, IpmiSensorReading, IpmiSelRecord }
 import v4.extdeps.protocols.redfish { RedfishAvailability, RedfishThermalReading, RedfishVoltageReading, RedfishMemoryHealth }
@@ -53,6 +54,13 @@ import v4.extdeps.protocols.redfish { RedfishAvailability, RedfishThermalReading
 // fields stubbed as Option until confirmed (ROADMAP §ProbeSelector end-to-end grounding).
 // =========================================================================
 
+// 🟢 coproduct dissolution — the three protocol discriminants; shared axis for DiagnosticInterface
+// and DiagnosticCapabilityRequirements (both declare over the same {ssh, ipmi, redfish} set).
+type DiagnosticProtocol
+  = SshProtocol
+  | IpmiProtocol
+  | RedfishProtocol
+
 // 🟢 coproduct dissolution — three real protocol boundaries, availability-conditioned per host.
 type DiagnosticInterface
   = SshInterface { availability: SshAvailability }
@@ -70,27 +78,28 @@ type DiagnosticCapabilityFacts {
 }
 
 // Which interfaces a probe REQUIRES to run.
-// ProbeSelector.select filters out probes whose requires ⊄ available.
+// Expressed as a subset of DiagnosticProtocol — not a parallel Bool record.
+// ProbeSelector.select filters out probes whose required_protocols ⊄ available.
 type DiagnosticCapabilityRequirements {
-  requires_ssh: Bool
-  requires_ipmi: Bool
-  requires_redfish: Bool
+  required_protocols: List<DiagnosticProtocol>
 }
 
 fn requirements_satisfied(
   reqs: DiagnosticCapabilityRequirements,
   available: DiagnosticCapabilityFacts,
 ) -> Bool {
-  (reqs.requires_ssh && is_some_ssh(available: available))
-    || (!reqs.requires_ssh)
-    &&
-  (reqs.requires_ipmi && is_some_ipmi(available: available))
-    || (!reqs.requires_ipmi)
-    &&
-  (reqs.requires_redfish && is_some_redfish(available: available))
-    || (!reqs.requires_redfish)
+  fold(reqs.required_protocols, init: true, f: fn(acc, protocol) {
+    acc && match protocol {
+      SshProtocol => is_some_ssh(available: available)
+      IpmiProtocol => is_some_ipmi(available: available)
+      RedfishProtocol => is_some_redfish(available: available)
+    }
+  })
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a —
+// dissolve-on-arrival: substrate-derived Present-variant discriminant projection on Option<T>.
 fn is_some_ssh(available: DiagnosticCapabilityFacts) -> Bool {
   match available.ssh {
     Absent => false
@@ -98,6 +107,9 @@ fn is_some_ssh(available: DiagnosticCapabilityFacts) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a —
+// dissolve-on-arrival: substrate-derived Present-variant discriminant projection on Option<T>.
 fn is_some_ipmi(available: DiagnosticCapabilityFacts) -> Bool {
   match available.ipmi {
     Absent => false
@@ -105,6 +117,9 @@ fn is_some_ipmi(available: DiagnosticCapabilityFacts) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a —
+// dissolve-on-arrival: substrate-derived Present-variant discriminant projection on Option<T>.
 fn is_some_redfish(available: DiagnosticCapabilityFacts) -> Bool {
   match available.redfish {
     Absent => false
@@ -174,6 +189,9 @@ type SuspectedCausePrior<C> {
   hypotheses: List<Hypothesis<C>>
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a —
+// dissolve-on-arrival: substrate-derived HighConfidence-variant discriminant projection.
 fn prior_has_high_confidence<C>(prior: SuspectedCausePrior<C>) -> Bool {
   fold(prior.hypotheses, init: false, f: fn(acc, h) {
     match h.confidence {
@@ -199,7 +217,7 @@ type CoverageRegion<C> {
 }
 
 fn coverage_is_empty<C>(r: CoverageRegion<C>) -> Bool {
-  fold(r.covered_hypotheses, init: true, f: fn(acc, _) { false })
+  is_empty(xs: r.covered_hypotheses)
 }
 
 
@@ -369,8 +387,10 @@ fn enumerate_available_stub(host_id: Symbol) -> DiagnosticCapabilityFacts {
 // WF-AFFECTED-TESTS grounding: the change-signal observation kind used by the CI spine.
 // AffectedSet and TestClaim are in v4.std.change / v4.std.verification; the ProbeSelector
 // parameterization for CI uses ChangeSignalObservation (above) as the Observation inhabitant.
-// See src/v4/workflow/affected_set_selection.dag for the concrete ci_select_from_affected_set
-// function — it is the WF-AFFECTED-TESTS select step grounded on ProbeSelector<RerunNodeSet>.
+// src/v4/workflow/affected_set_selection.dag currently implements ci_select_from_affected_set
+// independently (its own filter-over-TestClaim logic, no ProbeSelector import).
+// 🟡 P-PS-CI-WIRE — dissolves when affected_set_selection.dag migrates its select step
+// to call select_probes(selector: ProbeSelector<RerunNodeSet, ...>, ...) through this spine.
 type CiChangeSpace {
   // 🟡 forward — v4.std.change.RerunNodeSet (P-PS-CI-CHANGE-SPACE).
   // Dissolves when harness wires v4.std.change import here.
