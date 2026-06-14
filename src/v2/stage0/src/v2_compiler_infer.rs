@@ -5364,14 +5364,38 @@ pub fn expand_alias_chain_for_field_access(
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
     if std::env::var("DBG_CHAIN").is_ok() {
+        let fields: Vec<String> = structural
+            .children
+            .clone()
+            .iter()
+            .map(|f| {
+                let ft = crate::v2_compiler_infer_lookup::product_field_result_type(f.clone());
+                match ft {
+                    Some(t) => format!(
+                        "field({})=type[name={} conn={:?} ch={} inf={} istv_name={}]",
+                        f.name.clone(),
+                        t.name.clone(),
+                        t.connective.clone(),
+                        t.children.clone().len(),
+                        match t.inferred.clone() {
+                            Some(i) => format!("{}", is_type_variable(i.clone())),
+                            None => "none".to_string(),
+                        },
+                        is_type_variable_name(t.name.clone()),
+                    ),
+                    None => format!("field({})=type[none]", f.name.clone()),
+                }
+            })
+            .collect();
         eprintln!(
-            "DBG chain n.name={} structural.name={} conn={:?} ch={} lossy={} has_unres={}",
+            "DBG chain n.name={} structural.name={} conn={:?} ch={} lossy={} has_unres={} fields={:?}",
             n.name.clone(),
             structural.name.clone(),
             structural.connective.clone(),
             structural.children.clone().len(),
             lossy,
             record_has_unresolved_param_field(structural.clone()),
+            fields,
         );
     }
     if ((structural.connective.clone() == Connective::Conj)
