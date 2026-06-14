@@ -15,7 +15,9 @@
 // .rs smoke are deleted in the same PR (their content is proven here by execution). The
 // remaining B-class receipts (WireContractFacts/WireContract record-field shapes,
 // SettlementGuarantee/ConsistencyGuarantee shared-discriminant) were deleted with the smoke
-// file per the white-box sweep (reflection banned; decl-shape mirrors are 2FA-for-code).
+// file per the white-box sweep. Reflection stays banned outside the scoped lift in
+// docs/design-coproduct-arm-reflection.md §7 (compile-time closed-coproduct projection +
+// gate-covered fail-closed only); decl-shape mirrors remain 2FA-for-code elsewhere.
 // Importing v4.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 

@@ -1,0 +1,90 @@
+// src/v4/test/claim/manual/coproduct_reflection_conformance.dag
+// Scope: R-reflect Phase 2a Path-3 key-set conformance witness — Connective/Behavior FIRST
+// (the 2FA proof) before any consumer migrates. Executes reflection vs syntactic arm-key-set
+// equality by claim-run (design-coproduct-arm-reflection.md §5.2 Path 3).
+
+module v4.test.claim.manual.coproduct_reflection_conformance
+
+
+import v4.std.algebra { bag_eq }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Symbol,
+  coproduct_arm_keys,
+  coproduct_nullary_inhabitants,
+  syntactic_coproduct_arm_keys
+}
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data reflect_connective_type: Symbol = ^Connective
+data reflect_behavior_type: Symbol = ^Behavior
+
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+
+fn coproduct_arm_key_set_matches_syntactic(type_name: Symbol) -> Bool {
+  bag_eq(
+    xs: coproduct_arm_keys(type_name: type_name),
+    ys: syntactic_coproduct_arm_keys(type_name: type_name),
+    eq: symbol_eq
+  )
+}
+
+
+fn witness_connective_arm_key_set_path3() -> Bool {
+  coproduct_arm_key_set_matches_syntactic(type_name: reflect_connective_type)
+}
+
+
+fn witness_behavior_arm_key_set_path3() -> Bool {
+  coproduct_arm_key_set_matches_syntactic(type_name: reflect_behavior_type)
+}
+
+
+fn witness_behavior_nullary_inhabitants_count() -> Bool {
+  count(coproduct_nullary_inhabitants(type_name: reflect_behavior_type)) == 5
+}
+
+
+fn coproduct_reflection_conformance_holds() -> Bool {
+  witness_connective_arm_key_set_path3()
+    && witness_behavior_arm_key_set_path3()
+    && witness_behavior_nullary_inhabitants_count()
+}
+
+
+fn witness_connective_arm_key_set_path3_claim() -> BoolWitnessClaim {
+  BoolWitnessClaim {
+    witness: BoolWitness {
+      label: "manual/coproduct_reflection: Connective arm key-set Path-3 conformance",
+      function: witness_connective_arm_key_set_path3
+    }
+  }
+}
+
+
+fn witness_behavior_arm_key_set_path3_claim() -> BoolWitnessClaim {
+  BoolWitnessClaim {
+    witness: BoolWitness {
+      label: "manual/coproduct_reflection: Behavior arm key-set Path-3 conformance",
+      function: witness_behavior_arm_key_set_path3
+    }
+  }
+}
+
+
+fn witness_coproduct_reflection_conformance_claim() -> BoolWitnessClaim {
+  BoolWitnessClaim {
+    witness: BoolWitness {
+      label: "manual/coproduct_reflection: Phase-2a Path-3 gate (Connective/Behavior)",
+      function: coproduct_reflection_conformance_holds
+    }
+  }
+}
