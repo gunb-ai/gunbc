@@ -5244,45 +5244,63 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 }
 
 pub fn peel_alias_once_for_field_access(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    peel_alias_once_for_field_access_bounded(n, env, module_name, 0)
+}
+
+pub fn peel_alias_once_for_field_access_bounded(
     mut n: Rc<Node>,
     mut env: Rc<TypeEnv>,
     mut module_name: String,
+    mut depth: i64,
 ) -> Rc<Node> {
     loop {
-        let once = resolve_node(n, env.clone(), module_name.clone())
+        if depth > 20 {
+            break n.clone();
+        }
+        let once = resolve_node(n.clone(), env.clone(), module_name.clone())
             .resolved
             .clone();
         if ((once.connective.clone() == Connective::Conj)
             || (once.connective.clone() == Connective::Disj))
         {
             break once.clone();
-        } else {
-            if (((once.connective.clone() == Connective::NoConnective)
-                && ((once.children.clone().len() as i64) > 0))
-                && (once.inferred.clone() == None))
-            {
-                {
-                    let __tco_0 = once.clone();
-                    n = __tco_0;
-                    continue;
-                }
-            } else if (once.inferred.clone() != None) {
-                match once.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        if ((target.connective.clone() == Connective::Conj)
-                            || (target.connective.clone() == Connective::Disj))
-                        {
-                            break once.clone();
-                        } else {
-                            n = target.clone();
-                            continue;
-                        }
+        } else if (((once.connective.clone() == Connective::NoConnective)
+            && ((once.children.clone().len() as i64) > 0))
+            && (once.inferred.clone() == None))
+        {
+            n = resolve_node_bounded(once.clone(), env.clone(), module_name.clone(), 0)
+                .resolved
+                .clone();
+            depth += 1;
+            continue;
+        } else if (once.inferred.clone() != None) {
+            match once.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    if ((target.connective.clone() == Connective::Conj)
+                        || (target.connective.clone() == Connective::Disj))
+                    {
+                        break once.clone();
+                    } else {
+                        n = resolve_node_bounded(
+                            target.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                        )
+                        .resolved
+                        .clone();
+                        depth += 1;
+                        continue;
                     }
-                    _ => break once.clone(),
                 }
-            } else {
-                break once.clone();
+                _ => break once.clone(),
             }
+        } else {
+            break once.clone();
         }
     }
 }

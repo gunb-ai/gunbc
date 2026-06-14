@@ -100,7 +100,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
-  resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   is_user_generic_use_site,
   NodeResolveResult, ItemResult
 }
@@ -2707,19 +2707,38 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-  if (once.connective == Conj || once.connective == Disj) {
-    once
-  } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
-    peel_alias_once_for_field_access(n: once, env: env, module_name: module_name)
-  } else if once.inferred != none {
-    match once.inferred {
-      Present { value: Resolved { node: target } } =>
-        if (target.connective == Conj || target.connective == Disj) { once }
-        else { peel_alias_once_for_field_access(n: target, env: env, module_name: module_name) }
-      _ => once
-    }
-  } else { once }
+  peel_alias_once_for_field_access_bounded(n: n, env: env, module_name: module_name, depth: 0)
+}
+
+fn peel_alias_once_for_field_access_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
+  if depth > 20 { n }
+  else {
+    let once = resolve_node(n: n, env: env, module_name: module_name).resolved
+    if (once.connective == Conj || once.connective == Disj) {
+      once
+    } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
+      peel_alias_once_for_field_access_bounded(
+        n: resolve_node_bounded(n: once, env: env, module_name: module_name, depth: 0).resolved,
+        env: env,
+        module_name: module_name,
+        depth: depth + 1
+      )
+    } else if once.inferred != none {
+      match once.inferred {
+        Present { value: Resolved { node: target } } =>
+          if (target.connective == Conj || target.connective == Disj) { once }
+          else {
+            peel_alias_once_for_field_access_bounded(
+              n: resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved,
+              env: env,
+              module_name: module_name,
+              depth: depth + 1
+            )
+          }
+        _ => once
+      }
+    } else { once }
+  }
 }
 
 fn structural_from_expanded_type(normed: Node) -> Node {
