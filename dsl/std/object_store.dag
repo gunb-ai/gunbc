@@ -98,11 +98,13 @@ type StoreObject
   | ObjectTree { tree: Tree }
   | ObjectCommit { commit: Commit }
 
-// ObjectRef: typed pointer into the object graph (hash + kind discriminant).
+// ObjectRef: typed pointer into the object graph (identity = content hash).
+// Kind is NOT carried here — when a StoreObject is loaded, its structural
+// variant already determines kind via store_object_kind; carrying kind in
+// ObjectRef would make ref.kind / object-variant desync representable.
 // The bridge to ArtifactIdentity / ArtifactKindId is deferred — see header.
 type ObjectRef {
   hash: ContentHash
-  kind: ObjectKind
 }
 
 // 🟢 TERMINAL — found/not-found are the two lookup outcomes (M6 one result
