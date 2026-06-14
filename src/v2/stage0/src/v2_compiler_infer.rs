@@ -5395,12 +5395,19 @@ pub fn expand_alias_chain_for_field_access(
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
     if std::env::var("DBG_FC").is_ok() {
+        let pnames: Vec<String> = structural
+            .params
+            .clone()
+            .iter()
+            .map(|p| generic_param_name_at(env.source_indices.clone(), p.clone()))
+            .collect();
         eprintln!(
-            "DBG frame n.name={} struct.name={} conn={:?} ch={} lossy={} has_unres={} origin={}",
+            "DBG frame n.name={} struct.name={} conn={:?} ch={} params={:?} lossy={} has_unres={} origin={}",
             n.name.clone(),
             structural.name.clone(),
             structural.connective.clone(),
             structural.children.clone().len(),
+            pnames,
             lossy,
             record_has_unresolved_param_field(structural.clone(), env.clone()),
             origin_name,
