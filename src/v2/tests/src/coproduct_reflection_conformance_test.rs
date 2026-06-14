@@ -109,29 +109,24 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
     let connective = (None, Value::Str("Connective".to_string()));
 
-    let reflection_node =
-        coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()])
-            .expect("resolved node");
-    let corrupted = coproduct_reflection::eval_resolve_type_node_with_dropped_last_arm(
-        &ctx,
-        "Connective",
-    )
-    .expect("corrupted node");
-    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(
-        &ctx,
-        &[connective],
-    )
-    .expect("syntactic keys");
+    let reflection_node = coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()])
+        .expect("resolved node");
+    let corrupted =
+        coproduct_reflection::eval_resolve_type_node_with_dropped_last_arm(&ctx, "Connective")
+            .expect("corrupted node");
+    let syntactic = coproduct_reflection::eval_syntactic_coproduct_arm_keys(&ctx, &[connective])
+        .expect("syntactic keys");
 
-    let good_keys =
-        coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &reflection_node)
-            .expect("good keys");
+    let good_keys = coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &reflection_node)
+        .expect("good keys");
     let bad_keys =
-        coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &corrupted)
-            .expect("bad keys");
+        coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &corrupted).expect("bad keys");
     let syntactic_keys = symbol_list_strings(&syntactic);
 
-    assert_eq!(good_keys, syntactic_keys, "baseline keys must match syntactic");
+    assert_eq!(
+        good_keys, syntactic_keys,
+        "baseline keys must match syntactic"
+    );
     assert_ne!(
         bad_keys, syntactic_keys,
         "dropped Disj arm must break Path-3 bag_eq witness"

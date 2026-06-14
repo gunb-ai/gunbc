@@ -283,10 +283,7 @@ pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let type_name = expect_symbol(
-        args.first().map(|(_, v)| v),
-        "syntactic_coproduct_arm_keys",
-    )?;
+    let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
     let (_, file) = type_item_by_name(ctx, type_name)?;
     let labels = syntactic_coproduct_arm_labels(&file, type_name)?;
     let items: Vec<Value> = labels
@@ -306,9 +303,11 @@ pub fn arm_labels_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields.get(&ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-        msg: "Node missing children".to_string(),
-    })?;
+    let children = fields
+        .get(&ctx.sym("children"))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "Node missing children".to_string(),
+        })?;
     let edges = crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
         InterpError::TypeError {
             msg: "children not a list".to_string(),
@@ -321,9 +320,11 @@ pub fn arm_labels_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label = ef.get(&ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing label".to_string(),
-        })?;
+        let label = ef
+            .get(&ctx.sym("label"))
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "Edge missing label".to_string(),
+            })?;
         let Value::Variant {
             variant_name,
             fields: lf,
@@ -437,8 +438,7 @@ mod tests {
 
     #[test]
     fn syntactic_extractor_rejects_connective_prefix_of_longer_type_name() {
-        let source =
-            "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
+        let source = "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
         assert_eq!(
             extract_type_sum_arm_labels(source, "ConnectiveCoproductVariant").expect("variant"),
             vec!["Foo", "Bar"]
