@@ -62,7 +62,8 @@ pub use crate::v2_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    resolve_known_method_node, resolve_scrutinee_type_node, set_element_type_in_env,
+    product_field_result_type, resolve_known_method_node, resolve_scrutinee_type_node,
+    set_element_type_in_env,
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -135,7 +136,8 @@ pub use crate::v2_std_core::{
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, float_type,
-    foreach_body, foreach_collection, foreach_variable_at, has_child_named, has_inferred,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
+    has_inferred,
     if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
     intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
     is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,

@@ -7,7 +7,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
+  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -139,7 +139,7 @@ import v2.compiler.infer_lookup {
   KnownMethodResolution,
   resolve_known_method_node, resolve_scrutinee_type_node,
   field_summary_for_type,
-  lookup_field_type_node, lookup_coproduct_common_field_node,
+  lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig
 }
