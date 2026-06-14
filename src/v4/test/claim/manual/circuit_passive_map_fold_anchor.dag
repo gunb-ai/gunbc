@@ -21,6 +21,7 @@ import v4.std.circuit {
   capacitor_fold_step,
   resistor_map_voltage,
 }
+import v4.std.logic { Bool }
 import v4.std.nat { Zero }
 import v4.std.verification {
   CompilesClaim,
@@ -39,12 +40,6 @@ data circuit_anchor_resistor: ResistorMap = ResistorMap {
 
 data circuit_anchor_current: BranchCurrent = BranchCurrent { microamperes: 2 }
 
-data circuit_anchor_resistor_voltage: PotentialDifference =
-  resistor_map_voltage(
-    element: circuit_anchor_resistor,
-    current: circuit_anchor_current,
-  ).difference
-
 data circuit_anchor_capacitor: CapacitorFold = CapacitorFold {
   kind: FoldStep
   rating: CapacitorRating { microfarads: 1 }
@@ -57,20 +52,27 @@ data circuit_anchor_cap_initial: CapacitorState = CapacitorState {
 
 data circuit_anchor_dt: TimeStep = TimeStep { dt_microseconds: 1000 }
 
-data circuit_anchor_cap_step: CapacitorState = capacitor_fold_step(
-  element: circuit_anchor_capacitor,
-  state: circuit_anchor_cap_initial,
-  current: circuit_anchor_current,
-  dt: circuit_anchor_dt,
-)
-
 data circuit_anchor_tick0: TimeSeriesSample = TimeSeriesSample {
   tick: Zero
   microvolts: 0
 }
 
-data circuit_anchor_signal: TimeSeriesSignal =
-  Cons { head: circuit_anchor_tick0, tail: Empty }
+data circuit_anchor_signal: TimeSeriesSignal = Cons { head: circuit_anchor_tick0, tail: Empty }
+
+fn circuit_anchor_resistor_map_holds() -> Bool {
+  let mapped = resistor_map_voltage(element: circuit_anchor_resistor, current: circuit_anchor_current)
+  mapped.difference.microvolts == 2000
+}
+
+fn circuit_anchor_capacitor_fold_holds() -> Bool {
+  let stepped = capacitor_fold_step(
+    element: circuit_anchor_capacitor,
+    state: circuit_anchor_cap_initial,
+    current: circuit_anchor_current,
+    dt: circuit_anchor_dt,
+  )
+  stepped.charge_microcoulombs == 2000
+}
 
 data claim_circuit_passive_map_fold_compiles: TestClaim = CompilesClaim {
   label: "manual/circuit_passive_map_fold_anchor: S1 map/fold passives compile",
