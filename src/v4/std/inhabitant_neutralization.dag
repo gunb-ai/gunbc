@@ -48,12 +48,30 @@ import v4.std.passing_candidate_fold {
 }
 
 data inhabitant_neutralization_std_projection_missing: Symbol = inhabitant_neutralization_std_projection_missing
+data inhabitant_neutralization_type_atom_missing: Symbol = inhabitant_neutralization_type_atom_missing
+data inhabitant_neutralization_surface_spelling_missing: Symbol = inhabitant_neutralization_surface_spelling_missing
 data inhabitant_neutralization_no_target_inhabitant: Symbol = inhabitant_neutralization_no_target_inhabitant
 data inhabitant_neutralization_ambiguous_target_inhabitant: Symbol = inhabitant_neutralization_ambiguous_target_inhabitant
 
 fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: inhabitant_neutralization_std_projection_missing,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: inhabitant_neutralization_type_atom_missing,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn inhabitant_neutralization_surface_spelling_missing_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: inhabitant_neutralization_surface_spelling_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -122,38 +140,44 @@ fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<Symbol> {
 }
 
 fn inhabitant_type_atom_symbol(inhabitant: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: find_named_child(root: inhabitant, name: inhabitant_field_atom),
-    f: fn(atom_node) {
+  match find_named_child(root: inhabitant, name: inhabitant_field_atom) {
+    Accepted { value: atom_node, diagnostics: _ } =>
       match node_atom_identity_optional(node: atom_node) {
         Present { value: sym } =>
           Accepted { value: sym, diagnostics: None }
         Absent =>
           outcome_rejected(
-            inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
+            inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
           )
       }
-    }
-  )
+    Rejected { diagnostics: _ } =>
+      outcome_rejected(
+        inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
+      )
+  }
 }
 
 fn inhabitant_surface_spelling_symbol(inhabitant: Node) -> Outcome<Symbol> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
-      bind_outcome(
-        o: find_named_child(root: facts, name: facts_field_surface_spelling),
-        f: fn(atom_node) {
+      match find_named_child(root: facts, name: facts_field_surface_spelling) {
+        Accepted { value: atom_node, diagnostics: _ } =>
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
               Accepted { value: sym, diagnostics: None }
             Absent =>
               outcome_rejected(
-                inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
+                inhabitant_neutralization_surface_spelling_missing_diagnostic(
+                  node: inhabitant
+                )
               )
           }
-        }
-      )
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(
+            inhabitant_neutralization_surface_spelling_missing_diagnostic(node: inhabitant)
+          )
+      }
     }
   )
 }
