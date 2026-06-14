@@ -238,8 +238,12 @@ fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
 }
 
 
-// v1 per-read provenance: mvp1 fn-surface parse (comprep lane parity). Full wave-1
-// `parse_module` over the complete grammar parse-table is witness-eval non-terminating today.
+// 🟡 gated — feature:source-authority-witness-eval-parse-module — bind
+// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
+// (span_index sealed on SourceIrArtifactProvenance) + wave-1 parse-table witness-eval
+// termination — dissolve-on-arrival: node_artifact_provenance_fold_step uses parse_module once
+// witness-eval terminates; forbidden: routing mvp1 empty span_index through
+// source_ir_artifact_provenance_from_model.
 fn source_authority_parse_source_file_tokens(
   tokens: TokenStream
 ) -> Outcome<ParseArtifact> {
@@ -281,7 +285,7 @@ fn source_ir_artifact_provenance_from_model(
         ),
         f: fn(token_stream) {
           bind_outcome(
-            o: source_authority_parse_source_file_tokens(tokens: token_stream),
+            o: parse_module(tokens: token_stream, grammar: lm.grammar),
             f: fn(artifact) {
               outcome_accepted(
                 value: SourceIrArtifactProvenance {
@@ -337,6 +341,49 @@ fn source_ir_node_artifact_provenance(
 }
 
 
+// Node-only per-read producer for whole-ingest fold (mvp1 fn-surface; no span_index).
+fn source_ir_node_artifact_provenance_mvp1_from_model(
+  source_read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: source_authority_parse_source_file_tokens(tokens: token_stream),
+            f: fn(artifact) {
+              outcome_accepted(
+                value: NodeArtifactProvenance {
+                  node: artifact.tree,
+                  artifact: source_read.artifact
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+  }
+}
+
+
+fn source_ir_node_artifact_provenance_mvp1(
+  source_read: DagSourceReadWitness
+) -> Outcome<NodeArtifactProvenance> {
+  source_ir_node_artifact_provenance_mvp1_from_model(
+    source_read: source_read,
+    lm: dag_language_model_wave1_modeled()
+  )
+}
+
+
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
       provenance: FreeMonoid<NodeArtifactProvenance>
@@ -354,7 +401,7 @@ fn node_artifact_provenance_fold_step(
     NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
-      match source_ir_node_artifact_provenance(source_read: read) {
+      match source_ir_node_artifact_provenance_mvp1(source_read: read) {
         Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
             provenance: list_snoc_item(xs: acc, item: row)
@@ -366,7 +413,7 @@ fn node_artifact_provenance_fold_step(
 }
 
 
-// Whole-ingest fold: per-read `source_ir_node_artifact_provenance`, monoid-concatenated;
+// Whole-ingest fold: per-read mvp1 node provenance (file-grain v1), monoid-concatenated;
 // first `Rejected` read short-circuits (fail-closed widen downstream).
 fn node_artifact_provenance_from_source_root(
   ingest: SourceRootIngest
