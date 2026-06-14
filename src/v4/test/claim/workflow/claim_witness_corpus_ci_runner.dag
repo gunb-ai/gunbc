@@ -314,10 +314,15 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_host_http_backend,
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_syscall_linux_read_number,
+  corpus_ci_gate_row_syscall_linux_write_number,
+  corpus_ci_gate_row_syscall_linux_mmap_number,
+  corpus_ci_gate_row_syscall_linux_execve_number,
+  corpus_ci_gate_row_syscall_linux_exit_number
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "30"
+data claim_witness_corpus_claim_run_row_count: String = "35"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -356,7 +361,12 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_host_http_backend,
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_syscall_linux_read_number,
+  corpus_ci_gate_row_syscall_linux_write_number,
+  corpus_ci_gate_row_syscall_linux_mmap_number,
+  corpus_ci_gate_row_syscall_linux_execve_number,
+  corpus_ci_gate_row_syscall_linux_exit_number
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "15"
+data claim_witness_corpus_shard_b_row_count: String = "20"
