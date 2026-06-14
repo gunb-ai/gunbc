@@ -555,9 +555,11 @@ fn inhabitant_neutralization_python_to_go_translate_reject_reason_symbol() -> Ou
               Accepted { value: d.head.reason, diagnostics: None }
             Accepted { value: _, diagnostics: _ } =>
               outcome_rejected(
-                inhabitant_neutralization_no_target_diagnostic(
-                  std_projection: std_projection_additive_numeric
-                )
+                Diagnostic {
+                  reason: translate_target_bundle_malformed,
+                  at: node_locus(node: python_mvp1_emitted_add_fn_node()),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
               )
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
