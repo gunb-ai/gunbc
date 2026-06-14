@@ -71,9 +71,14 @@ fn symbol_list_value(labels: &[String]) -> Value {
     crate::v2_interpreter::list_value(items)
 }
 
-fn variant_is_nullary(variant: &Rc<Node>, ctx: &InterpContext) -> bool {
+fn variant_is_nullary(variant: &Rc<Node>, _ctx: &InterpContext) -> bool {
     let payload = child_type_node(variant.clone());
-    payload.connective == Connective::NoConnective && payload.children.is_empty()
+    match payload.connective {
+        Connective::NoConnective => payload.children.is_empty(),
+        Connective::Conj => payload.children.is_empty(),
+        Connective::Atom(_) => true,
+        _ => false,
+    }
 }
 
 fn resolve_source_file_path(file: &str) -> InterpResult<String> {
