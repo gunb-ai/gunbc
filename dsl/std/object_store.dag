@@ -21,6 +21,8 @@ import std.types { ContentHash, NonEmptyStr, Timestamp, Int }
 
 // --- Object-kind discriminant ------------------------------------------------
 
+// 🟢 TERMINAL — blob/tree/commit are the three irreducible content-addressed
+// object kinds; this trichotomy is closed by definition.
 type ObjectKind
   = BlobKind
   | TreeKind
@@ -87,20 +89,22 @@ type Commit {
 // StoreObject: the three content-addressed object kinds as a closed coproduct.
 // Consumers match on this to dispatch over the stored value.
 
+// 🟢 TERMINAL — same trichotomy as ObjectKind, payload-carrying; mirrors the
+// three object kinds exactly and inherits the same closed-set justification.
 type StoreObject
   = ObjectBlob { blob: Blob }
   | ObjectTree { tree: Tree }
   | ObjectCommit { commit: Commit }
 
-// ObjectRef: typed pointer into the object graph (hash + kind).
-// Composes ArtifactIdentity semantics from cache_interface:
-//   subject_digest → hash, artifact_kind → {blob,tree,commit}_object_kind.
+// ObjectRef: typed pointer into the object graph (hash + kind discriminant).
+// The bridge to ArtifactIdentity / ArtifactKindId is deferred — see header.
 type ObjectRef {
   hash: ContentHash
   kind: ObjectKind
 }
 
-// Single lookup outcome (M6 — one result pattern, not N bespoke result types).
+// 🟢 TERMINAL — found/not-found are the two lookup outcomes (M6 one result
+// pattern); no additional arms are expected for a key-addressable store.
 type ObjectLookupResult
   = ObjectFound { object: StoreObject }
   | ObjectNotFound
@@ -117,6 +121,8 @@ type ObjectLookupResult
 // target=SymbolicTarget). S1 models the types; reading and mutating refs is
 // an effectful forge service operation (gunbhub S2+).
 
+// 🟢 TERMINAL — direct and symbolic are the two reference target kinds; this
+// dichotomy is closed by the ref model (no third target kind is expected).
 type RefTarget
   = DirectTarget { hash: ContentHash }
   | SymbolicTarget { ref_name: NonEmptyStr }
@@ -131,6 +137,8 @@ type NamedRef {
 // RefResolutionResult: outcome of following a ref chain to a commit hash.
 // SymbolicCycle signals that ref resolution encountered a cycle before
 // reaching a DirectRef (fail-closed: surface the error, never loop forever).
+// 🟢 TERMINAL — resolved/not-found/symbolic-cycle are the three outcomes of
+// ref-chain traversal; no additional arms are expected.
 type RefResolutionResult
   = RefResolved { hash: ContentHash }
   | RefNotFound
