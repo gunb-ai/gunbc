@@ -97,6 +97,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
+    "coproduct_reflection.rs",
     "rest_transport_facts.rs",
     "v2_compiler_dag_collect.rs",
     "v2_interpreter.rs",
