@@ -12,6 +12,7 @@ import v4.compiler.source_authority {
   node_artifact_provenance_from_source_root,
   source_root_provenance_coverage_receipt
 }
+import v4.extdeps.languages.dag { dag_mvp1_source_text }
 import v4.lens.edit_locus {
   GitDiffNameOnly,
   RepoPath,
@@ -45,8 +46,8 @@ data provenance_producer_path_root: RepoPath = "src/v4/lens/affected_set_example
 data provenance_producer_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data provenance_producer_compilation_unit: Symbol = ^provenance_producer_compilation_unit
 
-data provenance_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
-data provenance_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + y }"
+data provenance_producer_fixture_source: DagSource = dag_mvp1_source_text
+data provenance_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
 
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
