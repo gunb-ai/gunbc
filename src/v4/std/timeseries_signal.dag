@@ -8,9 +8,14 @@
 // Anchor: SPICE3 passive element constitutive relations (Ohm / capacitor / inductor)
 //         as cited in v4.extdeps.formats.spice Component variants.
 // M9 DFS: reuses v4.std.algebra {fold_list, fold_list_right, list_snoc_item},
-//         v4.std.collection {List, Optional}, v4.std.float {Float},
+//         v4.std.collection {Optional}, v4.std.float {Float},
 //         v4.extdeps.formats.spice {Component, SpiceApproxVoltage, SpiceValue, NodeRef}.
 // Status: S1 modeled 2026-06-14 (quick-dove-880).
+//
+// Substrate note: struct-wrapped List<T>/FreeMonoid<T> fields parameterized by an
+// outer type parameter (TimeSeriesSignal<T>) fail v2 full-tree compile in this slice.
+// Monomorphic stream aliases (SignalStream, CurrentSignalStream, …) are the inhabited
+// carriers until generic record fields lower cleanly.
 
 module v4.std.timeseries_signal
 
@@ -19,9 +24,10 @@ import v4.std.algebra {
   Empty,
   fold_list,
   fold_list_right,
-  list_snoc_item
+  list_snoc_item,
+  FreeMonoid
 }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.collection { Optional, Absent, Present }
 import v4.std.float { Float, Finite }
 import v4.std.nat { Zero }
 import v4.std.node { Symbol }
@@ -72,16 +78,24 @@ type TimeStepDelta {
   seconds: Float
 }
 
-type TimeSeriesSample<T> {
-  value: T
+type SignalSample {
+  value: Int
 }
 
-type TimeSeriesSignal<T> {
-  dt: TimeStepDelta
-  samples: List<TimeSeriesSample<T>>
+type SignalStream = FreeMonoid<SignalSample>
+
+type CurrentSignalSample {
+  current: AffineCurrent
 }
 
-// Unit dt placeholder for scaffolding consumers; tran-step parsing supplies physical dt.
+type CurrentSignalStream = FreeMonoid<CurrentSignalSample>
+
+type VoltageSignalSample {
+  voltage: AffineVoltage
+}
+
+type VoltageSignalStream = FreeMonoid<VoltageSignalSample>
+
 data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
   seconds: Float {
     body: Finite {
@@ -92,89 +106,74 @@ data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
   }
 }
 
-// --- Stateless map step (Resistor = map) -----------------------------------
+// --- Map/fold algebra pattern carriers -------------------------------------
 //
-// Sibling to SourceFold in v4.std.text: per-sample transform, no accumulator.
+// Siblings to SourceFold (v4.std.text) and NodeFold (v4.std.node): document the
+// step-operator algebra contract. R/L/C passives inhabit these patterns via the
+// monomorphic fold/map fns below until generic record fields lower cleanly.
 
-type TimeSeriesMapStep<I, O> {
-  apply: fn(TimeSeriesSample<I>) -> TimeSeriesSample<O>
+type ResistorMapStep {
+  apply: fn(CurrentSignalSample) -> VoltageSignalSample
 }
 
-fn map_time_series_samples<I, O>(
-  samples: List<TimeSeriesSample<I>>,
-  step: fn(TimeSeriesSample<I>) -> TimeSeriesSample<O>
-) -> List<TimeSeriesSample<O>> {
+type CapacitorFoldStep {
+  init: AffineVoltage
+  step: fn(AffineVoltage, CurrentSignalSample, TimeStepDelta) -> AffineVoltage
+  project: fn(AffineVoltage) -> VoltageSignalSample
+}
+
+type InductorFoldStep {
+  init: AffineCurrent
+  step: fn(AffineCurrent, VoltageSignalSample, TimeStepDelta) -> AffineCurrent
+  project: fn(AffineCurrent) -> CurrentSignalSample
+}
+
+// --- Stateless map step (Resistor = map) -----------------------------------
+
+fn map_int_sample_double(sample: SignalSample) -> SignalSample {
+  SignalSample { value: sample.value * 2 }
+}
+
+fn map_time_series_int(signal: SignalStream) -> SignalStream {
   fold_list_right(
-    xs: samples,
+    xs: signal,
     empty: Empty,
     snoc: fn(acc, sample) {
-      Cons { head: step(sample), tail: acc }
+      Cons { head: map_int_sample_double(sample), tail: acc }
     }
   )
-}
-
-fn map_time_series<I, O>(
-  signal: TimeSeriesSignal<I>,
-  step: TimeSeriesMapStep<I, O>
-) -> TimeSeriesSignal<O> {
-  TimeSeriesSignal {
-    dt: signal.dt,
-    samples: map_time_series_samples(samples: signal.samples, step: step.apply)
-  }
 }
 
 // --- Stateful fold step (Capacitor / Inductor = fold over dt) ------------
-//
-// Each input sample advances state; project emits one output sample per step.
-// step returns S directly (NodeFold sibling); project maps post-step state to output.
 
-type TimeSeriesStepFold<I, S, O> {
-  init: S
-  step: fn(S, TimeSeriesSample<I>, TimeStepDelta) -> S
-  project: fn(S) -> TimeSeriesSample<O>
+type IntFoldScanAcc {
+  state: Int
+  outputs: SignalStream
 }
 
-type TimeSeriesScanAcc<S, O> {
-  state: S
-  outputs: List<TimeSeriesSample<O>>
-}
-
-fn time_series_scan_step<I, S, O>(
-  algebra: TimeSeriesStepFold<I, S, O>,
-  dt: TimeStepDelta,
-  acc: TimeSeriesScanAcc<S, O>,
-  sample: TimeSeriesSample<I>
-) -> TimeSeriesScanAcc<S, O> {
-  let next_state = algebra.step(acc.state, sample, dt)
-  TimeSeriesScanAcc {
-    state: next_state,
-    outputs: list_snoc_item(xs: acc.outputs, item: algebra.project(next_state))
+fn fold_running_sum_step(
+  acc: IntFoldScanAcc,
+  sample: SignalSample
+) -> IntFoldScanAcc {
+  let next = acc.state + sample.value
+  IntFoldScanAcc {
+    state: next,
+    outputs: list_snoc_item(
+      xs: acc.outputs,
+      item: SignalSample { value: next }
+    )
   }
 }
 
-fn fold_time_series<I, S, O>(
-  signal: TimeSeriesSignal<I>,
-  algebra: TimeSeriesStepFold<I, S, O>
-) -> TimeSeriesSignal<O> {
+fn fold_running_sum_int(signal: SignalStream) -> SignalStream {
   let scanned = fold_list(
-    xs: signal.samples,
-    empty: TimeSeriesScanAcc {
-      state: algebra.init,
-      outputs: Empty
-    },
+    xs: signal,
+    empty: IntFoldScanAcc { state: 0, outputs: Empty },
     cons: fn(acc, sample) {
-      time_series_scan_step(
-        algebra: algebra,
-        dt: signal.dt,
-        acc: acc,
-        sample: sample
-      )
+      fold_running_sum_step(acc: acc, sample: sample)
     }
   )
-  TimeSeriesSignal {
-    dt: signal.dt,
-    samples: scanned.outputs
-  }
+  scanned.outputs
 }
 
 // --- Passive element parameters + named field kernel -----------------------
@@ -200,64 +199,86 @@ type Inductance {
   henries: Float
 }
 
-// v = R · i  (stateless map, frequency-flat)
-fn resistor_apply_sample(
-  resistance: Resistance,
-  field: PassiveFieldOps,
-  sample: TimeSeriesSample<AffineCurrent>
-) -> TimeSeriesSample<AffineVoltage> {
-  TimeSeriesSample {
-    value: AffineVoltage {
+type ResistorMapContext {
+  resistance: Resistance
+  field: PassiveFieldOps
+}
+
+fn resistor_map_apply(
+  ctx: ResistorMapContext,
+  sample: CurrentSignalSample
+) -> VoltageSignalSample {
+  VoltageSignalSample {
+    voltage: AffineVoltage {
       reference: GroundReference,
-      magnitude: field.mul(sample.value.magnitude, resistance.ohms)
+      magnitude: ctx.field.mul(sample.current.magnitude, ctx.resistance.ohms)
     }
   }
 }
 
+// v = R · i  (stateless map, frequency-flat)
 fn resistor_map_step(
   resistance: Resistance,
   field: PassiveFieldOps
-) -> TimeSeriesMapStep<AffineCurrent, AffineVoltage> {
-  TimeSeriesMapStep {
-    apply: fn(sample) {
-      resistor_apply_sample(resistance: resistance, field: field, sample: sample)
-    }
+) -> ResistorMapStep {
+  let ctx = ResistorMapContext { resistance: resistance, field: field }
+  ResistorMapStep {
+    apply: fn(sample) { resistor_map_apply(ctx: ctx, sample: sample) }
   }
 }
 
 fn map_resistor_current_to_voltage(
-  signal: TimeSeriesSignal<AffineCurrent>,
+  signal: CurrentSignalStream,
   resistance: Resistance,
   field: PassiveFieldOps
-) -> TimeSeriesSignal<AffineVoltage> {
-  map_time_series(signal: signal, step: resistor_map_step(resistance: resistance, field: field))
+) -> VoltageSignalStream {
+  let step = resistor_map_step(resistance: resistance, field: field)
+  fold_list_right(
+    xs: signal,
+    empty: Empty,
+    snoc: fn(acc, sample) {
+      Cons { head: step.apply(sample), tail: acc }
+    }
+  )
 }
 
-// i = C · dv/dt  ⇒  v[n] = v[n-1] + (i[n] · dt) / C
-fn capacitor_integrate_step(
+type CapacitorFoldAcc {
+  voltage: AffineVoltage
+  outputs: VoltageSignalStream
+}
+
+fn capacitor_fold_step(
+  acc: CapacitorFoldAcc,
+  sample: CurrentSignalSample,
+  dt: TimeStepDelta,
   capacitance: Capacitance,
-  field: PassiveFieldOps,
-  prev_v: AffineVoltage,
-  sample: TimeSeriesSample<AffineCurrent>,
-  dt: TimeStepDelta
-) -> AffineVoltage {
-  let i_dt = field.mul(sample.value.magnitude, dt.seconds)
+  field: PassiveFieldOps
+) -> CapacitorFoldAcc {
+  let i_dt = field.mul(sample.current.magnitude, dt.seconds)
   let dv = field.div(i_dt, capacitance.farads)
-  AffineVoltage {
-    reference: prev_v.reference,
-    magnitude: field.add(prev_v.magnitude, dv)
+  let next_v = AffineVoltage {
+    reference: acc.voltage.reference,
+    magnitude: field.add(acc.voltage.magnitude, dv)
+  }
+  CapacitorFoldAcc {
+    voltage: next_v,
+    outputs: list_snoc_item(
+      xs: acc.outputs,
+      item: VoltageSignalSample { voltage: next_v }
+    )
   }
 }
 
+// i = C · dv/dt  ⇒  v[n] = v[n-1] + (i[n] · dt) / C
 fn capacitor_fold_algebra(
   capacitance: Capacitance,
   initial_voltage: AffineVoltage,
   field: PassiveFieldOps
-) -> TimeSeriesStepFold<AffineCurrent, AffineVoltage, AffineVoltage> {
-  TimeSeriesStepFold {
+) -> CapacitorFoldStep {
+  CapacitorFoldStep {
     init: initial_voltage,
     step: fn(prev_v, sample, dt) {
-      capacitor_integrate_step(
+      capacitor_integrate_voltage(
         capacitance: capacitance,
         field: field,
         prev_v: prev_v,
@@ -266,51 +287,81 @@ fn capacitor_fold_algebra(
       )
     },
     project: fn(v) {
-      TimeSeriesSample { value: v }
+      VoltageSignalSample { voltage: v }
     }
   }
 }
 
-fn fold_capacitor_current_to_voltage(
-  signal: TimeSeriesSignal<AffineCurrent>,
+fn capacitor_integrate_voltage(
   capacitance: Capacitance,
-  initial_voltage: AffineVoltage,
-  field: PassiveFieldOps
-) -> TimeSeriesSignal<AffineVoltage> {
-  fold_time_series(
-    signal: signal,
-    algebra: capacitor_fold_algebra(
-      capacitance: capacitance,
-      initial_voltage: initial_voltage,
-      field: field
-    )
-  )
+  field: PassiveFieldOps,
+  prev_v: AffineVoltage,
+  sample: CurrentSignalSample,
+  dt: TimeStepDelta
+) -> AffineVoltage {
+  let i_dt = field.mul(sample.current.magnitude, dt.seconds)
+  let dv = field.div(i_dt, capacitance.farads)
+  AffineVoltage {
+    reference: prev_v.reference,
+    magnitude: field.add(prev_v.magnitude, dv)
+  }
 }
 
-// v = L · di/dt  ⇒  i[n] = i[n-1] + (v[n] · dt) / L
-fn inductor_integrate_step(
+fn fold_capacitor_current_to_voltage(
+  signal: CurrentSignalStream,
+  capacitance: Capacitance,
+  initial_voltage: AffineVoltage,
+  dt: TimeStepDelta,
+  field: PassiveFieldOps
+) -> VoltageSignalStream {
+  let algebra = capacitor_fold_algebra(
+    capacitance: capacitance,
+    initial_voltage: initial_voltage,
+    field: field
+  )
+  let scanned = fold_list(
+    xs: signal,
+    empty: CapacitorFoldAcc { voltage: algebra.init, outputs: Empty },
+    cons: fn(acc, sample) {
+      let next_v = algebra.step(acc.voltage, sample, dt)
+      CapacitorFoldAcc {
+        voltage: next_v,
+        outputs: list_snoc_item(xs: acc.outputs, item: algebra.project(next_v))
+      }
+    }
+  )
+  scanned.outputs
+}
+
+type InductorFoldAcc {
+  current: AffineCurrent
+  outputs: CurrentSignalStream
+}
+
+fn inductor_integrate_current(
   inductance: Inductance,
   field: PassiveFieldOps,
   prev_i: AffineCurrent,
-  sample: TimeSeriesSample<AffineVoltage>,
+  sample: VoltageSignalSample,
   dt: TimeStepDelta
 ) -> AffineCurrent {
-  let v_dt = field.mul(sample.value.magnitude, dt.seconds)
+  let v_dt = field.mul(sample.voltage.magnitude, dt.seconds)
   let di = field.div(v_dt, inductance.henries)
   AffineCurrent {
     magnitude: field.add(prev_i.magnitude, di)
   }
 }
 
+// v = L · di/dt  ⇒  i[n] = i[n-1] + (v[n] · dt) / L
 fn inductor_fold_algebra(
   inductance: Inductance,
   initial_current: AffineCurrent,
   field: PassiveFieldOps
-) -> TimeSeriesStepFold<AffineVoltage, AffineCurrent, AffineCurrent> {
-  TimeSeriesStepFold {
+) -> InductorFoldStep {
+  InductorFoldStep {
     init: initial_current,
     step: fn(prev_i, sample, dt) {
-      inductor_integrate_step(
+      inductor_integrate_current(
         inductance: inductance,
         field: field,
         prev_i: prev_i,
@@ -319,25 +370,55 @@ fn inductor_fold_algebra(
       )
     },
     project: fn(i) {
-      TimeSeriesSample { value: i }
+      CurrentSignalSample { current: i }
     }
   }
 }
 
+fn inductor_fold_step(
+  acc: InductorFoldAcc,
+  sample: VoltageSignalSample,
+  dt: TimeStepDelta,
+  inductance: Inductance,
+  field: PassiveFieldOps
+) -> InductorFoldAcc {
+  let next_i = inductor_integrate_current(
+    inductance: inductance,
+    field: field,
+    prev_i: acc.current,
+    sample: sample,
+    dt: dt
+  )
+  InductorFoldAcc {
+    current: next_i,
+    outputs: list_snoc_item(
+      xs: acc.outputs,
+      item: CurrentSignalSample { current: next_i }
+    )
+  }
+}
+
 fn fold_inductor_voltage_to_current(
-  signal: TimeSeriesSignal<AffineVoltage>,
+  signal: VoltageSignalStream,
   inductance: Inductance,
   initial_current: AffineCurrent,
+  dt: TimeStepDelta,
   field: PassiveFieldOps
-) -> TimeSeriesSignal<AffineCurrent> {
-  fold_time_series(
-    signal: signal,
-    algebra: inductor_fold_algebra(
-      inductance: inductance,
-      initial_current: initial_current,
-      field: field
-    )
+) -> CurrentSignalStream {
+  let scanned = fold_list(
+    xs: signal,
+    empty: InductorFoldAcc { current: initial_current, outputs: Empty },
+    cons: fn(acc, sample) {
+      inductor_fold_step(
+        acc: acc,
+        sample: sample,
+        dt: dt,
+        inductance: inductance,
+        field: field
+      )
+    }
   )
+  scanned.outputs
 }
 
 // --- spice.dag structural consumption --------------------------------------
@@ -411,7 +492,7 @@ fn resistor_map_from_spec(
   spec: ResistorSpec,
   ohms: Float,
   field: PassiveFieldOps
-) -> TimeSeriesMapStep<AffineCurrent, AffineVoltage> {
+) -> TimeSeriesMapStep<CurrentSignalSample, VoltageSignalSample> {
   resistor_map_step(resistance: Resistance { ohms: ohms }, field: field)
 }
 

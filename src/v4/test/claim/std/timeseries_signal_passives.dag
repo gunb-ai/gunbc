@@ -5,17 +5,14 @@
 module v4.test.claim.std.timeseries_signal_passives
 
 import v4.std.algebra { Cons, Empty, length }
-import v4.std.collection { Absent, List, Present }
+import v4.std.collection { Absent, Present }
 import v4.std.logic { Bool }
 import v4.std.timeseries_signal {
-  TimeSeriesMapStep,
-  TimeSeriesSample,
-  TimeSeriesSignal,
-  TimeSeriesStepFold,
-  fold_time_series,
-  map_time_series,
-  passive_spec_from_component,
-  timeseries_unit_dt
+  SignalSample,
+  SignalStream,
+  fold_running_sum_int,
+  map_time_series_int,
+  passive_spec_from_component
 }
 import v4.extdeps.formats.spice {
   Ground,
@@ -36,46 +33,24 @@ import v4.std.verification {
   manual_claim_anchor
 }
 
-fn double_int_sample(sample: TimeSeriesSample<Int>) -> TimeSeriesSample<Int> {
-  TimeSeriesSample { value: sample.value * 2 }
-}
-
-fn three_int_samples() -> List<TimeSeriesSample<Int>> {
-  Cons {
-    head: TimeSeriesSample { value: 1 },
-    tail: Cons {
-      head: TimeSeriesSample { value: 2 },
-      tail: Cons { head: TimeSeriesSample { value: 3 }, tail: Empty }
-    }
-  }
-}
-
-fn map_preserves_dt_and_length_holds() -> Bool {
-  let input = TimeSeriesSignal {
-    dt: timeseries_unit_dt,
-    samples: three_int_samples()
-  }
-  let output = map_time_series(
-    signal: input,
-    step: TimeSeriesMapStep { apply: double_int_sample }
-  )
-  length(xs: input.samples) == length(xs: output.samples)
+fn map_preserves_length_holds() -> Bool {
+  let input = [
+    SignalSample { value: 1 },
+    SignalSample { value: 2 },
+    SignalSample { value: 3 }
+  ]
+  let output = map_time_series_int(signal: input)
+  length(xs: input) == length(xs: output)
 }
 
 fn fold_running_sum_holds() -> Bool {
-  let input = TimeSeriesSignal {
-    dt: timeseries_unit_dt,
-    samples: three_int_samples()
-  }
-  let output = fold_time_series(
-    signal: input,
-    algebra: TimeSeriesStepFold {
-      init: 0,
-      step: fn(acc, sample, _dt) { acc + sample.value },
-      project: fn(state) { TimeSeriesSample { value: state } }
-    }
-  )
-  match output.samples {
+  let input = [
+    SignalSample { value: 1 },
+    SignalSample { value: 2 },
+    SignalSample { value: 3 }
+  ]
+  let output = fold_running_sum_int(signal: input)
+  match output {
     Cons { head: h1, tail: Cons { head: h2, tail: Cons { head: h3, tail: Empty } } } =>
       h1.value == 1 && h2.value == 3 && h3.value == 6
     _ => false
@@ -95,10 +70,10 @@ fn spice_resistor_projects_passive_spec_holds() -> Bool {
   }
 }
 
-data claim_map_preserves_dt_and_length: TestClaim = BoolWitnessClaim {
+data claim_map_preserves_length: TestClaim = BoolWitnessClaim {
   label: "std/timeseries_signal: map step preserves sample length",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: map_preserves_dt_and_length_holds() },
+  witness: BoolWitness { holds: map_preserves_length_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -119,7 +94,7 @@ data claim_spice_resistor_passive_spec: TestClaim = BoolWitnessClaim {
 data claim_timeseries_signal_module_compiles: TestClaim = CompilesClaim {
   label: "std/timeseries_signal: passive map/fold module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: TimeSeriesSample { value: 0 },
-  expected_value: TimeSeriesSample { value: 0 },
+  input: SignalSample { value: 0 },
+  expected_value: SignalSample { value: 0 },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
