@@ -5363,6 +5363,17 @@ pub fn expand_alias_chain_for_field_access(
     };
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+    if std::env::var("DBG_CHAIN").is_ok() {
+        eprintln!(
+            "DBG chain n.name={} structural.name={} conn={:?} ch={} lossy={} has_unres={}",
+            n.name.clone(),
+            structural.name.clone(),
+            structural.connective.clone(),
+            structural.children.clone().len(),
+            lossy,
+            record_has_unresolved_param_field(structural.clone()),
+        );
+    }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
