@@ -5325,7 +5325,19 @@ pub fn record_field_type_is_unresolved_param(field: Rc<Node>, env: Rc<TypeEnv>) 
                 match ft.inferred.clone() {
                     Some(inf) => is_type_variable(inf.clone()),
                     None => match lookup_type_by_name(env.clone(), ft.name.clone()) {
-                        Some(_) => false,
+                        Some(b) => {
+                            if std::env::var("DBG_FC").is_ok() {
+                                eprintln!(
+                                    "DBG detector ft.name={} -> Some(name={} conn={:?} ch={} inf={})",
+                                    ft.name.clone(),
+                                    authored_name_at(env.source_indices.clone(), b.clone()),
+                                    b.connective.clone(),
+                                    b.children.clone().len(),
+                                    b.inferred.is_some()
+                                );
+                            }
+                            false
+                        }
                         None => true,
                     },
                 }
