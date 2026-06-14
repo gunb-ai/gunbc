@@ -5301,13 +5301,34 @@ pub fn expand_type_for_field_access(
                 env.source_indices.clone(),
                 n.clone(),
             );
+            let childnames: Vec<String> = n
+                .children
+                .clone()
+                .iter()
+                .map(|c| {
+                    crate::v2_std_core::authored_name_at(env.source_indices.clone(), c.clone())
+                })
+                .collect();
+            let lt = match lookup_type_for(env.clone(), n.clone()) {
+                Some(b) => format!(
+                    "Some(name={} conn={:?} ch={} inf={})",
+                    crate::v2_std_core::authored_name_at(env.source_indices.clone(), b.clone()),
+                    b.connective.clone(),
+                    b.children.clone().len(),
+                    b.inferred.is_some()
+                ),
+                None => "None".to_string(),
+            };
             eprintln!(
-                "DBG expand IN name={} conn={:?} children={} inferred={} needs={}",
+                "DBG expand IN name={} conn={:?} children={} childnames={:?} inferred={} needs={} ugus={} lookup_type_for={}",
                 dbgname,
                 n.connective.clone(),
                 n.children.clone().len(),
+                childnames,
                 n.inferred.is_some(),
-                needs_alias_field_expansion(n.clone(), env.clone())
+                needs_alias_field_expansion(n.clone(), env.clone()),
+                is_user_generic_use_site(n.clone(), env.clone()),
+                lt
             );
             let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
                 peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
