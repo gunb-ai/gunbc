@@ -163,6 +163,38 @@ fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 #[test]
+fn money_micros_alias_field_access_resolves_through_expansion() {
+    let src = r#"
+module m
+
+import std.nat { Nat }
+
+type Quantity = Memory | Count | Currency | Frequency
+type Scale = One | Micro
+
+type Measure<Q, S> {
+  count: Nat
+}
+
+type MoneyAmount<S> = Measure<Currency, S>
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros(count: Nat) -> MoneyMicros {
+  MoneyMicros { count: count }
+}
+
+fn money_micros_count(m: MoneyMicros) -> Nat {
+  m.count
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        msgs.is_empty(),
+        "MoneyMicros alias field access should resolve, got: {msgs:?}"
+    );
+}
+
+#[test]
 fn measure_dag_v2_loads_without_field_errors() {
     let entry = "dsl/std/measure.dag";
     let content = std::fs::read_to_string(workspace_root().join(entry))
