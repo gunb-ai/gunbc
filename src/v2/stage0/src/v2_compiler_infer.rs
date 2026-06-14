@@ -5297,12 +5297,48 @@ pub fn expand_type_for_field_access(
         n.clone()
     } else {
         {
+            let dbgname = crate::v2_std_core::authored_name_at(
+                env.source_indices.clone(),
+                n.clone(),
+            );
+            eprintln!(
+                "DBG expand IN name={} conn={:?} children={} inferred={} needs={}",
+                dbgname,
+                n.connective.clone(),
+                n.children.clone().len(),
+                n.inferred.is_some(),
+                needs_alias_field_expansion(n.clone(), env.clone())
+            );
             let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
                 peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
             } else {
                 n.clone()
             };
-            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled))
+            eprintln!(
+                "DBG expand PEELED name={} conn={:?} children={} inferred={}",
+                crate::v2_std_core::authored_name_at(
+                    env.source_indices.clone(),
+                    peeled.clone()
+                ),
+                peeled.connective.clone(),
+                peeled.children.clone().len(),
+                peeled.inferred.is_some()
+            );
+            let out = structural_from_expanded_type(resolve_scrutinee_type_node(
+                env.clone(),
+                peeled,
+            ));
+            eprintln!(
+                "DBG expand OUT name={} conn={:?} children={} inferred={}",
+                crate::v2_std_core::authored_name_at(
+                    env.source_indices.clone(),
+                    out.clone()
+                ),
+                out.connective.clone(),
+                out.children.clone().len(),
+                out.inferred.is_some()
+            );
+            out
         }
     }
 }
