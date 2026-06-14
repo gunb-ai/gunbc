@@ -1,6 +1,6 @@
 // extdeps/runtime/architecture/x86_64_linux.dag — x86-64 Linux architecture profile (cited facts).
 //
-// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile — CpuArchitecture::X86_64
+// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile — TargetArchitecture::X86_64
 // with cited machine facts, sysv_amd64 syscall convention, and downward stack.
 //
 // Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (§3.2.2 stack; §3.4.1 alignment)
@@ -10,6 +10,7 @@
 module extdeps.runtime.architecture.x86_64_linux
 
 import extdeps.runtime.abi.sysv_amd64 {
+  amd64_inhabitant_r10,
   amd64_inhabitant_r8,
   amd64_inhabitant_r9,
   amd64_inhabitant_rax,
@@ -56,8 +57,6 @@ data x86_64_linux_deployment_target: DeploymentTarget = {
 
 // Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
-// 🟡 consumer:cpu-types-option-gate — std.cpu.types Option import blocks v2 claim-run today;
-// witnesses are typed+reviewed; green-by-execution follows Option-repoint (os-exec-contract §5).
 fn witness_architecture_is_x86_64() -> Bool {
   x86_64_linux_architecture_profile.architecture == X86_64
 }
@@ -70,8 +69,12 @@ fn witness_page_size_is_4096() -> Bool {
   x86_64_linux_architecture_profile.page_size_bytes == 4096
 }
 
-fn witness_register_file_includes_r10() -> Bool {
-  x86_64_linux_architecture_profile.register_file == x86_64_general_purpose_registers
+fn witness_convention_arg3_is_r10() -> Bool {
+  x86_64_linux_architecture_profile.calling_convention.arg3 == amd64_inhabitant_r10
+}
+
+fn witness_stack_grows_down() -> Bool {
+  x86_64_linux_architecture_profile.stack_layout.grows_down == true
 }
 
 fn witness_deployment_invocation_matches_linux_abi() -> Bool {
