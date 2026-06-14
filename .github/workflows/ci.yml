@@ -105,14 +105,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -153,14 +164,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -185,14 +207,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -216,14 +249,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -297,14 +341,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -389,14 +444,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -517,14 +583,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -651,14 +728,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -762,14 +850,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -869,14 +968,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -990,14 +1100,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -1075,14 +1196,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -1147,14 +1279,25 @@ jobs:
     # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
     - name: Scrub dangling remote refs (shared runner worktree)
       run: |
-        repo="${RUNNER_WORKSPACE}/gunbc/gunbc"
-        if [ -d "$repo/.git" ]; then
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            git -C "$repo" rev-parse --verify "$ref^{commit}" >/dev/null 2>&1 \
-              || git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
           done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
-        fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
