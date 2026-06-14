@@ -5386,6 +5386,13 @@ pub fn expand_alias_chain_for_field_access(
         || (structural.connective.clone() == Connective::Disj))
     {
         if (lossy && record_has_unresolved_param_field(structural.clone(), env.clone())) {
+            if std::env::var("DBG_FC").is_ok() {
+                eprintln!(
+                    "DBG failclosed origin_name={} is_deferred_of_leaf={}",
+                    origin_name,
+                    is_deferred_field_access_base(nominal_type_ref(origin_name.clone()), env.clone())
+                );
+            }
             // Fail closed: the reached record has a field typed by a param the
             // dropped-arg chain cannot substitute. Return a bare nominal leaf so
             // field lookup yields a "no field" diagnostic instead of silently
