@@ -125,9 +125,9 @@ remain in source marks — this section cites them, does not mirror them.
 
 | Instance | Structural redundancy | Cite |
 | --- | --- | --- |
-| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `v2_interpreter.rs:1282-1317`; profiler context `:4187-4199` (#4865) |
+| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `v2_interpreter.rs:1282-1317`; eval profiler context `:4223-4239` (#4865) |
 | **Resolve overlapping closure** | Each entry re-ran tokenize→parse→resolve→reconcile over overlapping modules before shared index | `cli_run.rs:270-303`; cold oracle vs `resolve_entry_with_index` |
-| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `complexity.dag`; `v2_interpreter.rs:4187-4188` |
+| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v4/lens/complexity.dag`; `v2_interpreter.rs:4223-4239` (`eval_profile_*` at `:4318+`) |
 
 (`src/v2/stage0/src/v2_interpreter.rs:1286-1297`)
 
@@ -168,7 +168,7 @@ elsewhere.
 | 4 | `SymbolInterner` | String → `Symbol` dedup (identity table) | `v2_interpreter.rs:108-118, 1028` |
 | 5 | `typed_module_cache` | Module name → typecheck result (**PR1 #4867** — see §3.2 for purity story) | `cli_run.rs:287-303, 539+` |
 | 6 | `COMPILE_CACHE` | Per-(source, file) `compile_to_dag` outcome | `cached_compile.rs:63-70` |
-| 7 | Bootstrap snapshots | Committed `Dag` snapshot reuse | `lib.rs` (`std_fixture_bootstrap_snapshot`); `pb1_bootstrap_full_snapshot_test.rs` |
+| 7 | Bootstrap snapshots | Committed `Dag` snapshot reuse | `src/v3/compiler/src/lib.rs` (`std_fixture_bootstrap_snapshot`); `src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` |
 | 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v4-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
 | 9 | Discovered-owned-data manifest | Host scan → manifest DAG | `discover_owned_data.rs:8-12`; `host_discovered_owned_data_manifest.dag:2-3` |
 | 10 | `.freshness-check` | Stage0 regen verify temp tree | `dsl/gunbc/tools/freshness.dag:68-89`; `Makefile:56` |
