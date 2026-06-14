@@ -225,6 +225,20 @@ cannot silently corrupt the other — that is the 2FA, generalized:
   exhaustiveness checker requires, and that the key set matches the patterns the
   checker admits. If reflection drops or adds an arm, the two disagree → red by
   execution.
+
+  > **Non-circularity condition (LOAD-BEARING — required for design-sign and
+  > Phase-2 by construction).** Witness A is a genuine second factor *only if*
+  > the exhaustiveness checker derives its arm set via a **distinct lowering
+  > path** from `coproduct_arms`. If both the reflection builtin and the
+  > exhaustiveness path route through one shared arm-enumeration code path, a bug
+  > in that shared path corrupts *both* sides and the gate passes **falsely** —
+  > a circular check with no 2FA value. Therefore Phase-2 must keep the two
+  > derivations **separate by construction** (the inference-stage variant table
+  > must not call the reflection primitive), and design-sign must confirm this
+  > non-shared-path property holds for the chosen implementation. An ungated or
+  > circularly-gated reflection consumer is exactly the single-broken-authority
+  > hazard the ban protected against, so this condition is a hard precondition,
+  > not a nicety.
 - **Independent witness B (the existing reflection-conformance posture).** This
   generalizes what INVARIANTS §"Reflection evidence is not structural proof"
   already mandates for `reflect_program_dag_nodes_in_file` ("conformance is
@@ -356,10 +370,20 @@ anticipated "proper mechanism," not its repeal.
 
 ## 10. Open questions for design-sign / ruling
 
-1. **Conformance-gate independence.** Is "match-exhaustiveness arm count
-   (inference) vs reflection arm count" a sufficiently *independent* second
-   factor for the self-hosting drift concern, or does the operator want a third
-   path (e.g. parser-level Disj-children count) in the gate? (§5.2)
+1. **Conformance-gate independence — RESOLVED CONDITION (parent ruling
+   2026-06-14).** Witness A (type-checker exhaustiveness) counts as an
+   independent second factor *only under the non-circularity condition* now
+   stated in §5.2: the exhaustiveness checker must derive its arm set via a
+   **distinct lowering path** from `coproduct_arms` — no shared
+   arm-enumeration code path, or a shared-path bug corrupts both sides and the
+   gate passes falsely. Phase-2 keeps the two derivations separate by
+   construction; **design-sign must confirm this non-shared-path property
+   holds**. Witness C (the D1c `affected_set_ci_runner.dag:287`
+   frontier-discovery equality) is naturally independent (consumer-side
+   derivation) and is the strongest factor for the roster clusters — lean on it
+   there. Remaining open: does snappy-crab/operator additionally want a third
+   path (parser-level Disj-children count) for the non-roster coproducts, or is
+   the (non-shared) inference path sufficient?
 2. **Common-field projection scope.** Should `common_field_projection` be part
    of the v1 primitive, or split to a follow-on once C1 lands? (It is the
    `test_claim_label` family's only path.)
