@@ -618,6 +618,25 @@ fn inhabitant_neutralization_python_to_go_emit_reject_would_lose_information() -
   inhabitant_neutralization_python_to_go_emit_reject_reason(expected: WouldLoseInformation)
 }
 
+// Stage isolate: python core neutralized to ts still translates (emit breadth differs by target).
+fn inhabitant_neutralization_neutralize_python_to_ts_translate_accepts() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: ts_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: ts_mvp1_target_model()) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
