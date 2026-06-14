@@ -10,22 +10,16 @@
 // Realization pattern"). No hand-rolled hash type; compose the existing
 // content-identity primitive.
 //
-// Object-kind tags use ArtifactKindId from cache_identity — same axis as
-// cache_interface's ArtifactIdentity.artifact_kind; no parallel discriminant.
+// Object-kind axis: ObjectKind is the single discriminant; StoreObject is the
+// payload-carrying coproduct over the same trichotomy. The bridge to
+// ArtifactKindId (for cache_interface consumers) is deferred until a caller
+// actually needs it — no pre-emptive parallel encoding.
 
 module std.object_store
 
 import std.types { ContentHash, NonEmptyStr, Timestamp, Int }
-import std.cache_identity { ArtifactKindId }
 
-// --- Object-kind discriminants -----------------------------------------------
-//
-// ArtifactKindId values for blob/tree/commit. Compose cache_identity's
-// content-identity axis rather than inventing a separate discriminant type.
-
-data blob_object_kind: ArtifactKindId = "object_store.blob"
-data tree_object_kind: ArtifactKindId = "object_store.tree"
-data commit_object_kind: ArtifactKindId = "object_store.commit"
+// --- Object-kind discriminant ------------------------------------------------
 
 type ObjectKind
   = BlobKind
@@ -115,15 +109,13 @@ type ObjectLookupResult
 //
 // A ref binds a human-readable name to an object hash (direct ref) or to
 // another ref name (symbolic ref). Examples:
-//   DirectRef:   refs/heads/main → commit hash
-//   SymbolicRef: HEAD → refs/heads/main
+//   DirectTarget:   refs/heads/main → commit hash
+//   SymbolicTarget: HEAD → refs/heads/main
 //
-// S1 models the types; reading and mutating refs is an effectful forge service
-// operation (gunbhub S2+).
-
-type RefKind
-  = DirectRef
-  | SymbolicRef
+// RefTarget is the single discriminant for the ref kind — carrying a separate
+// RefKind tag would create an illegal-state (e.g. kind=DirectRef,
+// target=SymbolicTarget). S1 models the types; reading and mutating refs is
+// an effectful forge service operation (gunbhub S2+).
 
 type RefTarget
   = DirectTarget { hash: ContentHash }
@@ -133,7 +125,6 @@ type RefTarget
 // "named" distinguishes the forge ref record from any language `ref` keyword.
 type NamedRef {
   name: NonEmptyStr
-  kind: RefKind
   target: RefTarget
 }
 
