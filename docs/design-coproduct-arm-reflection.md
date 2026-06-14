@@ -373,12 +373,14 @@ anticipated "proper mechanism," not its repeal.
 
 - **Phase 1 (this doc).** Design + ban-lift proposal. Gate: snappy-crab-849
   DESIGN-SIGN + operator BAN-LIFT ruling.
-- **Phase 2 (gated).** Build `CoproductArm` + `coproduct_arms` /
-  `coproduct_arm_keys` / `coproduct_nullary_inhabitants` /
-  `common_field_projection` in `std/node.dag` + the compiler resolution support,
-  and the §5.2 conformance gate. Inhabit on real coproducts first
-  (`Connective`/`Behavior`) with the gate green by execution before any consumer
-  migrates (facts-before-abstraction).
+- **Phase 2a (gated).** Build `CoproductArm` + `coproduct_arms` /
+  `coproduct_arm_keys` / `coproduct_nullary_inhabitants` in `std/node.dag` (new
+  v4 substrate) + the compiler resolution support, and the **corrected §5.2
+  conformance gate** (Path 3 syntactic count + cross-generation where v3 covers).
+  Inhabit on real coproducts first (`Connective`/`Behavior`) with the gate green
+  by execution before any consumer migrates (facts-before-abstraction).
+- **Phase 2b (gated, after 2a green).** Add `common_field_projection` (the
+  `test_claim_*` common-field family's path).
 - **Phase 3 (gated, may spawn lean per-cluster workers).** Migrate consumers
   cluster-by-cluster in taxonomy order: C1 std mirrors → C1/C3 generated corpus
   exhaustiveness/algebra → C5 manual corpus roster → C5 CI rosters (swift-stag-552
@@ -388,28 +390,35 @@ anticipated "proper mechanism," not its repeal.
 
 ---
 
-## 10. Open questions for design-sign / ruling
+## 10. Design-sign resolutions (snappy-crab-849, CONDITIONAL sign — issuecomment-4700373336)
 
-1. **Conformance-gate independence — RESOLVED CONDITION (parent ruling
-   2026-06-14).** Witness A (type-checker exhaustiveness) counts as an
-   independent second factor *only under the non-circularity condition* now
-   stated in §5.2: the exhaustiveness checker must derive its arm set via a
-   **distinct lowering path** from `coproduct_arms` — no shared
-   arm-enumeration code path, or a shared-path bug corrupts both sides and the
-   gate passes falsely. Phase-2 keeps the two derivations separate by
-   construction; **design-sign must confirm this non-shared-path property
-   holds**. Witness C (the D1c `affected_set_ci_runner.dag:287`
-   frontier-discovery equality) is naturally independent (consumer-side
-   derivation) and is the strongest factor for the roster clusters — lean on it
-   there. Remaining open: does snappy-crab/operator additionally want a third
-   path (parser-level Disj-children count) for the non-roster coproducts, or is
-   the (non-shared) inference path sufficient?
-2. **Common-field projection scope.** Should `common_field_projection` be part
-   of the v1 primitive, or split to a follow-on once C1 lands? (It is the
-   `test_claim_label` family's only path.)
-3. **C4 total-map carrier.** Reuse an existing `std` map/table carrier for the
-   fail-closed total maps, or declare a `TotalArmMap<T,V>` keyed by reflected
-   arms? (M9 DFS pending snappy-crab's read.)
-4. **Value-inhabitant boundary.** Confirm the all-nullary restriction on
-   `coproduct_nullary_inhabitants` (payload arms → fail closed) is the right
-   line, vs a richer "inhabit with holes" form (rejected here as fabrication).
+1. **Conformance-gate independence — RESOLVED (the load-bearing condition).**
+   v4 exhaustiveness-count alone is **NOT** an independent factor — it is
+   common-mode with the reflection builtin (both resolve `T` to the same parsed
+   `Disj` node), and the v3 reflection posture is the gate being *built*, not a
+   pre-existing factor. **REQUIRED:** the gate's independent factor is the
+   **syntactic Disj-children count (Path 3)** for every gated coproduct, and/or
+   the **cross-generation check** (`v4 coproduct_arm_keys == v3
+   reflect_behavior_list`) where v3 covers the carrier; rosters additionally use
+   the frontier-discovery equality. Rewritten in §5.2. Exhaustiveness may run as
+   a consistency signal but does not discharge independence.
+2. **Common-field projection — RESOLVED: split to Phase-2b.** Land C1 + the
+   corrected gate on `Connective`/`Behavior` green-by-execution first; add
+   `common_field_projection` after. Reflected in §4.2 / §6 / §9.
+3. **C4 carrier — RESOLVED: reuse `TotalMap<K,V>`** (`std/collection.dag:165`).
+   No `TotalArmMap`. "Keyed by reflected set" is a conformance witness
+   (`domain == coproduct_arm_keys(T)`), not a new type; smart-constructor emits
+   the witness. Reflected in §5.3 / §6.
+4. **Value-inhabitant boundary — CONFIRMED.** All-nullary only;
+   payload arms → fail closed; no inhabit-with-holes.
+
+**Doc-precision condition (condition 2) — APPLIED:** the primitive is **new v4
+substrate**, analogous to (not an extension of) the v3-Rust `substrate_reflection`
+seed, which shrinks while v4 grows (§4.3).
+
+**Residual for snappy-crab re-read + operator:** the revised §5.2 gate spec is
+the one piece snappy-crab asked to re-read before Phase-2 (it is the whole
+2FA-replacement); the operator ban-lift should be predicated on this corrected
+gate. Remaining sub-question: for non-roster coproducts not covered by v3, is
+Path 3 (syntactic count) sufficient as the sole independent factor, or is a
+cross-generation/third path also required?
