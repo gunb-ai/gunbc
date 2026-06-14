@@ -27,10 +27,15 @@ data linux_x86_64_syscall_subset: List<SyscallEntry> = [
 
 data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
   table: linux_x86_64_syscall_subset,
-  // 🟡 dissolve-on-abi-module: `convention` is a raw string INTERIM. When
-  // extdeps/runtime/abi/sysv_amd64.dag lands, this becomes a TYPED reference to its
-  // CallingConvention (model-facts-as-identity, not a raw string that duplicates the abi
-  // identity — dual-representation smell). Tracked debt, not a silent stopgap.
+  // 🟡 feature:sysv-amd64-abi-module — `convention` is a raw string INTERIM.
+  //   GATE KIND: feature — the typed CallingConvention substrate does not exist yet.
+  //   MISSING PRIMITIVE: a `CallingConvention` type in extdeps/runtime/abi/sysv_amd64.dag
+  //     (register-arg order rdi/rsi/rdx/r10/r8/r9, nr+ret in rax — modeled as identity, not text).
+  //   BOUND DISSOLUTION TASK: §10 Slice-1 ABI module — work-item node://adhoc-51cfc897-db0
+  //     (ctrl-planning/os-exec-contract-layer-2026-06-14.md §6 Slice 1), which lands sysv_amd64.dag.
+  //   DISSOLUTION (🟡→🟢): when that module lands, change this field from `convention: NonEmptyStr`
+  //     to a typed reference to its CallingConvention, deleting the raw-string identity duplication
+  //     (dual-representation smell). Tracked, owned debt — not a silent stopgap, not a bare note.
   convention: "sysv_amd64_syscall"
 }
 
