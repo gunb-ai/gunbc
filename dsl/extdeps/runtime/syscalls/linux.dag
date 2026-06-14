@@ -27,6 +27,10 @@ data linux_x86_64_syscall_subset: List<SyscallEntry> = [
 
 data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
   table: linux_x86_64_syscall_subset,
+  // 🟡 dissolve-on-abi-module: `convention` is a raw string INTERIM. When
+  // extdeps/runtime/abi/sysv_amd64.dag lands, this becomes a TYPED reference to its
+  // CallingConvention (model-facts-as-identity, not a raw string that duplicates the abi
+  // identity — dual-representation smell). Tracked debt, not a silent stopgap.
   convention: "sysv_amd64_syscall"
 }
 
