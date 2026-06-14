@@ -677,8 +677,10 @@ fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
   }
 }
 
-// Content-pure digest bridge: work identity + output only (no started_at/finished_at).
-// Harness supplies full canonical encoding when Outcome/ArtifactRef inhabit.
+// Content-pure digest projected from work identity (work.id) only; output
+// content_digest joins when ArtifactRef inhabits. Full canonical encoding
+// (action + inputs + output spec + output content_digest) supplied by the
+// harness when Outcome/ArtifactRef inhabit (Node stubs today).
 fn execution_receipt_digest<T>(receipt: ExecutionReceipt<T>) -> ExecutionReceiptDigest {
   receipt.work.id
 }
