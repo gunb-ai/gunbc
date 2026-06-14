@@ -175,7 +175,7 @@ fn money_micros_alias_field_access_resolves_through_expansion() {
     let src = r#"
 module m
 
-import std.nat { Nat }
+type Nat
 
 type Quantity = Memory | Count | Currency | Frequency
 type Scale = One | Micro
