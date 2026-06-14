@@ -1262,7 +1262,7 @@ fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensi
 
 // D1b gap-1: real diff→dimension classification (conservative union; Unknown only on unresolved path).
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
-  match subterm_at(root: dag, p: edit.at) {
+  match subterm_at(root: dag, path: edit.at) {
     Accepted { value: current, diagnostics: _ } =>
       changed_dimension_families_union(before: current, after: edit.replacement)
     Rejected { diagnostics: _ } =>
