@@ -94,8 +94,8 @@ project_list_member_row() {
 }
 
 run_row() {
-  local source_root="$1" entry="$2" function="$3"
-  "$bin" run --source-root "$source_root" --entry "$entry" --function "$function" --claim-run
+  local v4_root="$1" entry="$2" function="$3"
+  "$bin" run --source-root "$v4_root" --source-root dsl --entry "$entry" --function "$function" --claim-run
 }
 
 batch_green_pass() {
@@ -116,7 +116,7 @@ batch_green_pass() {
     functions+="$fn"
   done
   echo "::group::${title} (batch green): ${entry}"
-  "$bin_batch" --source-root src/v4 --entry "$entry" --functions "$functions" --claim-run
+  "$bin_batch" --source-root src/v4 --source-root dsl --entry "$entry" --functions "$functions" --claim-run
   echo "::endgroup::"
 }
 

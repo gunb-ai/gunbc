@@ -1,7 +1,7 @@
 // src/v4/workflow/affected_set_selection.dag
 //
 // Minimal affected-set → TestClaim selection authority.
-// Selection routes through v4.std.probe_selector ONE probe_select kernel.
+// Selection routes through std.probe_selector ONE probe_select kernel.
 
 module v4.workflow.affected_set_selection
 
@@ -18,7 +18,7 @@ import v4.lens.affected_set {
   RerunNodeSetFailClosed,
   RerunNodeSetProduced
 }
-import v4.std.probe_selector {
+import std.probe_selector {
   CiFailClosedPrior,
   diagnostic_capability_ci_in_repo,
   probe_ci_unbounded_budget,

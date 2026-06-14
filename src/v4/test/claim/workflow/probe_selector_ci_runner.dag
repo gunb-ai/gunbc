@@ -7,7 +7,7 @@ module v4.test.claim.workflow.probe_selector_ci_runner
 import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.probe_selector {
+import std.probe_selector {
   CostBudget,
   SuspectedCausePrior,
   host_health_hypothesis_standoff_cap_vddq,

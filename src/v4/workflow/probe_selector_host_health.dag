@@ -5,7 +5,7 @@ module v4.workflow.probe_selector_host_health
 
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.probe_selector {
+import std.probe_selector {
   CostBudget,
   DiagnosticCapabilityFacts,
   HostHealthHypothesis,

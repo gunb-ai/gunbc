@@ -7,7 +7,7 @@ import v4.std.algebra { count_equal, length }
 import v4.std.change { AffectedSet }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.probe_selector {
+import std.probe_selector {
   CostBudget,
   DiagnosticCapabilityFacts,
   SuspectedCausePrior,
