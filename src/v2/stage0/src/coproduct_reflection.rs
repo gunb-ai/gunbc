@@ -296,6 +296,55 @@ pub fn eval_syntactic_coproduct_arm_keys(
     Ok(crate::v2_interpreter::list_value(items))
 }
 
+/// Extract Named arm labels from a marshaled substrate Node Value (test / drift probe).
+pub fn arm_labels_from_marshaled_node(
+    ctx: &InterpContext,
+    node: &Value,
+) -> InterpResult<Vec<String>> {
+    let Value::Record { fields, .. } = node else {
+        return Err(InterpError::TypeError {
+            msg: "expected Node record".to_string(),
+        });
+    };
+    let children = fields.get(&ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
+        msg: "Node missing children".to_string(),
+    })?;
+    let edges = crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
+        InterpError::TypeError {
+            msg: "children not a list".to_string(),
+        }
+    })?;
+    let mut labels = Vec::with_capacity(edges.len());
+    for edge in edges {
+        let Value::Record { fields: ef, .. } = edge else {
+            return Err(InterpError::TypeError {
+                msg: "expected Edge record".to_string(),
+            });
+        };
+        let label = ef.get(&ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing label".to_string(),
+        })?;
+        let Value::Variant {
+            variant_name,
+            fields: lf,
+            ..
+        } = label
+        else {
+            return Err(InterpError::TypeError {
+                msg: "expected EdgeLabel variant".to_string(),
+            });
+        };
+        if ctx.resolve(*variant_name) != "Named" {
+            continue;
+        }
+        let Value::Str(name) = lf.get(&ctx.sym("name")).ok_or_else(|| InterpError::TypeError {
+            msg: "Named edge missing name".to_string(),
+        })?;
+        labels.push(name.clone());
+    }
+    Ok(labels)
+}
+
 /// Mechanism-drift probe: drop the last Named arm edge from a marshaled Disj node.
 pub fn eval_resolve_type_node_with_dropped_last_arm(
     ctx: &InterpContext,

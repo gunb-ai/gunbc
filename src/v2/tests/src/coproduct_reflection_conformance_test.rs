@@ -1,6 +1,5 @@
 //! R-reflect Phase 2a: Path-3 key-set conformance on Connective/Behavior by execution.
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use v2_compiler::cli_run;
@@ -71,44 +70,6 @@ fn symbol_list_strings(val: &Value) -> Vec<String> {
         .collect()
 }
 
-fn edge_list_from_node_children(children: &Value) -> Vec<Value> {
-    match children {
-        Value::List(xs) => xs.iter().cloned().collect(),
-        _ => panic!("expected edge list, got {children:?}"),
-    }
-}
-
-fn arm_key_list_from_node(node: &Value) -> Vec<String> {
-    let Value::Record { fields, .. } = node else {
-        panic!("expected Node record, got {node:?}");
-    };
-    let children = fields.get("children").expect("children field");
-    let edges = edge_list_from_node_children(children);
-    let mut keys = Vec::with_capacity(edges.len());
-    for edge in edges {
-        let Value::Record { fields: ef, .. } = edge else {
-            panic!("expected Edge record");
-        };
-        let label = ef.get("label").expect("label");
-        let Value::Variant {
-            variant_name,
-            fields: lf,
-            ..
-        } = label
-        else {
-            panic!("expected EdgeLabel variant");
-        };
-        if variant_name.0 != "Named" {
-            continue;
-        }
-        let Value::Str(name) = lf.get("name").expect("name field") else {
-            panic!("expected Symbol string");
-        };
-        keys.push(name.clone());
-    }
-    keys
-}
-
 #[test]
 fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
     std::env::set_var("GUNBC_ROOT", workspace_root());
@@ -162,8 +123,12 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     )
     .expect("syntactic keys");
 
-    let good_keys = arm_key_list_from_node(&reflection_node);
-    let bad_keys = arm_key_list_from_node(&corrupted);
+    let good_keys =
+        coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &reflection_node)
+            .expect("good keys");
+    let bad_keys =
+        coproduct_reflection::arm_labels_from_marshaled_node(&ctx, &corrupted)
+            .expect("bad keys");
     let syntactic_keys = symbol_list_strings(&syntactic);
 
     assert_eq!(good_keys, syntactic_keys, "baseline keys must match syntactic");
