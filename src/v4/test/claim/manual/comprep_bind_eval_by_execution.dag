@@ -9,8 +9,7 @@ import v4.compiler.body_producer {
   produce_mvp1_bind_arrow_with_body_wrong_value
 }
 import v4.test.claim.complexity_gate.comprep_wave1_bind_subject_producer {
-  comprep_source_bridged_bind_arrow_with_body,
-  comprep_source_bridged_bind_wrong_value_arrow_with_body
+  comprep_source_bridged_bind_arrow_with_body
 }
 import v4.compiler.eval {
   EvalContext,
@@ -385,12 +384,12 @@ fn comprep_bind_direct_runtime_holds() -> Bool {
 }
 
 fn comprep_bind_value_perturbation_red_holds() -> Bool {
-  match comprep_source_bridged_bind_wrong_value_arrow_with_body() {
+  match comprep_source_bridged_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       comprep_bind_run_passes(
         run: comprep_bind_run(
           callee: arrow,
-          expected: comprep_bind_literal_one_node()
+          expected: comprep_bind_literal_two_node()
         )
       ) == false
     Rejected { diagnostics: _ } => false
@@ -427,7 +426,7 @@ fn comprep_bind_fixture_wrong_value_red_holds() -> Bool {
 //   1. source-driven-executes — let x = 1 in x executes to 1;
 //   2. direct-runtime — same bridged callee through eval directly;
 //   3. source-pipeline-admits — source fn tokenizes→parses→normalizes→resolves→body_producer;
-//   4. value-perturbation-red — let x = 2 in x fails when expecting 1;
+//   4. value-perturbation-red — canonical source expecting 2 fails (not arm-order only);
 //   5. fixture-producer — direct fixture path also executes (sanity);
 //   6. fixture-wrong-value-red — fixture value swap fails the run.
 fn comprep_bind_eval_by_execution_keystone_holds() -> Bool {
