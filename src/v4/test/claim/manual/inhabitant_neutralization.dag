@@ -9,11 +9,15 @@ import v4.compiler.ingest { cross_language_compile }
 import v4.compiler.infer { infer }
 import v4.compiler.translate { translate }
 import v4.extdeps.languages.go {
+  go_facts_float64,
+  go_facts_int,
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
   go_int_additive_numeric_inhabitant_node,
+  go_int_inhabitant_node,
   go_mvp1_source_text,
-  go_mvp1_target_model
+  go_mvp1_target_model,
+  go_mvp1_target_model_int64_selection_policy
 }
 import v4.extdeps.languages.python {
   python_int_inhabitant_node,
@@ -99,6 +103,41 @@ fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platfor
     Accepted { value: selected, diagnostics: _ } =>
       selected == go_int_additive_numeric_inhabitant_node()
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// (B) fail-closed discrimination: tiebreak winner is a function of selection_policy, not hardcoded.
+fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model_int64_selection_policy()
+  ) {
+    Accepted { value: selected, diagnostics: _ } =>
+      selected == go_int64_additive_numeric_inhabitant_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Single-candidate platform path: canonical go_std_projection_int resolves without tiebreak.
+fn inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: go_facts_int.std_projection,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: selected, diagnostics: _ } =>
+      selected == go_int_inhabitant_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Fail-closed: std_projection with no declared inhabitant must Reject.
+fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: go_facts_float64.std_projection,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -340,5 +379,26 @@ data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = Bool
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
     function: inhabitant_neutralization_emit_after_neutralize_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_policy_flip_selects_int64_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_platform_baseline_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_unqualified_lookup_rejects_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds
   }
 }
