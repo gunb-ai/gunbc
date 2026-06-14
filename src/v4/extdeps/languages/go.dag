@@ -546,7 +546,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -583,7 +583,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1249,7 +1249,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1286,7 +1286,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
