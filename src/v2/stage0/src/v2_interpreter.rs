@@ -2114,6 +2114,21 @@ fn match_pattern(
 }
 
 // ---------------------------------------------------------------------------
+// v4.std.node coproduct reflection intercept (module-scoped bootstrap seam)
+// ---------------------------------------------------------------------------
+
+const STD_NODE_REFLECTION_FNS: &[&str] = &["coproduct_arm_keys", "syntactic_coproduct_arm_keys"];
+
+fn is_v4_std_node_reflection_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_NODE_REFLECTION_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v4.std.node")
+}
+
+// ---------------------------------------------------------------------------
 // Function call (ExprCall)
 // ---------------------------------------------------------------------------
 
@@ -2131,16 +2146,18 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // R-reflect Phase 2a: compile-time coproduct-arm reflection (intercept-only; stub bodies
-    // self-recurse fail-closed if bypassed — see std/node.dag).
-    match func_name.as_str() {
-        "coproduct_arm_keys" => {
-            return crate::coproduct_reflection::eval_coproduct_arm_keys(ctx, &args);
-        }
-        "syntactic_coproduct_arm_keys" => {
-            return crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args);
-        }
-        _ => {}
+    // R-reflect Phase 2a: compile-time coproduct-arm reflection (intercept-only for
+    // v4.std.node substrate fns; self-recursive .dag stubs trap if bypassed).
+    if is_v4_std_node_reflection_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "coproduct_arm_keys" => {
+                crate::coproduct_reflection::eval_coproduct_arm_keys(ctx, &args)
+            }
+            "syntactic_coproduct_arm_keys" => {
+                crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)
+            }
+            _ => unreachable!("reflection fn set mismatch"),
+        };
     }
 
     // Check for built-in runtime functions

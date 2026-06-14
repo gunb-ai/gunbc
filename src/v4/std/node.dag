@@ -49,12 +49,16 @@ type Behavior
 // substrate compiler builtin once type-name → resolved Disj is expressible in v4 .dag.
 // 🟡 gated — feature:coproduct-reflection-intercept-only — bind gunbc#4863 — dissolve-on-arrival:
 // substrate reflection builtin; forbidden: silent empty-list default ([]) on bypass.
+// Body self-recurses (non-terminating) if the v2 intercept is bypassed — not a typed
+// diagnostic (node.dag is import-free), but never returns [].
 fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
   coproduct_arm_keys(type_name: type_name)
 }
 
 // 🟡 gated — feature:coproduct-reflection-intercept-only — bind gunbc#4863 — dissolve-on-arrival:
 // substrate reflection builtin; forbidden: silent empty-list default ([]) on bypass.
+// Body self-recurses (non-terminating) if the v2 intercept is bypassed — not a typed
+// diagnostic (node.dag is import-free), but never returns [].
 fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
   syntactic_coproduct_arm_keys(type_name: type_name)
 }
