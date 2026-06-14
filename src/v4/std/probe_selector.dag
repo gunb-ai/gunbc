@@ -1,6 +1,8 @@
 // src/v4/std/probe_selector.dag
 // Scope: ProbeSelector kernel (PS-1..7) — ONE select() for host-health + affected-tests.
 // Status: modeled 2026-06-14; ctrl ROADMAP #1612 / L-9 authority.
+// PS-3/PS-4: effective coverage carried as Int via probe_effective_coverage(prior); named
+// ChangeSpace/CoverageRegion carriers deferred until a spine consumer beyond select() earns them.
 
 module v4.std.probe_selector
 
