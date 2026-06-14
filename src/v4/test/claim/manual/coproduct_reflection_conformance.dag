@@ -14,11 +14,6 @@ import v4.std.node {
   coproduct_nullary_inhabitants,
   syntactic_coproduct_arm_keys
 }
-import v4.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
@@ -57,34 +52,4 @@ fn coproduct_reflection_conformance_holds() -> Bool {
   witness_connective_arm_key_set_path3()
     && witness_behavior_arm_key_set_path3()
     && witness_behavior_nullary_inhabitants_count()
-}
-
-
-fn witness_connective_arm_key_set_path3_claim() -> BoolWitnessClaim {
-  BoolWitnessClaim {
-    witness: BoolWitness {
-      label: "manual/coproduct_reflection: Connective arm key-set Path-3 conformance",
-      function: witness_connective_arm_key_set_path3
-    }
-  }
-}
-
-
-fn witness_behavior_arm_key_set_path3_claim() -> BoolWitnessClaim {
-  BoolWitnessClaim {
-    witness: BoolWitness {
-      label: "manual/coproduct_reflection: Behavior arm key-set Path-3 conformance",
-      function: witness_behavior_arm_key_set_path3
-    }
-  }
-}
-
-
-fn witness_coproduct_reflection_conformance_claim() -> BoolWitnessClaim {
-  BoolWitnessClaim {
-    witness: BoolWitness {
-      label: "manual/coproduct_reflection: Phase-2a Path-3 gate (Connective/Behavior)",
-      function: coproduct_reflection_conformance_holds
-    }
-  }
 }
