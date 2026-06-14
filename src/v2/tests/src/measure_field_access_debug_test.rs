@@ -164,6 +164,14 @@ fn byte_size_count(b: ByteSize) -> Nat {
 
 #[test]
 fn money_micros_alias_field_access_resolves_through_expansion() {
+    use v2_compiler::v2_compiler_infer::{
+        expand_type_for_field_access, needs_alias_field_expansion, peel_alias_once_for_field_access,
+    };
+    use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
+    use v2_compiler::v2_compiler_infer_lookup::lookup_field_type_node;
+    use v2_compiler::v2_compiler_infer_resolve::resolve_node;
+    use v2_compiler::v2_std_core::{default_ident_span, make_span, Connective, InferredNode, Node};
+
     let src = r#"
 module m
 
@@ -179,18 +187,89 @@ type Measure<Q, S> {
 type MoneyAmount<S> = Measure<Currency, S>
 type MoneyMicros = MoneyAmount<Micro>
 
-fn money_micros(count: Nat) -> MoneyMicros {
-  MoneyMicros { count: count }
-}
-
 fn money_micros_count(m: MoneyMicros) -> Nat {
   m.count
 }
 "#;
+    let resolved = {
+        use v2_compiler::v2_compiler_compile::{front_end_sources, SourceFile};
+        use v2_compiler::v2_compiler_infer::reconcile;
+        use v2_compiler::v2_compiler_normalize::normalize_graph;
+        let sources = Rc::new(vec![Rc::new(SourceFile {
+            path: "test.dag".to_string(),
+            content: src.to_string(),
+        })]);
+        let frontend = front_end_sources(sources);
+        let graph = frontend
+            .graph
+            .clone()
+            .expect("frontend graph for minimal snippet");
+        let source_indices = frontend
+            .newline_indices
+            .iter()
+            .cloned()
+            .fold(Rc::new(std::collections::HashMap::new()), |acc, index| {
+                v2_compiler::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+            });
+        let norm = normalize_graph(graph, source_indices.clone());
+        reconcile(
+            norm.graph.clone(),
+            source_indices,
+            frontend.intern_table.clone(),
+        )
+    };
+    let module = resolved.modules.first().expect("module");
+    let env = module.type_env.clone();
+    let binding =
+        lookup_type_by_name(env.clone(), "MoneyMicros".to_string()).expect("MoneyMicros binding");
+    eprintln!("MoneyMicros binding: connective={:?} children={} inferred={}", binding.connective, binding.children.len(), binding.inferred.is_some());
+    if let Some(ref inf) = binding.inferred {
+        if let InferredNode::Resolved { node: ref t, .. } = inf.as_ref() {
+            eprintln!("  binding inferred target: name={} connective={:?} children={} inferred={}", t.name, t.connective, t.children.len(), t.inferred.is_some());
+        }
+    }
+    let sp = make_span(0, 0);
+    let base_rt = Rc::new(Node {
+        name: "MoneyMicros".to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span("MoneyMicros".to_string(), sp.clone()),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: binding.clone(),
+        })),
+        return_cardinality: v2_compiler::v2_std_core::Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(v2_compiler::v2_std_core::ExprData::NoExprData),
+    });
+    eprintln!("needs_alias_field_expansion={}", needs_alias_field_expansion(base_rt.clone(), env.clone()));
+    let peeled = peel_alias_once_for_field_access(base_rt.clone(), env.clone(), "m".to_string());
+    eprintln!("peeled: name={} connective={:?} children={} inferred={}", peeled.name, peeled.connective, peeled.children.len(), peeled.inferred.is_some());
+    if let Some(ref inf) = peeled.inferred {
+        if let InferredNode::Resolved { node: ref t, .. } = inf.as_ref() {
+            eprintln!("  peeled inferred target: name={} connective={:?} children={}", t.name, t.connective, t.children.len());
+        }
+    }
+    let expanded = expand_type_for_field_access(base_rt.clone(), env.clone(), "m".to_string());
+    eprintln!("expanded: name={} connective={:?} children={} inferred={}", expanded.name, expanded.connective, expanded.children.len(), expanded.inferred.is_some());
+    let field = lookup_field_type_node(
+        expanded.clone(),
+        "count".to_string(),
+        env.source_indices.clone(),
+    );
     let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
     assert!(
-        msgs.is_empty(),
-        "MoneyMicros alias field access should resolve, got: {msgs:?}"
+        msgs.is_empty() && field.is_some(),
+        "MoneyMicros alias field access should resolve, msgs={msgs:?} field={field:?} expanded={expanded:?}"
     );
 }
 
