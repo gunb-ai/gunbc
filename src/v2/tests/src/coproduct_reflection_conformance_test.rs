@@ -1,7 +1,6 @@
 //! R-reflect Phase 2a: Path-3 key-set conformance on Connective/Behavior by execution.
 
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v2_compiler::v2_interpreter::{self, Value};
@@ -15,32 +14,22 @@ fn v4_source_roots() -> Vec<std::path::PathBuf> {
     vec![workspace_root().join("src/v4")]
 }
 
-fn cert_source_pairs() -> &'static Vec<(String, String)> {
-    static CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    CACHE.get_or_init(|| {
-        let entry_content = std::fs::read_to_string(workspace_root().join(CONFORMANCE_ENTRY))
-            .unwrap_or_else(|e| panic!("read {CONFORMANCE_ENTRY}: {e}"));
-        resolve_imports_transitively_with_source_roots(
-            CONFORMANCE_ENTRY,
-            &entry_content,
-            &v4_source_roots(),
-        )
-        .iter()
-        .map(|s| (s.path.clone(), s.content.clone()))
-        .collect()
-    })
-}
-
 fn cert_sources() -> Vec<Rc<SourceFile>> {
-    cert_source_pairs()
-        .iter()
-        .map(|(path, content)| {
-            Rc::new(SourceFile {
-                path: path.clone(),
-                content: content.clone(),
-            })
+    let entry_content = std::fs::read_to_string(workspace_root().join(CONFORMANCE_ENTRY))
+        .unwrap_or_else(|e| panic!("read {CONFORMANCE_ENTRY}: {e}"));
+    resolve_imports_transitively_with_source_roots(
+        CONFORMANCE_ENTRY,
+        &entry_content,
+        &v4_source_roots(),
+    )
+    .iter()
+    .map(|s| {
+        Rc::new(SourceFile {
+            path: s.path.clone(),
+            content: s.content.clone(),
         })
-        .collect()
+    })
+    .collect()
 }
 
 fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
