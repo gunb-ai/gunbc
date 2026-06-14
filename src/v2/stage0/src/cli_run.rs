@@ -7,7 +7,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
+use crate::std_types::kernel_type_set;
 use crate::v2_compiler_compile;
 use crate::v2_compiler_infer;
 use crate::v2_compiler_infer_env::lookup_type_by_name;
@@ -17,8 +19,6 @@ use crate::v2_compiler_parse;
 use crate::v2_compiler_resolve;
 use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
-use crate::std_node::compiler_recursive_types;
-use crate::std_types::kernel_type_set;
 use crate::v2_rt;
 use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
