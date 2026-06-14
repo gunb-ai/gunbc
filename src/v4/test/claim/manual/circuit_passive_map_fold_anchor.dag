@@ -5,6 +5,7 @@
 module v4.test.claim.manual.circuit_passive_map_fold_anchor
 
 import v4.std.algebra { Cons, Empty }
+import v4.std.collection { List }
 import v4.std.circuit {
   BranchCurrent,
   BranchVoltage,
@@ -23,9 +24,11 @@ import v4.std.circuit {
   TimeSeriesSignal,
   TimeStep,
   capacitor_fold_step,
+  fold_capacitor_transient,
   inductor_fold_step,
   resistor_map_voltage,
 }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.nat { Zero }
 import v4.std.verification {
@@ -84,25 +87,70 @@ fn circuit_anchor_resistor_map_holds() -> Bool {
 }
 
 fn circuit_anchor_capacitor_fold_holds() -> Bool {
-  let stepped = capacitor_fold_step(
+  match capacitor_fold_step(
     element: circuit_anchor_capacitor,
     state: circuit_anchor_cap_initial,
     current: circuit_anchor_current,
     dt: circuit_anchor_dt,
-  )
-  stepped.charge_microcoulombs == 2000
-    && stepped.voltage.microvolts == 1000
+  ) {
+    Accepted { value: stepped, diagnostics: _ } =>
+      stepped.charge_microcoulombs == 2000
+        && stepped.voltage.microvolts == 1000
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data circuit_anchor_current_low: BranchCurrent = BranchCurrent { microamperes: 2 }
+
+data circuit_anchor_current_high: BranchCurrent = BranchCurrent { microamperes: 4 }
+
+data circuit_anchor_current_pair: List<BranchCurrent> = Cons {
+  head: circuit_anchor_current_low,
+  tail: Cons { head: circuit_anchor_current_high, tail: Empty }
+}
+
+fn circuit_anchor_capacitor_fold_chronological_holds() -> Bool {
+  match fold_capacitor_transient(
+    element: circuit_anchor_capacitor,
+    initial: circuit_anchor_cap_initial,
+    currents: circuit_anchor_current_pair,
+    dt: circuit_anchor_dt,
+  ) {
+    Accepted { value: stepped, diagnostics: _ } =>
+      stepped.voltage.microvolts == 3000
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data circuit_anchor_cap_zero_rating: CapacitorFold = CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating { microfarads: 0 }
+}
+
+fn circuit_anchor_capacitor_zero_rating_rejects() -> Bool {
+  match capacitor_fold_step(
+    element: circuit_anchor_cap_zero_rating,
+    state: circuit_anchor_cap_initial,
+    current: circuit_anchor_current,
+    dt: circuit_anchor_dt,
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
 }
 
 fn circuit_anchor_inductor_fold_holds() -> Bool {
-  let stepped = inductor_fold_step(
+  match inductor_fold_step(
     element: circuit_anchor_inductor,
     state: circuit_anchor_ind_initial,
     voltage: circuit_anchor_voltage,
     dt: circuit_anchor_dt,
-  )
-  stepped.flux_microwebers == 4000
-    && stepped.current.microamperes == 2000
+  ) {
+    Accepted { value: stepped, diagnostics: _ } =>
+      stepped.flux_microwebers == 4000
+        && stepped.current.microamperes == 2000
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 data claim_circuit_passive_map_fold_compiles: TestClaim = CompilesClaim {

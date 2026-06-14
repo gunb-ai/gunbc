@@ -4,7 +4,7 @@
 //         SPICE3 netlist semantics via extdeps/formats/spice.dag (consume, don't fork).
 // Status: S1 — TimeSeriesSignal carrier + R/L/C step operators; affine voltage types;
 //         per-tick KCL/KVL solve deferred to S2 (SolveStep named, not inhabited).
-// M9 receipt: attaches to std.algebra (fold_list_right), std.integer (int_add/int_mul),
+// M9 receipt: attaches to std.algebra (fold_list / fold_list_right), std.integer (int_add/int_mul/int_div),
 //             std.collection (List); does not duplicate graph SCC machinery (std.graph /
 //             future S2 solve investigation).
 // Units: fixed-point Int micro-scalars until value-Measure inhabitants land (snappy-stag);
@@ -14,11 +14,14 @@
 module v4.std.circuit
 
 
-import v4.std.algebra { Cons, Empty, fold_list_right, FreeMonoid }
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_right, FreeMonoid }
 import v4.std.collection { List }
-import v4.std.integer { Int, int_add, int_mul, int_negate }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
+import v4.std.integer { Int, int_add, int_div, int_mul, int_negate }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
+
+data circuit_passive_fold_step_locus: Symbol = ^circuit_passive_fold_step
 
 
 // --- Affine voltage (gauge discipline) --------------------------------------
@@ -131,21 +134,31 @@ type CapacitorFold {
   rating: CapacitorRating
 }
 
-// v[t] = v[t-1] + (i·dt)/C — micro-unit fixed point; microfarads must be non-zero.
+// v[t] = v[t-1] + (i·dt)/C — micro-unit fixed point; divide-by-zero is fail-closed via int_div.
 fn capacitor_fold_step(
   element: CapacitorFold,
   state: CapacitorState,
   current: BranchCurrent,
   dt: TimeStep,
-) -> CapacitorState {
+) -> Outcome<CapacitorState> {
   let charge_delta = int_mul(a: current.microamperes, b: dt.dt_microseconds)
   let new_charge = int_add(a: state.charge_microcoulombs, b: charge_delta)
-  let dv = charge_delta / element.rating.microfarads
-  CapacitorState {
-    voltage: PotentialDifference {
-      microvolts: int_add(a: state.voltage.microvolts, b: dv)
-    }
-    charge_microcoulombs: new_charge
+  match int_div(
+    a: charge_delta,
+    b: element.rating.microfarads,
+    at: port_locus(port: circuit_passive_fold_step_locus),
+  ) {
+    Accepted { value: dv, diagnostics: _ } =>
+      Accepted {
+        value: CapacitorState {
+          voltage: PotentialDifference {
+            microvolts: int_add(a: state.voltage.microvolts, b: dv)
+          }
+          charge_microcoulombs: new_charge
+        }
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -154,17 +167,21 @@ fn fold_capacitor_transient(
   initial: CapacitorState,
   currents: List<BranchCurrent>,
   dt: TimeStep,
-) -> CapacitorState {
-  fold_list_right(
+) -> Outcome<CapacitorState> {
+  fold_list(
     xs: currents,
-    empty: initial,
-    snoc: fn(state, current) {
-      capacitor_fold_step(
-        element: element,
-        state: state,
-        current: current,
-        dt: dt,
-      )
+    empty: Accepted { value: initial, diagnostics: None },
+    cons: fn(acc, current) {
+      match acc {
+        Accepted { value: state, diagnostics: _ } =>
+          capacitor_fold_step(
+            element: element,
+            state: state,
+            current: current,
+            dt: dt,
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
     }
   )
 }
@@ -190,14 +207,24 @@ fn inductor_fold_step(
   state: InductorState,
   voltage: BranchVoltage,
   dt: TimeStep,
-) -> InductorState {
+) -> Outcome<InductorState> {
   let flux_delta = int_mul(a: voltage.difference.microvolts, b: dt.dt_microseconds)
   let new_flux = int_add(a: state.flux_microwebers, b: flux_delta)
-  let di = flux_delta / element.rating.microhenries
-  InductorState {
-    current: BranchCurrent {
-      microamperes: int_add(a: state.current.microamperes, b: di)
-    }
-    flux_microwebers: new_flux
+  match int_div(
+    a: flux_delta,
+    b: element.rating.microhenries,
+    at: port_locus(port: circuit_passive_fold_step_locus),
+  ) {
+    Accepted { value: di, diagnostics: _ } =>
+      Accepted {
+        value: InductorState {
+          current: BranchCurrent {
+            microamperes: int_add(a: state.current.microamperes, b: di)
+          }
+          flux_microwebers: new_flux
+        }
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }

@@ -278,6 +278,20 @@ data corpus_ci_gate_row_circuit_inductor_fold: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_circuit_capacitor_fold_chronological: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "circuit S1 capacitor fold_list chronological integration",
+  entry: "src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag",
+  function: "circuit_anchor_capacitor_fold_chronological_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_circuit_capacitor_zero_rating_rejects: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "circuit S1 capacitor int_div fail-closed on zero rating",
+  entry: "src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag",
+  function: "circuit_anchor_capacitor_zero_rating_rejects",
+  expected: ExpectPass
+}
+
 // dsl/-root parametric gate probe — permanent self-owned fixture proving the corpus gate
 // can host dsl/-rooted witnesses end-to-end (--source-root dsl, shard b).
 // NOT a domain model; lives here to prove the gate infrastructure, not to model facts.
@@ -323,10 +337,12 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_circuit_resistor_map,
   corpus_ci_gate_row_circuit_capacitor_fold,
   corpus_ci_gate_row_circuit_inductor_fold,
+  corpus_ci_gate_row_circuit_capacitor_fold_chronological,
+  corpus_ci_gate_row_circuit_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_dsl_root_probe
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "35"
+data claim_witness_corpus_claim_run_row_count: String = "37"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -370,7 +386,9 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_circuit_resistor_map,
   corpus_ci_gate_row_circuit_capacitor_fold,
   corpus_ci_gate_row_circuit_inductor_fold,
+  corpus_ci_gate_row_circuit_capacitor_fold_chronological,
+  corpus_ci_gate_row_circuit_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_dsl_root_probe
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "20"
+data claim_witness_corpus_shard_b_row_count: String = "22"
