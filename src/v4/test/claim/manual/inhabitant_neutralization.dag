@@ -164,7 +164,9 @@ fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
 // HEAVY (~627s): real python source -> parse -> cross_language_compile (bridge -> neutralize -> infer -> emit)
 // on the live parse tree. Each stage feeds the next — NOT independent conjuncts / NOT fixture-fed core.
 // Asserts emitted TS source equals pinned ts_mvp1_source_text (cross-language analogue of #4850 source==).
-// Matrix file stays 0-diff (ChainFailsClosedAtCheck); cell-flip is parent E-10 ruling, not self-flip.
+// The python→ts matrix cell is already ChainProven (cross_language_add_python_to_typescript.dag,
+// proven via chain_status_holds); this e2e is an independent, stronger correct-TS receipt
+// (source == ts_mvp1_source_text, not non-empty), NOT a matrix flip (matrix file 0-diff).
 fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>

@@ -277,9 +277,11 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
 // are identity when std_projection already matches. emit then serializes into `target_model`'s surface.
 //
 // SCOPE: combinator realized + wired; hermetic receipt in manual/inhabitant_neutralization.dag.
-// The python→ts cross_language_emit_matrix row stays ChainFailsClosedAtCheck until
-// cross_language_add_python_to_typescript_chain_status_holds exercises this full composition on the
-// real parse tree (~627s) — single matrix authority unchanged by hermetic slice alone.
+// The python→ts cross_language_emit_matrix row is ChainProven (matrix authority
+// cross_language_add_python_to_typescript.dag), proven on the real parse tree by
+// cross_language_add_python_to_typescript_chain_status_holds (~627s). The hermetic slice and
+// python_to_ts_cross_language_compile_e2e_holds here are independent corroborating receipts of
+// this combinator — they do not change the single matrix authority (matrix file 0-diff).
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
