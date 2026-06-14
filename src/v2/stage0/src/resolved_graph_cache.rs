@@ -9,6 +9,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v2_compiler_compile::SourceFile;
 use crate::v2_compiler_infer_items::ResolvedGraph;
@@ -101,6 +102,21 @@ pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
         digest,
         v2_rt::atom_identity_hash(KERNEL_INTERN_SEED_VERSION.to_string()),
     )
+}
+
+fn unique_temp_path(final_path: &Path) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    final_path.with_extension(format!("{}.{}.tmp", std::process::id(), nanos))
+}
+
+fn reclaim_stale_temp(final_path: &Path) {
+    let legacy = final_path.with_extension("tmp");
+    if legacy.exists() {
+        let _ = fs::remove_file(&legacy);
+    }
 }
 
 fn artifact_path(cache_root: &Path, subject_digest: &str) -> PathBuf {
@@ -212,7 +228,8 @@ pub fn write(
         serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
     let content_digest = payload_content_digest(&payload_bytes);
 
-    let temp_path = final_path.with_extension("tmp");
+    reclaim_stale_temp(&final_path);
+    let temp_path = unique_temp_path(&final_path);
     {
         let mut file = OpenOptions::new()
             .write(true)
@@ -236,7 +253,7 @@ pub fn write(
     }
     match fs::rename(&temp_path, &final_path) {
         Ok(()) => Ok(CacheWriteOutcome::Written),
-        Err(e) if final_path.exists() => {
+        Err(_) if final_path.exists() => {
             let _ = fs::remove_file(&temp_path);
             Ok(CacheWriteOutcome::AlreadyExists)
         }
