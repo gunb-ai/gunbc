@@ -2712,9 +2712,14 @@ fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) 
     once
   } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
     peel_alias_once_for_field_access(n: once, env: env, module_name: module_name)
-  } else {
-    once
-  }
+  } else if once.inferred != none {
+    match once.inferred {
+      Present { value: Resolved { node: target } } =>
+        if (target.connective == Conj || target.connective == Disj) { once }
+        else { peel_alias_once_for_field_access(n: target, env: env, module_name: module_name) }
+      _ => once
+    }
+  } else { once }
 }
 
 fn structural_from_expanded_type(normed: Node) -> Node {
@@ -2744,14 +2749,12 @@ fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> N
 
 fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<Node>? {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
-    Present { value: decl } =>
-      let to_expand = if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
-        match decl.inferred {
-          Present { value: Resolved { node: target } } => target
-          _ => decl
-        }
-      } else { decl }
-      let expanded = expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name)
+    Present { value: _decl } =>
+      let expanded = expand_type_for_field_access(
+        n: nominal_type_ref(name: type_name),
+        env: scope.type_env,
+        module_name: scope.module_name
+      )
       if expanded.connective == Conj && expanded.children |> count > 0 {
         Present { value: expanded.children }
       } else { none }

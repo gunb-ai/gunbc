@@ -986,6 +986,7 @@ pub fn resolve_node_bounded(
                 {
                     let type_name = authored_name(env.clone(), n.clone());
                     let decl = resolve_generic_use_decl(env.clone(), n.clone());
+                    let decl_name = authored_name(env.clone(), decl.clone());
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
                     let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {

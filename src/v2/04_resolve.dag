@@ -452,6 +452,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
+    let decl_name = authored_name(env: env, node: decl)
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
@@ -471,7 +472,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
     if is_parameterized_alias {
       let alias_target = match decl.inferred {
-        Present { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
+        Present { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: env.source_indices)
         _ => n
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
@@ -481,7 +482,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
-        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: env.source_indices)
       )
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let expanded_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }

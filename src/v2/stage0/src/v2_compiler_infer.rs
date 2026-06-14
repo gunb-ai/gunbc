@@ -5266,6 +5266,20 @@ pub fn peel_alias_once_for_field_access(
                     n = __tco_0;
                     continue;
                 }
+            } else if (once.inferred.clone() != None) {
+                match once.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        if ((target.connective.clone() == Connective::Conj)
+                            || (target.connective.clone() == Connective::Disj))
+                        {
+                            break once.clone();
+                        } else {
+                            n = target.clone();
+                            continue;
+                        }
+                    }
+                    _ => break once.clone(),
+                }
             } else {
                 break once.clone();
             }
