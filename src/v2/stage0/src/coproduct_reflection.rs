@@ -549,9 +549,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
         })?;
     match connective {
         Value::Variant {
-            variant_name: conn,
-            fields: cf,
-            ..
+            variant_name: conn, ..
         } if ctx.resolve(*conn) == "Conj" => {
             let edge_items =
                 crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
