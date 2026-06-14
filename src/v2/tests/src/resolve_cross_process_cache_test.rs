@@ -221,6 +221,44 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Falsifier 2b: poisoned embedded subject under valid path → RejectedHit{BackendKeyMalformed}.
+#[test]
+fn poisoned_hit_rejected_on_subject_digest_mismatch() {
+    let dir = temp_dir("poison-subject");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let mut poisoned =
+        build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    // Corrupt one byte of the embedded 16-char subject digest in the on-wire header.
+    let subject_off = 8 + 4;
+    poisoned[subject_off] ^= 0xff;
+    write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
+
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+
+    with_cache_env(&cache_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let (recomputed, si2) =
+            resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
+        let ctx = make_eval_context(&recomputed, si2);
+        assert_eq!(
+            outcome_tag(&run_claim(&ctx, "witness_a_true")),
+            "PASS",
+            "subject poison must fall through to fresh resolve"
+        );
+    });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Falsifier 3: concurrent writers on shared FS — WriteOnce + WriteThenRename, no torn read.
 #[test]
 fn concurrent_resolve_write_once_no_torn_read() {
