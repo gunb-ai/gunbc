@@ -2743,11 +2743,16 @@ pub fn infer_expr(
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
                 let base_rt = resolved_type(base_typed.clone());
-                let resolved_base = expand_type_for_field_access(
-                    base_rt.clone(),
-                    scope.type_env.clone(),
-                    scope.module_name.clone(),
-                );
+                let resolved_base =
+                    if is_deferred_field_access_base(base_rt.clone(), scope.type_env.clone()) {
+                        base_rt.clone()
+                    } else {
+                        expand_type_for_field_access(
+                            base_rt.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
+                        )
+                    };
                 let resolved_base_is_error = if (resolved_base.inferred.clone() != None) {
                     is_compiler_error(resolved_base.inferred.clone().clone().unwrap())
                 } else {
@@ -2794,13 +2799,10 @@ pub fn infer_expr(
                                 })
                             }
                             None => {
-                                let base_is_type_var = if (resolved_base.inferred.clone() != None) {
-                                    is_type_variable(
-                                        resolved_base.inferred.clone().clone().unwrap(),
-                                    )
-                                } else {
-                                    false
-                                };
+                                let base_is_type_var = is_deferred_field_access_base(
+                                    resolved_base.clone(),
+                                    scope.type_env.clone(),
+                                );
                                 if base_is_type_var {
                                     {
                                         let fa_texpr = make_named_expr_node(
@@ -5173,42 +5175,69 @@ pub fn infer_variant_constructor_call(
     }
 }
 
-pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if ((n.connective.clone() == Connective::Conj) || (n.connective.clone() == Connective::Disj)) {
-        false
+pub fn is_deferred_field_access_base(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if ((n.inferred.clone() != None) && is_type_variable(n.inferred.clone().clone().unwrap())) {
+        true
     } else {
         if (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0))
+            && ((n.children.clone().len() as i64) == 0))
             && (n.inferred.clone() == None))
         {
-            is_user_generic_use_site(n.clone(), env.clone())
+            {
+                let name = authored_name_at(env.source_indices.clone(), n.clone());
+                match lookup_type_by_name(env.clone(), name) {
+                    Some(decl) => ((decl.params.clone().len() as i64) > 0),
+                    None => false,
+                }
+            }
         } else {
-            match lookup_type_for(env.clone(), n.clone()) {
-                Some(binding) => {
-                    if ((binding.connective.clone() == Connective::Conj)
-                        || (binding.connective.clone() == Connective::Disj))
-                    {
-                        ((n.connective.clone() == Connective::NoConnective)
-                            && ((n.children.clone().len() as i64) == 0))
-                    } else {
-                        if (((binding.connective.clone() == Connective::NoConnective)
-                            && ((binding.children.clone().len() as i64) == 0))
-                            && (binding.inferred.clone() != None))
+            false
+        }
+    }
+}
+
+pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if is_deferred_field_access_base(n.clone(), env.clone()) {
+        false
+    } else {
+        if ((n.connective.clone() == Connective::Conj)
+            || (n.connective.clone() == Connective::Disj))
+        {
+            false
+        } else {
+            if (((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) > 0))
+                && (n.inferred.clone() == None))
+            {
+                is_user_generic_use_site(n.clone(), env.clone())
+            } else {
+                match lookup_type_for(env.clone(), n.clone()) {
+                    Some(binding) => {
+                        if ((binding.connective.clone() == Connective::Conj)
+                            || (binding.connective.clone() == Connective::Disj))
                         {
-                            true
+                            ((n.connective.clone() == Connective::NoConnective)
+                                && ((n.children.clone().len() as i64) == 0))
                         } else {
-                            if ((binding.connective.clone() == Connective::NoConnective)
-                                && ((binding.children.clone().len() as i64) > 0))
+                            if (((binding.connective.clone() == Connective::NoConnective)
+                                && ((binding.children.clone().len() as i64) == 0))
+                                && (binding.inferred.clone() != None))
                             {
-                                (is_user_generic_use_site(binding.clone(), env.clone())
-                                    || (binding.inferred.clone() != None))
+                                true
                             } else {
-                                false
+                                if ((binding.connective.clone() == Connective::NoConnective)
+                                    && ((binding.children.clone().len() as i64) > 0))
+                                {
+                                    (is_user_generic_use_site(binding.clone(), env.clone())
+                                        || (binding.inferred.clone() != None))
+                                } else {
+                                    false
+                                }
                             }
                         }
                     }
+                    None => false,
                 }
-                None => false,
             }
         }
     }
@@ -5264,13 +5293,17 @@ pub fn expand_type_for_field_access(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
-    {
-        let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
-        } else {
-            n.clone()
-        };
-        structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled))
+    if is_deferred_field_access_base(n.clone(), env.clone()) {
+        n.clone()
+    } else {
+        {
+            let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+                peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
+            } else {
+                n.clone()
+            };
+            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled))
+        }
     }
 }
 
@@ -5330,9 +5363,12 @@ pub fn infer_record_lit(
                     scope.clone(),
                 ) {
                     Some(fields) => fields.clone(),
-                    None => match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
-                        Some(fields) => fields.clone(),
-                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                    None => match expected.clone() {
+                        Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                        None => match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
+                            Some(fields) => fields.clone(),
+                            None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                        },
                     },
                 },
             },
