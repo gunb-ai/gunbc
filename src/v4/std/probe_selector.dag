@@ -67,8 +67,12 @@ type SuspectedCausePrior<C> {
   hypothesis: C
 }
 
-// 🟢 coproduct dissolution — TERMINAL. Closed host-health burn-in hypothesis set at the
-// prior boundary (ctrl ROADMAP #1612 PS-0); arms are irreducible suspected-cause tags.
+// 🟡 gated — feature:srv1-srv2-operator-inventory + compute-fabric-fault-hypothesis-catalog —
+// bind ctrl ROADMAP #1612 PS-2 / operator srv1/srv2 inventory session (§srv1/srv2 grounding) —
+// dissolve-on-arrival: replace enum-frozen HostHealthHypothesis arms with
+// observation-sharpened catalog derived from operator inventory + compute_fabric/sensor
+// fault-hypothesis catalog (standoff→cracked-MLCC→VDDQ prior becomes catalog-derived);
+// forbidden: permanent static fault-hypothesis roster ignoring observations (PS-2 falsifier).
 type HostHealthHypothesis
   = HostHealthHypothesisReachability
   | HostHealthHypothesisStandoffCapVddq
