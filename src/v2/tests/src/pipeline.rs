@@ -279,7 +279,8 @@ fn pipe_separated_multi_variant_unchanged() {
 // Newly reachable path: a leading-pipe MULTI-variant list resolves as a normal sum.
 #[test]
 fn leading_pipe_multi_variant_resolves() {
-    let source = "module lp_multi\ntype Color = | Red | Green | Blue\nfn pick() -> Color { Green }\n";
+    let source =
+        "module lp_multi\ntype Color = | Red | Green | Blue\nfn pick() -> Color { Green }\n";
     assert_no_diagnostics(&compile_dag(source));
 }
 
