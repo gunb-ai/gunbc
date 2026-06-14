@@ -173,6 +173,15 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         }
         for (entry, f, expected) in witnesses {
             let got = cached_verdict(&roots, entry, f, &order_cache);
+            // BOUNDARY (crit-1, ties to crit-6): this asserts VERDICT equivalence (cached
+            // outcome_tag == cold-oracle outcome_tag), which proxies full ResolvedGraph
+            // byte-identity ONLY under resolve-determinism + the current Bool/verdict-only
+            // consumption. A verdict-equal but byte-different cached graph would pass here
+            // today yet violate crit-6 once emit/lower consume the cached ResolvedGraph.
+            // Named follow-up: add a canonical-serialized graph byte-compare when emit/lower
+            // inhabit the corpus (requires canonical graph serialization first — today's serde
+            // HashMap source_indices order is non-canonical, so a naive byte-compare would
+            // false-fail).
             assert_eq!(
                 got, expected,
                 "cached verdict for {f} diverged from cold oracle in order {order:?}"
