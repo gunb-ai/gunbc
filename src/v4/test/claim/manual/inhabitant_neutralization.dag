@@ -573,11 +573,41 @@ fn inhabitant_neutralization_python_to_go_translate_reject_reason_symbol() -> Ou
 }
 
 fn inhabitant_neutralization_python_to_go_emit_reject_no_target_candidate() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(expected: NoTargetCandidate)
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == discriminant(v: NoTargetCandidate {})
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn inhabitant_neutralization_python_to_go_emit_reject_structural_mismatch() -> Bool {
-  inhabitant_neutralization_python_to_go_emit_reject_reason(expected: StructuralMismatch)
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == discriminant(v: StructuralMismatch {})
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn inhabitant_neutralization_python_to_go_emit_reject_ambiguous_target_candidate() -> Bool {
