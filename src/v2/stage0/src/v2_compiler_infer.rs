@@ -5306,25 +5306,39 @@ pub fn expand_type_for_field_access(
     }
 }
 
-// A record (Conj/Disj) field whose resolved TYPE is still a bare type variable —
-// i.e. an unsubstituted generic param. Used to fail closed when a parametric
-// alias chain dropped the substitution that this field needs.
-pub fn record_field_type_is_unresolved_param(field: Rc<Node>) -> bool {
+// A record (Conj/Disj) field whose resolved TYPE is still an unsubstituted
+// generic param — a bare leaf that is either an explicit TypeVariable or a name
+// that does not resolve to any declared type in this env (an alias-dropped param
+// such as `T`/`S`/`U`). Used to fail closed when a parametric alias chain dropped
+// the substitution that this field needs. A concrete field type (Nat, Int, ...)
+// resolves via lookup_type_by_name, so it is never flagged.
+pub fn record_field_type_is_unresolved_param(field: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     match crate::v2_compiler_infer_lookup::product_field_result_type(field.clone()) {
-        Some(ft) => match ft.inferred.clone() {
-            Some(inf) => is_type_variable(inf.clone()),
-            None => false,
-        },
+        Some(ft) => {
+            if (((ft.connective.clone() == Connective::NoConnective)
+                && ((ft.children.clone().len() as i64) == 0)))
+            {
+                match ft.inferred.clone() {
+                    Some(inf) => is_type_variable(inf.clone()),
+                    None => match lookup_type_by_name(env.clone(), ft.name.clone()) {
+                        Some(_) => false,
+                        None => true,
+                    },
+                }
+            } else {
+                false
+            }
+        }
         None => false,
     }
 }
 
-pub fn record_has_unresolved_param_field(record: Rc<Node>) -> bool {
+pub fn record_has_unresolved_param_field(record: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     record
         .children
         .clone()
         .iter()
-        .any(|f| record_field_type_is_unresolved_param(f.clone()))
+        .any(|f| record_field_type_is_unresolved_param(f.clone(), env.clone()))
 }
 
 // Multi-hop alias field-access (G3): follow the alias chain to the structural
@@ -5394,14 +5408,14 @@ pub fn expand_alias_chain_for_field_access(
             structural.connective.clone(),
             structural.children.clone().len(),
             lossy,
-            record_has_unresolved_param_field(structural.clone()),
+            record_has_unresolved_param_field(structural.clone(), env.clone()),
             fields,
         );
     }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
-        if (lossy && record_has_unresolved_param_field(structural.clone())) {
+        if (lossy && record_has_unresolved_param_field(structural.clone(), env.clone())) {
             n.clone()
         } else {
             structural.clone()
