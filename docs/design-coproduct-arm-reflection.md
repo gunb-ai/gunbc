@@ -247,12 +247,16 @@ lean on.
 **The gate (REQUIRED).** For every gated coproduct, at least one of the
 following *path-distinct* witnesses must hold by execution:
 
-- **Path 3 — syntactic Disj-children count (primary, required for non-roster
-  coproducts).** A parser/syntactic derivation of the arm set — counting the
-  `|`-separated arms at the grammar level, *before* the shared resolver the
-  reflection builtin uses — compared against `coproduct_arm_keys(T)`. Because it
-  is computed on a distinct (syntactic) path, a resolver/lowering bug in the
-  reflection builtin does not corrupt it. This is the genuine second factor.
+- **Path 3 — syntactic arm key-set (primary, required for non-roster
+  coproducts).** A parser/syntactic derivation of the arm **labels** — reading the
+  `|`-separated arm names at the grammar level, *before* the shared resolver the
+  reflection builtin uses — and **set-comparing** them to `coproduct_arm_keys(T)`.
+  Because it is computed on a distinct (syntactic) path, a resolver/lowering bug
+  in the reflection builtin does not corrupt it. A cardinality count alone would
+  **not** suffice: `|children| == |keys|` passes falsely on arity-preserving
+  relabel (wrong key, right count) — squarely inside class-(i) mechanism drift.
+  Key-set equality catches drop, add, and relabel. This is the genuine second
+  factor.
 - **Cross-generation check (where v3 covers the carrier).** For carriers the v3
   seed reflects, `v4 coproduct_arm_keys(Behavior) == v3 reflect_behavior_list`
   arm set. Two generations, two independent code paths — a strong factor for the
@@ -379,7 +383,7 @@ anticipated "proper mechanism," not its repeal.
 - **Phase 2a (gated).** Build `CoproductArm` + `coproduct_arms` /
   `coproduct_arm_keys` / `coproduct_nullary_inhabitants` in `std/node.dag` (new
   v4 substrate) + the compiler resolution support, and the **corrected §5.2
-  conformance gate** (Path 3 syntactic count + cross-generation where v3 covers).
+  conformance gate** (Path 3 syntactic arm key-set + cross-generation where v3 covers).
   Inhabit on real coproducts first (`Connective`/`Behavior`) with the gate green
   by execution before any consumer migrates (facts-before-abstraction).
 - **Phase 2b (gated, after 2a green).** Add `common_field_projection` (the
@@ -400,11 +404,13 @@ anticipated "proper mechanism," not its repeal.
    common-mode with the reflection builtin (both resolve `T` to the same parsed
    `Disj` node), and the v3 reflection posture is the gate being *built*, not a
    pre-existing factor. **REQUIRED:** the gate's independent factor is the
-   **syntactic Disj-children count (Path 3)** for every gated coproduct, and/or
-   the **cross-generation check** (`v4 coproduct_arm_keys == v3
-   reflect_behavior_list`) where v3 covers the carrier; rosters additionally use
-   the frontier-discovery equality. Rewritten in §5.2. Exhaustiveness may run as
-   a consistency signal but does not discharge independence.
+   **syntactic arm key-set (Path 3)** — `|`-separated arm labels from the parse
+   tree set-compared to `coproduct_arm_keys(T)`, not a cardinality count — for
+   every gated coproduct, and/or the **cross-generation check** (`v4
+   coproduct_arm_keys == v3 reflect_behavior_list`) where v3 covers the carrier;
+   rosters additionally use the frontier-discovery equality. Rewritten in §5.2.
+   Exhaustiveness may run as a consistency signal but does not discharge
+   independence.
 2. **Common-field projection — RESOLVED: split to Phase-2b.** Land C1 + the
    corrected gate on `Connective`/`Behavior` green-by-execution first; add
    `common_field_projection` after. Reflected in §4.2 / §6 / §9.
