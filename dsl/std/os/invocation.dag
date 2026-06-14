@@ -1,17 +1,5 @@
 // std/os/invocation.dag — open invocation-surface model for the §10 execution-contract layer.
-//
-// Scope: the stable contract an application binds to, modeled OPEN over invocation paradigms so the
-// system can speak ANY (real, cited) syscall table / runtime surface — a new OS/runtime is a DATA
-// inhabitation, never a model edit (the omni invariant). Slice 1 ships the SyscallAbi paradigm,
-// inhabited by Linux x86-64 (extdeps/runtime/syscalls/linux.dag). LibraryApiBoundary (Windows/macOS),
-// CapabilityInvocation (microkernels), and ImportResolution (WASM/WASI) land as StableInvocationSurface
-// coproduct arms ONLY when a real cited inhabitant exists (facts-first) — so the coproduct is born
-// multi-variant in Slice 2, NOT as a single-variant alias here.
-//
-// This file uses only Int / NonEmptyStr / List / records — it does NOT import the distribution enums
-// (UbuntuDistribution et al.), which do not resolve on v2 yet; binding to the OS catalog happens only
-// at the (gated) attach step in a later slice.
-//
+// Scope: the stable contract a binary binds to, modeled OPEN over invocation paradigms (Slice 1: SyscallAbi).
 // Anchor: per-inhabitant spec URLs live with the inhabiting data (extdeps/runtime/*).
 
 module std.os.invocation
@@ -30,5 +18,5 @@ type SyscallEntry {
 // contract (e.g. Linux). `convention` names the ABI modeled in extdeps/runtime/abi/*.dag.
 type SyscallAbi {
   table: List<SyscallEntry>
-  convention: NonEmptyStr
+  convention: NonEmptyStr  // 🟡 feature:sysv-amd64-abi-module
 }
