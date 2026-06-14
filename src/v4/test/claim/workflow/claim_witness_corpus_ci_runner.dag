@@ -267,6 +267,13 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_analog_passive_rlc_step: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "analog passive rlc map fold step",
+  entry: "dsl/test/claim/analog_passive_rlc_step.dag",
+  function: "analog_passive_rlc_step_witness",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,

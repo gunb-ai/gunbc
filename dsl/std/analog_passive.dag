@@ -1,0 +1,172 @@
+// std/analog_passive.dag — R/L/C passive elements as map/fold step operators.
+//
+// M9 DFS receipt:
+//   - Resistor: stateless MAP (Ohm's law v = R·i) — freq-flat, no memory.
+//   - Capacitor / Inductor: stateful FOLD over dt (Euler integration).
+//   - Affine voltage types distinguish points (node potential) from vectors
+//     (differences); ground reference is the implicit affine origin.
+//   - Reuses std.algebra map/fold iteration over TimeSeriesSignal samples.
+//
+// Spice alignment (v4.extdeps.formats.spice Component passive variants):
+//   Resistor | Capacitor | Inductor — semantic grounding for netlist elements;
+//   spice.dag carries syntax (nodes, SpiceValue lexeme); this file carries
+//   the physics step operators those elements denote in transient simulation.
+//
+// Authority: Ohm's law and constitutive relations for lumped passives
+// (SPICE3 Version 3f5 User's Guide — resistor, capacitor, inductor elements).
+
+module std.analog_passive
+
+import std.float { Float }
+import std.time_series_signal {
+  TimeSeriesSample,
+  TimeSeriesSignal,
+  time_series_sample,
+  time_series_signal,
+}
+import std.types { List }
+
+// --- Affine voltage types ---------------------------------------------------
+//
+// Electric potential is an affine space: absolute values require a reference
+// (ground); only differences are translation-invariant vectors.
+// `AffineVoltage` models a node potential (point); `VoltageDifference` models
+// a potential drop or rise (vector).
+
+type AffineVoltage {
+  volts: Float
+}
+
+type VoltageDifference {
+  delta_volts: Float
+}
+
+fn affine_voltage(volts: Float) -> AffineVoltage {
+  AffineVoltage { volts: volts }
+}
+
+fn affine_voltage_volts(v: AffineVoltage) -> Float {
+  v.volts
+}
+
+fn voltage_difference(delta_volts: Float) -> VoltageDifference {
+  VoltageDifference { delta_volts: delta_volts }
+}
+
+fn voltage_difference_delta(d: VoltageDifference) -> Float {
+  d.delta_volts
+}
+
+fn affine_voltage_add(v: AffineVoltage, d: VoltageDifference) -> AffineVoltage {
+  AffineVoltage { volts: v.volts + d.delta_volts }
+}
+
+fn affine_voltage_delta(from: AffineVoltage, to: AffineVoltage) -> VoltageDifference {
+  VoltageDifference { delta_volts: to.volts - from.volts }
+}
+
+// --- Passive step operator carriers -----------------------------------------
+//
+// Step records carry parameters; sample/step fns are the executable operators.
+
+type ResistorMapStep {
+  resistance_ohms: Float
+}
+
+type CapacitorFoldStep {
+  capacitance_farads: Float
+  dt_seconds: Float
+}
+
+type InductorFoldStep {
+  inductance_henries: Float
+  dt_seconds: Float
+}
+
+// --- Pointwise step operators (single time step) ----------------------------
+
+// Resistor MAP: v = R · i (stateless; no dt).
+fn resistor_map_step(step: ResistorMapStep, current_amperes: Float) -> Float {
+  step.resistance_ohms * current_amperes
+}
+
+// Capacitor FOLD: v[n] = v[n-1] + (i[n] · dt) / C.
+fn capacitor_fold_step(
+  step: CapacitorFoldStep,
+  prev_voltage: Float,
+  current_amperes: Float
+) -> Float {
+  prev_voltage + (current_amperes * step.dt_seconds) / step.capacitance_farads
+}
+
+// Inductor FOLD: i[n] = i[n-1] + (v[n] · dt) / L.
+fn inductor_fold_step(
+  step: InductorFoldStep,
+  prev_current: Float,
+  voltage_volts: Float
+) -> Float {
+  prev_current + (voltage_volts * step.dt_seconds) / step.inductance_henries
+}
+
+// --- Signal-level operators (map / fold over TimeSeriesSignal) --------------
+
+type PassiveFoldAcc<T> {
+  state: Float
+  samples: List<TimeSeriesSample<T>>
+}
+
+fn resistor_map_signal(
+  step: ResistorMapStep,
+  current: TimeSeriesSignal<Float>
+) -> TimeSeriesSignal<Float> {
+  let samples = current.samples
+    |> map(s => time_series_sample(
+      step_index: s.step_index,
+      value: resistor_map_step(step: step, current_amperes: s.value)
+    ))
+  time_series_signal(samples: samples, dt_seconds: current.dt_seconds)
+}
+
+fn capacitor_fold_signal(
+  step: CapacitorFoldStep,
+  initial_voltage: Float,
+  current: TimeSeriesSignal<Float>
+) -> TimeSeriesSignal<Float> {
+  let folded = current.samples |> fold(
+    init: PassiveFoldAcc<Float> { state: initial_voltage, samples: [] },
+    f: fn(acc, s) {
+      let v = capacitor_fold_step(
+        step: step,
+        prev_voltage: acc.state,
+        current_amperes: s.value
+      )
+      PassiveFoldAcc<Float> {
+        state: v,
+        samples: list_push(acc.samples, time_series_sample(step_index: s.step_index, value: v))
+      }
+    }
+  )
+  time_series_signal(samples: folded.samples, dt_seconds: current.dt_seconds)
+}
+
+fn inductor_fold_signal(
+  step: InductorFoldStep,
+  initial_current: Float,
+  voltage: TimeSeriesSignal<Float>
+) -> TimeSeriesSignal<Float> {
+  let folded = voltage.samples |> fold(
+    init: PassiveFoldAcc<Float> { state: initial_current, samples: [] },
+    f: fn(acc, s) {
+      let i = inductor_fold_step(
+        step: step,
+        prev_current: acc.state,
+        voltage_volts: s.value
+      )
+      PassiveFoldAcc<Float> {
+        state: i,
+        samples: list_push(acc.samples, time_series_sample(step_index: s.step_index, value: i))
+      }
+    }
+  )
+  time_series_signal(samples: folded.samples, dt_seconds: voltage.dt_seconds)
+}

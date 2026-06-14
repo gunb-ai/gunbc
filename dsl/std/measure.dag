@@ -73,6 +73,8 @@ type Quantity =
   | Information
   | DataRate
   | Frequency
+  | ElectricPotential
+  | ElectricCurrent
   | Count
   | Currency
 
@@ -185,6 +187,14 @@ type ByteSize = Measure<Memory, One>
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
 type Hertz = Measure<Frequency, One>
 
+// SI volt — electric potential at unit scale (10^0). Affine semantics and
+// simulation magnitudes live in std.analog_passive; this names the dimension
+// for grounding/emission (dissolves spice.dag SpiceApproxVoltage / T-3 Volt gap).
+type Volt = Measure<ElectricPotential, One>
+
+// SI ampere — electric current at unit scale (10^0).
+type SiAmpere = Measure<ElectricCurrent, One>
+
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One>
 
@@ -254,4 +264,20 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   t.count
+}
+
+fn volt(count: Nat) -> Volt {
+  Volt { count: count }
+}
+
+fn volt_count(v: Volt) -> Nat {
+  v.count
+}
+
+fn si_ampere(count: Nat) -> SiAmpere {
+  SiAmpere { count: count }
+}
+
+fn si_ampere_count(a: SiAmpere) -> Nat {
+  a.count
 }
