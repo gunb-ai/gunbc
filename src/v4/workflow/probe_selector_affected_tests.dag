@@ -12,6 +12,7 @@ import v4.std.probe_selector {
   DiagnosticCapabilityFacts,
   SuspectedCausePrior,
   diagnostic_capability_ci_in_repo,
+  host_health_hypothesis_reachability,
   probe_ci_unbounded_budget,
   probe_select_affected_test_claims,
   probe_select_host_health
@@ -66,7 +67,7 @@ fn wf_affected_tests_one_kernel_ci_narrow_holds() -> Bool {
 
 fn wf_affected_tests_one_kernel_host_health_holds() -> Bool {
   let selected = probe_select_host_health(
-    prior: SuspectedCausePrior { hypothesis: "reachability" },
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_reachability },
     budget: CostBudget { max_cost: 100 },
     available: diagnostic_capability_ci_in_repo()
   )

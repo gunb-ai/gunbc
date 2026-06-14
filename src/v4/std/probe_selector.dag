@@ -71,8 +71,17 @@ type CoverageRegion<C> {
   region: C
 }
 
+type HostHealthHypothesis
+  = HostHealthHypothesisReachability
+  | HostHealthHypothesisStandoffCapVddq
+
+type HostHealthProbeKind
+  = HostHealthProbeDockerReachability
+  | HostHealthProbeEdacSummary
+  | HostHealthProbeEccWatchedStress
+
 type ProbePrior
-  = HostHealthPrior { hypothesis: String }
+  = HostHealthPrior { hypothesis: HostHealthHypothesis }
   | CiAffectedPrior { affected: AffectedSet }
   | CiRerunPrior { frontier: List<Node> }
   | CiFailClosedPrior {}
@@ -103,6 +112,10 @@ data ci_probe_requires_none: List<DiagnosticInterfaceKind> = []
 
 data probe_ci_unbounded_budget: CostBudget = CostBudget { max_cost: 1000000 }
 
+data host_health_hypothesis_reachability: HostHealthHypothesis = HostHealthHypothesisReachability
+data host_health_hypothesis_standoff_cap_vddq: HostHealthHypothesis = HostHealthHypothesisStandoffCapVddq
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind gunbc#4759 / R-reflect coproduct-arm reflection — dissolve-on-arrival: substrate-derived DiagnosticInterfaceKind variant equality via coproduct reflection; forbidden: parallel hand-matched DiagnosticInterfaceKind arm equality outside this query.
 fn diagnostic_interface_kind_eq(
   left: DiagnosticInterfaceKind,
   right: DiagnosticInterfaceKind
@@ -205,25 +218,28 @@ fn probe_effective_coverage(entry: ProbeCatalogEntry, prior: ProbePrior) -> Int 
 
 fn host_probe_effective_coverage_for_hypothesis(
   entry: ProbeCatalogEntry,
-  hypothesis: String
+  hypothesis: HostHealthHypothesis
 ) -> Int {
   let base = probe_catalog_entry_coverage(entry: entry)
-  if hypothesis == "reachability" {
-    if probe_catalog_entry_label(entry: entry) == "docker-reachability" {
-      base
-    } else {
-      0
-    }
-  } else {
-    if hypothesis == "standoff-cap-vddq" {
-      if probe_catalog_entry_label(entry: entry) == "ecc-watched-stress" {
+  match hypothesis {
+    HostHealthHypothesisReachability =>
+      if probe_catalog_entry_matches_host_probe(
+        entry: entry,
+        kind: HostHealthProbeDockerReachability
+      ) {
         base
       } else {
         0
       }
-    } else {
-      base
-    }
+    HostHealthHypothesisStandoffCapVddq =>
+      if probe_catalog_entry_matches_host_probe(
+        entry: entry,
+        kind: HostHealthProbeEccWatchedStress
+      ) {
+        base
+      } else {
+        0
+      }
   }
 }
 
@@ -599,8 +615,36 @@ fn probe_catalog_contains_label(
   ) > 0
 }
 
+fn host_health_probe_canonical_entry(kind: HostHealthProbeKind) -> ProbeCatalogEntry {
+  match kind {
+    HostHealthProbeDockerReachability => host_probe_docker_reachability
+    HostHealthProbeEdacSummary => host_probe_edac_summary
+    HostHealthProbeEccWatchedStress => host_probe_ipmi_ecc_stress
+  }
+}
+
+fn probe_catalog_entry_matches_host_probe(
+  entry: ProbeCatalogEntry,
+  kind: HostHealthProbeKind
+) -> Bool {
+  let canonical = host_health_probe_canonical_entry(kind: kind)
+  entry.coverage == canonical.coverage && entry.cost == canonical.cost
+}
+
+fn probe_catalog_contains_host_probe_kind(
+  selected: List<ProbeCatalogEntry>,
+  kind: HostHealthProbeKind
+) -> Bool {
+  count_where(
+    xs: selected,
+    predicate: fn(entry) {
+      probe_catalog_entry_matches_host_probe(entry: entry, kind: kind)
+    }
+  ) > 0
+}
+
 fn probe_select_host_health(
-  prior: SuspectedCausePrior<String>,
+  prior: SuspectedCausePrior<HostHealthHypothesis>,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
 ) -> List<ProbeCatalogEntry> {
@@ -614,30 +658,39 @@ fn probe_select_host_health(
 
 fn probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds() -> Bool {
   let selected = probe_select_host_health(
-    prior: SuspectedCausePrior { hypothesis: "standoff-cap-vddq" },
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
     budget: CostBudget { max_cost: 100 },
     available: diagnostic_capability_cloud_vm()
   )
-  !probe_catalog_contains_label(selected: selected, label: "ecc-watched-stress")
+  !probe_catalog_contains_host_probe_kind(
+    selected: selected,
+    kind: HostHealthProbeEccWatchedStress
+  )
 }
 
 fn probe_ipmi_ecc_stress_selectable_on_srv1_holds() -> Bool {
   let selected = probe_select_host_health(
-    prior: SuspectedCausePrior { hypothesis: "standoff-cap-vddq" },
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
     budget: CostBudget { max_cost: 100 },
     available: diagnostic_capability_srv1()
   )
-  probe_catalog_contains_label(selected: selected, label: "ecc-watched-stress")
+  probe_catalog_contains_host_probe_kind(
+    selected: selected,
+    kind: HostHealthProbeEccWatchedStress
+  )
 }
 
 fn probe_degenerate_today_selects_docker_only_holds() -> Bool {
   let selected = probe_select_host_health(
-    prior: SuspectedCausePrior { hypothesis: "reachability" },
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_reachability },
     budget: CostBudget { max_cost: 100 },
     available: diagnostic_capability_ci_in_repo()
   )
   length(xs: selected) == 1
-    && probe_catalog_contains_label(selected: selected, label: "docker-reachability")
+    && probe_catalog_contains_host_probe_kind(
+      selected: selected,
+      kind: HostHealthProbeDockerReachability
+    )
 }
 
 fn probe_availability_conditioning_keystone_holds() -> Bool {

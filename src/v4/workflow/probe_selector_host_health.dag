@@ -8,6 +8,7 @@ import v4.std.logic { Bool }
 import v4.std.probe_selector {
   CostBudget,
   DiagnosticCapabilityFacts,
+  HostHealthHypothesis,
   HostSupplyProjectionInput,
   ProbeCatalogEntry,
   ProbeResult,
@@ -26,7 +27,7 @@ fn wf_host_health_enumerate_available(
 }
 
 fn wf_host_health_select_probes(
-  prior: SuspectedCausePrior<String>,
+  prior: SuspectedCausePrior<HostHealthHypothesis>,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
 ) -> List<ProbeCatalogEntry> {

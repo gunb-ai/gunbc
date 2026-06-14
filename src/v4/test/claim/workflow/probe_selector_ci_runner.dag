@@ -10,6 +10,7 @@ import v4.std.logic { Bool }
 import v4.std.probe_selector {
   CostBudget,
   SuspectedCausePrior,
+  host_health_hypothesis_standoff_cap_vddq,
   host_supply_srv2,
   probe_availability_conditioning_keystone_holds
 }
@@ -32,7 +33,7 @@ fn probe_selector_one_kernel_inhabited_holds() -> Bool {
 fn probe_selector_srv2_walkthrough_spine_holds() -> Bool {
   let available = wf_host_health_enumerate_available(supply: host_supply_srv2)
   let selected = wf_host_health_select_probes(
-    prior: SuspectedCausePrior { hypothesis: "standoff-cap-vddq" },
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
     budget: CostBudget { max_cost: 100 },
     available: available
   )
