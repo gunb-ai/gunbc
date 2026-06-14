@@ -340,25 +340,6 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     {
         let brand = authored_name(env.clone(), n.clone());
-        if std::env::var("DBG_RGUD").is_ok() {
-            let ltn = lookup_type_by_name(env.clone(), n.name.clone());
-            eprintln!(
-                "DBG rgud brand={} rawname={} children={} lookup_type_for_params={:?} ltbn={}",
-                brand,
-                n.name.clone(),
-                n.children.clone().len(),
-                lookup_type_for(env.clone(), n.clone()).map(|d| d.params.clone().len()),
-                ltn.clone()
-                    .map(|d| format!(
-                        "Some(params={} conn={:?} ch={} inf={})",
-                        d.params.clone().len(),
-                        d.connective.clone(),
-                        d.children.clone().len(),
-                        d.inferred.is_some()
-                    ))
-                    .unwrap_or("None".to_string()),
-            );
-        }
         match lookup_type_for(env.clone(), n.clone()) {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
