@@ -104,32 +104,39 @@ pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v2_rt::map_keys(&env.bindings.clone()).iter().cloned().fold(
-        Vec::new(),
-        |mut acc: Vec<Rc<Node>>, ident: i64| {
-            if let Some(ty_node) = lookup_type(env.clone(), ident) {
-                if let Some(variant) = unit_variant_in_coproduct(
+    Rc::new(v2_rt::map_keys(&env.bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<Node>>>, ident: i64| match lookup_type(env.clone(), ident.clone()) {
+                Some(ty_node) => match unit_variant_in_coproduct(
                     env.clone(),
-                    structural_type_for_variant_lookup(env.clone(), ty_node),
+                    structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
                     variant_name.clone(),
                 ) {
-                    acc.push(variant);
-                }
-            }
-            acc
-        },
-    ))
+                    Some(variant) => v2_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
+                    None => acc.clone(),
+                },
+                None => acc.clone(),
+            },
+        )
 }
 
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Option<Rc<Node>> {
-    let matches = collect_unit_variant_phantom_matches(env, variant_name);
-    if (matches.len() as i64) == 1 {
-        matches.first().cloned()
-    } else {
-        None
+    {
+        let matches = collect_unit_variant_phantom_matches(env, variant_name);
+        if ((matches.clone().len() as i64) == 1) {
+            match matches.clone().first().cloned() {
+                Some(variant) => Some(variant.clone()),
+                None => None,
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -1500,53 +1507,38 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                let variant_name =
-                                                    authored_name(env.clone(), n.clone());
-                                                let phantom_matches =
-                                                    collect_unit_variant_phantom_matches(
-                                                        env.clone(),
-                                                        variant_name.clone(),
-                                                    );
-                                                let phantom_match_count =
-                                                    phantom_matches.len() as i64;
-                                                if phantom_match_count > 1 {
-                                                    Rc::new(NodeResolveResult {
-                                                        resolved: n.clone(),
-                                                        diagnostics: Rc::new(vec![make_error_node(
-                                                            Rc::new(
-                                                                CompilerDiagnostic::InternalError {
-                                                                    message: format!(
-                                                                        "ambiguous phantom unit variant '{}' — multiple coproducts expose this name",
-                                                                        variant_name
-                                                                    ),
-                                                                    span: n.span.clone(),
-                                                                },
-                                                            ),
-                                                            module_name.clone(),
-                                                        )]),
-                                                    })
-                                                } else {
-                                                    match lookup_unit_variant_phantom_type(
-                                                        env.clone(),
-                                                        variant_name.clone(),
-                                                    ) {
-                                                        Some(phantom) => Rc::new(
-                                                            NodeResolveResult {
-                                                                resolved: phantom.clone(),
-                                                                diagnostics: Rc::new(vec![]),
-                                                            },
-                                                        ),
-                                                        None => Rc::new(NodeResolveResult {
-                                                            resolved: n.clone(),
-                                                            diagnostics: Rc::new(vec![
-                                                                make_error_node(Rc::new(
-                                                                    CompilerDiagnostic::UnresolvedType {
-                                                                        name: variant_name,
-                                                                        span: n.span.clone(),
-                                                                    },
-                                                                ), module_name.clone()),
-                                                            ]),
-                                                        }),
+                                                {
+                                                    let variant_name =
+                                                        authored_name(env.clone(), n.clone());
+                                                    let phantom_matches =
+                                                        collect_unit_variant_phantom_matches(
+                                                            env.clone(),
+                                                            variant_name.clone(),
+                                                        );
+                                                    let phantom_match_count =
+                                                        (phantom_matches.len() as i64);
+                                                    if (phantom_match_count > 1) {
+                                                        Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v2_rt::concat(v2_rt::concat("ambiguous phantom unit variant '".to_string(), variant_name.clone()), "' — multiple coproducts expose this name".to_string()),
+    span: n.span.clone(),
+}), module_name.clone())]),
+})
+                                                    } else {
+                                                        match lookup_unit_variant_phantom_type(env.clone(), variant_name.clone()) {
+    Some(phantom) => Rc::new(NodeResolveResult {
+    resolved: phantom.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+    None => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: variant_name.clone(),
+    span: n.span.clone(),
+}), module_name.clone())]),
+}),
+}
                                                     }
                                                 }
                                             }
