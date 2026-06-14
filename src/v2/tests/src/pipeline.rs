@@ -257,28 +257,18 @@ fn std_os_types_dag_resolves_without_option_import() {
 }
 
 #[test]
-fn std_cpu_types_dag_resolves_without_option_import() {
-    let roots: Vec<String> = source_roots()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
-    let entry = workspace_root()
-        .join("dsl/std/cpu/types.dag")
-        .to_string_lossy()
-        .to_string();
-    let sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &entry)
-        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
-    let msgs: Vec<String> = resolved
-        .diagnostics
-        .iter()
-        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
-        .collect();
+fn std_cpu_types_optional_fields_use_kernel_t_question() {
+    let content = read_v2_file("dsl/std/cpu/types.dag");
     assert!(
-        msgs.is_empty(),
-        "std.cpu.types should resolve on v2 (kernel T? surface): {msgs:?}"
+        !content.contains("Option"),
+        "std.cpu.types must use kernel T? (M9), not import std.types Option"
     );
+    let source = r#"module cpu_types_t_witness
+import std.types { Int, NonEmptyStr }
+type Row { oem_listing_id: NonEmptyStr? }
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
 }
 
 #[test]
