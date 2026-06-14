@@ -1,0 +1,338 @@
+// src/v4/std/timeseries_signal.dag
+//
+// Scope: time-series signal carriers and passive R/L/C step operators as map/fold
+//        algebras over uniform sample streams. Circuit thesis: a netlist component
+//        graph composes into stream operators — Resistor is a stateless map
+//        (v = R·i, frequency-flat); Capacitor and Inductor are fold-over-dt
+//        integrators with explicit state.
+// Anchor: SPICE3 passive element constitutive relations (Ohm / capacitor / inductor)
+//         as cited in v4.extdeps.formats.spice Component variants.
+// M9 DFS: reuses v4.std.algebra {fold_list, fold_list_right, list_snoc_item},
+//         v4.std.collection {List, Optional}, v4.std.float {Float},
+//         v4.extdeps.formats.spice {Component, SpiceApproxVoltage, SpiceValue, NodeRef}.
+// Status: S1 modeled 2026-06-14 (valiant-ram-713).
+
+module v4.std.timeseries_signal
+
+import v4.std.algebra {
+  Cons,
+  Empty,
+  fold_list,
+  fold_list_right,
+  list_snoc_item
+}
+import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.float { Float, FloatBody, Finite }
+import v4.std.machine { Bit }
+import v4.std.nat { Nat, Zero }
+import v4.std.node { Symbol }
+import v4.extdeps.formats.spice {
+  Component,
+  Capacitor,
+  Inductor,
+  NodeRef,
+  Resistor,
+  SpiceApproxVoltage,
+  SpiceValue
+}
+
+// --- Affine named voltage carriers -----------------------------------------
+//
+// Voltage is affine: only differences are physical; reference is explicit data.
+
+// 🟢 coproduct dissolution — reference node for affine voltage samples.
+type AffineVoltageReference
+  = GroundReference
+  | NodeReference { name: Symbol }
+
+// 🟢 grounded — named voltage sample relative to an explicit reference.
+type AffineVoltage {
+  reference: AffineVoltageReference
+  magnitude: Float
+}
+
+// 🟢 grounded — named affine voltage backed by the spice approximate carrier.
+type NamedAffineVoltage {
+  reference: AffineVoltageReference
+  approx: SpiceApproxVoltage
+}
+
+// 🟢 grounded — named current sample (reference-free at this slice).
+type AffineCurrent {
+  magnitude: Float
+}
+
+// 🟢 grounded — voltage difference between two affine samples.
+type AffineVoltageDelta {
+  magnitude: Float
+}
+
+// --- Uniform time-step signal ----------------------------------------------
+
+type TimeStepDelta {
+  seconds: Float
+}
+
+type TimeSeriesSample<T> {
+  value: T
+}
+
+type TimeSeriesSignal<T> {
+  dt: TimeStepDelta
+  samples: List<TimeSeriesSample<T>>
+}
+
+// Unit dt placeholder for scaffolding consumers; tran-step parsing supplies physical dt.
+data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
+  seconds: Float {
+    body: Finite {
+      sign: false,
+      biased_exponent: Zero,
+      trailing_significand: Zero
+    }
+  }
+}
+
+// --- Stateless map step (Resistor = map) -----------------------------------
+//
+// Sibling to SourceFold in v4.std.text: per-sample transform, no accumulator.
+
+type TimeSeriesMapStep<I, O> {
+  apply: fn(TimeSeriesSample<I>) -> TimeSeriesSample<O>
+}
+
+fn map_time_series_samples<I, O>(
+  samples: List<TimeSeriesSample<I>>,
+  step: fn(TimeSeriesSample<I>) -> TimeSeriesSample<O>
+) -> List<TimeSeriesSample<O>> {
+  fold_list_right(
+    xs: samples,
+    empty: Empty,
+    snoc: fn(acc, sample) {
+      Cons { head: step(sample), tail: acc }
+    }
+  )
+}
+
+fn map_time_series<I, O>(
+  signal: TimeSeriesSignal<I>,
+  step: TimeSeriesMapStep<I, O>
+) -> TimeSeriesSignal<O> {
+  TimeSeriesSignal {
+    dt: signal.dt,
+    samples: map_time_series_samples(samples: signal.samples, step: step.apply)
+  }
+}
+
+// --- Stateful fold step (Capacitor / Inductor = fold over dt) ------------
+//
+// Each input sample advances state and emits one output sample.
+
+type TimeSeriesStepResult<S, O> {
+  state: S
+  output: TimeSeriesSample<O>
+}
+
+type TimeSeriesStepFold<I, S, O> {
+  init: S
+  step: fn(S, TimeSeriesSample<I>, TimeStepDelta) -> TimeSeriesStepResult<S, O>
+}
+
+type TimeSeriesScanAcc<S, O> {
+  state: S
+  outputs: List<TimeSeriesSample<O>>
+}
+
+fn fold_time_series<I, S, O>(
+  signal: TimeSeriesSignal<I>,
+  algebra: TimeSeriesStepFold<I, S, O>
+) -> TimeSeriesSignal<O> {
+  let scanned = fold_list(
+    xs: signal.samples,
+    empty: TimeSeriesScanAcc {
+      state: algebra.init,
+      outputs: Empty
+    },
+    cons: fn(acc, sample) {
+      let result = algebra.step(acc.state, sample, signal.dt)
+      TimeSeriesScanAcc {
+        state: result.state,
+        outputs: list_snoc_item(xs: acc.outputs, item: result.output)
+      }
+    }
+  )
+  TimeSeriesSignal {
+    dt: signal.dt,
+    samples: scanned.outputs
+  }
+}
+
+// --- Passive element parameters + named field kernel -----------------------
+//
+// fold the traversal, name the kernel: approximate Float arithmetic stays in
+// PassiveFieldOps until std float ops land.
+
+type PassiveFieldOps {
+  mul: fn(Float, Float) -> Float
+  add: fn(Float, Float) -> Float
+  div: fn(Float, Float) -> Float
+}
+
+type Resistance {
+  ohms: Float
+}
+
+type Capacitance {
+  farads: Float
+}
+
+type Inductance {
+  henries: Float
+}
+
+// v = R · i  (stateless map, frequency-flat)
+fn resistor_map_step(
+  resistance: Resistance,
+  field: PassiveFieldOps
+) -> TimeSeriesMapStep<AffineCurrent, AffineVoltage> {
+  TimeSeriesMapStep {
+    apply: fn(sample) {
+      TimeSeriesSample {
+        value: AffineVoltage {
+          reference: GroundReference,
+          magnitude: field.mul(sample.value.magnitude, resistance.ohms)
+        }
+      }
+    }
+  }
+}
+
+// i = C · dv/dt  ⇒  v[n] = v[n-1] + (i[n] · dt) / C
+fn capacitor_fold_algebra(
+  capacitance: Capacitance,
+  initial_voltage: AffineVoltage,
+  field: PassiveFieldOps
+) -> TimeSeriesStepFold<AffineCurrent, AffineVoltage, AffineVoltage> {
+  TimeSeriesStepFold {
+    init: initial_voltage,
+    step: fn(prev_v, sample, dt) {
+      let i_dt = field.mul(sample.value.magnitude, dt.seconds)
+      let dv = field.div(i_dt, capacitance.farads)
+      let next_v = AffineVoltage {
+        reference: prev_v.reference,
+        magnitude: field.add(prev_v.magnitude, dv)
+      }
+      TimeSeriesStepResult {
+        state: next_v,
+        output: TimeSeriesSample { value: next_v }
+      }
+    }
+  }
+}
+
+// v = L · di/dt  ⇒  i[n] = i[n-1] + (v[n] · dt) / L
+fn inductor_fold_algebra(
+  inductance: Inductance,
+  initial_current: AffineCurrent,
+  field: PassiveFieldOps
+) -> TimeSeriesStepFold<AffineVoltage, AffineCurrent, AffineCurrent> {
+  TimeSeriesStepFold {
+    init: initial_current,
+    step: fn(prev_i, sample, dt) {
+      let v_dt = field.mul(sample.value.magnitude, dt.seconds)
+      let di = field.div(v_dt, inductance.henries)
+      let next_i = AffineCurrent {
+        magnitude: field.add(prev_i.magnitude, di)
+      }
+      TimeSeriesStepResult {
+        state: next_i,
+        output: TimeSeriesSample { value: next_i }
+      }
+    }
+  }
+}
+
+// --- spice.dag structural consumption --------------------------------------
+//
+// Lexeme→Float parsing is a named kernel; this slice wires passive topology only.
+
+type ResistorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+type CapacitorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+type InductorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+// 🟢 coproduct dissolution — passive-only projection from spice Component.
+type PassiveComponentSpec
+  = ResistorPassive { spec: ResistorSpec }
+  | CapacitorPassive { spec: CapacitorSpec }
+  | InductorPassive { spec: InductorSpec }
+
+fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } => Present {
+      value: ResistorPassive {
+        spec: ResistorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    Capacitor { name, n_plus, n_minus, value } => Present {
+      value: CapacitorPassive {
+        spec: CapacitorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    Inductor { name, n_plus, n_minus, value } => Present {
+      value: InductorPassive {
+        spec: InductorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    _ => Absent
+  }
+}
+
+fn resistor_map_from_spec(
+  spec: ResistorSpec,
+  ohms: Float,
+  field: PassiveFieldOps
+) -> TimeSeriesMapStep<AffineCurrent, AffineVoltage> {
+  resistor_map_step(resistance: Resistance { ohms: ohms }, field: field)
+}
+
+fn named_affine_voltage(
+  reference: AffineVoltageReference,
+  approx: SpiceApproxVoltage
+) -> NamedAffineVoltage {
+  NamedAffineVoltage {
+    reference: reference,
+    approx: approx
+  }
+}
