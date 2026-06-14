@@ -24,9 +24,8 @@ import v4.extdeps.languages.dag {
   dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
-import v4.std.collection { Set }
 import v4.std.compilers.lexing { TokenStream }
-import v4.std.grammar { GrammarRoot }
+import v4.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v4.std.provenance { span_index_empty }
 import v4.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
@@ -229,11 +228,7 @@ fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
   GrammarRoot {
     start: ^dag_production_mvp1_fn_add,
     productions: [dag_grammar_production_mvp1_fn_add()],
-    sync_tokens: Set {
-      member: fn(_) {
-        false
-      }
-    }
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
