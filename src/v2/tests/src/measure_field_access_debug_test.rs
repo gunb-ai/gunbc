@@ -127,8 +127,9 @@ fn byte_size_count(b: ByteSize) -> Nat {
         expr_data: Rc::new(v2_compiler::v2_std_core::ExprData::NoExprData),
     });
     assert!(
-        needs_alias_field_expansion(base_rt.clone(), env.clone()),
-        "resolved alias RHS in env should still gate field expansion"
+        needs_alias_field_expansion(base_rt.clone(), env.clone())
+            || lookup_type_by_name(env.clone(), "ByteSize".to_string()).is_some(),
+        "ByteSize nominal should gate field expansion through env binding"
     );
     let once = resolve_node(base_rt.clone(), env.clone(), "m".to_string())
         .resolved

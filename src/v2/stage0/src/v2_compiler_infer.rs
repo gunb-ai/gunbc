@@ -5187,7 +5187,8 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
                 if ((binding.connective.clone() == Connective::Conj)
                     || (binding.connective.clone() == Connective::Disj))
                 {
-                    false
+                    ((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) == 0))
                 } else if (((binding.connective.clone() == Connective::NoConnective)
                     && ((binding.children.clone().len() as i64) == 0))
                     && (binding.inferred.clone() != None))

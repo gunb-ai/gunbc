@@ -2672,7 +2672,9 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
   } else {
     match lookup_type_for(env: env, node: n) {
       Present { value: binding } =>
-        if binding.connective == Conj || binding.connective == Disj { false }
+        if binding.connective == Conj || binding.connective == Disj {
+          n.connective == NoConnective && n.children |> count == 0
+        }
         else if binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none { true }
         else if binding.connective == NoConnective && binding.children |> count > 0 { is_user_generic_use_site(n: binding, env: env) || binding.inferred != none }
         else { false }
