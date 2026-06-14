@@ -20,6 +20,8 @@ mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod coproduct_reflection_conformance_test;
+#[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -43,6 +45,8 @@ mod interp_stats_test;
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
+#[cfg(test)]
+mod measure_field_access_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
 #[cfg(test)]

@@ -119,7 +119,15 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
       } else {
         lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, source_indices: source_indices)
       }
-    } else { none }
+    } else {
+      // G2: alias field chase — follow inferred structural RHS (applied generics
+      // and alias wrappers both land here once resolve has expanded).
+      match n.inferred {
+        Present { value: Resolved { node: target } } =>
+          lookup_field_type_node(n: target, field_name: field_name, source_indices: source_indices)
+        _ => none
+      }
+    }
   }
 }
 

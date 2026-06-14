@@ -75,6 +75,7 @@ import v4.std.compilers.lexing {
 import v4.std.node {
   Arrow,
   Atom,
+  Bind,
   Branch,
   ComputationNode,
   Conj,
@@ -158,6 +159,10 @@ data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 data dag_mvp1_pick_source_text: String = "fn one_or_two() -> Int { if true then 1 else 2 }"
 data dag_mvp1_pick_false_source_text: String = "fn one_or_two() -> Int { if false then 1 else 2 }"
 
+// COMPREP wave-2 M0-Bind — let-in expression body keystone.
+data dag_mvp1_bind_source_text: String = "fn one() -> Int { let x = 1 in x }"
+data dag_mvp1_bind_wrong_value_source_text: String = "fn one() -> Int { let x = 2 in x }"
+
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
@@ -196,6 +201,25 @@ fn dag_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
     FixedToken { token_class: ^dag_token_kw_else },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_two },
+    FixedToken { token_class: ^dag_token_rbrace }
+  ]
+}
+
+fn dag_mvp1_bind_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace },
+    FixedToken { token_class: ^dag_token_kw_let },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^dag_token_eq },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^dag_token_kw_in },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
     FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
@@ -329,6 +353,7 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_data, text: "data"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_fn, text: "fn"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_let, text: "let"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_in, text: "in"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_match, text: "match"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_if, text: "if"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_then, text: "then"),
@@ -3422,8 +3447,10 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   let m3 = map_insert(m2, ^dag_binding_type_int, "Int")
   let m4 = map_insert(m3, ^dag_binding_fn_one_or_two, "one_or_two")
-  let m5 = map_insert(m4, ^dag_binding_mvp1_pick_lit_one, "1")
-  map_insert(m5, ^dag_binding_mvp1_pick_lit_two, "2")
+  let m5 = map_insert(m4, ^dag_binding_fn_one, "one")
+  let m6 = map_insert(m5, ^dag_binding_mvp1_bind_x, "x")
+  let m7 = map_insert(m6, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m7, ^dag_binding_mvp1_pick_lit_two, "2")
 }
 
 fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
@@ -3763,6 +3790,183 @@ data dag_mvp1_pick_arrow_with_body_fixture: Node = dag_mvp1_pick_arrow_with_body
 data dag_mvp1_pick_arrow_with_body_swapped_arms_fixture: Node = dag_mvp1_pick_arrow_with_body_swapped_arms_node()
 
 data dag_mvp1_fixture_emitted_pick_fn: Node = dag_mvp1_pick_arrow_with_body_fixture
+
+fn dag_mvp1_bind_let_body_from_parts(
+  key_binding: Symbol,
+  value_lit: Symbol,
+  body_binding: Symbol
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: key_binding)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: value_lit)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: body_binding)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_let_body_node() -> Node {
+  dag_mvp1_bind_let_body_from_parts(
+    key_binding: ^dag_binding_mvp1_bind_x,
+    value_lit: ^dag_mvp1_pick_lit_one,
+    body_binding: ^dag_binding_mvp1_bind_x
+  )
+}
+
+fn dag_mvp1_bind_let_body_wrong_value_node() -> Node {
+  dag_mvp1_bind_let_body_from_parts(
+    key_binding: ^dag_binding_mvp1_bind_x,
+    value_lit: ^dag_mvp1_pick_lit_two,
+    body_binding: ^dag_binding_mvp1_bind_x
+  )
+}
+
+fn dag_mvp1_bind_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_bind_let_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_arrow_with_body_wrong_value_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_bind_let_body_wrong_value_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_bind_let_body_fixture: Node = dag_mvp1_bind_let_body_node()
+data dag_mvp1_bind_arrow_with_body_fixture: Node = dag_mvp1_bind_arrow_with_body_node()
+data dag_mvp1_bind_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_bind_arrow_with_body_wrong_value_node()
+
+fn dag_formal_production_mvp1_fn_bind() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^dag_production_mvp1_fn_bind,
+    rhs: dag_formal_rhs_from_tokens(tokens: dag_mvp1_bind_concrete_tokens())
+  )
+}
+
+fn dag_grammar_bind_value_literal_binding(binding: Symbol) -> Bool {
+  (binding == ^dag_binding_mvp1_pick_lit_one) || (binding == ^dag_binding_mvp1_pick_lit_two)
+}
+
+fn dag_grammar_terminal_for_mvp1_bind_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  let cls = concrete_syntax_token_class(token: token)
+  if cls == ^dag_token_kw_in {
+    dag_grammar_terminal(token_class: ^dag_token_kw_in)
+  } else {
+    match token {
+      BoundToken { token_class: c, binding: b } =>
+        if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
+          dag_grammar_pick_arm_literal_terminal()
+        } else {
+          dag_grammar_terminal(token_class: cls)
+        }
+      _ => dag_grammar_terminal(token_class: cls)
+    }
+  }
+}
+
+fn dag_grammar_sequence_from_token_classes_bind() -> GrammarExpr {
+  match fold_list(
+    xs: dag_mvp1_bind_concrete_tokens(),
+    empty: DagGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        DagGramBuild1StateInit =>
+          DagGramBuild1StateReady {
+            expr: dag_grammar_terminal_for_mvp1_bind_token(token: token)
+          }
+        DagGramBuild1StateReady { expr: acc } =>
+          DagGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: dag_grammar_terminal_for_mvp1_bind_token(token: token)
+            }
+          }
+      }
+    }
+  ) {
+    DagGramBuild1StateInit =>
+      dag_grammar_terminal(token_class: ^dag_token_kw_fn)
+    DagGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn dag_grammar_production_mvp1_fn_bind() -> GrammarProduction {
+  GrammarProduction {
+    name: ^dag_production_mvp1_fn_bind,
+    expression: dag_grammar_sequence_from_token_classes_bind(),
+    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
+  }
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:dag_mvp1_bind_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_bind_arrow_with_body_from_resolved; executed by comprep_bind_eval_by_execution
+// keystone) — dissolve-on: binding_id-branded resolved atoms replace bind flat-index table;
+// owner/lane: Mgr-§2 (crisp-crane-18).
+fn dag_mvp1_bind_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_type_int)
+  } else if (flat_index == 8) || (flat_index == 12) {
+    outcome_accepted(^dag_binding_mvp1_bind_x)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
 
 fn dag_value_expression_projection() -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {

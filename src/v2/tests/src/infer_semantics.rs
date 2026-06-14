@@ -1489,3 +1489,97 @@ fn list_freemonoid_compat_is_symmetric() {
         "alias compatibility must hold in both argument orders"
     );
 }
+
+#[test]
+fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
+    use v2_compiler::v2_compiler_infer_lookup::{
+        lookup_field_type_node, resolve_scrutinee_type_node,
+    };
+    use v2_compiler::v2_compiler_infer_resolve::is_user_generic_use_site;
+    use v2_compiler::v2_std_core::{empty_intern_table, intern};
+
+    let t_param = leaf_node("T".to_string());
+    let value_field = Rc::new(Node {
+        name: "value".to_string(),
+        ident: None,
+        span: make_span(0, 0),
+        ident_span: default_ident_span("value".to_string(), make_span(0, 0)),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: t_param.clone(),
+        })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let box_decl = Rc::new(Node {
+        name: "Box".to_string(),
+        ident: None,
+        span: make_span(0, 0),
+        ident_span: default_ident_span("Box".to_string(), make_span(0, 0)),
+        children: Rc::new(vec![value_field]),
+        connective: Connective::Conj,
+        params: Rc::new(vec![t_param]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let box_intern = intern(empty_intern_table(), "Box".to_string());
+    let env = Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::from([(
+            box_intern.id,
+            Rc::new(TypeBinding {
+                name: "Box".to_string(),
+                resolved: box_decl.clone(),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            }),
+        )])),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: empty_source_indices(),
+        intern_table: box_intern.table.clone(),
+    });
+
+    let box_nat = container_node("Box".to_string(), leaf_node("Nat".to_string()));
+    assert!(
+        is_user_generic_use_site(box_nat.clone(), env.clone()),
+        "Box<Nat> should be a generic use site"
+    );
+
+    let expanded = resolve_node(box_nat, env.clone(), "test".to_string())
+        .resolved
+        .clone();
+    assert!(
+        expanded.inferred.is_some(),
+        "expanded applied generic should carry inferred structural target, got {expanded:?}"
+    );
+    let resolved = resolve_scrutinee_type_node(env.clone(), expanded);
+    assert_eq!(
+        resolved.connective,
+        Connective::Conj,
+        "scrutinee expansion should reach Conj, got {resolved:?}"
+    );
+    let field = lookup_field_type_node(resolved, "value".to_string(), empty_source_indices());
+    assert!(
+        field.is_some(),
+        "field lookup should find value on expanded struct"
+    );
+}

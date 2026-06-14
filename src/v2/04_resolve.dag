@@ -42,6 +42,69 @@ import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
+// G1 Measure phantom tags: unit coproduct variants (Quantity Memory,
+// Scale One) are valid phantom type arguments even though they are not
+// standalone type declarations.
+fn is_unit_variant_node(variant: Node) -> Bool {
+  (variant.children |> count) == 0
+}
+
+fn unit_variant_in_coproduct(env: TypeEnv, ty: Node, variant_name: String) -> Node? {
+  match ty.connective {
+    Disj =>
+      fold(ty.children, init: none, f: (acc, v) =>
+        if acc != none { acc }
+        else if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
+          Present { value: v }
+        } else { none }
+      )
+    _ => none
+  }
+}
+
+fn structural_type_for_variant_lookup(env: TypeEnv, ty: Node) -> Node {
+  if ty.connective == NoConnective && ty.inferred != none {
+    match ty.inferred {
+      Present { value: Resolved { node: target } } => target
+      _ => ty
+    }
+  } else { ty }
+}
+
+// Fail-closed phantom-tag resolution: scan all type bindings, collect EVERY
+// coproduct whose unit-variant name matches, and resolve ONLY when exactly one
+// matches. An ambiguous tag (>1 coproduct defining the same short variant name,
+// e.g. two unrelated coproducts both with `One`) resolves to `none` rather than
+// silently picking the first by map-key iteration order — the unresolved
+// phantom then surfaces a downstream diagnostic instead of a nondeterministic
+// shadow. (Was: first-match-wins fold; see #4868 review.)
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
+  let matches = collect_unit_variant_phantom_matches(env: env, variant_name: variant_name)
+  if matches |> count == 1 {
+    match matches |> first {
+      Present { value: variant } => Present { value: variant }
+      Absent => none
+    }
+  } else { none }
+}
+
+fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
+  fold(map_keys(env.bindings), init: [], f: (acc, ident) =>
+    match lookup_type(env: env, ident: ident) {
+      Present { value: ty_node } =>
+        match unit_variant_in_coproduct(
+          env: env,
+          ty: structural_type_for_variant_lookup(env: env, ty: ty_node),
+          variant_name: variant_name
+        ) {
+          Present { value: variant } => concat(acc, [variant])
+          Absent => acc
+        }
+      Absent => acc
+    }
+  )
+}
+
 // Gate #60 Slice Z: anonymous decimal width literals in `<…>` type-arg position.
 fn is_width_nat_type_literal(n: Node) -> Bool {
   match n.expr_data {
@@ -49,7 +112,6 @@ fn is_width_nat_type_literal(n: Node) -> Bool {
     _ => false
   }
 }
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -183,24 +245,39 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
 
+// Applied-generic use sites may still carry the alias brand in ident_span
+// (ByteSize) while the authored carrier name is structural (Measure). Env
+// lookup by brand returns the alias decl (0 params); generic instantiation
+// must resolve the structural decl instead.
+fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
+  let brand = authored_name(env: env, node: n)
+  match lookup_type_for(env: env, node: n) {
+    Present { value: decl } =>
+      if decl.params |> count > 0 { decl }
+      else if n.children |> count > 0 && n.name != "" && n.name != brand {
+        match lookup_type_by_name(env: env, name: n.name) {
+          Present { value: structural } => structural
+          Absent => decl
+        }
+      } else { decl }
+    Absent =>
+      match lookup_type_by_name(env: env, name: n.name) {
+        Present { value: decl } => decl
+        Absent => n
+      }
+  }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
-    match lookup_type_for(env: env, node: n) {
-      Present { value: decl } =>
-        if decl.params |> count > 0 {
-          // Container types (Map, List, Set, etc.) stay unexpanded regardless
-          // of alias (INVARIANTS.md: "container_types controls which types stay
-          // unexpanded during resolve"). Map = PartialFunction<K,V> is an
-          // inhabitation declaration, not an alias to expand. Algebra fields
-          // are added on demand via enrich_kernel_type during method lookup.
-          if is_container_type(name: authored_name(env: env, node: n)) { false }
-          else if decl.inferred != none { true }
-          else { true }
-        } else { false }
-      Absent => false
-    }
+    let decl = resolve_generic_use_decl(env: env, n: n)
+    if decl.params |> count > 0 {
+      if is_container_type(name: n.name) { false }
+      else if decl.inferred != none { true }
+      else { true }
+    } else { false }
   }
 }
 
@@ -391,7 +468,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type_for(env: env, node: n) { Present { value: d } => d  Absent => n }
+    let decl = resolve_generic_use_decl(env: env, n: n)
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
@@ -509,9 +586,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
-            NodeResolveResult {
-              resolved: n,
-              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
+            match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
+              Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
+              Absent =>
+                NodeResolveResult {
+                  resolved: n,
+                  diagnostics: [make_error_node(diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
+                }
             }
           }
       }
