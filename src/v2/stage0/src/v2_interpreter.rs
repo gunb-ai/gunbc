@@ -2117,7 +2117,13 @@ fn match_pattern(
 // v4.std.node coproduct reflection intercept (module-scoped bootstrap seam)
 // ---------------------------------------------------------------------------
 
-const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node", "syntactic_coproduct_arm_keys"];
+pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] =
+    &["resolve_type_node", "syntactic_coproduct_arm_keys"];
+
+/// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
+pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
+    STD_NODE_BRIDGE_FNS
+}
 
 fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
     if !STD_NODE_BRIDGE_FNS.contains(&func_name) {

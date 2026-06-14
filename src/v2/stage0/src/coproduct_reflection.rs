@@ -2,7 +2,7 @@
 //!
 //! - `resolve_type_node`: compiler Disj type item → substrate `Node` Value (dissolves when v4
 //!   gains compile-graph access).
-//! - `syntactic_coproduct_arm_keys`: Path-3 raw-source text scan (irreducible I/O boundary; stays Rust).
+//! - `syntactic_coproduct_arm_keys`: Path-3 raw-source text scan over in-memory compile source.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -109,6 +109,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
     }
 }
 
+// dissolve-on-2b: INERT placeholder target until coproduct_arms reads real arm targets (gunbc#4863).
 fn placeholder_arm_target(ctx: &InterpContext) -> Value {
     node_record(
         ctx,
@@ -138,81 +139,97 @@ pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpRes
     ))
 }
 
-/// Bootstrap only: resolve declaring source path via cwd walk + optional GUNBC_ROOT.
-/// Dissolve-on-arrival: compile-graph span.file is the sole authority once claim-run
-/// transport no longer needs off-disk reads for Path-3 witnesses.
-fn resolve_source_file_path(file: &str) -> InterpResult<String> {
-    let path = std::path::Path::new(file);
-    if path.is_absolute() && path.exists() {
-        return Ok(file.to_string());
-    }
-    if path.exists() {
-        return Ok(file.to_string());
-    }
-    if let Ok(mut dir) = std::env::current_dir() {
-        loop {
-            let candidate = dir.join(file);
-            if candidate.exists() {
-                return Ok(candidate.to_string_lossy().into_owned());
-            }
-            if !dir.pop() {
-                break;
-            }
-        }
-    }
-    if let Ok(root) = std::env::var("GUNBC_ROOT") {
-        let candidate = std::path::Path::new(&root).join(file);
-        if candidate.exists() {
-            return Ok(candidate.to_string_lossy().into_owned());
-        }
-    }
-    Err(InterpError::TypeError {
-        msg: format!("coproduct reflection: cannot resolve source path `{file}`"),
-    })
+fn source_text_from_ctx(ctx: &InterpContext, file: &str) -> InterpResult<String> {
+    let indices = ctx.source_indices();
+    let index = indices.get(file).ok_or_else(|| InterpError::TypeError {
+        msg: format!("syntactic coproduct arm keys: no in-memory source for `{file}`"),
+    })?;
+    let len = index.char_codes.len() as i64;
+    Ok(crate::v2_rt::chars_to_string(&index.char_codes, 0, len))
 }
 
 /// Path 3: grammar-level arm labels from `type Name = Arm | Arm | ...` in source text.
-pub fn syntactic_coproduct_arm_labels(file: &str, type_name: &str) -> InterpResult<Vec<String>> {
-    let resolved = resolve_source_file_path(file)?;
-    let content = std::fs::read_to_string(&resolved).map_err(|e| InterpError::TypeError {
-        msg: format!("syntactic coproduct arm keys: cannot read `{resolved}`: {e}"),
-    })?;
-    extract_type_sum_arm_labels(&content, type_name).ok_or_else(|| InterpError::TypeError {
-        msg: format!("syntactic coproduct arm keys: `{type_name}` not found in `{file}`"),
-    })
+pub fn syntactic_coproduct_arm_labels(
+    ctx: &InterpContext,
+    file: &str,
+    type_name: &str,
+) -> InterpResult<Vec<String>> {
+    let content = source_text_from_ctx(ctx, file)?;
+    extract_type_sum_arm_labels(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
 }
 
-fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Option<Vec<String>> {
-    let start = find_type_decl_start(source, type_name)?;
+fn same_line_leading_comment(s: &str) -> bool {
+    match s.find('\n') {
+        Some(0) => false,
+        Some(nl) => s[..nl].trim().starts_with("//"),
+        None => s.trim().starts_with("//"),
+    }
+}
+
+fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Result<Vec<String>, String> {
+    let start = find_type_decl_start(source, type_name).ok_or_else(|| {
+        format!("syntactic coproduct arm keys: `{type_name}` not found in source")
+    })?;
     let needle = format!("type {type_name}");
     let after_type = &source[start + needle.len()..];
-    let eq_rel = after_type.find('=')?;
+    let eq_rel = after_type
+        .find('=')
+        .ok_or_else(|| format!("syntactic coproduct arm keys: `{type_name}` missing `=`"))?;
     let mut rest = after_type[eq_rel + 1..].trim_start();
     let mut arms = Vec::new();
     loop {
         rest = rest.trim_start();
-        if rest.is_empty() || rest.starts_with("//") {
+        if rest.is_empty() {
             break;
         }
         if rest.starts_with('|') {
             rest = rest[1..].trim_start();
         }
-        let arm_name = read_identifier_prefix(rest)?;
+        let arm_name = read_identifier_prefix(rest).ok_or_else(|| {
+            format!("syntactic coproduct arm keys: expected arm identifier for `{type_name}`")
+        })?;
         arms.push(arm_name.0);
-        rest = arm_name.1.trim_start();
-        if rest.starts_with('{') {
-            rest = skip_braced(rest)?;
+        rest = arm_name.1;
+        if same_line_leading_comment(rest) {
+            return Err(format!(
+                "syntactic coproduct arm keys: unexpected `//` comment mid-declaration for `{type_name}`"
+            ));
         }
         rest = rest.trim_start();
-        if !rest.starts_with('|') {
+        if rest.starts_with('{') {
+            rest = skip_braced(rest).ok_or_else(|| {
+                format!("syntactic coproduct arm keys: unclosed `{{` in `{type_name}` arm payload")
+            })?;
+        }
+        rest = rest.trim_start();
+        if rest.is_empty() {
             break;
+        }
+        if rest.starts_with("//") {
+            break;
+        }
+        if !rest.starts_with('|') {
+            let suffix = rest.trim_start();
+            if suffix.starts_with("//")
+                || suffix.starts_with("type ")
+                || suffix.starts_with("fn ")
+                || suffix.starts_with("module ")
+                || suffix.starts_with("import ")
+            {
+                break;
+            }
+            let peek = rest.chars().next().unwrap_or('\0');
+            return Err(format!(
+                "syntactic coproduct arm keys: unexpected token `{peek}` mid-declaration for `{type_name}`"
+            ));
         }
     }
     if arms.is_empty() {
-        None
-    } else {
-        Some(arms)
+        return Err(format!(
+            "syntactic coproduct arm keys: `{type_name}` has no arms"
+        ));
     }
+    Ok(arms)
 }
 
 fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
@@ -285,7 +302,7 @@ pub fn eval_syntactic_coproduct_arm_keys(
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
     let (_, file) = type_item_by_name(ctx, type_name)?;
-    let labels = syntactic_coproduct_arm_labels(&file, type_name)?;
+    let labels = syntactic_coproduct_arm_labels(ctx, &file, type_name)?;
     let items: Vec<Value> = labels
         .iter()
         .map(|label| Value::Str(label.clone()))
@@ -446,6 +463,26 @@ mod tests {
         assert_eq!(
             extract_type_sum_arm_labels(source, "Connective").expect("Connective"),
             vec!["Atom", "Conj"]
+        );
+    }
+
+    #[test]
+    fn syntactic_extractor_fails_loud_on_mid_decl_comment() {
+        let source = "type Connective = Atom | Conj // trailing\n";
+        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
+        assert!(
+            err.contains("//"),
+            "expected mid-decl comment diagnostic, got: {err}"
+        );
+    }
+
+    #[test]
+    fn syntactic_extractor_fails_loud_on_unexpected_token_mid_decl() {
+        let source = "type Connective = Atom , Conj\n";
+        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
+        assert!(
+            err.contains("unexpected token"),
+            "expected unexpected-token diagnostic, got: {err}"
         );
     }
 }

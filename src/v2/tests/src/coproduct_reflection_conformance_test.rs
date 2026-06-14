@@ -71,8 +71,22 @@ fn symbol_list_strings(val: &Value) -> Vec<String> {
 }
 
 #[test]
+fn coproduct_reflection_std_node_bridge_fns_are_intercept_wired() {
+    let source = include_str!("../../stage0/src/v2_interpreter.rs");
+    for name in v2_interpreter::std_node_bridge_fn_names() {
+        assert!(
+            source.contains(&format!("\"{name}\" =>")),
+            "eval_call intercept must wire v4.std.node bridge `{name}`"
+        );
+    }
+    assert!(
+        source.contains("is_v4_std_node_bridge_call"),
+        "eval_call must gate v4.std.node bridge dispatch"
+    );
+}
+
+#[test]
 fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
-    std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     match run_witness(&resolved, WITNESS_FN) {
@@ -85,7 +99,6 @@ fn coproduct_reflection_path3_connective_behavior_conformance_holds() {
 
 #[test]
 fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
-    std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     match run_witness(
@@ -99,7 +112,6 @@ fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
 
 #[test]
 fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
-    std::env::set_var("GUNBC_ROOT", workspace_root());
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved
