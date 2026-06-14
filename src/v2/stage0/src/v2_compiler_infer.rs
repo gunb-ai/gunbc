@@ -5325,21 +5325,10 @@ pub fn record_lit_alias_struct_fields(
     type_name: String,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Vec<Rc<Node>>>> {
-    match lookup_type_by_name(scope.type_env.clone(), type_name) {
-        Some(decl) => {
-            let to_expand = if (((decl.connective.clone() == Connective::NoConnective)
-                && ((decl.children.clone().len() as i64) == 0))
-                && (decl.inferred.clone() != None))
-            {
-                match decl.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
-                    _ => decl.clone(),
-                }
-            } else {
-                decl.clone()
-            };
+    match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
+        Some(_decl) => {
             let expanded = expand_type_for_field_access(
-                to_expand,
+                nominal_type_ref(type_name.clone()),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
             );
