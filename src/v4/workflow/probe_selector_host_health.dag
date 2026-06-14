@@ -14,8 +14,6 @@ import v4.std.probe_selector {
   SuspectedCausePrior,
   TemporalAggregator,
   diagnostic_capability_from_host_supply,
-  host_health_probe_catalog,
-  probe_select,
   probe_select_host_health,
   temporal_aggregator_drainable
 }

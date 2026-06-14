@@ -1,35 +1,30 @@
 // src/v4/workflow/affected_set_selection.dag
 //
 // Minimal affected-set → TestClaim selection authority.
-//
-// History: extracted verbatim from the deleted `v4.workflow.ci` model (`src/v4/workflow/ci.dag`).
-// That ~6,300-line model was a descriptive-only CI mirror with no runtime consumer and was deleted
-// wholesale per operator GO (PR #4543). The only execution-consumed fragments survive as small
-// real-consumer modules (cf. `src/v4/workflow/lens_ci_gate.dag` for the lens-CI gate roster).
-//
-// This module holds the three selection functions the must-pass affected-set node-frontier gate
-// (`scripts/v4-affected-set-node-frontier-gate.sh`, wired into `v4_lens_ci`; introduced by PR #4540)
-// consumes by execution from `src/v4/test/claim/workflow/affected_set_ci_runner.dag`:
-//   ci_select_from_affected_set, ci_select_from_rerun_nodes, test_claim_in_rerun_frontier.
-// Their entire dependency closure is satisfied by imports below — no other ci.dag code is relocated.
+// Selection routes through v4.std.probe_selector ONE probe_select kernel.
 
 module v4.workflow.affected_set_selection
 
 import v4.std.logic { Bool }
 import v4.std.collection { List }
-import v4.std.node { Node }
-import v4.std.algebra { filter }
 import v4.std.change { AffectedSet }
+import v4.std.node { Node }
 import v4.std.verification {
   TestClaim,
-  test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
 }
 import v4.lens.affected_set {
   RerunNodeSet,
   RerunNodeSetFailClosed,
-  RerunNodeSetProduced,
-  affected_set_rerun_nodes
+  RerunNodeSetProduced
+}
+import v4.std.probe_selector {
+  CiFailClosedPrior,
+  diagnostic_capability_ci_in_repo,
+  probe_ci_unbounded_budget,
+  probe_select_affected_test_claims,
+  probe_select_rerun_test_claims,
+  probe_select_test_claims
 }
 
 fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
@@ -39,20 +34,27 @@ fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool 
 fn ci_select_from_rerun_nodes(roster: List<TestClaim>, rerun: RerunNodeSet) -> List<TestClaim> {
   match rerun {
     RerunNodeSetProduced { nodes: nodes } =>
-      filter(
-        xs: roster,
-        predicate: fn(claim) {
-          test_claim_ci_selection_fail_closed(c: claim)
-            || test_claim_in_rerun_frontier(claim: claim, frontier: nodes)
-        }
+      probe_select_rerun_test_claims(
+        roster: roster,
+        frontier: nodes,
+        budget: probe_ci_unbounded_budget,
+        available: diagnostic_capability_ci_in_repo()
       )
-    RerunNodeSetFailClosed { evidence: _ } => roster
+    RerunNodeSetFailClosed { evidence: _ } =>
+      probe_select_test_claims(
+        roster: roster,
+        prior: CiFailClosedPrior {},
+        budget: probe_ci_unbounded_budget,
+        available: diagnostic_capability_ci_in_repo()
+      )
   }
 }
 
 fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -> List<TestClaim> {
-  ci_select_from_rerun_nodes(
+  probe_select_affected_test_claims(
     roster: roster,
-    rerun: affected_set_rerun_nodes(affected_set_value: affected)
+    affected: affected,
+    budget: probe_ci_unbounded_budget,
+    available: diagnostic_capability_ci_in_repo()
   )
 }

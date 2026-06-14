@@ -1,0 +1,14 @@
+// Minimal repro: v4 module importing dsl/std/compute_fabric (BLOCKER 1 substrate gap).
+// Run:
+//   claim_batch --source-root src/v4 --source-root dsl \
+//     --entry src/v4/test/claim/workflow/probe_selector_compute_fabric_import_repro.dag \
+//     --function probe_selector_compute_fabric_import_repro_holds
+
+module v4.test.claim.workflow.probe_selector_compute_fabric_import_repro
+
+import v4.std.logic { Bool }
+import std.compute_fabric { supply_srv1_offer }
+
+fn probe_selector_compute_fabric_import_repro_holds() -> Bool {
+  supply_srv1_offer.provider == supply_srv1_offer.provider
+}
