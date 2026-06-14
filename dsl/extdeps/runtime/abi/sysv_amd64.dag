@@ -1,0 +1,75 @@
+// extdeps/runtime/abi/sysv_amd64.dag — AMD64 System V ABI facts (Linux syscall subset).
+//
+// Scope: Slice-1 Linux x86-64 syscall register convention cited to the real kernel/psABI docs.
+// Args flow rdi → rsi → rdx → r10 → r8 → r9; syscall NR and return value in rax. The fourth
+// argument uses r10 (not rcx) because SYSCALL saves rip to rcx and rflags to r11 — both clobbered.
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (x86-64 psABI register roles)
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/entry_64.S
+//         (entry_SYSCALL_64 header comment: rax=nr, rdi/rsi/rdx/r10/r8/r9=args, rcx/r11 clobbered)
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
+//         (Linux x86-64 syscall number table)
+
+module extdeps.runtime.abi.sysv_amd64
+
+import std.abi { ArchitecturalRegister, CallingConvention }
+import std.types { Bool }
+
+// 🟢 terminal — cited AMD64 GPR names are irreducible spec atoms (x86-64 psABI / kernel entry).
+type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
+
+// Amd64Gpr atoms inhabit ArchitecturalRegister (existential at the SyscallAbi boundary).
+data amd64_inhabitant_rdi: ArchitecturalRegister = Rdi
+data amd64_inhabitant_rsi: ArchitecturalRegister = Rsi
+data amd64_inhabitant_rdx: ArchitecturalRegister = Rdx
+data amd64_inhabitant_r10: ArchitecturalRegister = R10
+data amd64_inhabitant_r8: ArchitecturalRegister = R8
+data amd64_inhabitant_r9: ArchitecturalRegister = R9
+data amd64_inhabitant_rax: ArchitecturalRegister = Rax
+data amd64_inhabitant_rcx: ArchitecturalRegister = Rcx
+
+data sysv_amd64_linux_syscall_convention: CallingConvention = {
+  arg0: amd64_inhabitant_rdi,
+  arg1: amd64_inhabitant_rsi,
+  arg2: amd64_inhabitant_rdx,
+  arg3: amd64_inhabitant_r10,
+  arg4: amd64_inhabitant_r8,
+  arg5: amd64_inhabitant_r9,
+  syscall_number: amd64_inhabitant_rax,
+  return_value: amd64_inhabitant_rax,
+}
+
+// Falsifier stub: wrong arg3 (rcx) — distinct from the cited convention (not a second arch yet).
+data sysv_amd64_wrong_arg3_convention: CallingConvention = {
+  arg0: amd64_inhabitant_rdi,
+  arg1: amd64_inhabitant_rsi,
+  arg2: amd64_inhabitant_rdx,
+  arg3: amd64_inhabitant_rcx,
+  arg4: amd64_inhabitant_r8,
+  arg5: amd64_inhabitant_r9,
+  syscall_number: amd64_inhabitant_rax,
+  return_value: amd64_inhabitant_rax,
+}
+
+// Green-by-execution: arg3 identity through CallingConvention (abstract ArchitecturalRegister seam).
+fn witness_convention_arg3_identity() -> Bool {
+  sysv_amd64_linux_syscall_convention.arg3 == amd64_inhabitant_r10
+}
+
+// Green-by-execution: amd64 inhabitant resolves the identity to cited Amd64Gpr.R10.
+fn witness_convention_arg3_resolves_to_r10() -> Bool {
+  sysv_amd64_linux_syscall_convention.arg3 == R10
+}
+
+fn witness_convention_number_resolves_to_rax() -> Bool {
+  sysv_amd64_linux_syscall_convention.syscall_number == Rax
+}
+
+fn witness_convention_return_resolves_to_rax() -> Bool {
+  sysv_amd64_linux_syscall_convention.return_value == Rax
+}
+
+// Green-by-execution: distinct conventions are not equal (no injectivity — nr/ret share rax).
+fn witness_distinct_conventions_not_equal() -> Bool {
+  sysv_amd64_linux_syscall_convention != sysv_amd64_wrong_arg3_convention
+}
