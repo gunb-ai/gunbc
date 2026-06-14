@@ -57,7 +57,7 @@ import v4.std.find_witness {
   find_witness_reason_not_realized
 }
 import v4.std.inhabitant_bridge { std_projection_additive_numeric }
-import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.diagnostic { Accepted, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
   BoolWitness,
