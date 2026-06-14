@@ -467,6 +467,24 @@ data ci_runner_gate_row_closure_superset_safe: AffectedSetNodeFrontierClaimRunRo
   function: "lens_affected_set_closure_superset_safe_holds"
 }
 
+data ci_runner_gate_row_changed_dimension_receipt_classifies_union: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set diff→dimension classification conservative union",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_changed_dimension_receipt_classifies_union_holds"
+}
+
+data ci_runner_gate_row_dimension_classification_conservative_discriminates: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set dimension classification conservative discriminates (perturb-red)",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_dimension_classification_conservative_discriminates_holds"
+}
+
+data ci_runner_gate_row_changed_edit_yields_changed_subgraph: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set classified changed edit yields ChangedSubgraphFrontier",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_changed_edit_yields_changed_subgraph_holds"
+}
+
 data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
   ci_runner_gate_row_narrow_selection,
   ci_runner_gate_row_fail_closed_superset,
@@ -478,7 +496,10 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_discovered_inner,
   ci_runner_gate_row_four_phase,
   ci_runner_gate_row_closure_deep_chain,
-  ci_runner_gate_row_closure_superset_safe
+  ci_runner_gate_row_closure_superset_safe,
+  ci_runner_gate_row_changed_dimension_receipt_classifies_union,
+  ci_runner_gate_row_dimension_classification_conservative_discriminates,
+  ci_runner_gate_row_changed_edit_yields_changed_subgraph
 ]
 
-data ci_runner_node_frontier_claim_run_row_count: String = "11"
+data ci_runner_node_frontier_claim_run_row_count: String = "14"
