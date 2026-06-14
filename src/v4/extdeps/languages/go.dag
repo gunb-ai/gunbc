@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
-// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`go_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; GO-SG-1 TargetAtomRealization rows (Symbol/Bool/Char→rune) + atom_realizations catalog edge; platform Int atom row 🟡 gated until shared carrier gains integer value template (R1 uses ^go_surface_spelling_int / go_facts_int facts directly); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`go_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/compilers/target_model.dag; GO-SG-1 TargetAtomRealization rows (Symbol/Bool/Char→rune) + atom_realizations catalog edge; platform Int atom row 🟡 gated until shared carrier gains integer value template (R1 uses ^go_surface_spelling_int / go_facts_int facts directly); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
@@ -25,7 +25,7 @@ import v4.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -58,6 +58,13 @@ import v4.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_unbound_diagnostic
 }
+import v4.std.inhabitant_bridge {
+  facts_field_std_projection,
+  facts_field_surface_spelling,
+  facts_field_width,
+  inhabitant_field_atom,
+  std_projection_additive_numeric
+}
 import v4.std.grounding {
   empty_per_language_fact_bundle_registry,
   insert_per_language_fact_bundle_entry,
@@ -66,8 +73,8 @@ import v4.std.grounding {
   PerLanguageFactBundleRegistry
 }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model {
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetModel,
@@ -180,7 +187,7 @@ type GoCost {
   allocation_cost: Int
 }
 
-// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// Tokens are the shared v4.std.compilers.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
 // per-target Go coproduct dissolved into that std authority.
 
 type GoGrammarRelationRow {
@@ -308,7 +315,7 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int64,
   width: SignedBits64,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: ^go_std_projection_int64,
+  std_projection: std_projection_additive_numeric,
 }
 
 data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
@@ -316,6 +323,14 @@ data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   width: SignedPlatformInt,
   encoding: ^go_repr_twos_complement_integer,
   std_projection: ^go_std_projection_int,
+}
+
+// Platform-int slice for cross-language neutralization (python int -> go int, NOT int64).
+data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int,
+  width: SignedPlatformInt,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: std_projection_additive_numeric,
 }
 
 data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
@@ -509,11 +524,11 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: ^go_facts_field_surface_spelling,
+          name: facts_field_surface_spelling,
           target: go_inhabitant_atom(id: surface_spelling)
         ),
         go_named_edge(
-          name: ^go_facts_field_width,
+          name: facts_field_width,
           target: go_signed_int_width_node(width: width)
         ),
         go_named_edge(
@@ -531,7 +546,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -568,7 +583,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1234,7 +1249,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1271,7 +1286,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: ^go_facts_field_std_projection,
+          name: facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1418,7 +1433,7 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md.
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — bind gunbc#4773.
 // Go complex values are unordered and backed by finite-precision float components;
 // std.algebra currently has no complex-specific approximate algebra constructor,
 // so Wave 2b keeps their primitive fact-bundles but does not advertise a stronger
@@ -1463,8 +1478,115 @@ fn go_int_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Neutralization route: python int -> std_projection_additive_numeric -> go platform int (MVP1 emit surface).
+fn go_int_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
+            ),
+            go_named_edge(
+              name: facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.encoding)
+            ),
+            go_named_edge(
+              name: facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Third-inhabitant falsifier slice: int64 wired to shared std_projection_additive_numeric via
+// facts_field_std_projection (design-sign cond 3) — zero new combinator arms.
+fn go_int64_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
+            ),
+            go_named_edge(
+              name: facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int64.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int64.encoding)
+            ),
+            go_named_edge(
+              name: facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int64.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Cond-3 falsifier carrier: python_mvp1_emitted_add_fn_node shape (3 positional inhabitants)
+// with go-int64 wired to shared std_projection_additive_numeric (extdeps-only, zero new bridge key).
+fn go_int64_falsifier_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1474,14 +1596,16 @@ fn go_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node())
+      go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
+      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 // Zip-fold support nodes derived from go_facts_int constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     go_named_edge(
@@ -1540,6 +1664,21 @@ fn go_mvp1_declared_inhabitants_root() -> Node {
 
 fn go_mvp1_selection_policy_node() -> Node {
   go_int_inhabitant_node()
+}
+
+// Discrimination probe carrier: selection_policy aligned to int64 facts (tiebreak flips winner).
+fn go_mvp1_int64_selection_policy_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: go_integer_facts_node(facts: go_facts_int64)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
 }
 
 fn go_mvp1_emitted_add_fn_node() -> Node {
@@ -1612,7 +1751,7 @@ fn go_wave1_formal_productions() -> List<FormalProduction> {
   [go_formal_production_mvp1_fn_add()]
 }
 
-// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: src/v4/TASKS.md §T-7.1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
+// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: gunbc#4761 — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: GrammarExpr }
@@ -1775,7 +1914,7 @@ data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealizat
 }
 
 // 🟡 gated — feature:go-target-atom-realization-int — bind docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md §4 Int row —
-// dissolve-on: v4.std.target_model adds integer TargetValueTemplateKind + value path; forbidden: Symbol
+// dissolve-on: v4.std.compilers.target_model adds integer TargetValueTemplateKind + value path; forbidden: Symbol
 // value templates (e.g. ValueSymbolIdentityPassthrough) standing in for platform int (INVARIANTS P1/P3).
 
 data go_target_atom_realization_catalog: List<TargetAtomRealization> = [
@@ -1813,6 +1952,37 @@ fn go_mvp1_target_model() -> TargetModel {
   }
 }
 
+fn go_mvp1_target_model_node_with_selection_policy(selection: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: target_model_edge_selection_policy, target: selection),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
+      go_named_edge(
+        name: target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: go_target_atom_realization_catalog,
+          host_bundle: go_mvp1_target_model_bundle_core()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_mvp1_target_model_int64_selection_policy() -> TargetModel {
+  TargetModel {
+    bundle: go_mvp1_target_model_node_with_selection_policy(
+      selection: go_mvp1_int64_selection_policy_node()
+    ),
+    lex: go_wave1_lex(),
+    binding_spellings: go_mvp1_binding_spellings(),
+    authority_source_text: go_mvp1_source_text
+  }
+}
+
 fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
@@ -1822,7 +1992,7 @@ fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
-  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: src/v4/TASKS.md §T-11 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
+  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: gunbc#4761 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
   // semicolons after line-final identifiers, literals, break/continue/fallthrough/
   // return, and selected delimiters. Wave 2a accepts only the horizontal-space
   // MVP subset; newline layout fails closed until std.lexing carries Go layout.

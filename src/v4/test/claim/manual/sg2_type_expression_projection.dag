@@ -7,7 +7,7 @@
 module v4.test.claim.manual.sg2_type_expression_projection
 
 import v4.compiler.translate {
-  project_type_expression_node,
+  translate_type_expression_project,
   target_bundle_child_optional_type_expr_projection,
   target_serialize_source_from_model,
   translate,
@@ -42,7 +42,7 @@ import v4.extdeps.languages.rust {
   rust_type_expression_projection,
   rust_type_expression_projection_bundle_node
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,
@@ -104,7 +104,7 @@ fn sg2_claim_input(ok: Bool) -> Node {
 data sg2_type_expr_target: TargetModel = rust_sg2_type_expr_projection_probe_target_model()
 
 fn sg2_project_instantiation_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg2_instantiation_source_type_node(),
     target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
@@ -120,7 +120,7 @@ fn sg2_projection_matches_golden() -> Bool {
 }
 
 fn sg2_project_arrow_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg2_arrow_source_type_node(),
     target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
@@ -131,7 +131,7 @@ fn sg2_project_arrow_emitted() -> Node {
 }
 
 fn sg2_project_conj_emitted() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg2_conj_source_type_node(),
     target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
@@ -142,7 +142,7 @@ fn sg2_project_conj_emitted() -> Node {
 }
 
 fn sg2_binary_fn_projection_accepts() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg2_binary_fn_source_type_node(),
     target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
@@ -153,7 +153,7 @@ fn sg2_binary_fn_projection_accepts() -> Bool {
 }
 
 fn sg2_arrow_malformed_projection_rejects() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: rust_sg2_arrow_malformed_source_type_node(),
     target: sg2_type_expr_target,
     projection: rust_type_expression_projection()

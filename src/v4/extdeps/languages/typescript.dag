@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
-// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; G.1.4: wave-2b `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry`; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Consumes: v4.std.grammar, v4.std.compilers.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.compilers.target_model, v4.std.text.
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; G.1.4: wave-2b `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry`; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/compilers/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
@@ -39,7 +39,7 @@ import v4.std.grammar {
   grammar_relation_row_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   DelimitedPattern,
   DigitChar,
@@ -87,8 +87,12 @@ import v4.std.model_core {
   PrimitiveOperationRef,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth
+  ModelCoreFactAxisWidth,
+  primitive_fact_axis_unbound_diagnostic
+}
+import v4.std.inhabitant_bridge {
+  facts_field_std_projection,
+  std_projection_additive_numeric
 }
 import v4.std.diagnostic {
   Accepted,
@@ -106,9 +110,9 @@ import v4.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v4.std.node_query { find_named_child }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
-import v4.std.target_model {
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
+import v4.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
@@ -127,7 +131,7 @@ import v4.std.target_model {
   TargetTypeExprFieldSlot,
   TargetTypeExprVariantSlot
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -171,6 +175,8 @@ import v4.std.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetEffectCalleeRow,
+  TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
@@ -273,37 +279,12 @@ type TsGrammarRelationRow {
 // DESIGN-6 / #3900 ratified Task surface (bit-identical).
 data ts_task_type_alias_source_text: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 data ts_pr3_identity_source_text: String = "function identity(x: number): number { return x; }"
-// 🟡 coproduct dissolution — feature:t6-value-expr-body-derive — dissolve-on: bodied add-fn emit derives body tokens via value-expression projection; delete this fixture enumeration for the add path once T6 skeleton is green (design-value-emit-schema.md §4.5).
-fn ts_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^ts_token_kw_function },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_fn_add },
-    FixedToken { token_class: ^ts_token_lparen },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_x },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_comma },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_y },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_rparen },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_lbrace },
-    FixedToken { token_class: ^ts_token_kw_return },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_x },
-    FixedToken { token_class: ^ts_token_plus },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_y },
-    FixedToken { token_class: ^ts_token_semicolon },
-    FixedToken { token_class: ^ts_token_rbrace }
-  ]
-}
 data ts_mvp1_source_text: String = "function add(x: number, y: number): number { return x + y; }"
 
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_number,
   ieee754_binary: ^ts_ieee754_binary64,
-  std_projection: ^ts_std_projection_float64,
+  std_projection: std_projection_additive_numeric,
 }
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
@@ -378,7 +359,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -399,7 +380,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -424,7 +405,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_bool_operation_semantics_node(facts: facts)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -540,7 +521,7 @@ fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
     ),
     ts_named_edge(
       name: ^ts_coercion_field_number_std_projection,
-      target: ts_inhabitant_atom(id: ^ts_std_projection_float64)
+      target: ts_inhabitant_atom(id: std_projection_additive_numeric)
     )
   ]
 }
@@ -627,6 +608,48 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
+    },
+    // Applied-effect projection: the `callees` catalog binds each v4.std.runtime EffectRequestKind
+    // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
+    // shim entrypoint token (`__gunbc_effect_read` / `__gunbc_effect_write`, lexed below). The emit
+    // stage frames operands like a call and resolves the callee by catalog lookup; the shim bodies
+    // (fs.readFileSync / fs.writeFileSync) are supplied by the host workspace preamble, not the
+    // compiler — so effects are descriptor-driven, never hand-listed. A new effect kind is one more
+    // row here, with no compiler-stage edit (Cost-of-Change = 1).
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [
+        TargetEffectCalleeRow {
+          effect_kind: ^ReadResource,
+          callee: ^ts_token_effect_read_callee
+        },
+        TargetEffectCalleeRow {
+          effect_kind: ^WriteResource,
+          callee: ^ts_token_effect_write_callee
+        }
+      ],
+      open: ^ts_token_lparen,
+      close: ^ts_token_rparen,
+      separator: ^ts_token_comma
+    },
+    // 🟡 stub — TypeScript has no `then` keyword; this conditional_form would emit
+    // `if cond then T else E`, which is invalid TypeScript (TS uses the `?:` ternary). No test wires
+    // the TS conditional path yet (M0). The ternary realization is deferred as a §12.9(B) Optional-token
+    // refinement (functional, out of #4807 scope) — recorded here, not silently shipped as canonical.
+    // dissolve-on: TS ternary lowering lands (replace the if/then/else token shape with `?:`).
+    // (durably records jolly-wren-365's old F4.)
+    conditional_form: TargetConditionalShape {
+      if_token: ^ts_token_kw_if,
+      then_token: ^ts_token_kw_then,
+      else_token: ^ts_token_kw_else
+    },
+    // 🟡 stub — TS has no `in` for let-in; bind emit not wired for TS yet (M0 dag only).
+    // `in_token` is intentionally absent from ts lex so bind-let serialize fails closed if
+    // misrouted before TS let-in lowering lands (avoids silent `let x = … then …` text).
+    // dissolve-on: TS let-in lowering lands (add lex rule + replace unwired sentinel).
+    let_form: TargetBindLetShape {
+      let_token: ^ts_token_kw_let,
+      assign_token: ^ts_token_eq,
+      in_token: ^ts_token_unwired_bind_in
     }
   }
 }
@@ -718,7 +741,7 @@ fn ts_mvp1_serialize_source_children() -> List<Edge> {
       ts_named_edge(
         name: grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: ts_mvp1_concrete_tokens(),
+          tokens: ts_mvp1_canonical_add_fn_tokens(),
           token_to_node: ts_concrete_token_node
         )
       )
@@ -746,7 +769,7 @@ type TsGramBuild1State
 
 fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
-    xs: ts_mvp1_concrete_tokens(),
+    xs: ts_mvp1_canonical_add_fn_tokens(),
     empty: TsGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
@@ -774,7 +797,7 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
     production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
-    tokens: ts_mvp1_concrete_tokens()
+    tokens: ts_mvp1_canonical_add_fn_tokens()
   }
 }
 
@@ -784,6 +807,11 @@ fn ts_mvp1_add_return_body_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^ts_token_plus },
     BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
   ]
+}
+
+// Descriptor-derived canonical add-fn token row (statement scaffold + value-expression body).
+fn ts_mvp1_canonical_add_fn_tokens() -> List<ConcreteSyntaxToken> {
+  ts_mvp1_compose_add_fn_tokens(body_tokens: ts_mvp1_add_return_body_tokens())
 }
 
 fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
@@ -1513,7 +1541,7 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
 }
 
 // SG-2 — canonical per-connective TargetTypeExpressionProjection row for TypeScript.
-// Single authority: carrier lives in v4.std.target_model; this is the per-language row only
+// Single authority: carrier lives in v4.std.compilers.target_model; this is the per-language row only
 // (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
 // Connective → TS surface (ECMA / TS Handbook):
 //   atom          ident / keyword primitive (number, string, boolean, ...)
@@ -2002,7 +2030,9 @@ fn ts_wave1_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rparen, text: ")"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
-      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";")
+      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
+      ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
+      ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")
     ]
   }
 }
@@ -2196,7 +2226,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2217,7 +2247,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2450,7 +2480,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGr
 fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
     lhs: ^ts_production_mvp1_fn_add,
-    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
+    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_canonical_add_fn_tokens())
   )
 }
 
@@ -3121,7 +3151,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3157,7 +3187,7 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^ts_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],

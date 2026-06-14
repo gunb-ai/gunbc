@@ -1019,8 +1019,17 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
 
 fn extract_optional_inner_node(n: Node) -> Node {
   let is_optional = n.return_cardinality == CardOptional
-  if is_optional { with_required_cardinality(n: n) }
-  else { n }
+  if is_optional {
+    with_required_cardinality(n: n)
+  } else if n.name == "Optional" && n.children |> count == 1 {
+    // Applied generic Optional<T>: inner is the type argument when the coproduct
+    // Disj structure is not carried on the instantiated node (substitute_generics
+    // rebuild). Present/Absent synthesis still needs T for the value field.
+    match n.children |> first {
+      Present { value: inner } => inner
+      Absent => n
+    }
+  } else { n }
 }
 
 // Convert AlgebraFieldKind to the field name string for child lookup on types.

@@ -1,0 +1,47 @@
+// extdeps/git/gitignore.dag -- "What is .gitignore?"
+//
+// Stable domain model of .gitignore files. Tautological definitions:
+// categories group exclusion patterns with provenance and rationale.
+//
+// Consumers: config/gitignore.dag (data), tools/bootstrap.dag (rendering).
+
+module extdeps.gitignore
+
+import std.render { OutputFormat }
+
+// A category of gitignore rules with provenance tracking.
+type GitignoreCategory {
+  id: String
+  name: String
+  source: String?
+  items: List<String>
+  rationale: String?
+  when_build_system: String?
+}
+
+// A complete .gitignore file with provenance rule comment.
+type GitignoreFile {
+  rule_comment: String
+  categories: List<GitignoreCategory>
+}
+
+// OutputFormat parameterization for .gitignore.
+data gitignore_output_format: OutputFormat = {
+  name: "Gitignore",
+  indent_unit: "",
+  kv_separator: "",
+  list_prefix: "",
+  comment_prefix: "#",
+  section_separator: "\n",
+  trailing_newline: true
+}
+
+// -- Category filtering -----------------------------------------------
+
+fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
+  let by_build = filter(categories, c => match c.when_build_system {
+    None => true
+    _ => c.when_build_system == build_system
+  })
+  filter(by_build, c => c.items |> count > 0)
+}

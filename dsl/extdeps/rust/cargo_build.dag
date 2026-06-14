@@ -1,0 +1,85 @@
+// extdeps/rust/cargo_build.dag -- the `cargo` command service (shell transport).
+//
+// Split out of `extdeps.cargo` (the pure Cargo model) so the model can be
+// imported by compiler modules / the bootstrap seed without pulling a
+// shell-transport service into the compiled set. Consumers that actually run
+// cargo (e.g. tools/build.dag) import this module.
+
+module extdeps.cargo_build
+
+// -- Service: shell transport wiring -----------------------------
+
+service cargo.Build {
+  operation Build {
+    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "build", "--all-targets"] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation Test {
+    input { env: Map<String, String> = cargo_compile_env }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "test", "--workspace"] }
+    exit {
+      0 => Unit
+      101 => String "Tests failed"
+    }
+  }
+
+  operation Clippy {
+    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
+    exit {
+      0 => Unit
+      101 => String "Clippy warnings or errors"
+    }
+  }
+
+  operation Doc {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["cargo", "doc", "--no-deps"] }
+    exit {
+      0 => Unit
+      101 => String "Documentation generation failed"
+    }
+  }
+
+  operation Run {
+    input { package: String, bin: String, args: List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    // Note: args are appended to the command by the transport layer.
+    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}"] }
+    exit {
+      0 => Unit
+      101 => String "Run failed"
+      nonzero => String "Binary exited with error"
+    }
+  }
+}

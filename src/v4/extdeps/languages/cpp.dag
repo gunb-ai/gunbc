@@ -21,7 +21,7 @@ import v4.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
@@ -29,8 +29,8 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
@@ -63,7 +63,7 @@ import v4.std.model_core {
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -193,7 +193,7 @@ type CppLanguageModel {
   core: ModelCore
 }
 
-// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// Tokens are the shared v4.std.compilers.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
 // per-target C++ coproduct dissolved into that std authority.
 
 type CppGrammarRelationRow {
@@ -987,7 +987,7 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 }
 
 // Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,

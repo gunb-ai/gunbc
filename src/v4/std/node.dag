@@ -43,7 +43,44 @@ type Behavior
   | Bind
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// R-reflect Phase 2a — dissolving bridge + Path-3 I/O boundary (design §4.3 substrate-native).
+// resolve_type_node: minimal Rust bridge (compiler Disj → substrate Node Value); dissolves when
+// v4 gains compile-graph access. Enumeration lives in v4.std.node_query (node_labeled_child_edges).
+// syntactic_coproduct_arm_keys: irreducible raw-source scan (Path 3 independence from parse+resolve).
+// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: v4
+// compile-graph access replaces resolve_type_node intercept; forbidden: parallel enumeration in Rust.
+fn resolve_type_node(type_name: Symbol) -> Node {
+  resolve_type_node(type_name: type_name)
+}
+
+fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
+  syntactic_coproduct_arm_keys(type_name: type_name)
+}
+
+fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
+  syntactic_coproduct_arm_pairs(type_name: type_name)
+}
+
+
+// R-reflect Phase 2b — reflected arm carrier (positive nullary vs typed payload).
+type ArmPayload
+  = Nullary
+  | Typed { target_ref: Symbol }
+
+type CoproductArm {
+  label: Symbol
+  payload: ArmPayload
+}
+
+type CoproductArmPayloadPair {
+  label: Symbol
+  payload_type_name: Symbol
+}
+
+data coproduct_nullary_payload_type_name: Symbol = ^coproduct_nullary_payload
+
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
@@ -183,6 +220,30 @@ type NodeFold<R> {
 fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
+  })
+}
+
+// Preorder listing of every Node in the subtree rooted at root (root first).
+// init includes self; step appends each child's recursive result — do not re-snoc edge.target
+// (sub already contains it). Sibling to node_subtree_count in 06_translate.dag.
+fn node_subtree_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { [self] },
+      step: fn(acc, _edge, sub) { concat(acc, sub) }
+    }
+  )
+}
+
+type NodeFoldTopDown<A,R> {
+  init: fn(Node, A) -> R
+  child_context: fn(Node, A, Edge) -> A
+  step: fn(R, Edge, R) -> R
+}
+fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
+  fold(n.children, init: algebra.init(n, ctx), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_topdown(n: e.target, ctx: algebra.child_context(n, ctx, e), algebra: algebra))
   })
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -637,7 +698,7 @@ data byte_offset_cache_digest_max_limbs: Int = 9
 data byte_offset_cache_digest_overflow_limbs: Int = 4
 
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces ByteOffsetCacheDigestAuthority; interim WithinCeiling/OverCeiling/CacheDigestIneligible (exhausted residual fail-closed).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces ByteOffsetCacheDigestAuthority; interim WithinCeiling/OverCeiling/CacheDigestIneligible (exhausted residual fail-closed).
 type ByteOffsetCacheDigestAuthority
   = ByteOffsetWithinCeiling { digest: Hash }
   | ByteOffsetOverCeiling {
@@ -651,7 +712,7 @@ type ByteOffsetCacheDigestAuthority
     }
 
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
 type ByteOffsetCacheKey
   = ByteOffsetCacheEligible { digest: Hash }
   | ByteOffsetCacheIneligible {
@@ -1093,7 +1154,7 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
 fn byte_offset_cache_digest_nonneg_bounded_authority(
   i: Int,
   limbs_remaining: Int
@@ -1409,7 +1470,7 @@ fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind gunbc#4758 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
 fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>

@@ -1,0 +1,30 @@
+// std/memory.dag — DRAM catalog dispatch and population projections.
+
+module std.memory
+
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.memory.types { DramModuleCatalogRow, DramModuleIdentity, HostMemoryPopulation, MemoryPopulationRow }
+import std.memory.sk_hynix { sk_hynix_catalog_row }
+import std.types { Int }
+
+fn dram_module_catalog_row(dimm_identity: DramModuleIdentity) -> DramModuleCatalogRow {
+  match dimm_identity {
+    SkHynix { dimm: m } => sk_hynix_catalog_row(m)
+  }
+}
+
+fn memory_population_row_bytes(row: MemoryPopulationRow) -> ByteSize {
+  byte_size(
+    byte_size_count(dram_module_catalog_row(row.dimm_identity).capacity_bytes) * row.stick_count,
+  )
+}
+
+fn host_memory_population_nominal_bytes(pop: HostMemoryPopulation) -> ByteSize {
+  byte_size(
+    pop.rows
+      |> fold(
+        init: 0,
+        f: (acc, row) => acc + byte_size_count(memory_population_row_bytes(row)),
+      ),
+  )
+}

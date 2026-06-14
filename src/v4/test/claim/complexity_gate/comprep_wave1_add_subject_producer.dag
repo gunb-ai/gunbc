@@ -23,7 +23,7 @@ import v4.extdeps.languages.dag {
 import v4.std.collection { List, Set }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
 import v4.std.grammar { GrammarRoot, ParseTree }
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.node { Node, Symbol }
 
 data comprep_wave1_add_subject_source_file: Symbol = comprep_wave1_add_subject_source_file

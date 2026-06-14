@@ -44,7 +44,7 @@ import v4.extdeps.languages.cpp {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   infer_receipt_context
@@ -88,7 +88,7 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
+data mvp1_cpp_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 data mvp1_cpp_target_profile: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^mvp1_cpp_target_profile_atom } },
@@ -120,7 +120,7 @@ data mvp1_cpp_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: cpp_mvp1_target_model_node(target_profile: cpp_mvp1_target_profile),
   lex: cpp_wave1_lex(),
   binding_spellings: cpp_mvp1_binding_spellings(),
-  authority_source_text: mvp1_forbidden_authority_source_text
+  authority_source_text: mvp1_cpp_forbidden_authority_source_text
 }
 
 data mvp1_cpp_empty_translation_rules_bundle: Node = Node {
@@ -180,7 +180,7 @@ fn mvp1_cpp_canonical_grounding(
   }
 }
 
-// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind TASKS.md T-10 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding.
+// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind gunbc#4760 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding.
 fn mvp1_cpp_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == mvp1_cpp_emitted_root {
     Holds {
@@ -327,7 +327,7 @@ data mvp1_cpp_emit_receipt: Outcome<TargetSource> = anchor_mvp1_cpp_emit_accepts
 
 data mvp1_cpp_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_cpp_compile_inferred_accepts()
 
-// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind gunbc#4757 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_cpp_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_cpp_emit_receipt {
@@ -349,7 +349,7 @@ fn mvp1_cpp_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind gunbc#4757 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_cpp_compile_inferred_receipt {
@@ -401,7 +401,7 @@ data claim_mvp1_cpp_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 // T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
-// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind gunbc#4757 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_cpp_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_cpp_emit_add_fn_accepts,
   context: infer_receipt_context(),
@@ -422,7 +422,7 @@ data run_mvp1_cpp_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
 }
 
 // T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
-// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind gunbc#4757 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_cpp_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_cpp_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),

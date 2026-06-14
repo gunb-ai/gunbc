@@ -1,0 +1,155 @@
+// extdeps/browser/browser.dag -- Playwright browser automation transport.
+//
+// Models headless/headed browser interaction for web automation.
+// Primary consumer: chatgpt_reviewer.dag (ChatGPT Pro browser automation).
+//
+// Transport: Playwright (Node.js) — the interpreter dispatches operations
+// to a persistent browser context via the Playwright API.
+//
+// This is the most complex transport in the system: it manages a stateful
+// browser session with navigation, DOM queries, file uploads, and text
+// extraction. The operations are designed to be composable — higher-level
+// workflows (like chatgpt_reviewer.dag) compose these into multi-step
+// interactions.
+
+module extdeps.browser
+
+import std.types { FilePath }
+
+// -- Browser lifecycle ------------------------------------------------
+
+type BrowserConfig {
+  headless: Bool = false
+  profile_path: FilePath
+  viewport_width: Int = 1280
+  viewport_height: Int = 900
+}
+
+// Opaque handles — the interpreter manages the actual Playwright objects.
+// These are passed between operations but never inspected by .dag code.
+// Branded-String form lets shell transport interpolate the handle via argv
+// while the type system keeps them disjoint from raw String.
+type BrowserContext = String where brand("BrowserContext")
+type Page           = String where brand("Page")
+type Element        = String where brand("Element")
+
+// -- Services ---------------------------------------------------------
+
+// Browser operations dispatch via shell to a Playwright runner.
+// The runner manages a persistent browser context and executes
+// actions as JSON commands. This keeps the transport within what
+// the compiler supports today (shell). A native playwright transport
+// can replace this later without changing the .dag interface.
+
+service browser.Context {
+  operation Launch {
+    input { headless: String = "false", profile_path: FilePath }
+    output { context: BrowserContext from "stdout" }
+    transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
+  }
+
+  operation Close {
+    input { context: BrowserContext }
+    output {}
+    transport shell { argv: ["playwright-runner", "close", "{context}"] }
+  }
+}
+
+service browser.Page {
+  // The current shell transport addresses a single implicit page owned by the
+  // persistent runner session. No argv slot carries a page handle today, so
+  // these operations stay page-singleton until the transport can surface a
+  // `Page` carrier without breaking callers that rely on that assumption.
+  operation Goto {
+    // Keep browser locations as raw String as a current modeling choice:
+    // std.types.Url narrows to `^https?://`, but browser navigation and
+    // observation legitimately include locations such as `about:blank`.
+    input { url: String, wait_until: String = "domcontentloaded" }
+    output { final_url: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
+  }
+
+  operation CurrentUrl {
+    // Same rationale as `Goto`: browser-native locations are valid outputs.
+    input {}
+    output { url: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "url"] }
+  }
+
+  operation Title {
+    input {}
+    output { title: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "title"] }
+  }
+
+  operation WaitForSelector {
+    input { selector: String, timeout_ms: Int = 30000 }
+    output { found: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "wait-for", "{selector}", "--timeout", "{timeout_ms}"] }
+  }
+
+  operation QueryAll {
+    input { selector: String }
+    output { count: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "query-all", "{selector}"] }
+  }
+
+  operation Click {
+    input { selector: String }
+    output {}
+    transport shell { argv: ["playwright-runner", "click", "{selector}"] }
+  }
+
+  operation Fill {
+    input { selector: String, text: String }
+    output {}
+    transport shell { argv: ["playwright-runner", "fill", "{selector}", "{text}"] }
+  }
+
+  operation Evaluate {
+    input { expression: String }
+    output { result: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "evaluate", "{expression}"] }
+  }
+
+  operation UploadFile {
+    input { selector: String, path: FilePath }
+    output {}
+    transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
+  }
+
+  operation Screenshot {
+    input { path: FilePath }
+    output {}
+    transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
+  }
+
+  operation Wait {
+    input { ms: Int }
+    output {}
+    transport shell { argv: ["playwright-runner", "wait", "{ms}"] }
+  }
+}
+
+service browser.Element {
+  // The runner's element-facing commands are selector-addressed today rather
+  // than handle-addressed. Keep selectors explicit until the transport can
+  // produce and consume `Element` carriers end-to-end.
+  operation IsVisible {
+    input { selector: String }
+    output { visible: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "is-visible", "{selector}"] }
+  }
+
+  operation InnerText {
+    input { selector: String }
+    output { text: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "inner-text", "{selector}"] }
+  }
+
+  operation EvaluateOn {
+    input { selector: String, expression: String }
+    output { result: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "evaluate-on", "{selector}", "{expression}"] }
+  }
+}

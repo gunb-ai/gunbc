@@ -1,12 +1,12 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Status: T-21 IRT-1 filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI/T-24 node-precision closure via affected_set_from_diff.
+// Status: filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI node-precision closure via affected_set_from_diff.
 
 module v4.lens.affected_set
 
 
-import v4.std.collection { Absent, List, Map, Present, map_get, map_insert }
-import v4.std.algebra { contains, list_append, list_snoc_item }
+import v4.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }
+import v4.std.algebra { TailAbsent, TailFound, contains, length, list_append, list_snoc_item, list_tail }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -36,7 +36,41 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, content_hash, SyntheticOccurrence }
+import v4.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Diff,
+  Disj,
+  Edit,
+  Hash,
+  Instantiation,
+  Loop,
+  Node,
+  Path,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  canonical_tag_arrow,
+  canonical_tag_bind,
+  canonical_tag_branch,
+  canonical_tag_cardinality,
+  canonical_tag_conj,
+  canonical_tag_disj,
+  canonical_tag_instantiation,
+  canonical_tag_loop,
+  canonical_tag_transform,
+  canonical_tag_value,
+  content_hash,
+  SyntheticOccurrence
+}
 import v4.std.witness { Holds, Witness }
 import v4.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
 
@@ -62,17 +96,17 @@ type EditDimension {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — bind T-21 — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
+// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
-// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
+// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 
-// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
+// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
@@ -84,21 +118,21 @@ type BoundaryExclusion {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — bind T-21 — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
+// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
   | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — bind T-21 — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
+// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 
-// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
 // RULING-1: 🟢 pretty-much-done — frontier carrier.
-// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
       boundary_exclusions: List<BoundaryExclusion>,
@@ -107,41 +141,41 @@ type ReExecFrontier
   | FailClosed { reason: FailClosedReason }
 
 
-// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — bind T-21 — dissolve-on: B1/B-5 receipt primitives replace scaffold
+// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — dissolve-on: B1/B-5 receipt primitives replace scaffold
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — bind T-21 — dissolve-on: T-21 TestClaims boundary coverage
+// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — dissolve-on: affected-set TestClaims boundary coverage
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
+// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — bind T-21 — dissolve-on: B-4/B-5 edge receipts replace scaffold
+// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — dissolve-on: B-4/B-5 edge receipts replace scaffold
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21 — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
 type FrontierDependency {
   dependency: DependencyView
   target: DependencyEndpoint
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — bind T-21 — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
+// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
   = FrontierProduced { dependencies: List<FrontierDependency> }
   | FrontierUnknown { reason: Symbol }
@@ -197,7 +231,7 @@ type AffectedSetFoldAcc
     }
 
 
-// 🟢 coproduct dissolution — T-21 edit/rebuild projection; preserves fail-closed evidence.
+// 🟢 coproduct dissolution — edit/rebuild projection; preserves fail-closed evidence.
 type RerunNodeSet
   = RerunNodeSetProduced {
       nodes: List<Node>
@@ -217,6 +251,12 @@ type AffectedSetReading {
 type AffectedSetClosureAcc {
   frontier: List<Node>
   dependencies: List<FrontierDependency>
+}
+
+
+type AffectedSetClosureFixpointState {
+  acc: AffectedSetClosureAcc
+  stable: Bool
 }
 
 
@@ -264,11 +304,11 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 }
 
 
-// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
+// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
-// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
+// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
 fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
@@ -278,7 +318,7 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
 }
 
 
-// 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
+// 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
 fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
@@ -431,18 +471,53 @@ fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSe
 }
 
 
-// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind TASKS.md T-21 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
+fn affected_set_closure_frontier_unchanged(
+  before: AffectedSetClosureAcc,
+  after: AffectedSetClosureAcc
+) -> Bool {
+  length(xs: before.frontier) == length(xs: after.frontier)
+}
+
+
+// Convergence bound: at most one frontier growth per round, so 2×|dependencies| rounds
+// subsume any |V|-deep chain (|dependencies| ≥ |V|−1 on tree-shaped substrates).
+fn affected_set_closure_convergence_rounds(dependencies: List<DependencyView>) -> List<DependencyView> {
+  list_append(left: dependencies, right: dependencies)
+}
+
+
+fn affected_set_closure_fixpoint_step(
+  dependencies: List<DependencyView>,
+  state: AffectedSetClosureFixpointState
+) -> AffectedSetClosureFixpointState {
+  if state.stable {
+    state
+  } else {
+    let next_acc = affected_set_closure_pass(dependencies: dependencies, acc: state.acc)
+    AffectedSetClosureFixpointState {
+      acc: next_acc,
+      stable: affected_set_closure_frontier_unchanged(before: state.acc, after: next_acc)
+    }
+  }
+}
+
+
+// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
 fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
-  fold(
-    dependencies,
-    init: AffectedSetClosureAcc {
-      frontier: [edit_locus],
-      dependencies: []
+  let state = fold(
+    affected_set_closure_convergence_rounds(dependencies: dependencies),
+    init: AffectedSetClosureFixpointState {
+      acc: AffectedSetClosureAcc {
+        frontier: [edit_locus],
+        dependencies: []
+      },
+      stable: false
     },
-    f: fn(acc, _) {
-      affected_set_closure_pass(dependencies: dependencies, acc: acc)
+    f: fn(state, _) {
+      affected_set_closure_fixpoint_step(dependencies: dependencies, state: state)
     }
   )
+  state.acc
 }
 
 
@@ -1040,7 +1115,7 @@ fn affected_set_from_diff(
 }
 
 
-// IRT-1 canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
+// canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
 fn re_exec_frontier_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -1101,9 +1176,98 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 }
 
 
-// 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — bind T-21/T-24 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
+fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
+  match connective {
+    Atom { identity: identity } => identity
+    Conj => canonical_tag_conj
+    Disj => canonical_tag_disj
+    Arrow => canonical_tag_arrow
+    Cardinality => canonical_tag_cardinality
+    Instantiation => canonical_tag_instantiation
+  }
+}
+
+
+fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
+  match behavior {
+    Value => canonical_tag_value
+    Transform => canonical_tag_transform
+    Branch => canonical_tag_branch
+    Loop => canonical_tag_loop
+    Bind => canonical_tag_bind
+  }
+}
+
+
+fn node_root_dimension_family(node: Node) -> List<AffectedDimension> {
+  match node.kind {
+    TypeNode { connective: connective } =>
+      [connective_to_dimension_family(connective: connective)]
+    ComputationNode { behavior: behavior } =>
+      [behavior_to_dimension_family(behavior: behavior)]
+  }
+}
+
+
+fn dimension_in_list(xs: List<AffectedDimension>, item: AffectedDimension) -> Bool {
+  contains(xs: xs, item: item, eq: fn(left, right) { left == right })
+}
+
+
+fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) -> List<AffectedDimension> {
+  if dimension_in_list(xs: acc, item: dim) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: dim)
+  }
+}
+
+
+fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDimension>) -> List<AffectedDimension> {
+  fold(right, init: left, f: fn(acc, dim) {
+    union_dimension_into(acc: acc, dim: dim)
+  })
+}
+
+
+fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDimensionReceipt {
+  match list_at_optional(xs: dims, index: 0) {
+    Present { value: first } =>
+      match list_tail(xs: dims) {
+        TailFound { tail: rest } =>
+          ChangedDimensions { first: first, rest: rest }
+        TailAbsent =>
+          ChangedDimensions { first: first, rest: [] }
+      }
+    Absent =>
+      ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
+  }
+}
+
+
+// Conservative union of before/after root families: over-reports (⊇ true affected), never under-attributes.
+fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensionReceipt {
+  if content_hash(n: before) == content_hash(n: after) {
+    ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
+  } else {
+    list_to_changed_dimension_receipt(
+      dims: union_dimension_lists(
+        left: node_root_dimension_family(node: before),
+        right: node_root_dimension_family(node: after)
+      )
+    )
+  }
+}
+
+
+// D1b gap-1: real diff→dimension classification (conservative union; Unknown only on unresolved path).
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
-  ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
+  match subterm_at(root: dag, path: edit.at) {
+    Accepted { value: current, diagnostics: _ } =>
+      changed_dimension_families_union(before: current, after: edit.replacement)
+    Rejected { diagnostics: _ } =>
+      ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
+  }
 }
 
 

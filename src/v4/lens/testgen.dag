@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
+// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
 module v4.lens.testgen
 
@@ -282,7 +282,7 @@ fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
 // ClaimAnchorKey (single authority — not a coarse static category symbol), so distinct
 // anchors/obligations get distinct GeneratorIds and no two scheduled generators collide.
 // 🟡 dissolution target: replace this literal table with an anchor→Symbol reflection when
-// .dag can project a Symbol from a ClaimAnchorKey directly (T-19 TestClaim reflection).
+// .dag can project a Symbol from a ClaimAnchorKey directly (TestClaim reflection).
 // F.2-P1: derive a generator's identity from its ManualAnchorKey (one id per manual anchor).
 fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   match key {
@@ -1185,7 +1185,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
   }
 }
 
-// T-19 witness-validity emit helper: oracle = v4.std.find_witness::verify_witness; emits
+// witness-validity emit helper: oracle = v4.std.find_witness::verify_witness; emits
 // RoundTripClaim whose input bundles subject + oracle outcome. Rejected only when the
 // subject encoding fails closed (e.g. unencodable Textual{ByteRange} locus).
 fn testgen_emit_witness_validity_claim(
@@ -1314,7 +1314,7 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind gunbc#4762
 // dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {
@@ -1358,7 +1358,7 @@ fn nat_algebra_law_schedule_row_from_obligation(
   )
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
 fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
   match a {
     ManualNatAddLeftIdentity =>
@@ -1804,7 +1804,7 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
   }
 }
 
-// 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: T-22 `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
+// 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
 type TestgenRunReceipt {
   profile_ref: Symbol
   generators: List<Generator<TestgenConcept>>

@@ -89,7 +89,7 @@ Authority rows:
 - Worksheet: `docs/planning/v4-go-l1-compiler-slice-compile-worksheet-2026-06-01.md`.
 - Slice id: `go_l1_nat_semiring_rung2`.
 - Claim wiring: `src/v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag`.
-- Temporary host transport: `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh`.
+- Temporary host transport: `scripts/v4-nat-semiring-go-compiler-slice-gate.sh`.
 
 The L1 worksheet starts only after Worksheets A-C are present, because the L1
 receipt depends on Go leaf facts being structurally named before a compiler

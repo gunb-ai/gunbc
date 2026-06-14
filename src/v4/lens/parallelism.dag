@@ -1,6 +1,6 @@
 // src/v4/lens/parallelism.dag
 // Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
-// Status: T-13 family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate (Practice 11).
+// Status: per-edge classification-family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate (Practice 11).
 
 
 module v4.lens.parallelism

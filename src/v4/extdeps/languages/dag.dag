@@ -6,12 +6,24 @@
 
 module v4.extdeps.languages.dag
 
-import v4.std.collection { Absent, List, Set, Map, Present, empty_map, map_insert }
+import v4.std.collection {
+  Absent,
+  List,
+  Set,
+  Map,
+  Optional,
+  Present,
+  empty_map,
+  map_insert,
+  optional_absent,
+  optional_present
+}
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
+  grammar_expr_optional,
   ParseGrammar,
   FormalGrammarSymbol,
   FormalNonterminalOccurrence,
@@ -24,7 +36,6 @@ import v4.std.grammar {
   Choice,
   ModeledGrammar,
   Nonterminal,
-  Optional,
   Repeat,
   Sequence,
   Terminal,
@@ -35,7 +46,7 @@ import v4.std.grammar {
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
@@ -61,13 +72,36 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.node {
+  Arrow,
+  Atom,
+  Bind,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_edge,
+  loop_bound_edge
+}
 import v4.std.node_query { find_named_child }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
+  CanonicalOperation,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
   TargetModel,
+  canonical_operation_equal,
+  canonical_operation_from_wire_node,
+  canonical_operation_op_add,
+  target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
@@ -79,11 +113,34 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_translation_rules,
   target_model_edge_serialize_source,
-  target_model_edge_fidelity_quotient
+  target_model_edge_fidelity_quotient,
+  target_model_edge_value_expression_projection,
+  target_model_edge_operator_realizations,
+  TargetBindingRefShape,
+  TargetBodiedArrowStatementScaffold,
+  TargetCallApplyShape,
+  TargetConditionalShape,
+  TargetEffectApplyShape,
+  TargetPrimitiveApplyShape,
+  TargetValueExpressionProjection,
+  grammar_relation_row_attach_bodied_scaffold,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node
 }
 import v4.std.logic { Bool }
 import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
-import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.qualified_name {
   QnCons,
   QnEmpty,
@@ -99,6 +156,17 @@ import v4.extdeps.languages.fidelity {
 }
 // RTADD / ctrl#1489 — MVP-1 add keystone target model (mirror rust_mvp1_target_model).
 data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
+
+// COMPREP wave-2 M0-B1 — Bool if-then-else body keystone (design-comprep-m0-branch-mapping.md).
+data dag_mvp1_pick_source_text: String = "fn one_or_two() -> Int { if true then 1 else 2 }"
+data dag_mvp1_pick_false_source_text: String = "fn one_or_two() -> Int { if false then 1 else 2 }"
+
+// COMPREP wave-2 M0-Loop — loop expression body keystone.
+data dag_mvp1_loop_source_text: String = "fn one() -> Int { loop 1 }"
+data dag_mvp1_loop_wrong_value_source_text: String = "fn one() -> Int { loop 2 }"
+// COMPREP wave-2 M0-Bind — let-in expression body keystone.
+data dag_mvp1_bind_source_text: String = "fn one() -> Int { let x = 1 in x }"
+data dag_mvp1_bind_wrong_value_source_text: String = "fn one() -> Int { let x = 2 in x }"
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -123,11 +191,95 @@ fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+fn dag_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace },
+    FixedToken { token_class: ^dag_token_kw_if },
+    FixedToken { token_class: ^dag_token_kw_true },
+    FixedToken { token_class: ^dag_token_kw_then },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^dag_token_kw_else },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_two },
+    FixedToken { token_class: ^dag_token_rbrace }
+  ]
+}
+
+fn dag_mvp1_loop_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace },
+    FixedToken { token_class: ^dag_token_kw_loop },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^dag_token_rbrace }
+  ]
+}
+
+fn dag_mvp1_bind_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace },
+    FixedToken { token_class: ^dag_token_kw_let },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^dag_token_eq },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^dag_token_kw_in },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^dag_token_rbrace }
+  ]
+}
+
 type DagLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
+}
+
+data dag_surface_operator_canonicalization_miss: Symbol = dag_surface_operator_canonicalization_miss
+
+fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: dag_surface_operator_canonicalization_miss,
+    at: port_locus(port: ^dag_surface_operator_canonicalization_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data dag_surface_operator_canonicalization_port: Symbol = dag_surface_operator_canonicalization_port
+
+// Wave-1 surface infix operator → substrate CanonicalOperation rows (design-value-emit-schema.md §7 Q-V1).
+fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcome<CanonicalOperation> {
+  if surface_token == ^dag_token_plus {
+    outcome_accepted(canonical_operation_op_add())
+  } else {
+    outcome_rejected(
+      dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
+    )
+  }
+}
+
+// shell: `lm` reserved for PR-T-FINISH translate_algebra §1.5 model-derived table; wave-1 delegates to _member.
+fn dag_surface_operator_canonicalization_lookup(
+  lm: DagLanguageModel,
+  surface_token: Symbol
+) -> Outcome<CanonicalOperation> {
+  dag_surface_operator_canonicalization_member(surface_token: surface_token)
 }
 
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
@@ -221,6 +373,8 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_data, text: "data"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_fn, text: "fn"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_let, text: "let"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_in, text: "in"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_loop, text: "loop"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_match, text: "match"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_if, text: "if"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_then, text: "then"),
@@ -288,7 +442,7 @@ fn dag_positional_edge(target: Node) -> Edge {
 }
 
 // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
-// the single shared serializer (v4.std.target_model.concrete_syntax_token_to_node). The Conj wire
+// the single shared serializer (v4.std.compilers.target_model.concrete_syntax_token_to_node). The Conj wire
 // node is returned so the result still composes with nonterminal sub-trees in heterogeneous
 // grammar-row token lists.
 fn emit_fixed_token(token_class: Symbol) -> Node {
@@ -1581,7 +1735,7 @@ fn dag_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
 }
 
 fn dag_grammar_optional(element: GrammarExpr) -> GrammarExpr {
-  Optional { element: element }
+  grammar_expr_optional(element: element)
 }
 
 fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
@@ -2975,6 +3129,31 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+data dag_inhabitant_field_mvp1_pick_fn: Symbol = dag_inhabitant_field_mvp1_pick_fn
+
+fn dag_mvp1_pick_zip_fold_closure_edges() -> List<Edge> {
+  [
+    dag_named_edge(
+      name: dag_inhabitant_field_mvp1_pick_fn,
+      target: dag_mvp1_fixture_emitted_pick_fn
+    )
+  ]
+}
+
+fn dag_mvp1_pick_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: list_append(
+        left: dag_declared_inhabitants_core().children,
+        right: dag_mvp1_zip_fold_closure_edges()
+      ),
+      right: dag_mvp1_pick_zip_fold_closure_edges()
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
   [
     dag_named_edge(
@@ -3115,11 +3294,168 @@ fn dag_formal_production_mvp1_fn_add() -> FormalProduction {
   )
 }
 
+fn dag_formal_production_mvp1_fn_pick() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^dag_production_mvp1_fn_pick,
+    rhs: dag_formal_rhs_from_tokens(tokens: dag_mvp1_pick_concrete_tokens())
+  )
+}
+
+fn dag_formal_production_mvp1_fn_loop() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^dag_production_mvp1_fn_loop,
+    rhs: dag_formal_rhs_from_tokens(tokens: dag_mvp1_loop_concrete_tokens())
+  )
+}
+
 fn dag_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: ^dag_production_mvp1_fn_add,
     expression: dag_grammar_sequence_from_token_classes(),
     emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
+  }
+}
+
+fn dag_grammar_production_mvp1_fn_pick() -> GrammarProduction {
+  GrammarProduction {
+    name: ^dag_production_mvp1_fn_pick,
+    expression: dag_grammar_sequence_from_token_classes_pick(),
+    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
+  }
+}
+
+// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_binding: loop-body
+// literal-binding whitelist for `loop <lit>` positions. Hard-lists the two mvp1 pick-lit
+// bindings the emit round-trip re-ingests as idents. WHY stopgap: no value_expression grammar
+// production exists in dag.dag yet. dissolve-on: replace with the value_expression production
+// when it lands in dag.dag (same debt as pick-arm terminal + binding whitelist).
+fn dag_grammar_loop_body_literal_binding(binding: Symbol) -> Bool {
+  (binding == ^dag_binding_mvp1_pick_lit_one) || (binding == ^dag_binding_mvp1_pick_lit_two)
+}
+
+fn dag_grammar_terminal_for_mvp1_loop_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  let cls = concrete_syntax_token_class(token: token)
+  if cls == ^dag_token_kw_loop {
+    dag_grammar_terminal(token_class: ^dag_token_kw_loop)
+  } else {
+    match token {
+      BoundToken { token_class: c, binding: b } =>
+        if (c == ^dag_token_ident) && dag_grammar_loop_body_literal_binding(binding: b) {
+          dag_grammar_pick_arm_literal_terminal()
+        } else {
+          dag_grammar_terminal(token_class: cls)
+        }
+      _ => dag_grammar_terminal(token_class: cls)
+    }
+  }
+}
+
+fn dag_grammar_sequence_from_token_classes_loop() -> GrammarExpr {
+  match fold_list(
+    xs: dag_mvp1_loop_concrete_tokens(),
+    empty: DagGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        DagGramBuild1StateInit =>
+          DagGramBuild1StateReady {
+            expr: dag_grammar_terminal_for_mvp1_loop_token(token: token)
+          }
+        DagGramBuild1StateReady { expr: acc } =>
+          DagGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: dag_grammar_terminal_for_mvp1_loop_token(token: token)
+            }
+          }
+      }
+    }
+  ) {
+    DagGramBuild1StateInit =>
+      dag_grammar_terminal(token_class: ^dag_token_kw_fn)
+    DagGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn dag_grammar_production_mvp1_fn_loop() -> GrammarProduction {
+  GrammarProduction {
+    name: ^dag_production_mvp1_fn_loop,
+    expression: dag_grammar_sequence_from_token_classes_loop(),
+    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
+  }
+}
+
+fn dag_grammar_pick_condition_terminal() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
+    right: dag_grammar_terminal(token_class: ^dag_token_kw_false)
+  )
+}
+
+// 🟡 narrow approximation of arm=value_expression. Branch/pick arms ARE value-expressions
+// (a literal, a variable, or a computation), so the arm grammar position should be the
+// value_expression production. WHY stopgap: no value_expression grammar production exists in
+// dag.dag today, so this widens the arm terminal to int_literal|ident — canonical source text
+// lexes 1/2 as int_literal, and emit round-trip re-ingests binding-ref idents at the same
+// positions (§2 pick target model). dissolve-on: replace with the value_expression production
+// when it lands in dag.dag.
+fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+    right: dag_grammar_terminal(token_class: ^dag_token_ident)
+  )
+}
+
+// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_terminal above: the pick-arm
+// literal-binding whitelist. It hard-lists the two mvp1 pick-lit bindings (pick_lit_one/_two) that the
+// emit round-trip re-ingests as idents at the arm positions. WHY stopgap: same as the terminal — no
+// value_expression grammar production exists in dag.dag yet, so accepted arm bindings are enumerated
+// rather than derived from that production. dissolve-on: replace with the value_expression production
+// when it lands in dag.dag (both the terminal widening and this binding whitelist go away together).
+fn dag_grammar_pick_arm_literal_binding(binding: Symbol) -> Bool {
+  (binding == ^dag_binding_mvp1_pick_lit_one)
+    || (binding == ^dag_binding_mvp1_pick_lit_two)
+}
+
+fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  let cls = concrete_syntax_token_class(token: token)
+  if cls == ^dag_token_kw_true {
+    dag_grammar_pick_condition_terminal()
+  } else {
+    match token {
+      BoundToken { token_class: c, binding: b } =>
+        if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
+          dag_grammar_pick_arm_literal_terminal()
+        } else {
+          dag_grammar_terminal(token_class: cls)
+        }
+      _ => dag_grammar_terminal(token_class: cls)
+    }
+  }
+}
+
+fn dag_grammar_sequence_from_token_classes_pick() -> GrammarExpr {
+  match fold_list(
+    xs: dag_mvp1_pick_concrete_tokens(),
+    empty: DagGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        DagGramBuild1StateInit =>
+          DagGramBuild1StateReady {
+            expr: dag_grammar_terminal_for_mvp1_pick_token(token: token)
+          }
+        DagGramBuild1StateReady { expr: acc } =>
+          DagGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: dag_grammar_terminal_for_mvp1_pick_token(token: token)
+            }
+          }
+      }
+    }
+  ) {
+    DagGramBuild1StateInit =>
+      dag_grammar_terminal(token_class: ^dag_token_kw_fn)
+    DagGramBuild1StateReady { expr: result } => result
   }
 }
 
@@ -3197,7 +3533,951 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_add, "add")
   let m1 = map_insert(m0, ^dag_binding_param_x, "x")
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
-  map_insert(m2, ^dag_binding_type_int, "Int")
+  let m3 = map_insert(m2, ^dag_binding_type_int, "Int")
+  let m4 = map_insert(m3, ^dag_binding_fn_one_or_two, "one_or_two")
+  let m5 = map_insert(m4, ^dag_binding_fn_one, "one")
+  let m6 = map_insert(m5, ^dag_binding_mvp1_bind_x, "x")
+  let m7 = map_insert(m6, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m7, ^dag_binding_mvp1_pick_lit_two, "2")
+}
+
+fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
+  [^dag_binding_param_x, ^dag_binding_param_y]
+}
+
+fn dag_mvp1_int_type_binding() -> Symbol {
+  ^dag_binding_type_int
+}
+
+data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_atom_binding_miss
+
+fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
+  Diagnostic {
+    reason: dag_mvp1_captured_flat_atom_binding_miss,
+    at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_atom_binding_port
+
+// Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
+fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
+    _ => false
+  }
+}
+
+// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE —
+// consumer:dag_mvp1_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_add_arrow_signature_from_resolved in 03_body_producer) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
+// flat-index table (indices 5/9/12); owner/lane: Mgr-RUNTIME (neat-bat-593) —
+// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
+// flat-index binding lookup in extdeps. diagnostic-at: port_locus only — flat_index is a
+// token-table index, not a byte offset (ByteRange elsewhere is byte positions); distinct
+// locus variant deferred until scaffold dissolves.
+fn dag_mvp1_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_param_x)
+  } else if flat_index == 9 {
+    outcome_accepted(^dag_binding_param_y)
+  } else if flat_index == 12 {
+    outcome_accepted(^dag_binding_type_int)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:dag_mvp1_pick_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_pick_if_arrow_signature_from_resolved in 03_body_producer) —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
+// pick flat-index table (index 5 codomain); owner/lane: Mgr-§2 (sharp-ibex-851) —
+// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
+// flat-index binding lookup in extdeps for pick/if-then-else.
+fn dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_type_int)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+fn dag_mvp1_loop_measure_node() -> Node {
+  dag_mvp1_type_atom_node(identity: ^dag_mvp1_loop_measure_sym)
+}
+
+fn dag_mvp1_loop_body_from_literal(lit: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: lit)
+      },
+      Edge {
+        label: Named { name: loop_bound_edge },
+        target: dag_mvp1_loop_measure_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_loop_body_node() -> Node {
+  dag_mvp1_loop_body_from_literal(lit: ^dag_mvp1_pick_lit_one)
+}
+
+fn dag_mvp1_loop_body_wrong_value_node() -> Node {
+  dag_mvp1_loop_body_from_literal(lit: ^dag_mvp1_pick_lit_two)
+}
+
+fn dag_mvp1_loop_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_loop_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_loop_arrow_with_body_wrong_value_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_loop_body_wrong_value_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_loop_body_fixture: Node = dag_mvp1_loop_body_node()
+data dag_mvp1_loop_arrow_with_body_fixture: Node = dag_mvp1_loop_arrow_with_body_node()
+data dag_mvp1_loop_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_loop_arrow_with_body_wrong_value_node()
+data dag_mvp1_fixture_emitted_loop_fn: Node = dag_mvp1_loop_arrow_with_body_fixture
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:dag_mvp1_loop_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_loop_arrow_with_body_from_resolved; executed by comprep_loop_eval_by_execution
+// keystone) — dissolve-on: binding_id-branded resolved atoms replace loop flat-index table;
+// owner/lane: Mgr-§2 (crisp-crane-18).
+fn dag_mvp1_loop_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_type_int)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+fn dag_mvp1_node_is_kw_true_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
+    _ => false
+  }
+}
+
+fn dag_mvp1_node_is_kw_false_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
+    _ => false
+  }
+}
+
+fn dag_mvp1_node_is_int_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
+    _ => false
+  }
+}
+
+fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_operator_node() -> Node {
+  dag_mvp1_type_atom_node(identity: ^dag_token_plus)
+}
+
+fn dag_mvp1_arrow_domain_conj_node() -> Node {
+  let children = fold_list(
+    xs: dag_mvp1_add_param_binding_ids(),
+    empty: Empty,
+    cons: fn(acc, binding_id) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge {
+          label: Named { name: binding_id },
+          target: dag_mvp1_type_atom_node(identity: dag_mvp1_int_type_binding())
+        }
+      )
+    }
+  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: operator },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: left_binding)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: right_binding)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_binary_body_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_x,
+    right_binding: ^dag_binding_param_y
+  )
+}
+
+fn dag_mvp1_add_binary_body_swapped_operands_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_y,
+    right_binding: ^dag_binding_param_x
+  )
+}
+
+fn dag_mvp1_add_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_with_body_swapped_operands_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_swapped_operands_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_add_arrow_signature_fixture: Node = dag_mvp1_add_arrow_signature_node()
+data dag_mvp1_add_binary_body_fixture: Node = dag_mvp1_add_binary_body_node()
+data dag_mvp1_add_binary_body_swapped_operands_fixture: Node = dag_mvp1_add_binary_body_swapped_operands_node()
+data dag_mvp1_add_arrow_with_body_fixture: Node = dag_mvp1_add_arrow_with_body_node()
+data dag_mvp1_add_arrow_with_body_swapped_operands_fixture: Node = dag_mvp1_add_arrow_with_body_swapped_operands_node()
+
+fn dag_mvp1_pick_arrow_domain_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_if_body_from_arms(
+  condition: Node,
+  then_arm: Node,
+  else_arm: Node
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: condition },
+      Edge { label: Positional, target: then_arm },
+      Edge { label: Positional, target: else_arm }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_if_body_node() -> Node {
+  dag_mvp1_pick_if_body_from_arms(
+    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
+    else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
+  )
+}
+
+fn dag_mvp1_pick_if_body_swapped_arms_node() -> Node {
+  dag_mvp1_pick_if_body_from_arms(
+    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two),
+    else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one)
+  )
+}
+
+fn dag_mvp1_pick_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_pick_if_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_arrow_with_body_swapped_arms_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_pick_if_body_swapped_arms_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_pick_if_body_fixture: Node = dag_mvp1_pick_if_body_node()
+data dag_mvp1_pick_if_body_swapped_arms_fixture: Node = dag_mvp1_pick_if_body_swapped_arms_node()
+data dag_mvp1_pick_arrow_with_body_fixture: Node = dag_mvp1_pick_arrow_with_body_node()
+data dag_mvp1_pick_arrow_with_body_swapped_arms_fixture: Node = dag_mvp1_pick_arrow_with_body_swapped_arms_node()
+
+data dag_mvp1_fixture_emitted_pick_fn: Node = dag_mvp1_pick_arrow_with_body_fixture
+
+fn dag_mvp1_bind_let_body_from_parts(
+  key_binding: Symbol,
+  value_lit: Symbol,
+  body_binding: Symbol
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: key_binding)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: value_lit)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: body_binding)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_let_body_node() -> Node {
+  dag_mvp1_bind_let_body_from_parts(
+    key_binding: ^dag_binding_mvp1_bind_x,
+    value_lit: ^dag_mvp1_pick_lit_one,
+    body_binding: ^dag_binding_mvp1_bind_x
+  )
+}
+
+fn dag_mvp1_bind_let_body_wrong_value_node() -> Node {
+  dag_mvp1_bind_let_body_from_parts(
+    key_binding: ^dag_binding_mvp1_bind_x,
+    value_lit: ^dag_mvp1_pick_lit_two,
+    body_binding: ^dag_binding_mvp1_bind_x
+  )
+}
+
+fn dag_mvp1_bind_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_bind_let_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_arrow_with_body_wrong_value_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_bind_let_body_wrong_value_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_bind_let_body_fixture: Node = dag_mvp1_bind_let_body_node()
+data dag_mvp1_bind_arrow_with_body_fixture: Node = dag_mvp1_bind_arrow_with_body_node()
+data dag_mvp1_bind_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_bind_arrow_with_body_wrong_value_node()
+data dag_mvp1_fixture_emitted_bind_fn: Node = dag_mvp1_bind_arrow_with_body_fixture
+
+fn dag_formal_production_mvp1_fn_bind() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^dag_production_mvp1_fn_bind,
+    rhs: dag_formal_rhs_from_tokens(tokens: dag_mvp1_bind_concrete_tokens())
+  )
+}
+
+fn dag_grammar_bind_value_literal_binding(binding: Symbol) -> Bool {
+  (binding == ^dag_binding_mvp1_pick_lit_one) || (binding == ^dag_binding_mvp1_pick_lit_two)
+}
+
+fn dag_grammar_terminal_for_mvp1_bind_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  let cls = concrete_syntax_token_class(token: token)
+  if cls == ^dag_token_kw_in {
+    dag_grammar_terminal(token_class: ^dag_token_kw_in)
+  } else {
+    match token {
+      BoundToken { token_class: c, binding: b } =>
+        if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
+          dag_grammar_pick_arm_literal_terminal()
+        } else {
+          dag_grammar_terminal(token_class: cls)
+        }
+      _ => dag_grammar_terminal(token_class: cls)
+    }
+  }
+}
+
+fn dag_grammar_sequence_from_token_classes_bind() -> GrammarExpr {
+  match fold_list(
+    xs: dag_mvp1_bind_concrete_tokens(),
+    empty: DagGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        DagGramBuild1StateInit =>
+          DagGramBuild1StateReady {
+            expr: dag_grammar_terminal_for_mvp1_bind_token(token: token)
+          }
+        DagGramBuild1StateReady { expr: acc } =>
+          DagGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: dag_grammar_terminal_for_mvp1_bind_token(token: token)
+            }
+          }
+      }
+    }
+  ) {
+    DagGramBuild1StateInit =>
+      dag_grammar_terminal(token_class: ^dag_token_kw_fn)
+    DagGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn dag_grammar_production_mvp1_fn_bind() -> GrammarProduction {
+  GrammarProduction {
+    name: ^dag_production_mvp1_fn_bind,
+    expression: dag_grammar_sequence_from_token_classes_bind(),
+    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
+  }
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:dag_mvp1_bind_captured_flat_atom_binding_for_ident (via
+// produce_mvp1_bind_arrow_with_body_from_resolved; executed by comprep_bind_eval_by_execution
+// keystone) — dissolve-on: binding_id-branded resolved atoms replace bind flat-index table;
+// owner/lane: Mgr-§2 (crisp-crane-18).
+fn dag_mvp1_bind_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_type_int)
+  } else if (flat_index == 8) || (flat_index == 12) {
+    outcome_accepted(^dag_binding_mvp1_bind_x)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+fn dag_value_expression_projection() -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    binding_ref_form: TargetBindingRefShape { ident_token: ^dag_token_ident },
+    primitive_apply_form: TargetPrimitiveApplyShape {
+      open: ^dag_token_lparen,
+      close: ^dag_token_rparen,
+      separator: ^dag_token_comma
+    },
+    callable_apply_form: TargetCallApplyShape {
+      callee_ident_token: ^dag_token_ident,
+      open: ^dag_token_lparen,
+      separator: ^dag_token_comma,
+      close: ^dag_token_rparen
+    },
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [],
+      open: ^dag_token_lparen,
+      close: ^dag_token_rparen,
+      separator: ^dag_token_comma
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^dag_token_kw_if,
+      then_token: ^dag_token_kw_then,
+      else_token: ^dag_token_kw_else
+    },
+    let_form: TargetBindLetShape {
+      let_token: ^dag_token_kw_let,
+      assign_token: ^dag_token_eq,
+      in_token: ^dag_token_kw_in
+    }
+  }
+}
+
+fn dag_operator_realizations_catalog_node() -> Node {
+  target_operator_realizations_catalog_node(rows: [])
+}
+
+fn dag_mvp1_pick_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace }
+  ]
+}
+
+fn dag_mvp1_pick_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
+  [FixedToken { token_class: ^dag_token_rbrace }]
+}
+
+fn dag_mvp1_pick_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  TargetBodiedArrowStatementScaffold {
+    prefix: dag_mvp1_pick_statement_prefix_tokens(),
+    suffix: dag_mvp1_pick_statement_suffix_tokens()
+  }
+}
+
+fn dag_mvp1_pick_grammar_relation_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: grammar_relation_field_production,
+        target: formal_production_to_node(production: dag_formal_production_mvp1_fn_pick())
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_emitted,
+        target: dag_mvp1_fixture_emitted_pick_fn
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: dag_mvp1_pick_concrete_tokens(),
+          token_to_node: dag_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      dag_named_edge(
+        name: serialize_source_field_source_text,
+        target: dag_inhabitant_atom(id: ^dag_mvp1_pick_source_literal)
+      ),
+      dag_named_edge(
+        name: serialize_source_field_source_grammar,
+        target: dag_inhabitant_atom(id: ^dag_production_mvp1_fn_pick)
+      )
+    ],
+    right: [
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: dag_mvp1_pick_concrete_tokens(),
+          token_to_node: dag_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn dag_mvp1_pick_serialize_source_node() -> Node {
+  let _authority = dag_mvp1_pick_source_text
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: dag_mvp1_pick_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_relation_rule_mvp1_fn_pick,
+        target: grammar_relation_row_attach_bodied_scaffold(
+          row: dag_mvp1_pick_grammar_relation_row_node(),
+          scaffold: dag_mvp1_pick_bodied_arrow_statement_scaffold()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_target_model_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: target_model_edge_selection_policy,
+        target: dag_mvp1_selection_policy_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: dag_mvp1_pick_declared_inhabitants_root()
+      ),
+      dag_named_edge(
+        name: target_model_edge_translation_rules,
+        target: dag_mvp1_pick_translation_rules_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_serialize_source,
+        target: dag_mvp1_pick_serialize_source_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_fidelity_quotient,
+        target: dag_mvp1_fidelity_quotient_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: dag_value_expression_projection()
+        )
+      ),
+      dag_named_edge(
+        name: target_model_edge_operator_realizations,
+        target: dag_operator_realizations_catalog_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_pick_target_model() -> TargetModel {
+  TargetModel {
+    bundle: dag_mvp1_pick_target_model_bundle_node(),
+    lex: dag_wave1_lex(),
+    binding_spellings: dag_mvp1_binding_spellings(),
+    authority_source_text: dag_mvp1_pick_source_text
+  }
+}
+
+fn dag_mvp1_bind_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_fn },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^dag_token_lparen },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_arrow },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^dag_token_lbrace }
+  ]
+}
+
+fn dag_mvp1_bind_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  TargetBodiedArrowStatementScaffold {
+    prefix: dag_mvp1_bind_statement_prefix_tokens(),
+    suffix: dag_mvp1_pick_statement_suffix_tokens()
+  }
+}
+
+fn dag_mvp1_bind_grammar_relation_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: grammar_relation_field_production,
+        target: formal_production_to_node(production: dag_formal_production_mvp1_fn_bind())
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_emitted,
+        target: dag_mvp1_fixture_emitted_bind_fn
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: dag_mvp1_bind_concrete_tokens(),
+          token_to_node: dag_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      dag_named_edge(
+        name: serialize_source_field_source_text,
+        target: dag_inhabitant_atom(id: ^dag_mvp1_bind_source_literal)
+      ),
+      dag_named_edge(
+        name: serialize_source_field_source_grammar,
+        target: dag_inhabitant_atom(id: ^dag_production_mvp1_fn_bind)
+      )
+    ],
+    right: [
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: dag_mvp1_bind_concrete_tokens(),
+          token_to_node: dag_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn dag_mvp1_bind_serialize_source_node() -> Node {
+  let _authority = dag_mvp1_bind_source_text
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: dag_mvp1_bind_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_relation_rule_mvp1_fn_bind,
+        target: grammar_relation_row_attach_bodied_scaffold(
+          row: dag_mvp1_bind_grammar_relation_row_node(),
+          scaffold: dag_mvp1_bind_bodied_arrow_statement_scaffold()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_target_model_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: target_model_edge_selection_policy,
+        target: dag_mvp1_selection_policy_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: dag_mvp1_pick_declared_inhabitants_root()
+      ),
+      dag_named_edge(
+        name: target_model_edge_translation_rules,
+        target: dag_mvp1_bind_translation_rules_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_serialize_source,
+        target: dag_mvp1_bind_serialize_source_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_fidelity_quotient,
+        target: dag_mvp1_fidelity_quotient_node()
+      ),
+      dag_named_edge(
+        name: target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: dag_value_expression_projection()
+        )
+      ),
+      dag_named_edge(
+        name: target_model_edge_operator_realizations,
+        target: dag_operator_realizations_catalog_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bind_target_model() -> TargetModel {
+  TargetModel {
+    bundle: dag_mvp1_bind_target_model_bundle_node(),
+    lex: dag_wave1_lex(),
+    binding_spellings: dag_mvp1_binding_spellings(),
+    authority_source_text: dag_mvp1_bind_source_text
+  }
 }
 
 fn dag_mvp1_target_model() -> TargetModel {

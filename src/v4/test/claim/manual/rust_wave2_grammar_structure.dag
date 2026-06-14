@@ -12,7 +12,7 @@ import v4.extdeps.languages.rust {
   rust_wave2_lex_rules
 }
 import v4.std.grammar { grammar_carries_symbol }
-import v4.std.lexing { lex_rule_set_token_class_member }
+import v4.std.compilers.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 

@@ -7,9 +7,9 @@ module v4.test.claim.manual.comprep_add_body_producer
 import v4.compiler.body_producer {
   arrow_has_body_edge,
   produce_mvp1_add_arrow_with_body,
-  produce_mvp1_add_arrow_with_body_from_resolved,
-  produce_mvp1_add_binary_body
+  produce_mvp1_add_arrow_with_body_from_resolved
 }
+import v4.extdeps.languages.dag { dag_mvp1_add_binary_body_fixture }
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse {
   grammar_validate_for_parse,
@@ -31,7 +31,7 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { GrammarRoot, ParseTree }
-import v4.std.lexing { Token }
+import v4.std.compilers.lexing { Token }
 import v4.std.collection { List, Set }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -112,7 +112,7 @@ fn comprep_swapped_operand_body() -> Node {
 }
 
 fn comprep_body_operand_order_differs() -> Bool {
-  let canonical = produce_mvp1_add_binary_body()
+  let canonical = dag_mvp1_add_binary_body_fixture
   let swapped = comprep_swapped_operand_body()
   canonical != swapped
 }

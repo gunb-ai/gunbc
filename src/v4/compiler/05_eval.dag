@@ -15,9 +15,12 @@ import v4.compiler.infer {
 import v4.std.algebra { Cons, Empty, fold_list, length }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
+  Absent,
   List,
   Map,
   Optional,
+  Present,
+  list_at_optional,
   list_nth,
   optional_absent,
   optional_present
@@ -96,7 +99,7 @@ import v4.std.node {
   well_formed,
   SyntheticOccurrence
 }
-import v4.std.node_query { find_arrow_body_child }
+import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
 import v4.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -219,7 +222,7 @@ fn inputs_for_emit_host(
   }
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
 // Wave-2 effect-IO: declare-per-claim bundle + inject-per-run handler binding (design-v4-runtime-architecture.md §4.3, §7 Q-R3).
 type EffectIoEvalBundle {
   backend: EffectIoResourceBackend
@@ -339,7 +342,7 @@ fn interpretation_structure_witness_digest(
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_slots_digest / test_claim_interpretation_cache_digest_authority — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_executed_digest; forbidden: permanent untagged hand-rolled registry-symbol slot digests in 05_eval.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_slots_digest / test_claim_interpretation_cache_digest_authority — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_executed_digest; forbidden: permanent untagged hand-rolled registry-symbol slot digests in 05_eval.
 fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
   if v.allocate_literal == v4_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v4_eval_wave1_allocate_literal_sym)
@@ -382,7 +385,7 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v4_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v4_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -520,7 +523,7 @@ type TestClaimEvalSubject<T> {
   input: TestClaimTypedInput<T>
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
 }
@@ -639,7 +642,7 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
 fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   match reason {
     UserInputBoundary =>
@@ -882,7 +885,7 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
   )
 }
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
 type InterpretationCacheDigestAuthority
   = InterpretationCacheRegistered {
       runtime_identity: Symbol,
@@ -1418,8 +1421,11 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
 // absence checks; owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands;
 // forbidden: permanent untagged Bool callee-admission predicates in 05_eval.
 fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
-  // Wave-1 Arrow is [domain, codomain, body] — reject any positional-3+ on the Arrow.
-  eval_child_absent(node: arrow, wanted: 3)
+  // Wave-1 Arrow is [domain, codomain, codomain] positional + named body — reject positional-3+.
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 3) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
@@ -1432,8 +1438,41 @@ fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
 fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      // Wave-1 Transform body is [operator, operand, operand] — reject operand index 3+.
-      eval_child_absent(node: body, wanted: 3)
+      // Wave-1 Transform body is [operator, operand, operand] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    ComputationNode { behavior: Branch } =>
+      // COMPREP wave-2 M0-B1 if-then-else: [cond, then, else] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+    ComputationNode { behavior: Bind } =>
+      // Demand-driven Bind: [key, value, body] — reject positional-3+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+    ComputationNode { behavior: Loop } =>
+      // Demand-driven Loop: [body] — reject positional-1+.
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+        Present { value: _ } => false
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
     _ => false
   }
 }
@@ -1453,6 +1492,40 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
           }
         Rejected { diagnostics: _ } => false
       }
+    _ => false
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; unchosen arms
+// do not execute); current shape is channel suppression only — arm bodies still execute
+// during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
+// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
+fn eval_node_is_branch(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Branch } => true
+    _ => false
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// consumer:eval_edge_is_runtime_argument (executed by
+// comprep_eval_lazy_arm_loop_suppression_holds keystone) —
+// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
+// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; loop body folds
+// zero times per iteration); current shape is channel suppression only — loop children still
+// execute during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
+// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
+// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
+fn eval_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
     _ => false
   }
 }
@@ -1697,10 +1770,8 @@ fn eval_transform_node(
   }
 }
 
-fn eval_branch_node(
+fn eval_branch_node_eval(
   node: Node,
-  args: List<RuntimeValue>,
-  _facts: InferredFacts,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
@@ -1711,18 +1782,30 @@ fn eval_branch_node(
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } =>
       bind_outcome(
-        o: eval_first_runtime_argument(args: args, node: node),
-        f: fn(condition) {
+        o: eval_branch_condition_edge(node: node),
+        f: fn(cond_edge) {
           bind_outcome(
-            o: branch.choose_branch(node, condition, environment),
-            f: fn(chosen) {
-              eval_runtime_node(
-                node: chosen,
-                tree: tree,
-                interpretation: interpretation,
-                environment: environment,
-                runtime: runtime,
-                effect_io: effect_io
+            o: eval_runtime_node(
+              node: cond_edge.target,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            ),
+            f: fn(condition) {
+              bind_outcome(
+                o: branch.choose_branch(node, condition, environment),
+                f: fn(chosen) {
+                  eval_runtime_node(
+                    node: chosen,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: environment,
+                    runtime: runtime,
+                    effect_io: effect_io
+                  )
+                }
               )
             }
           )
@@ -1730,6 +1813,28 @@ fn eval_branch_node(
       )
     _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
   }
+}
+
+fn eval_branch_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_branch_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
 }
 
 fn eval_loop_node(
@@ -1758,10 +1863,8 @@ fn eval_loop_node(
   }
 }
 
-fn eval_bind_node(
+fn eval_bind_node_eval(
   node: Node,
-  args: List<RuntimeValue>,
-  _facts: InferredFacts,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
@@ -1775,21 +1878,33 @@ fn eval_bind_node(
         o: eval_bind_key(node: node),
         f: fn(key) {
           bind_outcome(
-            o: eval_bind_value_argument(args: args, node: node),
-            f: fn(bound_value) {
+            o: eval_bind_value_edge(node: node),
+            f: fn(value_edge) {
               bind_outcome(
-                o: bind.bind_value(key, bound_value, environment),
-                f: fn(bound_environment) {
+                o: eval_runtime_node(
+                  node: value_edge.target,
+                  tree: tree,
+                  interpretation: interpretation,
+                  environment: environment,
+                  runtime: runtime,
+                  effect_io: effect_io
+                ),
+                f: fn(bound_value) {
                   bind_outcome(
-                    o: eval_bind_body(node: node),
-                    f: fn(body) {
-                      eval_runtime_node(
-                        node: body,
-                        tree: tree,
-                        interpretation: interpretation,
-                        environment: bound_environment,
-                        runtime: runtime,
-                        effect_io: effect_io
+                    o: bind.bind_value(key, bound_value, environment),
+                    f: fn(bound_environment) {
+                      bind_outcome(
+                        o: eval_bind_body(node: node),
+                        f: fn(body) {
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: bound_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        }
                       )
                     }
                   )
@@ -1801,6 +1916,28 @@ fn eval_bind_node(
       )
     _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
   }
+}
+
+fn eval_bind_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_bind_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
 }
 
 fn eval_computation_node(
@@ -1931,6 +2068,15 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
       ReadyToInterpret => is_positional(e: edge)
       Interpreted => is_positional(e: edge)
     }
+  } else if eval_node_is_branch(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } =>
+        if p == 0 { is_positional(e: edge) } else { false }
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else if eval_node_is_loop(node: parent) {
+    false
   } else {
     is_positional(e: edge)
   }
@@ -1991,6 +2137,160 @@ fn eval_fold_init(
         d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
       )
     }
+  }
+}
+
+fn eval_fold_control_transfer_state(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_is_callee_reference_edge(
+  parent: Node,
+  progress: EvalProgress,
+  edge: Edge
+) -> Bool {
+  if eval_transform_has_callee_reference(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } => p == 0 && is_positional(e: edge)
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else {
+    false
+  }
+}
+
+fn eval_fold_callee_reference_child_state(
+  edge: Edge,
+  tree: InferredTree
+) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_pending_children, node: edge.target)
+    )
+  }
+}
+
+fn eval_fold_child_for_edge(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_fold_is_callee_reference_edge(
+    parent: acc.node,
+    progress: acc.progress,
+    edge: edge
+  ) {
+    eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+  } else {
+    eval_fold_tree(
+      n: edge.target,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_child_edge_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  eval_fold_step(
+    acc: acc,
+    edge: edge,
+    child: eval_fold_child_for_edge(
+      acc: acc,
+      edge: edge,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    ),
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_runtime_node_is_control_transfer(node: n) {
+    eval_fold_control_transfer_state(
+      node: n,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    fold_list(
+      xs: n.children,
+      empty: eval_fold_init(
+        node: n,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      ),
+      cons: fn(acc, e) {
+        eval_fold_child_edge_step(
+          acc: acc,
+          edge: e,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      }
+    )
   }
 }
 
@@ -2078,6 +2378,113 @@ fn eval_fold_step(
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-EVAL-CONTROL-DISPATCH — consumer:eval_runtime_node
+// (demand-driven spine gate before data-flow fold) — bind: lazy-arm ruling adhoc-edb982e2-4a4;
+// dissolve-on: eval_runtime_node routes via Node-projectable control-transfer dispatch surface
+// instead of inline ComputationNode { behavior: Branch|Loop|Bind } shape match; owner/lane:
+// Mgr-§2 (sharp-ibex-851) — trigger: control-transfer dispatch registry lands; forbidden:
+// permanent untagged Bool control-transfer predicates in 05_eval.
+fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Branch } => true
+    ComputationNode { behavior: Loop } => true
+    ComputationNode { behavior: Bind } => true
+    _ => false
+  }
+}
+
+fn eval_runtime_control_node(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(facts) {
+      let dispatch = match node.kind {
+        ComputationNode { behavior: b } =>
+          interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
+        _ =>
+          TransformRuntimeInterpreter {
+            interpreter: interpretation.transform
+          }
+      }
+      bind_outcome(
+        o: match node.kind {
+          ComputationNode { behavior: Branch } =>
+            eval_branch_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          ComputationNode { behavior: Loop } =>
+            eval_loop_node(
+              node: node,
+              args: empty_runtime_values(),
+              facts: facts,
+              tree: tree,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime
+            )
+          ComputationNode { behavior: Bind } =>
+            eval_bind_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          _ =>
+            outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+        },
+        f: fn(value) {
+          eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
+        }
+      )
+    }
+  )
+}
+
+// 🟡 gated — feature:COMPREP-EVAL-NESTED-ARG-CONTROL — consumer:eval_runtime_node_via_data_flow_fold
+// (data-flow / Transform positional-arg descent) — bind: lazy-arm ruling adhoc-edb982e2-4a4;
+// #4738 covers spine-reached control dispatch only (eval_runtime_control_node). This fold path
+// still eager-evaluates Branch/Bind/Loop children used as expression-position args (unconditional
+// fold_node / eval_fold_step descent; untaken arms execute; taken arm may double-eval when
+// eval_branch_node_eval re-runs the chosen arm after fold completion).
+// dissolve-on: follow-on carrier comprep/eval-nested-arg-control-lazy (Mgr-§2 lane) with nested-arg
+// witness; gunbc#4737 channel-suppression dissolves on THAT carrier (composes until then), NOT on
+// #4738; forbidden: spine acceptance witness claiming coverage of expression-position control;
+// owner/lane: Mgr-§2 (sharp-ibex-851); trigger: nested-arg discriminating witness RED.
+fn eval_runtime_node_via_data_flow_fold(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let folded = eval_fold_tree(
+    n: node,
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+  eval_fold_state_value(state: folded)
+}
+
 fn eval_runtime_node(
   node: Node,
   tree: InferredTree,
@@ -2086,34 +2493,25 @@ fn eval_runtime_node(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  let folded = fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        eval_fold_init(
-          node: n0,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      },
-      step: fn(acc, e, child) {
-        eval_fold_step(
-          acc: acc,
-          edge: e,
-          child: child,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime,
-          effect_io: effect_io
-        )
-      }
-    }
-  )
-  eval_fold_state_value(state: folded)
+  if eval_runtime_node_is_control_transfer(node: node) {
+    eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    eval_runtime_node_via_data_flow_fold(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
 }
 
 fn eval_with_context(

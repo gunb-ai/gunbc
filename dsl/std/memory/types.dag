@@ -1,0 +1,42 @@
+// std/memory/types.dag — DRAM module taxonomy (shared types, no vendor data).
+
+module std.memory.types
+
+import std.measure { ByteSize }
+import std.types { Bool, Int, NonEmptyStr }
+
+type DramManufacturer = SkHynix | Samsung | Micron
+
+// Module identity: same JEDEC part number can appear under distinct product
+// listings (server vs ECC REG single-rank) — variant tag is the authority.
+type SkHynixDdr4Module = Hma82gr7afr4nVkServer | Hma82gr7afr4nVkEccRegSingleRank
+
+type DramModuleIdentity = SkHynix { dimm: SkHynixDdr4Module }
+
+type DramModuleCatalogRow {
+  part_number: NonEmptyStr
+  manufacturer: DramManufacturer
+  capacity_bytes: ByteSize
+  ddr4_pc4_class: NonEmptyStr
+  data_rate_mts: Int
+  ecc: Bool
+  registered: Bool
+  rank_label: NonEmptyStr
+}
+
+type MemoryPopulationRow {
+  dimm_identity: DramModuleIdentity
+  stick_count: Int
+}
+
+type HostMemoryPopulation {
+  rows: List<MemoryPopulationRow>
+}
+
+// Nominal stick population vs observed usable bytes (srv1 degraded case).
+// P-CF-BYTESIZE: raw Int bytes — shared stopgap with Hetzner catalog; dissolves when
+// Measure value-typing lands (ByteSize inhabitants), converting operator_fleet + cloud rows.
+type HostRamSupplyFacts {
+  nominal_bytes: ByteSize
+  observed_usable_bytes: ByteSize
+}

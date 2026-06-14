@@ -1896,6 +1896,64 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     })
 }
 
+pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+        name: "".to_string(),
+        span: span,
+        ident_span: None,
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::ExprLiteral {
+            value: Rc::new(LiteralValue::LitInt { value: value }),
+        }),
+        ident: None,
+    })
+}
+
+pub fn parse_type_angle_arg(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<TypeResult> {
+    {
+        let tokens = skip_newlines(tokens.clone());
+        let tok = tokens.clone().first().cloned();
+        let sh = match tok.clone() {
+            Some(t) => Some(t.shape.clone()),
+            None => None,
+        };
+        let span = token_span(tok.clone());
+        match sh {
+            Some(TokenShape::ShLitInt) => {
+                let r = parse_int_literal_value(tokens.clone());
+                if has_err(r.err.clone()) {
+                    Rc::new(TypeResult {
+                        type_expr: leaf_type_node("".to_string(), span),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx,
+                        err: r.err.clone(),
+                    })
+                } else {
+                    Rc::new(TypeResult {
+                        type_expr: literal_width_nat_type_node(r.value.clone(), span),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx,
+                        err: None,
+                    })
+                }
+            }
+            _ => parse_type_expr(tokens.clone(), ctx),
+        }
+    }
+}
+
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) > 0))
 }
@@ -4618,7 +4676,7 @@ pub fn finish_type_expr_from_name(
         let dummy_te = leaf_type_node(type_name.clone(), start_span.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_expr(__ec.clone(), ctx);
+                let r = parse_type_angle_arg(__ec.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -4768,7 +4826,7 @@ pub fn collect_type_args(
     loop {
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_expr(__ec.clone(), ctx);
+                let r = parse_type_angle_arg(__ec.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeArgsResult {
                         args: args.clone(),

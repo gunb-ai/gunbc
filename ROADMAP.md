@@ -4,6 +4,46 @@ Where the project stands and where it is headed. For the intellectual goal, read
 
 > **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 is frozen. v2 remains the production self-hosted compiler today.
 
+## Active wave — the stage-fold program
+
+> *In-repo gunbc-scale view, tightly coupled to the portfolio dep graph above it (the fractal's top scale). The single living portfolio graph — `ctrl/planning/dependency-graph.md` — is authoritative for cross-project sequencing and the cross-cutting requirements; this section threads **up** to it and is the stale copy if they drift (portfolio wins). The dated `ctrl/gunbc-planning/dependency-graph-*` chain is archive. The graph is **fractal**: portfolio → project (this) → lane, same node shape (goal / edges / owner / falsifier) at each scale; cross-cutting requirements are defined once at the scale they span and referenced — not duplicated — where each scale inhabits them.*
+
+**The one principle (§0).** Repoint the consumer onto the fold/model, then the old code deletes itself in the **same PR**. If the file is *larger* afterward, it was a graft, not a migration — the same-PR rule should have blocked it.
+
+**§1 — stage-fold (active, frontloaded ahead of all feature work).** Every compiler stage collapses to one fold over its model: `stage(x) = fold_carrier(x, stage_algebra(model))` — traversal owned by a reusable fold, every former hand-arm becomes one **data row**. Existence proof already on main: `05_emit` is 43 lines (`serialize ∘ translate`, frozen); this program makes the rest match it.
+
+| § | Stage | Carrier | State |
+|---|-------|---------|-------|
+| 1.1 | `06_translate` (keystone, load-bearing) | `fold_node` | **in progress** — #4699 is a mergeable milestone |
+| 1.2 | `03_normalize` | `fold_node` | ✅ merged (#4691, #4694) |
+| 1.3 | `03_resolve` / `03_name_resolve` | `fold_node` + env | ✅ core merged (#4700) |
+| 1.4 | `03_body_producer` | `fold_node` | ✅ PIN1 merged (#4695) |
+| 1.5 | `06_value_expression` | merge into `translate_algebra` | coupled to §1.1 |
+| 1.6 | `04_infer` (gather; solver stays a named kernel) | `fold_node` | ✅ merged (#4692) |
+| 1.7 | `02_parse` | `fold_grammar_expr` | ✅ merged (#4693) |
+| 1.8 | `01_tokenize` | **`fold_source`** (one new combinator) | not started — gated on the combinator |
+
+Keystone §1.1 progress (branch vs main): **4,912 → 3,919 lines**, `_go` accumulators **35 → 0** (traversal now owned by the fold), `_bounded` fuel **67 → 53**, `project_type_expression*` **45 → 23**. The file shrinks, so it is a migration not a graft. `fold_source` is the *only* genuinely-new machinery left in §1; everything else is repoint-then-delete onto folds that already exist.
+
+**§2 — control-flow bodies** (Branch → Bind → Loop, via a COMPREP function-body producer). The real next wave after §1, and the highest-leverage one — emit breadth (§3) and a runnable IO program (§4) both sit on it. Gated on the **#4699 keystone merge only** — the COMPREP source-bridge gate is verified closed (#4646/#4655), so #4699's merge timing is on §2's critical path.
+
+**§3 — emit breadth** (N data rows, not N×M hand-arms); includes the bidirectional emit/ingest round-trip (the fold's inverse proof) and dissolution of host-transport bridges. Depends on §1 + §2.
+
+**§4 — first runnable v4 program with I/O** (effect handlers, run-loop/scheduler). Depends on §2.
+
+> **Priority fork (operator's call, after §2 lands):** §3 + self-host (compiler/breadth lane) vs §4 (a demo-able running program). Both unblock once §2 lands; the pick sets the deepest staffing.
+
+**§5 — self-hosting** (get-off-v3 caller-census ratchet → zero hand-maintained Rust). Depends on §3.
+
+### Cross-cutting requirements (portfolio scale — threaded here)
+
+Some requirements span every layer of the stack; they are defined once at the portfolio scale and referenced — not duplicated — here where gunbc inhabits them. Full requirement, arc, edges, and falsifier live in `ctrl/planning/dependency-graph.md`.
+
+- **The Realization pattern** — *critical, operator-elevated (2026-06-14).* Content-addressed reconciliation of a pure spec to its realized effect across an impurity boundary. The recurring root behind language-level caching, build caching, the §10 OS work, and (ahead) provisioning / DB migration / scheduling: every consumer of an already-computed result must cross the model→host execution boundary, and there is **no first-class reified execution receipt** asserting "this host computation is the faithful, content-keyed realization of that pure node" — so each re-derives both the need (redundancy) and the risk (un-enforced purity) with a local `HashMap`. The recurrence is a theorem (*Build Systems à la Carte*), and v4 still recurs (`ParseTable`, `TestClaimCacheKey`) **because the carrier is staged, not inhabited** (`compute_fabric` / `cache_interface` are mostly `🟡 forward = Node` stubs → M9-DFS finds nothing consumable → the author hand-rolls → P1 violation is structurally guaranteed). The carrier: `Realization<Spec, Effect>` = pure Node spec + content-hash identity + receipt + locality, parameterized by an algebraic effect handler — one kernel, N handlers (cost-of-change 1). gunbc wins where Nix/Bazel half-won because pure-by-construction gives impurity **one door** (the handler), the only place enforcement must live.
+  - **gunbc's inhabitant #1 = resolve-cost**, in the deepest place (resolve): PR1 #4867 (the illustration — the cache *exposed* host intern-table impurity), PR2 #4878 (the first real inhabitant, grounding the staged `cache_interface` dims).
+  - The **cross-layer inhabitant #2** that proves the carrier is *substrate, not a compiler convenience* is the **§10 OS work** (provisioning / migration / syscall realization), **not** another compiler cache.
+  - **Endpoint = a Realization Lens** that detects the hand-rolled-realization shape and *errors*, forcing the carrier — self-enforcing, the same *substrate-forbids-the-hand-roll* family as R-reflect (coproduct reflection) and INVARIANTS P1.
+
 ## What works today (v2)
 
 The v2 compiler in [`src/v2/`](src/v2/) is self-hosted from `.dag` source: tokenize, parse, infer, emit, complexity, and ownership pipelines are authored as `.dag` programs with a small Rust bootstrap (`stage0`) that shrinks over time.
@@ -79,7 +119,7 @@ Earlier release-program lanes (complexity parity, testgen, multi-target emit, pu
 
 | ID | Target | Dissolution trigger |
 |----|--------|---------------------|
-| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v4.*` and `v2.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when `scripts/v4-lens-ci-gate.sh` and `.github/ci-floor/v4-m1-rust-emit-probe.sh` pass with the skip removed — v4/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
+| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v4.*` and `v2.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when `scripts/v4-lens-ci-gate.sh` and `.github/ci-floor/v4-rust-full-tree-emit-probe.sh` pass with the skip removed — v4/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
 | `PB-Runtime-External-Toolchain-TestClaims` | Hand-authored Rust boundary tests that spawn external target toolchains while v4 leaf-model verification still uses host runners. | Delete the Rust boundary test when its corresponding `src/v4/test/claim/**` row is exercised by substrate `run_target_verification` / `ExecuteCommand`-style `.dag` `TestClaim` execution with typed verdicts. |
 
 ## How to read the tree

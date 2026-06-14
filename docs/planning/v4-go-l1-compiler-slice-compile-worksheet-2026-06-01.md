@@ -76,7 +76,7 @@ Metric allowed only as secondary:
 ## Related artifacts
 
 - `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag` — `R2-go-compile` substrate roster (in-tree)
-- `scripts/v4-phase1-nat-semiring-rung-gate.sh` — Phase 1 host transport for rungs 0–2
+- `scripts/v4-nat-semiring-rung-gate.sh` — Phase 1 host transport for rungs 0–2
 - PR **#4076** — module layout prerequisite
 - PR **#3946** — ladder rung specs (lands `docs/planning/v4-ladder-rung-specs-2026-05-30.md` on merge)
 - `docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md` — L0 Go R1/R2 prerequisite worksheet

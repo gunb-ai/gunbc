@@ -14,7 +14,7 @@
 //         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
-// Status: T-17 filled.
+// Status: filled.
 
 module v4.lens.synthesis
 

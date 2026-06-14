@@ -47,7 +47,7 @@
 // once new fixture authorities reach the same pilot stage.
 //
 // **Structural list load (Path 2 scoping).** The top-level
-// `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration now
+// `rust_grounding_primitives: List<RustPrimitive> = [...]` data declaration now
 // lowers with `value_body = ValueBody::List(_)`: both the type structure and
 // the 10-element pilot enumeration are walkable by downstream grounding
 // consumers. Map-shaped bootstrap data such as `kernel_algebra_profile`
@@ -101,7 +101,7 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "src/v3/std/go_method_template_contracts.dag",
     "src/v3/std/anthropic_operations.dag",
     "src/v3/std/cross_target_coverage.dag",
-    "dsl/extdeps/cron_schedule_model.dag",
+    "dsl/extdeps/cron/schedule_model.dag",
     "dsl/extdeps/github/github.dag",
     "dsl/extdeps/github/actions.dag",
     "dsl/extdeps/github/ci.dag",

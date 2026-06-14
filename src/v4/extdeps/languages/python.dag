@@ -35,7 +35,7 @@ import v4.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -53,8 +53,8 @@ import v4.std.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.grounding {
   PerLanguageFactBundleEntry,
@@ -74,6 +74,10 @@ import v4.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle
 }
+import v4.std.inhabitant_bridge {
+  facts_field_std_projection,
+  std_projection_additive_numeric
+}
 import v4.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v4.std.node {
   Arrow,
@@ -87,7 +91,7 @@ import v4.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -131,8 +135,8 @@ type PythonGrammarRelationRow {
 }
 
 // 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
-// authoring record; compiler ingest authority is `v4.compiler.target_carriers` `LanguageModel = Node`
-// (TASKS.md Theme-A #9: LexRules/Grammar are projections, not parallel authorities). Peer:
+// authoring record; compiler ingest authority is `v4.std.language_model` `LanguageModel`
+// (LexRules/Grammar are projections, not parallel authorities). Peer:
 // `KotlinLanguageModel`, `SwiftLanguageModel`, `JavaLanguageModel`. dissolve-on: wave-1 bundle
 // projects to `Node` at the ingest boundary (cf. `kotlin_mvp1_target_model_node`).
 type PythonLanguageModel {
@@ -180,7 +184,7 @@ type PythonSingletonPrimitiveFacts {
 // Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
 data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
 data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
-// 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind gunbc#4761 / CP-1b —
 // dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
 // without fabricated parse-only token_class.
 data python_mvp1_source_text: String = "def add(x, y): return x + y"
@@ -205,7 +209,7 @@ fn python_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
 data python_facts_int: PythonIntegerPrimitiveFacts = PythonIntegerPrimitiveFacts {
   surface_spelling: ^python_surface_spelling_int,
   encoding: ^python_repr_int_arbitrary_precision,
-  std_projection: ^python_std_projection_int
+  std_projection: std_projection_additive_numeric
 }
 
 data python_facts_float: PythonFloatPrimitiveFacts = PythonFloatPrimitiveFacts {
@@ -294,7 +298,7 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -315,7 +319,7 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -336,7 +340,7 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.component_machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -357,7 +361,7 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -378,7 +382,7 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: discriminant(v: facts.kind))
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -774,7 +778,7 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -795,7 +799,7 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -816,7 +820,7 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: ^python_facts_field_std_projection,
+        name: facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -946,7 +950,7 @@ fn python_declared_inhabitants_root() -> Node {
 }
 
 // Zip-fold support nodes derived from python_facts_int constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     python_named_edge(
@@ -971,7 +975,7 @@ fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
     ),
     python_named_edge(
       name: ^python_coercion_field_int_std_projection,
-      target: python_inhabitant_atom(id: ^python_std_projection_int)
+      target: python_inhabitant_atom(id: std_projection_additive_numeric)
     )
   ]
 }
@@ -1055,7 +1059,7 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-// 🟡 gated — feature:python-formal-symbol-to-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:python-formal-symbol-to-grammar-expr-shim — bind gunbc#4761 / CP-1b —
 // interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
 // dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
@@ -1067,7 +1071,7 @@ fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr
   }
 }
 
-// 🟡 gated — feature:python-formal-epsilon-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:python-formal-epsilon-grammar-expr-shim — bind gunbc#4761 / CP-1b —
 // dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
@@ -1075,7 +1079,7 @@ fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   }
 }
 
-// 🟡 gated — feature:python-formal-rhs-to-expr-shim-fold — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:python-formal-rhs-to-expr-shim-fold — bind gunbc#4761 / CP-1b —
 // interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
 // dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type PythonFormalRhsToExprState
@@ -1103,7 +1107,7 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarE
   }
 }
 
-// 🟡 gated — feature:python-formal-alt-choice-shim-fold — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:python-formal-alt-choice-shim-fold — bind gunbc#4761 / CP-1b —
 // interim fold carrier for multi-alt FormalProduction lhs → GrammarExpr Choice lowering only;
 // dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type PythonFormalAltChoiceState
@@ -1292,10 +1296,10 @@ fn python_ident_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 predicate dissolution — feature:python-wave2a-decimal-int-literal — bind TASKS.md T-6/T-7 —
+// 🟡 predicate dissolution — feature:python-wave2a-decimal-int-literal — bind gunbc#4761 —
 // dissolve-on: std LexCharClass carries NonZeroDigitChar (or full integerliteral LexPattern).
 // 🟡 gated — feature:python-wave2a-decimal-int-literal — ASCII 49–57 ladder until
-// `NonZeroDigitChar` lands on v4.std.lexing; consumed only by python_decimal_int_literal_pattern.
+// `NonZeroDigitChar` lands on v4.std.compilers.lexing; consumed only by python_decimal_int_literal_pattern.
 fn python_nonzero_digit_char_pattern() -> LexPattern {
   ChoicePattern {
     left: CharPattern { char: 49 },

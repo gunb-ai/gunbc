@@ -14,7 +14,7 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.machine { Byte }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.text { String }
 import v4.std.witness { Witness, Holds, Violates }
 

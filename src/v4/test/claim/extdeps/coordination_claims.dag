@@ -1,5 +1,5 @@
 // src/v4/test/claim/extdeps/coordination_claims.dag
-// Scope: Wave-A W1 — v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
+// Scope: v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
 //
 // These witnesses migrate the EXECUTABLE behavioral content of
@@ -15,7 +15,9 @@
 // .rs smoke are deleted in the same PR (their content is proven here by execution). The
 // remaining B-class receipts (WireContractFacts/WireContract record-field shapes,
 // SettlementGuarantee/ConsistencyGuarantee shared-discriminant) were deleted with the smoke
-// file per the white-box sweep (reflection banned; decl-shape mirrors are 2FA-for-code).
+// file per the white-box sweep. Reflection stays banned outside the scoped lift
+// ratified in gunbc#4861 (compile-time closed-coproduct projection + gate-covered fail-closed
+// only; inline scope bound here is authoritative); decl-shape mirrors remain 2FA-for-code elsewhere.
 // Importing v4.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 

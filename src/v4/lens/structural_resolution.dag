@@ -3,7 +3,7 @@
 // Scope: structural resolution lens — binding status from InferredTree + dependency_lens.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 //
-// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via
+// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via
 //   parametric `ClassifiedDependencyView<StructuralResolutionStatus>`; per-node
 //   `InferredFacts` read at classify time via `tree.facts.lookup(usage_site)`, not
 //   stored on the row (Practice 11 / INVARIANTS P2 parallel-payload dissolution).
@@ -58,10 +58,10 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
   tree.facts.lookup(node)
 }
 
-// 🟡 staged — dissolve-on: T-9 resolve→infer witness bridge lands resolve Violates on fact table.
+// 🟡 staged — dissolve-on: resolve→infer witness bridge lands resolve Violates on fact table.
 // BindsTo status reads infer/resolve witnesses at the use site (P3), not declaration facts.
 // BindingResolved on `Holds` means use-site infer succeeded structurally only — not that resolve
-// stamped the symbol; until T-9 inline resolve stamps, treat as staged posture not load-bearing.
+// stamped the symbol; until inline resolve stamps, treat as staged posture not load-bearing.
 fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
   match usage_site_facts {
     Violates { diagnostic: d } =>
@@ -192,7 +192,7 @@ fn structural_resolution_classified_eq(
 }
 
 // 🟡 gated — feature:T-13-lens-claim-equality-scaffold
-// dissolve-on-arrival: T-13 lens driver / generated TestClaim supplies canonical
+// dissolve-on-arrival: generated TestClaim supplies canonical
 // equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)

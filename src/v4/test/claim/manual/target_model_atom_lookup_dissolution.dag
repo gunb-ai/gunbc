@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/target_model_atom_lookup_dissolution.dag
 // Scope: E-10 execution receipts for the PassingCandidateFold dissolution of
-// TargetAtomRealizationLookup and TargetAtomRealizationCatalogLookup in std/target_model.dag.
+// TargetAtomRealizationLookup and TargetAtomRealizationCatalogLookup in std/compilers/target_model.dag.
 // Status: T-6 M-C precondition — three behaviors exercised: acceptance, miss, ambiguity.
 
 module v4.test.claim.manual.target_model_atom_lookup_dissolution
@@ -13,14 +13,14 @@ import v4.extdeps.languages.typescript {
 }
 import v4.std.algebra { fold_list }
 import v4.std.diagnostic { Accepted, Rejected }
-import v4.std.find_witness {
+import v4.std.passing_candidate_fold {
   ManyPassingCandidates,
   NoPassingCandidate,
   OnePassingCandidate
 }
 import v4.std.logic { Bool, bool_node }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   symbol_kernel_type_node,
   target_atom_realization_catalog_row_decode_invalid,
   target_atom_realization_lookup_in_catalog,

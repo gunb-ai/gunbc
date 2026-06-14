@@ -12,19 +12,23 @@
 module v4.compiler.translate
 
 
-import v4.compiler.value_expression {
-  arrow_has_transform_body,
-  project_arrow_body_to_value_expression,
-  value_expression_projection_from_target,
-  value_expression_to_concrete_tokens
-}
+import v4.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
+  CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
   TargetModel,
+  TargetValueExpression,
+  TargetValueExpressionProjection,
   bodied_arrow_scaffold_from_grammar_relation_row,
   target_bodied_arrow_compose_statement_tokens,
-  target_model_edge_translation_rules
+  target_model_edge_translation_rules,
+  target_project_arrow_body_to_value_expression,
+  target_project_transform_primitive_apply_in_arrow_scope,
+  target_transform_surface_op_atom,
+  target_value_expr_arrow_has_value_expression_body,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
 }
 import v4.compiler.infer {
   InferredTree,
@@ -35,11 +39,8 @@ import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
   coercion_candidate_set_from_declared_inhabitants,
-  coercion_fold,
   coercion_fold_with_declared_priority
 }
-import v4.std.find_witness { CandidateSet }
-import v4.std.constraints { CanonicalGrounding }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -81,23 +82,11 @@ import v4.std.node {
   SyntheticOccurrence
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
-import v4.std.lexing {
-  LexRules,
-  LexRule,
-  LexPattern,
-  KeywordPattern,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule,
-  TriviaRule,
-  VoidLexRules
-}
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
   TargetValueExpression,
-  TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
   TargetSumTypeShape,
@@ -110,48 +99,26 @@ import v4.std.target_model {
   TargetTypeExprArrow,
   TargetTypeExprCardinality,
   TargetTypeExprInstantiation,
-  TargetTypeExprKind,
   TargetTypeExprRecord,
   TargetTypeExprSum,
-  concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_bodied_scaffold,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_serialize_source,
-  target_model_edge_translation_rules,
   target_model_edge_type_expression_projection,
   target_model_edge_collection_realization,
   TargetCollectionRealization,
-  TargetRepresentation,
   TargetRepresentationChoice,
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessEq,
-  target_collection_trait_ord,
-  target_collection_trait_hash,
-  target_collection_trait_eq,
-  target_collection_repr_field_kind,
-  target_collection_repr_field_apply,
   target_collection_choice_field_form,
   target_collection_choice_field_constraints,
-  target_collection_witness_field_trait_name,
-  target_collection_witness_field_type_param,
   target_collection_row_field_source_carrier,
   target_collection_row_field_primary,
   target_collection_row_field_alternatives,
   target_collection_row_field_fallback,
-  target_collection_repr_kind_from_atom,
-  target_collection_set_no_representation,
-  target_collection_set_no_representation_diagnostic,
-  target_collection_free_monoid_no_representation,
-  target_collection_free_monoid_no_representation_diagnostic,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
@@ -166,22 +133,6 @@ import v4.std.target_model {
   TargetTypeExprArrowLabeledWire,
   TargetTypeExprArrowPositionalWire,
   target_type_expr_atom_emitted,
-  target_type_expr_field_arrow,
-  target_type_expr_field_atom,
-  target_type_expr_field_cardinality,
-  target_type_expr_field_close,
-  target_type_expr_field_conj,
-  target_type_expr_field_disj,
-  target_type_expr_field_field_label_separator,
-  target_type_expr_field_ident_token,
-  target_type_expr_field_instantiation,
-  target_type_expr_field_open,
-  target_type_expr_field_param_ident_token,
-  target_type_expr_field_param_list_separator,
-  target_type_expr_field_param_type_separator,
-  target_type_expr_field_separator,
-  target_type_expr_field_surface,
-  target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
   target_type_expr_emitted_labeled_slot_edges,
   target_type_expr_emitted_labeled_slot_nodes,
@@ -192,12 +143,21 @@ import v4.std.target_model {
   target_type_expr_sum_emitted,
   type_expr_projection_graft_substrate_in_row_slot,
   type_expr_projection_row_closedness_from_target,
-  type_expr_projection_graft_witness_gate
+  type_expr_projection_graft_witness_gate,
+  type_expression_projection_from_target,
+  lex_rules_literal_for_class,
+  lex_rules_literal,
+  token_spelling_from_model,
+  concrete_syntax_token_from_node,
+  target_binding_spelling_lookup,
+  serialize_type_expr_arrow_param_spelling,
+  target_collection_repr_from_node,
+  target_collection_witness_from_node,
+  target_collection_fallback_from_node,
+  target_collection_shape_malformed_diagnostic
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetAtomRealization,
-  TargetValueExpression,
-  SourceAtomValue,
   source_atom_value_for_realization_row,
   target_atom_realization_lookup_in_catalog_node,
   target_atom_realization_lookup_miss,
@@ -209,14 +169,12 @@ import v4.std.target_model {
   target_function_signature_realization_lookup_in_catalog_node,
   target_function_signature_realization_lookup_miss,
   target_model_edge_signature_realizations,
-  target_atom_type_spelling,
   target_atom_value_expression,
   target_model_edge_atom_realizations,
   target_model_edge_value_expression,
   target_model_named_edge,
   target_value_expression_node,
   TargetOwnershipUseSite,
-  TargetReferenceLayer,
   TargetReferenceLayerTokens,
   OwnershipAtBindingProjection,
   OwnershipAtFunctionReturn,
@@ -226,26 +184,19 @@ import v4.std.target_model {
   target_model_edge_reference_layer_tokens,
   target_model_edge_value_semantics_carriers,
   target_value_semantics_carriers_from_node,
-  TargetCarrierOwnership,
   CarrierOwnershipByValue,
   CarrierOwnershipByReference,
   target_use_site_ownership_lookup_in_catalog_node,
-  target_use_site_ownership_lookup_miss,
   target_use_site_ownership_lookup_miss_diagnostic,
   target_reference_layer_tokens_from_node,
   target_reference_layer_apply_type_emitted,
-  target_reference_layer_apply_value_expression,
-  target_reference_layer_probe_from_emitted_type,
-  ReferenceLayerProbe,
-  ReferenceLayerProbeNotWrapped
+  target_reference_layer_apply_value_expression
 }
 import v4.std.collection {
   Absent,
   List,
-  Map,
   Optional,
   Present,
-  empty_map,
   list_at_optional,
   map_get,
   optional_absent,
@@ -254,7 +205,6 @@ import v4.std.collection {
 import v4.std.algebra {
   Cons,
   Empty,
-  FreeMonoid,
   TailAbsent,
   TailFound,
   fold_list,
@@ -312,6 +262,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
     }
   )
 }
+// 🟡 gated — feature:sg-2-type-expr-projection-row-data — consumer:translate_serialize_measure/target_serialize_*_bounded/serialize_type_expr_*_bounded — bind node://adhoc-3bb63121-471 (W2-proper / plan G1) — dissolve-on: TargetModel acyclicity witness (grammar-relation row mutual refs + boundary-atom→signature row trees) replaces rules_budget+subtree serialize fuel and the *_bounded cycle-guard ladder; PR-T-FINISH deletes projection _go only — forbidden: mechanical zeroing of serialize-side _bounded without an occurs-check or model-acyclicity carrier.
 fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
@@ -352,7 +303,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
     }
   )
 }
-// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind TASKS.md T-11 —
+// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind gunbc#4761 —
 // dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
 // concrete tokens from emitted nonterminal nodes before serialization; forbidden:
 // dispatching raw List<Node> row items without this fail-closed classifier.
@@ -661,87 +612,10 @@ fn grammar_inverse_bodied_arrow_validated(
     }
   )
 }
-// E-9 bodied Arrow: signature slots coerce to raw target inhabitant carriers so
-// grammar_inverse exact emitted-node match succeeds; shell wrapping is for binding
-// projection sites, not grammar-row signature equality.
-fn translate_bodied_arrow_coerce_signature_slot_raw(
-  node: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<Node> {
-  match coerce_grounded_node(source: node, tree: tree, target: target) {
-    Accepted { value: coerced, diagnostics: d } =>
-      Accepted { value: coerced.target, diagnostics: d }
-    Rejected { diagnostics: r } =>
-      match canonical_grounding_for_node(tree: tree, node: node) {
-        Accepted { value: grounding } =>
-          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
-            outcome_accepted(value: grounding.witness.structural.evidence)
-          } else {
-            Rejected { diagnostics: r }
-          }
-        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
-      }
-  }
-}
-
-fn translate_bodied_arrow_coerce_signature_slots(
-  arrow: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<Node> {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      match fold(
-        arrow.children,
-        init: Accepted { value: Empty, diagnostics: None },
-        f: fn(acc, edge) {
-          match acc {
-            Rejected { diagnostics: r } => acc
-            Accepted { value: edges, diagnostics: d } =>
-              match edge.label {
-                Positional =>
-                  bind_outcome(
-                    o: translate_bodied_arrow_coerce_signature_slot_raw(
-                      node: edge.target,
-                      tree: tree,
-                      target: target
-                    ),
-                    f: fn(coerced_slot) {
-                      outcome_accepted(
-                        list_snoc_item(
-                          xs: edges,
-                          item: Edge {
-                            label: Positional,
-                            target: coerced_slot
-                          }
-                        )
-                      )
-                    }
-                  )
-                Named { name: n } =>
-                  if n == arrow_body_edge {
-                    outcome_accepted(
-                      list_snoc_item(xs: edges, item: edge)
-                    )
-                  } else {
-                    outcome_rejected(
-                      translate_grammar_relation_row_not_found_diagnostic(emitted: arrow)
-                    )
-                  }
-              }
-          }
-        }
-      ) {
-        Accepted { value: children, diagnostics: d } =>
-          outcome_accepted(
-            value: node_rebuild(n: arrow, children: children)
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
-    _ =>
-      outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: arrow))
-  }
+// E-9 bodied Arrow: serialize derives signature from grammar scaffold + body from
+// value-expression projection — preserve producer IR unchanged through translate.
+fn translate_bodied_arrow_preserve_producer_ir(arrow: Node) -> Outcome<Node> {
+  outcome_accepted(arrow)
 }
 fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
@@ -819,81 +693,6 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
   optional_named_child_ignoring_positional(
     parent: parent,
     edge_name: concrete_syntax_token_field_kind
-  )
-}
-// Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11). The
-// `concrete_syntax_token_kind_{fixed,bound}` wire tags are read exactly here; every downstream
-// consumer (token_spelling_from_model, token_sequence_item_kind) dispatches structurally on the
-// resulting ConcreteSyntaxToken carrier rather than re-comparing Symbols. Fail-closed: a kind that
-// is neither fixed nor bound, a fixed token carrying a binding, or a bound token missing one is
-// Rejected.
-fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
-  bind_outcome(
-    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_kind),
-    f: fn(kind_node) {
-      bind_outcome(
-        o: node_atom_identity(node: kind_node),
-        f: fn(kind) {
-          bind_outcome(
-            o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
-            f: fn(class_node) {
-              bind_outcome(
-                o: node_atom_identity(node: class_node),
-                f: fn(token_class) {
-                  bind_outcome(
-                    o: conj_optional_named_child(
-                      parent: token,
-                      edge_name: concrete_syntax_token_field_binding
-                    ),
-                    f: fn(binding_node) {
-                      if kind == concrete_syntax_token_kind_fixed {
-                        match binding_node {
-                          Present { value: _ } =>
-                            outcome_rejected(
-                              translate_concrete_token_kind_invalid_diagnostic(token: token)
-                            )
-                          Absent =>
-                            Accepted {
-                              value: FixedToken { token_class: token_class },
-                              diagnostics: None
-                            }
-                        }
-                      } else {
-                        if kind == concrete_syntax_token_kind_bound {
-                          match binding_node {
-                            Present { value: binding_node } =>
-                              bind_outcome(
-                                o: node_atom_identity(node: binding_node),
-                                f: fn(binding) {
-                                  Accepted {
-                                    value: BoundToken {
-                                      token_class: token_class,
-                                      binding: binding
-                                    },
-                                    diagnostics: None
-                                  }
-                                }
-                              )
-                            Absent =>
-                              outcome_rejected(
-                                translate_concrete_token_kind_invalid_diagnostic(token: token)
-                              )
-                          }
-                        } else {
-                          outcome_rejected(
-                            translate_concrete_token_kind_invalid_diagnostic(token: token)
-                          )
-                        }
-                      }
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
   )
 }
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
@@ -1133,6 +932,30 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
+// Surface-decode shim (§1.5): decodes ^dag_token_plus surface token → CanonicalOperation, then
+// delegates the structural Transform projection to target_model. Keeps target_model extdep-free.
+fn translate_project_transform_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_surface_op_atom(node: body),
+    f: fn(op_sym) {
+      match dag_surface_operator_canonicalization_member(surface_token: op_sym) {
+        Accepted { value: canonical_op, diagnostics: _ } =>
+          target_project_transform_primitive_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            canonical_op: canonical_op,
+            target: target
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    }
+  )
+}
+
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
@@ -1144,13 +967,19 @@ fn target_serialize_bodied_arrow_from_model(
         o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
         f: fn(scaffold) {
           bind_outcome(
-            o: value_expression_projection_from_target(target: target),
+            o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
               bind_outcome(
-                o: project_arrow_body_to_value_expression(arrow: emitted, target: target),
+                o: target_project_arrow_body_to_value_expression(
+                  arrow: emitted,
+                  target: target,
+                  handle_transform: fn(a, b, t) {
+                    translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+                  }
+                ),
                 f: fn(expr) {
                   bind_outcome(
-                    o: value_expression_to_concrete_tokens(
+                    o: target_value_expression_tokens_from_target(
                       expr: expr,
                       target: target,
                       projection: projection
@@ -1184,7 +1013,7 @@ fn target_serialize_relation_row_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
-  } else if arrow_has_transform_body(arrow: emitted) {
+  } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
@@ -1295,87 +1124,6 @@ fn node_atom_identity(node: Node) -> Outcome<Symbol> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   }
 }
-fn lex_rule_literal_step(
-  acc: Outcome<String>,
-  rule: LexRule,
-  token_class: Symbol
-) -> Outcome<String> {
-  match acc {
-    Accepted { value: _, diagnostics: _ } => acc
-    Rejected { diagnostics: _ } =>
-      match rule {
-        TokenRule { token_class: c, pattern: pattern } =>
-          if c == token_class {
-            match pattern {
-              LiteralPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
-              KeywordPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
-              _ =>
-                Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: translate_lex_rule_literal_not_found_diagnostic(
-                      token_class: token_class
-                    )
-                  )
-                }
-            }
-          } else {
-            acc
-          }
-        TriviaRule { pattern: _ } => acc
-      }
-  }
-}
-fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
-  match rules {
-    VoidLexRules =>
-      outcome_rejected(
-        translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-      )
-    ModeledLexRules { root: set } =>
-      fold_list(
-        xs: set.rules,
-        empty: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-          )
-        },
-        cons: fn(acc, rule) {
-          lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
-        }
-      )
-  }
-}
-fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
-  bind_outcome(
-    o: concrete_syntax_token_from_node(token: token),
-    f: fn(decoded) {
-      match decoded {
-        FixedToken { token_class: token_class } =>
-          lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-        BoundToken { token_class: _, binding: binding } =>
-          // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
-          match map_get(target.binding_spellings, binding) {
-            Accepted { value: opt, diagnostics: pending } => match opt {
-              Present { value: spelling } =>
-                Accepted { value: spelling, diagnostics: pending }
-              Absent =>
-                Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: pending,
-                    rejected: diagnostics_singleton(
-                      d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                    )
-                  )
-                }
-            }
-            Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-          }
-      }
-    }
-  )
-}
 fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
@@ -1448,7 +1196,7 @@ fn target_serialize_source_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
-  } else if arrow_has_transform_body(arrow: emitted) {
+  } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
@@ -1611,314 +1359,12 @@ fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnost
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn type_expr_shape_symbol(parent: Node, field: Symbol) -> Outcome<Symbol> {
-  bind_outcome(
-    o: conj_named_child(parent: parent, edge_name: field),
-    f: fn(child) { node_atom_identity(node: child) }
-  )
-}
-
-fn type_expr_optional_shape_symbol(parent: Node, field: Symbol) -> Outcome<Optional<Symbol>> {
-  bind_outcome(
-    o: conj_optional_named_child(parent: parent, edge_name: field),
-    f: fn(child) {
-      match child {
-        Present { value: n } =>
-          bind_outcome(
-            o: node_atom_identity(node: n),
-            f: fn(sym) { outcome_accepted(optional_present(value: sym)) }
-          )
-        Absent => outcome_accepted(optional_absent())
-      }
-    }
-  )
-}
-
-fn type_expr_atom_shape_from_node(node: Node) -> Outcome<TargetAtomTypeShape> {
-  bind_outcome(
-    o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
-    f: fn(surface) {
-      bind_outcome(
-        o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_ident_token),
-        f: fn(ident_token) {
-          Accepted {
-            value: TargetAtomTypeShape { surface: surface, ident_token: ident_token },
-            diagnostics: None
-          }
-        }
-      )
-    }
-  )
-}
-fn type_expr_generic_apply_shape_from_node(node: Node) -> Outcome<TargetGenericApply> {
-  bind_outcome(
-    o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
-    f: fn(surface) {
-      bind_outcome(
-        o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_open),
-        f: fn(open) {
-          bind_outcome(
-            o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_separator),
-            f: fn(separator) {
-              bind_outcome(
-                o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_close),
-                f: fn(close) {
-                  bind_outcome(
-                    o: type_expr_optional_shape_symbol(parent: node, field: target_type_expr_field_field_label_separator),
-                    f: fn(field_label_separator) {
-                      Accepted {
-                        value: TargetGenericApply {
-                          surface: surface,
-                          open: open,
-                          separator: separator,
-                          field_label_separator: field_label_separator,
-                          close: close
-                        },
-                        diagnostics: None
-                      }
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-fn type_expr_sum_shape_from_node(node: Node) -> Outcome<TargetSumTypeShape> {
-  bind_outcome(
-    o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
-    f: fn(surface) {
-      bind_outcome(
-        o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_variant_separator),
-        f: fn(variant_separator) {
-          Accepted {
-            value: TargetSumTypeShape {
-              surface: surface,
-              variant_separator: variant_separator
-            },
-            diagnostics: None
-          }
-        }
-      )
-    }
-  )
-}
-fn type_expr_arrow_shape_from_node(node: Node) -> Outcome<TargetFunctionTypeShape> {
-  bind_outcome(
-    o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
-    f: fn(surface) {
-      bind_outcome(
-        o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_open),
-        f: fn(open) {
-          bind_outcome(
-            o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_close),
-            f: fn(close) {
-              bind_outcome(
-                o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_arrow),
-                f: fn(arrow) {
-                  bind_outcome(
-                    o: type_expr_shape_symbol(
-                      parent: node,
-                      field: target_type_expr_field_param_ident_token
-                    ),
-                    f: fn(param_ident_token) {
-                      bind_outcome(
-                        o: type_expr_shape_symbol(
-                          parent: node,
-                          field: target_type_expr_field_param_type_separator
-                        ),
-                        f: fn(param_type_separator) {
-                          bind_outcome(
-                            o: type_expr_shape_symbol(
-                              parent: node,
-                              field: target_type_expr_field_param_list_separator
-                            ),
-                            f: fn(param_list_separator) {
-                              Accepted {
-                                value: TargetFunctionTypeShape {
-                                  surface: surface,
-                                  open: open,
-                                  close: close,
-                                  arrow: arrow,
-                                  param_ident_token: param_ident_token,
-                                  param_type_separator: param_type_separator,
-                                  param_list_separator: param_list_separator
-                                },
-                                diagnostics: None
-                              }
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-fn type_expression_projection_from_bundle(bundle: Node) -> Outcome<TargetTypeExpressionProjection> {
-  bind_outcome(
-    o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_atom),
-    f: fn(atom_node) {
-      bind_outcome(
-        o: type_expr_atom_shape_from_node(node: atom_node),
-        f: fn(atom_form) {
-          bind_outcome(
-            o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_conj),
-            f: fn(conj_node) {
-              bind_outcome(
-                o: type_expr_generic_apply_shape_from_node(node: conj_node),
-                f: fn(conj_form) {
-                  bind_outcome(
-                    o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_disj),
-                    f: fn(disj_node) {
-                      bind_outcome(
-                        o: type_expr_sum_shape_from_node(node: disj_node),
-                        f: fn(disj_form) {
-                          bind_outcome(
-                            o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_arrow),
-                            f: fn(arrow_node) {
-                              bind_outcome(
-                                o: type_expr_arrow_shape_from_node(node: arrow_node),
-                                f: fn(arrow_form) {
-                                  bind_outcome(
-                                    o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_cardinality),
-                                    f: fn(card_node) {
-                                      bind_outcome(
-                                        o: type_expr_generic_apply_shape_from_node(node: card_node),
-                                        f: fn(cardinality_form) {
-                                          bind_outcome(
-                                            o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_instantiation),
-                                            f: fn(inst_node) {
-                                              bind_outcome(
-                                                o: type_expr_generic_apply_shape_from_node(node: inst_node),
-                                                f: fn(instantiation_form) {
-                                                  Accepted {
-                                                    value: TargetTypeExpressionProjection {
-                                                      atom_form: atom_form,
-                                                      conj_form: conj_form,
-                                                      disj_form: disj_form,
-                                                      arrow_form: arrow_form,
-                                                      cardinality_form: cardinality_form,
-                                                      instantiation_form: instantiation_form
-                                                    },
-                                                    diagnostics: None
-                                                  }
-                                                }
-                                              )
-                                            }
-                                          )
-                                        }
-                                      )
-                                    }
-                                  )
-                                }
-                              )
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-fn type_expression_projection_from_target(target: TargetModel) -> Outcome<TargetTypeExpressionProjection> {
-  bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_type_expression_projection),
-    f: fn(bundle) { type_expression_projection_from_bundle(bundle: bundle) }
-  )
-}
-
-fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation> {
-  bind_outcome(
-    o: conj_named_child(parent: node, edge_name: target_collection_repr_field_kind),
-    f: fn(kind_node) {
-      bind_outcome(
-        o: node_atom_identity(node: kind_node),
-        f: fn(kind_sym) {
-          match target_collection_repr_kind_from_atom(id: kind_sym) {
-            Present { value: kind } =>
-              bind_outcome(
-                o: conj_named_child(parent: node, edge_name: target_collection_repr_field_apply),
-                f: fn(apply_node) {
-                  bind_outcome(
-                    o: type_expr_generic_apply_shape_from_node(node: apply_node),
-                    f: fn(apply) {
-                      Accepted {
-                        value: TargetRepresentation { kind: kind, apply: apply },
-                        diagnostics: None
-                      }
-                    }
-                  )
-                }
-              )
-            Absent =>
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-          }
-        }
-      )
-    }
-  )
-}
-
-fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {
-  bind_outcome(
-    o: conj_named_child(parent: node, edge_name: target_collection_witness_field_trait_name),
-    f: fn(trait_node) {
-      bind_outcome(
-        o: node_atom_identity(node: trait_node),
-        f: fn(trait_name) {
-          bind_outcome(
-            o: conj_named_child(parent: node, edge_name: target_collection_witness_field_type_param),
-            f: fn(param_node) {
-              bind_outcome(
-                o: node_atom_identity(node: param_node),
-                f: fn(type_param) {
-                  if trait_name == target_collection_trait_ord {
-                    Accepted {
-                      value: TargetCollectionWitnessOrd { type_param: type_param },
-                      diagnostics: None
-                    }
-                  } else {
-                    if trait_name == target_collection_trait_hash {
-                      Accepted {
-                        value: TargetCollectionWitnessHash { type_param: type_param },
-                        diagnostics: None
-                      }
-                    } else {
-                      if trait_name == target_collection_trait_eq {
-                        Accepted {
-                          value: TargetCollectionWitnessEq { type_param: type_param },
-                          diagnostics: None
-                        }
-                      } else {
-                        outcome_rejected(
-                          translate_type_expression_shape_missing_diagnostic(node: node)
-                        )
-                      }
-                    }
-                  }
-                }
-              )
-            }
-          )
-        }
-      )
+fn target_collection_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
     }
   )
 }
@@ -1929,100 +1375,75 @@ fn target_collection_fold_list_from_node<T>(
   decode_item: fn(Node) -> Outcome<T>
 ) -> Outcome<List<T>> {
   if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+    outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
   } else {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if is_empty(xs: node.children) {
-        Accepted { value: Empty, diagnostics: None }
-      } else {
-        bind_outcome(
-          o: conj_named_child(parent: node, edge_name: fold_list_node_head),
-          f: fn(head_node) {
-            bind_outcome(
-              o: decode_item(node: head_node),
-              f: fn(head_item) {
-                bind_outcome(
-                  o: conj_named_child(parent: node, edge_name: fold_list_node_tail),
-                  f: fn(tail_node) {
-                    bind_outcome(
-                      o: target_collection_fold_list_from_node(
-                        remaining: remaining - 1,
-                        node: tail_node,
-                        decode_item: decode_item
-                      ),
-                      f: fn(tail_items) {
-                        Accepted {
-                          value: Cons { head: head_item, tail: tail_items },
-                          diagnostics: None
+    match node.kind {
+      TypeNode { connective: Conj } =>
+        if is_empty(xs: node.children) {
+          outcome_accepted(Empty)
+        } else {
+          bind_outcome(
+            o: find_named_child(root: node, name: fold_list_node_head),
+            f: fn(head_node) {
+              bind_outcome(
+                o: decode_item(node: head_node),
+                f: fn(head_item) {
+                  bind_outcome(
+                    o: find_named_child(root: node, name: fold_list_node_tail),
+                    f: fn(tail_node) {
+                      bind_outcome(
+                        o: target_collection_fold_list_from_node(
+                          remaining: remaining - 1,
+                          node: tail_node,
+                          decode_item: decode_item
+                        ),
+                        f: fn(tail_items) {
+                          outcome_accepted(
+                            Cons { head: head_item, tail: tail_items }
+                          )
                         }
-                      }
-                    )
-                  }
-                )
-              }
-            )
-          }
-        )
-      }
-    _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+    }
   }
 }
 
 fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
   bind_outcome(
-    o: conj_named_child(parent: node, edge_name: target_collection_choice_field_form),
+    o: find_named_child(root: node, name: target_collection_choice_field_form),
     f: fn(form_node) {
       bind_outcome(
         o: target_collection_repr_from_node(node: form_node),
         f: fn(form) {
           bind_outcome(
-            o: conj_named_child(parent: node, edge_name: target_collection_choice_field_constraints),
+            o: find_named_child(root: node, name: target_collection_choice_field_constraints),
             f: fn(constraints_node) {
               bind_outcome(
                 o: target_collection_fold_list_from_node(
-                  remaining: node_subtree_count(n: constraints_node),
+                  remaining: target_collection_subtree_count(n: constraints_node),
                   node: constraints_node,
                   decode_item: target_collection_witness_from_node
                 ),
                 f: fn(constraints) {
-                  Accepted {
-                    value: TargetRepresentationChoice {
+                  outcome_accepted(
+                    TargetRepresentationChoice {
                       form: form,
                       constraints: constraints
-                    },
-                    diagnostics: None
-                  }
+                    }
+                  )
                 }
               )
             }
           )
         }
       )
-    }
-  )
-}
-
-fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
-  bind_outcome(
-    o: node_atom_identity(node: node),
-    f: fn(reason) {
-      if reason == target_collection_set_no_representation {
-        Accepted {
-          value: target_collection_set_no_representation_diagnostic(),
-          diagnostics: None
-        }
-      } else {
-        if reason == target_collection_free_monoid_no_representation {
-          Accepted {
-            value: target_collection_free_monoid_no_representation_diagnostic(),
-            diagnostics: None
-          }
-        } else {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      }
     }
   )
 }
@@ -2122,7 +1543,7 @@ fn collection_realization_from_target_carrier(
   )
 }
 
-fn project_set_collection_type_node_impl(
+fn project_set_collection_type_node(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -2139,12 +1560,7 @@ fn project_set_collection_type_node_impl(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: node_subtree_count(n: elem),
-                  node: elem,
-                  target: target,
-                  projection: projection
-                ),
+                o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   Accepted {
                     value: target_type_expr_instantiation_emitted(
@@ -2168,18 +1584,6 @@ fn project_set_collection_type_node_impl(
   }
 }
 
-fn project_set_collection_type_node(
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  project_set_collection_type_node_impl(
-    node: node,
-    target: target,
-    projection: projection
-  )
-}
-
 fn project_free_monoid_collection_type_node(
   node: Node,
   target: TargetModel,
@@ -2197,12 +1601,7 @@ fn project_free_monoid_collection_type_node(
           ) {
             Present { value: choice } =>
               bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: node_subtree_count(n: elem),
-                  node: elem,
-                  target: target,
-                  projection: projection
-                ),
+                o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
                   bind_outcome(
                     o: translate_apply_use_site_ownership_to_projected_type(
@@ -2239,85 +1638,34 @@ type TypeExprHeadTail {
   head: Node
   tail: List<Node>
 }
-type EdgeHeadTail {
-  head: Edge
-  tail: List<Edge>
-}
-fn edge_list_head_and_tail(edges: List<Edge>, node: Node) -> Outcome<EdgeHeadTail> {
-  match list_at_optional(xs: edges, index: 0) {
-    Present { value: head } =>
-      match list_tail(xs: edges) {
-        TailAbsent =>
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        TailFound { tail: t } =>
-          Accepted { value: EdgeHeadTail { head: head, tail: t }, diagnostics: None }
-      }
-    Absent =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  }
-}
 type TypeExprArrowSplit {
   inputs: List<Node>
   output: Node
-}
-fn type_expr_arrow_split_from_types_bounded(
-  remaining: Int,
-  types: List<Node>,
-  node: Node
-) -> Outcome<TypeExprArrowSplit> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: types, node: node),
-      f: fn(split) {
-        if is_empty(xs: split.tail) {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        } else {
-          bind_outcome(
-            o: list_head_and_tail(xs: split.tail, node: node),
-            f: fn(rest) {
-              if is_empty(xs: rest.tail) {
-                Accepted {
-                  value: TypeExprArrowSplit {
-                    inputs: Cons { head: split.head, tail: Empty },
-                    output: rest.head
-                  },
-                  diagnostics: None
-                }
-              } else {
-                bind_outcome(
-                  o: type_expr_arrow_split_from_types_bounded(
-                    remaining: remaining - 1,
-                    types: split.tail,
-                    node: node
-                  ),
-                  f: fn(inner) {
-                    Accepted {
-                      value: TypeExprArrowSplit {
-                        inputs: Cons { head: split.head, tail: inner.inputs },
-                        output: inner.output
-                      },
-                      diagnostics: None
-                    }
-                  }
-                )
-              }
-            }
-          )
-        }
-      }
-    )
-  }
 }
 fn type_expr_arrow_split_from_types(
   types: List<Node>,
   node: Node
 ) -> Outcome<TypeExprArrowSplit> {
-  type_expr_arrow_split_from_types_bounded(
-    remaining: length(xs: types),
-    types: types,
-    node: node
+  bind_outcome(
+    o: list_head_and_tail(xs: types, node: node),
+    f: fn(split) {
+      if is_empty(xs: split.tail) {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      } else {
+        outcome_accepted(
+          fold_list(
+            xs: split.tail,
+            empty: TypeExprArrowSplit { inputs: Empty, output: split.head },
+            cons: fn(acc, t) {
+              TypeExprArrowSplit {
+                inputs: list_snoc_item(xs: acc.inputs, item: acc.output),
+                output: t
+              }
+            }
+          )
+        )
+      }
+    }
   )
 }
 fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
@@ -2333,458 +1681,416 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
       }
   }
 }
-fn project_type_expression_children_go(
-  remaining: Int,
+// 🟡 gated — feature:sg-2-type-expr-projection-row-data — owner:witty-raven-599 —
+// bind node://adhoc-3bb63121-471 (W2-proper / plan G1 completion) — dissolve-on:
+// each connective realization in translate_algebra is a DATA row on
+// TargetTypeExpressionProjection (generic row interpreter), not a per-connective algebra
+// fn; PR-T-FINISH lands traversal-fold + homing-correction only — forbidden: letting this
+// float as an untracked follow-up.
+// 🟢 TERMINAL — irreducible NodeFold states for translate_algebra row arms (Slots/Variants/
+// Positional = connective-specific accumulation; Done = leaf/subtree already projected).
+type TypeExprTranslateAcc
+  = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
+  | TypeExprTranslateVariants { variants: List<TargetTypeExprVariantSlot> }
+  | TypeExprTranslatePositional { items: List<Node> }
+  | TypeExprTranslateDone { node: Node }
+
+fn translate_algebra_finalize(
+  acc: TypeExprTranslateAcc,
   anchor: Node,
-  children: List<Node>,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  acc: List<Node>
-) -> Outcome<List<Node>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
-  } else if is_empty(xs: children) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: children, node: anchor),
-      f: fn(split) {
-        match project_type_expression_node_bounded(
-          remaining: node_subtree_count(n: split.head),
-          node: split.head,
-          target: target,
-          projection: projection
-        ) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: projected, diagnostics: cd } =>
-            match project_type_expression_children_go(
-              remaining: remaining - 1,
-              anchor: anchor,
-              children: split.tail,
-              target: target,
-              projection: projection,
-              acc: list_snoc_item(xs: acc, item: projected)
-            ) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: done, diagnostics: rd } =>
-                Accepted {
-                  value: done,
-                  diagnostics: diagnostics_merge(outer: cd, inner: rd)
-                }
-            }
-        }
-      }
-    )
-  }
-}
-fn project_type_expression_children(
-  remaining: Int,
-  anchor: Node,
-  children: List<Node>,
-  target: TargetModel,
   projection: TargetTypeExpressionProjection
-) -> Outcome<List<Node>> {
-  project_type_expression_children_go(
-    remaining: remaining,
-    anchor: anchor,
-    children: children,
-    target: target,
-    projection: projection,
-    acc: Empty
-  )
-}
-fn project_type_expression_field_slots_go(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  edges: List<Edge>,
-  acc: List<TargetTypeExprFieldSlot>
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else if is_empty(xs: edges) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: edges, node: node),
-      f: fn(split) {
-        match split.head.label {
-          Named { name: label } =>
-            bind_outcome(
-              o: project_type_expression_node_bounded(
-                remaining: node_subtree_count(n: split.head.target),
-                node: split.head.target,
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  // Ownership attaches to CARRIERS, asked once each — not to a
-                  // carrier's structural fact sub-atoms. Route field-slot
-                  // ownership through the same boundary discipline as function
-                  // params/return: decode the projected wire, apply ownership ONLY
-                  // when it is an atom carrier (keyed by its canonical atom
-                  // binding), and pass non-carrier shapes through. This stops the
-                  // per-edge recursion from decorating a scalar carrier's fact
-                  // sub-atoms (surface_spelling / inhabitant / signedness tag).
-                  o: translate_apply_use_site_ownership_to_projected_boundary(
-                    projected: projected,
-                    source_for_binding: split.head.target,
-                    target: target,
-                    projection: projection,
-                    use_site: OwnershipAtStructField
-                  ),
-                  f: fn(wrapped) {
-                    project_type_expression_field_slots_go(
-                      remaining: remaining - 1,
-                      node: node,
-                      target: target,
-                      projection: projection,
-                      edges: split.tail,
-                      acc: list_snoc_item(
-                        xs: acc,
-                        item: TargetTypeExprFieldSlot { label: label, type_expr: wrapped }
-                      )
-                    )
-                  }
+) -> Outcome<Node> {
+  match anchor.kind {
+    TypeNode { connective: connective } =>
+      match connective {
+        Atom { identity: _ } =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Conj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateSlots { slots: fields } =>
+              if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
+                outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+              } else {
+                outcome_accepted(
+                  target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
                 )
               }
-            )
-          Positional =>
-            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Disj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateVariants { variants: variants } =>
+              outcome_accepted(
+                target_type_expr_sum_emitted(form: projection.disj_form, variants: variants)
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Instantiation =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslatePositional { items: projected } =>
+              bind_outcome(
+                o: list_head_and_tail(xs: projected, node: anchor),
+                f: fn(split) {
+                  outcome_accepted(
+                    target_type_expr_instantiation_emitted(
+                      form: projection.instantiation_form,
+                      head: split.head,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Cardinality =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslatePositional { items: projected } =>
+              bind_outcome(
+                o: list_head_and_tail(xs: projected, node: anchor),
+                f: fn(split) {
+                  outcome_accepted(
+                    target_type_expr_cardinality_emitted(
+                      form: projection.cardinality_form,
+                      head: split.head,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Arrow =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
       }
-    )
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
   }
-}
-fn project_type_expression_field_slots(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  project_type_expression_field_slots_go(
-    remaining: remaining,
-    node: node,
-    target: target,
-    projection: projection,
-    edges: node.children,
-    acc: Empty
-  )
 }
 
-fn project_type_expression_variant_slots_go(
-  remaining: Int,
+fn translate_type_expression_arrow_project(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  edges: List<Edge>,
-  acc: List<TargetTypeExprVariantSlot>
-) -> Outcome<List<TargetTypeExprVariantSlot>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else if is_empty(xs: edges) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: edges, node: node),
-      f: fn(split) {
-        match split.head.label {
-          Named { name: label } =>
-            bind_outcome(
-              o: project_type_expression_node_bounded(
-                remaining: node_subtree_count(n: split.head.target),
-                node: split.head.target,
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                project_type_expression_variant_slots_go(
-                  remaining: remaining - 1,
-                  node: node,
-                  target: target,
-                  projection: projection,
-                  edges: split.tail,
-                  acc: list_snoc_item(
-                    xs: acc,
-                    item: TargetTypeExprVariantSlot { label: label, type_expr: projected }
-                  )
-                )
-              }
-            )
-          Positional =>
-            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      }
-    )
-  }
-}
-fn project_type_expression_variant_slots(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprVariantSlot>> {
-  project_type_expression_variant_slots_go(
-    remaining: remaining,
-    node: node,
-    target: target,
-    projection: projection,
-    edges: node.children,
-    acc: Empty
-  )
-}
-fn project_type_expression_conj_fields(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  bind_outcome(
-    o: project_type_expression_field_slots(
-      remaining: remaining - 1,
-      node: node,
-      target: target,
-      projection: projection
-    ),
-    f: fn(fields) {
-      if is_empty(xs: fields) {
-        if is_empty(xs: node.children) {
-          Accepted { value: fields, diagnostics: None }
-        } else {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      } else {
-        Accepted { value: fields, diagnostics: None }
-      }
-    }
-  )
-}
-fn project_type_expression_disj_variants(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprVariantSlot>> {
-  bind_outcome(
-    o: project_type_expression_variant_slots(
-      remaining: remaining - 1,
-      node: node,
-      target: target,
-      projection: projection
-    ),
-    f: fn(variants) {
-      if is_empty(xs: variants) {
-        if is_empty(xs: node.children) {
-          Accepted { value: variants, diagnostics: None }
-        } else {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      } else {
-        Accepted { value: variants, diagnostics: None }
-      }
-    }
-  )
-}
-fn project_type_expression_connective_bounded(
-  remaining: Int,
-  node: Node,
-  connective: Connective,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
-    o: type_expr_projection_row_closedness_from_target(
-      target: target,
-      projection: projection,
-      connective: connective
+    o: type_expr_arrow_split_from_types(
+      types: node_positional_child_targets(node: node),
+      node: node
     ),
-    f: fn(_) {
-      match connective {
-        Atom { identity: id } =>
-          Accepted {
-            value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
-            diagnostics: None
-          }
-        Instantiation =>
-          if target_collection_type_node_is_free_monoid_carrier(node: node) {
-            project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
-          } else {
-            bind_outcome(
-              o: project_type_expression_children(
-                remaining: remaining - 1,
-                anchor: node,
-                children: node_positional_child_targets(node: node),
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  o: list_head_and_tail(xs: projected, node: node),
-                  f: fn(split) {
-                    Accepted {
-                      value: target_type_expr_instantiation_emitted(
-                        form: projection.instantiation_form,
-                        head: split.head,
-                        args: split.tail
-                      ),
-                      diagnostics: None
-                    }
-                  }
-                )
-              }
-            )
-          }
-        Cardinality =>
-          if target_collection_type_node_is_set_carrier(node: node) {
-            project_set_collection_type_node(node: node, target: target, projection: projection)
-          } else {
-            bind_outcome(
-              o: project_type_expression_children(
-                remaining: remaining - 1,
-                anchor: node,
-                children: node_positional_child_targets(node: node),
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  o: list_head_and_tail(xs: projected, node: node),
-                  f: fn(split) {
-                    Accepted {
-                      value: target_type_expr_cardinality_emitted(
-                        form: projection.cardinality_form,
-                        head: split.head,
-                        args: split.tail
-                      ),
-                      diagnostics: None
-                    }
-                  }
-                )
-              }
-            )
-          }
-        Conj =>
+    f: fn(original_split) {
+      bind_outcome(
+        o: translate_project_arrow_split_types(
+          original_split: original_split,
+          target: target,
+          projection: projection,
+          anchor: node
+        ),
+        f: fn(split) {
           bind_outcome(
-            o: project_type_expression_conj_fields(
-              remaining: remaining - 1,
+            o: type_expr_projection_graft_substrate_in_row_slot(
+              projection: projection,
+              connective: Arrow,
               node: node,
-              target: target,
-              projection: projection
+              projected_positional: list_append(
+                left: split.inputs,
+                right: Cons { head: split.output, tail: Empty }
+              )
             ),
-            f: fn(fields) {
-              Accepted {
-                value: target_type_expr_record_emitted(form: projection.conj_form, fields: fields),
-                diagnostics: None
-              }
-            }
-          )
-        Disj =>
-          bind_outcome(
-            o: project_type_expression_disj_variants(
-              remaining: remaining - 1,
-              node: node,
-              target: target,
-              projection: projection
-            ),
-            f: fn(variants) {
-              Accepted {
-                value: target_type_expr_sum_emitted(form: projection.disj_form, variants: variants),
-                diagnostics: None
-              }
-            }
-          )
-        Arrow =>
-          bind_outcome(
-            o: type_expr_arrow_split_from_types(
-              types: node_positional_child_targets(node: node),
-              node: node
-            ),
-            f: fn(original_split) {
+            f: fn(grafted) {
               bind_outcome(
-                o: translate_project_arrow_split_types(
-                  original_split: original_split,
-                  target: target,
+                o: type_expr_projection_graft_witness_gate(
+                  source_facts: grafted,
                   projection: projection,
-                  anchor: node
+                  connective: Arrow
                 ),
-                f: fn(split) {
-                  bind_outcome(
-                    o: type_expr_projection_graft_substrate_in_row_slot(
-                      projection: projection,
-                      connective: Arrow,
-                      node: node,
-                      projected_positional: list_append(
-                        left: split.inputs,
-                        right: Cons { head: split.output, tail: Empty }
-                      )
-                    ),
-                    f: fn(grafted) {
-                      bind_outcome(
-                        o: type_expr_projection_graft_witness_gate(
-                          source_facts: grafted,
-                          projection: projection,
-                          connective: Arrow
-                        ),
-                        f: fn(_) {
-                          Accepted {
-                            value: target_type_expr_arrow_emitted(
-                              form: projection.arrow_form,
-                              inputs: split.inputs,
-                              output: split.output
-                            ),
-                            diagnostics: None
-                          }
-                        }
-                      )
-                    }
+                f: fn(_) {
+                  outcome_accepted(
+                    target_type_expr_arrow_emitted(
+                      form: projection.arrow_form,
+                      inputs: split.inputs,
+                      output: split.output
+                    )
                   )
                 }
               )
             }
           )
-      }
+        }
+      )
     }
   )
 }
-fn project_type_expression_node(
-  node: Node,
+
+fn translate_algebra(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  project_type_expression_node_bounded(
-    remaining: node_subtree_count(n: node),
-    node: node,
-    target: target,
-    projection: projection
-  )
+) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
+  NodeFold {
+    init: fn(n) {
+      match n.kind {
+        TypeNode { connective: connective } =>
+          match connective {
+            Atom { identity: id } =>
+              Accepted {
+                value: TypeExprTranslateDone {
+                  node: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: id
+                  )
+                },
+                diagnostics: None
+              }
+            Conj =>
+              Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+            Disj =>
+              Accepted {
+                value: TypeExprTranslateVariants { variants: Empty },
+                diagnostics: None
+              }
+            Instantiation =>
+              Accepted {
+                value: TypeExprTranslatePositional { items: Empty },
+                diagnostics: None
+              }
+            Cardinality =>
+              Accepted {
+                value: TypeExprTranslatePositional { items: Empty },
+                diagnostics: None
+              }
+            Arrow =>
+              bind_outcome(
+                o: translate_type_expression_arrow_project(
+                  node: n,
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(emitted) {
+                  Accepted {
+                    value: TypeExprTranslateDone { node: emitted },
+                    diagnostics: None
+                  }
+                }
+              )
+          }
+        ComputationNode { behavior: _ } =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
+    },
+    step: fn(acc, e, child) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: done, diagnostics: d } =>
+          match done {
+            TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateSlots { slots: slots } =>
+              match e.label {
+                Named { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_finalize(
+                          acc: child_acc,
+                          anchor: e.target,
+                          projection: projection
+                        ),
+                        f: fn(projected) {
+                          bind_outcome(
+                            o: translate_apply_use_site_ownership_to_projected_boundary(
+                              projected: projected,
+                              source_for_binding: e.target,
+                              target: target,
+                              projection: projection,
+                              use_site: OwnershipAtStructField
+                            ),
+                            f: fn(wrapped) {
+                              Accepted {
+                                value: TypeExprTranslateSlots {
+                                  slots: list_snoc_item(
+                                    xs: slots,
+                                    item: TargetTypeExprFieldSlot {
+                                      label: label,
+                                      type_expr: wrapped
+                                    }
+                                  )
+                                },
+                                diagnostics: diagnostics_merge(outer: d, inner: cd)
+                              }
+                            }
+                          )
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+            TypeExprTranslateVariants { variants: variants } =>
+              match e.label {
+                Named { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_finalize(
+                          acc: child_acc,
+                          anchor: e.target,
+                          projection: projection
+                        ),
+                        f: fn(projected) {
+                          Accepted {
+                            value: TypeExprTranslateVariants {
+                              variants: list_snoc_item(
+                                xs: variants,
+                                item: TargetTypeExprVariantSlot {
+                                  label: label,
+                                  type_expr: projected
+                                }
+                              )
+                            },
+                            diagnostics: diagnostics_merge(outer: d, inner: cd)
+                          }
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+            TypeExprTranslatePositional { items: items } =>
+              match child {
+                Rejected { diagnostics: cr } =>
+                  Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                Accepted { value: child_acc, diagnostics: cd } =>
+                  bind_outcome(
+                    o: translate_algebra_finalize(
+                      acc: child_acc,
+                      anchor: e.target,
+                      projection: projection
+                    ),
+                    f: fn(projected) {
+                      Accepted {
+                        value: TypeExprTranslatePositional {
+                          items: list_snoc_item(xs: items, item: projected)
+                        },
+                        diagnostics: diagnostics_merge(outer: d, inner: cd)
+                      }
+                    }
+                  )
+              }
+          }
+      }
+    }
+  }
 }
-fn project_type_expression_node_bounded(
-  remaining: Int,
+
+fn translate_type_expression_project(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
   match node.kind {
-    TypeNode { connective: c } =>
-      project_type_expression_connective_bounded(
-        remaining: remaining,
-        node: node,
-        connective: c,
-        target: target,
-        projection: projection
-      )
     ComputationNode { behavior: _ } =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+    TypeNode { connective: connective } =>
+      bind_outcome(
+        o: type_expr_projection_row_closedness_from_target(
+          target: target,
+          projection: projection,
+          connective: connective
+        ),
+        f: fn(_) {
+          match connective {
+            Atom { identity: _ } =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Instantiation =>
+              if target_collection_type_node_is_free_monoid_carrier(node: node) {
+                project_free_monoid_collection_type_node(
+                  node: node,
+                  target: target,
+                  projection: projection
+                )
+              } else {
+                bind_outcome(
+                  o: fold_node(
+                    n: node,
+                    algebra: translate_algebra(target: target, projection: projection)
+                  ),
+                  f: fn(acc) {
+                    translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                  }
+                )
+              }
+            Cardinality =>
+              if target_collection_type_node_is_set_carrier(node: node) {
+                project_set_collection_type_node(node: node, target: target, projection: projection)
+              } else {
+                bind_outcome(
+                  o: fold_node(
+                    n: node,
+                    algebra: translate_algebra(target: target, projection: projection)
+                  ),
+                  f: fn(acc) {
+                    translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                  }
+                )
+              }
+            Conj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Disj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Arrow =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+          }
+        }
+      )
   }
-  }
-}
-fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
-  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
 }
 fn type_expr_atom_binding_from_positional(
   targets: List<Node>,
@@ -2811,6 +2117,24 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
     node: node
   )
 }
+
+fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<String> {
+  bind_outcome(
+    o: type_expr_atom_binding(node: node),
+    f: fn(binding) {
+      target_binding_spelling_lookup(target: target, binding: binding)
+    }
+  )
+}
+
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<String> {
+  match edge.label {
+    Named { name: label } => target_binding_spelling_lookup(target: target, binding: label)
+    Positional =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
+  }
+}
+
 // A use-site carrier's identity. Ownership attaches to CARRIERS, each asked ONCE by
 // its OWN identity: a bare-atom carrier (e.g. a scalar inhabitant `rust_inhabitant_i32`)
 // IS its own identity, so take it directly via node_atom_identity. A composite/wrapper
@@ -2822,28 +2146,6 @@ fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
     _ => type_expr_atom_binding(node: node)
   }
-}
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: type_expr_atom_binding(node: node),
-    f: fn(binding) {
-      match map_get(target.binding_spellings, binding) {
-        Accepted { value: opt, diagnostics: pending } => match opt {
-          Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-          Absent =>
-            Rejected {
-              diagnostics: rejected_with_pending(
-                pending: pending,
-                rejected: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                )
-              )
-            }
-        }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-      }
-    }
-  )
 }
 fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeExprHeadTail> {
   list_head_and_tail(
@@ -2912,68 +2214,6 @@ fn serialize_type_expr_generic_apply_bounded(
     )
   }
 }
-fn serialize_type_expr_args_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetGenericApply,
-  args: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
-  if remaining <= 0 {
-    outcome_rejected(
-      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
-    )
-  } else if is_empty(xs: args) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: args, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: serialize_type_expr_emitted_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            emitted: split.head
-          ),
-          f: fn(arg_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_args_go(
-                remaining: remaining - 1,
-                target: target,
-                projection: projection,
-                form: form,
-                args: split.tail,
-                anchor: anchor,
-                acc: arg_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.separator),
-                f: fn(sep_source) {
-                  serialize_type_expr_args_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    args: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: sep_source),
-                      right: arg_source
-                    )
-                  )
-                }
-              )
-            }
-          }
-        )
-      }
-    )
-  }
-}
 fn serialize_type_expr_args_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2982,72 +2222,43 @@ fn serialize_type_expr_args_bounded(
   args: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_args_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    form: form,
-    args: args,
-    anchor: anchor,
-    acc: Empty
-  )
-}
-fn serialize_type_expr_separated_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
-  items: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: items) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: items, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: args,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, arg) {
         bind_outcome(
-          o: serialize_type_expr_emitted_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            emitted: split.head
-          ),
-          f: fn(item_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_separated_go(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_emitted_bounded(
                 remaining: remaining - 1,
                 target: target,
                 projection: projection,
-                separator: separator,
-                items: split.tail,
-                anchor: anchor,
-                acc: item_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: separator),
-                f: fn(sep_source) {
-                  serialize_type_expr_separated_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    separator: separator,
-                    items: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: sep_source),
-                      right: item_source
-                    )
+                emitted: arg
+              ),
+              f: fn(arg_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(arg_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.separator),
+                    f: fn(sep_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: sep_source),
+                          right: arg_source
+                        )
+                      )
+                    }
                   )
                 }
-              )
-            }
+              }
+            )
           }
         )
       }
@@ -3062,111 +2273,41 @@ fn serialize_type_expr_separated_bounded(
   items: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_separated_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    separator: separator,
-    items: items,
-    anchor: anchor,
-    acc: Empty
-  )
-}
-
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetSource> {
-  match edge.label {
-    Named { name: label } =>
-      match map_get(target.binding_spellings, label) {
-        Accepted { value: opt, diagnostics: pending } => match opt {
-          Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-          Absent =>
-            Rejected {
-              diagnostics: rejected_with_pending(
-                pending: pending,
-                rejected: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: label)
-                )
-              )
-            }
-        }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-      }
-    Positional =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
-  }
-}
-
-fn serialize_type_expr_record_fields_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
-  field_label_separator: Symbol,
-  fields: List<Edge>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: fields) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: fields, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: items,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, item) {
         bind_outcome(
-          o: serialize_type_expr_record_field_label(target: target, edge: split.head),
-          f: fn(label_source) {
+          o: acc,
+          f: fn(source) {
             bind_outcome(
-              o: lex_rules_literal(target: target, token_class: field_label_separator),
-              f: fn(label_sep_source) {
-                bind_outcome(
-                  o: serialize_type_expr_emitted_bounded(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    emitted: split.head.target
-                  ),
-                  f: fn(field_type_source) {
-                    let field_source = list_append(
-                      left: list_append(left: label_source, right: label_sep_source),
-                      right: field_type_source
-                    )
-                    if is_empty(xs: acc) {
-                      serialize_type_expr_record_fields_go(
-                        remaining: remaining - 1,
-                        target: target,
-                        projection: projection,
-                        separator: separator,
-                        field_label_separator: field_label_separator,
-                        fields: split.tail,
-                        anchor: anchor,
-                        acc: field_source
-                      )
-                    } else {
-                      bind_outcome(
-                        o: lex_rules_literal(target: target, token_class: separator),
-                        f: fn(sep_source) {
-                          serialize_type_expr_record_fields_go(
-                            remaining: remaining - 1,
-                            target: target,
-                            projection: projection,
-                            separator: separator,
-                            field_label_separator: field_label_separator,
-                            fields: split.tail,
-                            anchor: anchor,
-                            acc: list_append(
-                              left: list_append(left: acc, right: sep_source),
-                              right: field_source
-                            )
-                          )
-                        }
+              o: serialize_type_expr_emitted_bounded(
+                remaining: remaining - 1,
+                target: target,
+                projection: projection,
+                emitted: item
+              ),
+              f: fn(item_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(item_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: separator),
+                    f: fn(sep_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: sep_source),
+                          right: item_source
+                        )
                       )
                     }
-                  }
-                )
+                  )
+                }
               }
             )
           }
@@ -3185,16 +2326,62 @@ fn serialize_type_expr_record_fields_bounded(
   fields: List<Edge>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_record_fields_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    separator: separator,
-    field_label_separator: field_label_separator,
-    fields: fields,
-    anchor: anchor,
-    acc: Empty
-  )
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else {
+    fold(
+      fields,
+      init: Accepted { value: Empty, diagnostics: None },
+      f: fn(acc, field) {
+        bind_outcome(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_record_field_label(target: target, edge: field),
+              f: fn(label_source) {
+                bind_outcome(
+                  o: lex_rules_literal(target: target, token_class: field_label_separator),
+                  f: fn(label_sep_source) {
+                    bind_outcome(
+                      o: serialize_type_expr_emitted_bounded(
+                        remaining: remaining - 1,
+                        target: target,
+                        projection: projection,
+                        emitted: field.target
+                      ),
+                      f: fn(field_type_source) {
+                        let field_source = list_append(
+                          left: list_append(left: label_source, right: label_sep_source),
+                          right: field_type_source
+                        )
+                        if is_empty(xs: source) {
+                          outcome_accepted(field_source)
+                        } else {
+                          bind_outcome(
+                            o: lex_rules_literal(target: target, token_class: separator),
+                            f: fn(sep_source) {
+                              outcome_accepted(
+                                list_append(
+                                  left: list_append(left: source, right: sep_source),
+                                  right: field_source
+                                )
+                              )
+                            }
+                          )
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 
 fn serialize_type_expr_record_bounded(
@@ -3265,27 +2452,6 @@ fn serialize_type_expr_sum_bounded(
     }
   )
 }
-fn serialize_type_expr_arrow_param_spelling(
-  target: TargetModel,
-  label: Symbol
-) -> Outcome<TargetSource> {
-  match map_get(target.binding_spellings, label) {
-    Accepted { value: opt, diagnostics: pending } => match opt {
-      Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-      Absent =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: pending,
-            rejected: diagnostics_singleton(
-              d: translate_binding_spelling_not_found_diagnostic(binding: label)
-            )
-          )
-        }
-    }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-  }
-}
-
 fn serialize_type_expr_arrow_param_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3326,63 +2492,52 @@ fn serialize_type_expr_arrow_param_bounded(
   )
 }
 
-fn serialize_type_expr_arrow_params_go(
+fn serialize_type_expr_arrow_params_bounded(
   remaining: Int,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
-  anchor: Node,
-  acc: TargetSource
+  anchor: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
     )
-  } else if is_empty(xs: params) {
-    Accepted { value: acc, diagnostics: None }
   } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: params, node: anchor),
-      f: fn(split) {
+    fold_list(
+      xs: params,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, slot) {
         bind_outcome(
-          o: serialize_type_expr_arrow_param_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: form,
-            slot: split.head
-          ),
-          f: fn(param_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_arrow_params_go(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_arrow_param_bounded(
                 remaining: remaining - 1,
                 target: target,
                 projection: projection,
                 form: form,
-                params: split.tail,
-                anchor: anchor,
-                acc: param_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.param_list_separator),
-                f: fn(separator_source) {
-                  serialize_type_expr_arrow_params_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    params: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: separator_source),
-                      right: param_source
-                    )
+                slot: slot
+              ),
+              f: fn(param_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(param_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.param_list_separator),
+                    f: fn(separator_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: separator_source),
+                          right: param_source
+                        )
+                      )
+                    }
                   )
                 }
-              )
-            }
+              }
+            )
           }
         )
       }
@@ -3407,14 +2562,13 @@ fn serialize_type_expr_arrow_named_bounded(
             o: lex_rules_literal(target: target, token_class: form.open),
             f: fn(open_source) {
               bind_outcome(
-                o: serialize_type_expr_arrow_params_go(
+                o: serialize_type_expr_arrow_params_bounded(
                   remaining: remaining - 1,
                   target: target,
                   projection: projection,
                   form: form,
                   params: params,
-                  anchor: node,
-                  acc: Empty
+                  anchor: node
                 ),
                 f: fn(params_source) {
                   bind_outcome(
@@ -3497,69 +2651,6 @@ fn serialize_type_expr_arrow_input_wrapped(
     }
   )
 }
-fn serialize_type_expr_arrow_inputs_go(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
-  inputs: List<Node>,
-  anchor: Node,
-  acc: TargetSource
-) -> Outcome<TargetSource> {
-  if remaining <= 0 {
-    outcome_rejected(
-      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
-    )
-  } else if is_empty(xs: inputs) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: inputs, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: serialize_type_expr_arrow_input_wrapped(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: form,
-            input_node: split.head
-          ),
-          f: fn(input_source) {
-            if is_empty(xs: acc) {
-              serialize_type_expr_arrow_inputs_go(
-                remaining: remaining - 1,
-                target: target,
-                projection: projection,
-                form: form,
-                inputs: split.tail,
-                anchor: anchor,
-                acc: input_source
-              )
-            } else {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.arrow),
-                f: fn(arrow_source) {
-                  serialize_type_expr_arrow_inputs_go(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    form: form,
-                    inputs: split.tail,
-                    anchor: anchor,
-                    acc: list_append(
-                      left: list_append(left: acc, right: arrow_source),
-                      right: input_source
-                    )
-                  )
-                }
-              )
-            }
-          }
-        )
-      }
-    )
-  }
-}
 fn serialize_type_expr_arrow_inputs_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3568,15 +2659,49 @@ fn serialize_type_expr_arrow_inputs_bounded(
   inputs: List<Node>,
   anchor: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_arrow_inputs_go(
-    remaining: remaining,
-    target: target,
-    projection: projection,
-    form: form,
-    inputs: inputs,
-    anchor: anchor,
-    acc: Empty
-  )
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else {
+    fold_list(
+      xs: inputs,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, input_node) {
+        bind_outcome(
+          o: acc,
+          f: fn(source) {
+            bind_outcome(
+              o: serialize_type_expr_arrow_input_wrapped(
+                remaining: remaining - 1,
+                target: target,
+                projection: projection,
+                form: form,
+                input_node: input_node
+              ),
+              f: fn(input_source) {
+                if is_empty(xs: source) {
+                  outcome_accepted(input_source)
+                } else {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.arrow),
+                    f: fn(arrow_source) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(left: source, right: arrow_source),
+                          right: input_source
+                        )
+                      )
+                    }
+                  )
+                }
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 fn serialize_type_expr_arrow_bounded(
   remaining: Int,
@@ -3864,79 +2989,39 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
   )
 }
 
-fn project_type_expression_arrow_emitted_from_original_split(
-  original_split: TypeExprArrowSplit,
-  anchor: Node,
+fn translate_project_arrow_input_types(
+  original_inputs: List<Node>,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  bind_outcome(
-    o: translate_project_arrow_split_types(
-      original_split: original_split,
-      target: target,
-      projection: projection,
-      anchor: anchor
-    ),
-    f: fn(split) {
-      outcome_accepted(
-        target_type_expr_arrow_emitted(
-          form: projection.arrow_form,
-          inputs: split.inputs,
-          output: split.output
-        )
+) -> Outcome<List<Node>> {
+  fold_list(
+    xs: original_inputs,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, original_input) {
+      bind_outcome(
+        o: acc,
+        f: fn(items) {
+          bind_outcome(
+            o: translate_type_expression_project(node: original_input, target: target, projection: projection),
+            f: fn(projected) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_boundary(
+                  projected: projected,
+                  source_for_binding: original_input,
+                  target: target,
+                  projection: projection,
+                  use_site: OwnershipAtFunctionParameter
+                ),
+                f: fn(wrapped) {
+                  outcome_accepted(list_snoc_item(xs: items, item: wrapped))
+                }
+              )
+            }
+          )
+        }
       )
     }
   )
-}
-
-fn translate_project_arrow_input_types_go(
-  remaining: Int,
-  anchor: Node,
-  original_inputs: List<Node>,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  acc: List<Node>
-) -> Outcome<List<Node>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
-  } else if is_empty(xs: original_inputs) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: list_head_and_tail(xs: original_inputs, node: anchor),
-      f: fn(split) {
-        bind_outcome(
-          o: project_type_expression_node_bounded(
-            remaining: node_subtree_count(n: split.head),
-            node: split.head,
-            target: target,
-            projection: projection
-          ),
-          f: fn(projected) {
-            bind_outcome(
-              o: translate_apply_use_site_ownership_to_projected_boundary(
-                projected: projected,
-                source_for_binding: split.head,
-                target: target,
-                projection: projection,
-                use_site: OwnershipAtFunctionParameter
-              ),
-              f: fn(wrapped) {
-                translate_project_arrow_input_types_go(
-                  remaining: remaining - 1,
-                  anchor: anchor,
-                  original_inputs: split.tail,
-                  target: target,
-                  projection: projection,
-                  acc: list_snoc_item(xs: acc, item: wrapped)
-                )
-              }
-            )
-          }
-        )
-      }
-    )
-  }
 }
 
 fn translate_project_arrow_split_types(
@@ -3946,18 +3031,14 @@ fn translate_project_arrow_split_types(
   anchor: Node
 ) -> Outcome<TypeExprArrowSplit> {
   bind_outcome(
-    o: translate_project_arrow_input_types_go(
-      remaining: node_subtree_count(n: anchor),
-      anchor: anchor,
+    o: translate_project_arrow_input_types(
       original_inputs: original_split.inputs,
       target: target,
-      projection: projection,
-      acc: Empty
+      projection: projection
     ),
     f: fn(wrapped_inputs) {
       bind_outcome(
-        o: project_type_expression_node_bounded(
-          remaining: node_subtree_count(n: original_split.output),
+        o: translate_type_expression_project(
           node: original_split.output,
           target: target,
           projection: projection
@@ -4053,7 +3134,7 @@ fn translate_outcome_is_signature_realization_miss(
 }
 
 // Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
-// domain/codomain atoms are projected (06_translate project_type_expression_node_bounded) with
+// domain/codomain atoms are projected (06_translate translate_type_expression_project) with
 // the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
 // symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
@@ -4274,7 +3355,7 @@ fn translate_coerced_type_shell_from_source(
       bind_outcome(
         o: type_expression_projection_from_target(target: target),
         f: fn(projection) {
-          project_type_expression_node(
+          translate_type_expression_project(
             node: source_carrier,
             target: target,
             projection: projection
@@ -4600,7 +3681,7 @@ fn translate_mvp1_fold_init(
   match node.kind {
     TypeNode { connective: Arrow } =>
       // Bodied Arrow: fold signature children through coercion; body folds structurally (E-9).
-      if arrow_has_transform_body(arrow: node) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_type_fold_init(node: node)
       } else {
         match coerce_grounded_node(source: node, tree: tree, target: target) {
@@ -4650,14 +3731,8 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if arrow_has_transform_body(arrow: node) {
-    // E-9 bodied Arrow: skip structure-preserving fold (it rewrites body-scope atoms through
-    // binding projection shells). Coerce signature slots only; preserve producer body IR.
-    translate_bodied_arrow_coerce_signature_slots(
-      arrow: node,
-      tree: tree,
-      target: target
-    )
+  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
     bind_outcome(
       o: fold_node(
@@ -4676,7 +3751,7 @@ fn translate_type_expression_tree(
         match translate_grammar_relation_row_match(target: target, emitted: n) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
           Rejected { diagnostics: _ } =>
-            project_type_expression_node(node: n, target: target, projection: projection)
+            translate_type_expression_project(node: n, target: target, projection: projection)
         }
       }
     )
@@ -4703,8 +3778,7 @@ fn translate_node_with_projection(
             o: translate_node_computation(node: node, tree: tree, target: target),
             f: fn(translated) {
               bind_outcome(
-                o: project_type_expression_subtree(
-                  remaining: node_subtree_count(n: translated),
+                o: translate_type_expression_subtree(
                   node: translated,
                   target: target,
                   projection: projection
@@ -4717,95 +3791,49 @@ fn translate_node_with_projection(
     }
   )
 }
-fn project_type_expression_subtree(
-  remaining: Int,
+fn translate_type_expression_subtree(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
-    match node.kind {
-      TypeNode { connective: _ } =>
-        project_type_expression_node_bounded(
-          remaining: remaining - 1,
-          node: node,
-          target: target,
-          projection: projection
-        )
-      ComputationNode { behavior: b } =>
-        bind_outcome(
-          o: project_type_expression_children_in_node(
-            remaining: remaining - 1,
-            node: node,
-            target: target,
-            projection: projection
-          ),
-          f: fn(children) {
-            Accepted {
-              value: node_rebuild(n: node, children: children),
-              diagnostics: None
-            }
+  match node.kind {
+    TypeNode { connective: _ } =>
+      translate_type_expression_project(node: node, target: target, projection: projection)
+    ComputationNode { behavior: b } =>
+      bind_outcome(
+        o: translate_type_expression_children_in_node(node: node, target: target, projection: projection),
+        f: fn(children) {
+          Accepted {
+            value: node_rebuild(n: node, children: children),
+            diagnostics: None
           }
-        )
-    }
+        }
+      )
   }
 }
-fn project_type_expression_children_in_node_go(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  edges: List<Edge>,
-  acc: List<Edge>
-) -> Outcome<List<Edge>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else if is_empty(xs: edges) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: edges, node: node),
-      f: fn(split) {
-        bind_outcome(
-          o: project_type_expression_subtree(
-            remaining: node_subtree_count(n: split.head.target),
-            node: split.head.target,
-            target: target,
-            projection: projection
-          ),
-          f: fn(projected) {
-            project_type_expression_children_in_node_go(
-              remaining: remaining - 1,
-              node: node,
-              target: target,
-              projection: projection,
-              edges: split.tail,
-              acc: list_snoc_item(
-                xs: acc,
-                item: Edge { label: split.head.label, target: projected }
-              )
-            )
-          }
-        )
-      }
-    )
-  }
-}
-fn project_type_expression_children_in_node(
-  remaining: Int,
+fn translate_type_expression_children_in_node(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Edge>> {
-  project_type_expression_children_in_node_go(
-    remaining: remaining,
-    node: node,
-    target: target,
-    projection: projection,
-    edges: node.children,
-    acc: Empty
+  fold(
+    node.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      bind_outcome(
+        o: acc,
+        f: fn(edges) {
+          bind_outcome(
+            o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
+            f: fn(projected) {
+              outcome_accepted(
+                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+              )
+            }
+          )
+        }
+      )
+    }
   )
 }
 fn translate_node_computation(
@@ -4821,7 +3849,7 @@ fn translate_node_computation(
     }
   )
 }
-fn translate_node_mvp1(
+fn translate_node_mvp1_fold(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -4833,6 +3861,39 @@ fn translate_node_mvp1(
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )
+}
+fn translate_node_mvp1(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+    translate_bodied_arrow_preserve_producer_ir(arrow: node)
+  } else {
+    bind_outcome(
+      o: fold_node(
+        n: node,
+        algebra: NodeFold {
+          init: fn(n0) { translate_type_fold_init(node: n0) },
+          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+        }
+      ),
+      f: fn(raw) {
+        // Grammar-first short-circuit (parity with translate_type_expression_tree :3736, the
+        // ProjectionPresent/SG-2 path): if the structure-preserving (raw) folded node matches a
+        // grammar relation row, return it RAW so serialize routes through the mode-1 whole-node
+        // grammar match -> pre-baked concrete tokens (e.g. the mvp1 add fn). Nodes WITHOUT a
+        // grammar row fall through to the existing coercing MVP1 fold, UNTOUCHED. translate_node_mvp1
+        // is gated to dissolve INTO the projection path (see translate_node mark), so this converges
+        // with the arc rather than adding a steady-state dual path.
+        match translate_grammar_relation_row_match(target: target, emitted: raw) {
+          Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
+          Rejected { diagnostics: _ } =>
+            translate_node_mvp1_fold(node: node, tree: tree, target: target)
+        }
+      }
+    )
+  }
 }
 fn translate_node(
   node: Node,

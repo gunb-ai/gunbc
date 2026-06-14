@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
+// Status: scaffold — parse/emit, numeric/datetime, table-syntax axes.
 // Anchor: https://toml.io/en/v1.0.0
 
 module v4.extdeps.formats.toml
@@ -158,7 +158,7 @@ type TomlDocument {
 }
 
 
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
 type TomlParseAxis {
   grammar_schema: GrammarSchema,
   source_text: String,
@@ -166,13 +166,13 @@ type TomlParseAxis {
 }
 
 
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
 type TomlEmitAxis {
   document: TomlDocument,
 }
 
 
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
 // 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — SL-3229-T4-FORMAT-TOML-DATETIME.
 // 🟡 gated — feature: TOML inline-table/table construction syntax collapse — SL-3229-TOML-TABLE-SYNTAX.

@@ -5,7 +5,7 @@
 //   EcmascriptBigIntPrimitiveFacts, EcmascriptBooleanPrimitiveFacts, EcmascriptStringPrimitiveFacts,
 //   EcmascriptSingletonPrimitiveFacts, ecmascript_language_model_wave1 (+ supporting fns).
 // Consumes: v4.std.model_core, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra,
-//   v4.std.lexing, v4.std.grammar, v4.std.target_model, v4.std.witness, v4.std.text.
+//   v4.std.compilers.lexing, v4.std.grammar, v4.std.compilers.target_model, v4.std.witness, v4.std.text.
 // Status: T-4.17 ecmascript slice (NEW) — ECMA-262 ES2022 primitives; ModelCore inhabitance for
 //   number/bigint/boolean; string inhabitance deferred; laws/effects/partiality empty (wave-2b);
 //   🟡 gated feature:T-6-token-layout-trivia-policy + feature:ecmascript-wave2a-decimal-int-literal
@@ -44,7 +44,7 @@ import v4.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v4.std.lexing {
+import v4.std.compilers.lexing {
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -62,8 +62,8 @@ import v4.std.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
+import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v4.std.compilers.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -88,7 +88,7 @@ import v4.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -138,8 +138,8 @@ type EcmascriptGrammarRelationRow {
 }
 
 // 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
-// authoring record; compiler ingest authority is `v4.compiler.target_carriers` `LanguageModel = Node`
-// (TASKS.md Theme-A #9: LexRules/Grammar are projections, not parallel authorities). Peer:
+// authoring record; compiler ingest authority is `v4.std.language_model` `LanguageModel`
+// (LexRules/Grammar are projections, not parallel authorities). Peer:
 // `PythonLanguageModel`, `TsLanguageModel`, `KotlinLanguageModel`. dissolve-on: wave-1 bundle
 // projects to `Node` at the ingest boundary (cf. `python_mvp1_target_model_node`).
 type EcmascriptLanguageModel {
@@ -196,7 +196,7 @@ type EcmascriptSingletonPrimitiveFacts {
   std_projection: Symbol
 }
 // Layout-baked composite tokens (🟡 feature:T-6-token-layout-trivia-policy — see lex header).
-// 🟡 gated — feature:ecmascript-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:ecmascript-formal-epsilon-shim-terminal — bind gunbc#4761 / CP-1b —
 // dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
 // without fabricated parse-only token_class.
 data ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
@@ -913,7 +913,7 @@ fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-// 🟡 gated — feature:ecmascript-formal-symbol-to-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:ecmascript-formal-symbol-to-grammar-expr-shim — bind gunbc#4761 / CP-1b —
 // interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
 // dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn ecmascript_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
@@ -925,7 +925,7 @@ fn ecmascript_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> Grammar
   }
 }
 
-// 🟡 gated — feature:ecmascript-formal-epsilon-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:ecmascript-formal-epsilon-grammar-expr-shim — bind gunbc#4761 / CP-1b —
 // dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn ecmascript_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
@@ -933,7 +933,7 @@ fn ecmascript_formal_epsilon_grammar_expr() -> GrammarExpr {
   }
 }
 
-// 🟡 gated — feature:ecmascript-formal-rhs-to-expr-shim-fold — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:ecmascript-formal-rhs-to-expr-shim-fold — bind gunbc#4761 / CP-1b —
 // interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
 // dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type EcmascriptFormalRhsToExprState
@@ -961,7 +961,7 @@ fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> Gram
   }
 }
 
-// 🟡 gated — feature:ecmascript-formal-alt-choice-shim-fold — bind TASKS.md T-7 / CP-1b —
+// 🟡 gated — feature:ecmascript-formal-alt-choice-shim-fold — bind gunbc#4761 / CP-1b —
 // interim fold carrier for multi-alt FormalProduction lhs → GrammarExpr Choice lowering only;
 // dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type EcmascriptFormalAltChoiceState
@@ -1150,10 +1150,10 @@ fn ecmascript_ident_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 predicate dissolution — feature:ecmascript-wave2a-decimal-int-literal — bind TASKS.md T-6/T-7 —
+// 🟡 predicate dissolution — feature:ecmascript-wave2a-decimal-int-literal — bind gunbc#4761 —
 // dissolve-on: std LexCharClass carries NonZeroDigitChar (or full ES2022 NumericLiteral LexPattern).
 // 🟡 gated — feature:ecmascript-wave2a-decimal-int-literal — ASCII 49–57 ladder until
-// `NonZeroDigitChar` lands on v4.std.lexing; consumed only by ecmascript_decimal_int_literal_pattern.
+// `NonZeroDigitChar` lands on v4.std.compilers.lexing; consumed only by ecmascript_decimal_int_literal_pattern.
 fn ecmascript_nonzero_digit_char_pattern() -> LexPattern {
   ChoicePattern {
     left: CharPattern { char: 49 },

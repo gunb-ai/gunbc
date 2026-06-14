@@ -5,7 +5,7 @@
 module v4.test.claim.manual.sg_collection_projection
 
 import v4.compiler.translate {
-  project_type_expression_node,
+  translate_type_expression_project,
   target_serialize_source_from_model
 }
 import v4.extdeps.languages.rust {
@@ -15,7 +15,7 @@ import v4.extdeps.languages.rust {
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   target_carrier_free_monoid_node,
   target_carrier_node_node
 }
@@ -67,7 +67,7 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
 }
 
 fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: sg_collection_free_monoid_node_source_type(),
     target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()

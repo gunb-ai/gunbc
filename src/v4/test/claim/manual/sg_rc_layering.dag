@@ -9,7 +9,7 @@ import v4.compiler.translate {
   translate_apply_use_site_ownership_to_value_expression,
   translate_apply_use_site_ownership_to_projected_type,
   translate_coerced_shell,
-  project_type_expression_node,
+  translate_type_expression_project,
   translate_coerced_shell_at_use_site
 }
 import v4.extdeps.languages.rust {
@@ -18,7 +18,7 @@ import v4.extdeps.languages.rust {
   rust_sg2_type_expr_target_model,
   rust_type_expression_projection
 }
-import v4.std.target_model {
+import v4.std.compilers.target_model {
   TargetModel,
   TargetReferenceLayer,
   TargetValueExpression,
@@ -162,7 +162,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
 }
 
 fn sg_rc_outcome_node_projected_type() -> Node {
-  match project_type_expression_node(
+  match translate_type_expression_project(
     node: sg_rc_outcome_node_source_type(),
     target: sg_rc_target(),
     projection: rust_type_expression_projection()

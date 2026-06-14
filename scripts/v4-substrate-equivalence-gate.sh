@@ -43,7 +43,25 @@ if [[ ! -x "$discover_bin" ]]; then
   exit 2
 fi
 
+# Per-phase wall-time notices: the #4633 regression hid a ~14.5min discovery
+# resolve fan-out as a silent gap in this gate's log. Every expensive phase
+# reports its duration so the NEXT latency regression is visible in the job
+# summary instead of needing timestamp archaeology.
+phase_name=""
+phase_started=0
+phase_begin() {
+  phase_name="$1"
+  phase_started=$SECONDS
+  echo "::group::${phase_name}"
+}
+phase_end() {
+  echo "::endgroup::"
+  echo "::notice title=gate timing::${phase_name} took $((SECONDS - phase_started))s"
+}
+
+discover_started=$SECONDS
 manifest="$("$discover_sh")"
+echo "::notice title=gate timing::owned-data discovery took $((SECONDS - discover_started))s"
 
 run_witness() {
   local source_root="$1" entry="$2" function="$3"
@@ -164,23 +182,23 @@ discovered_transport_count() {
   sed '/^$/d' "$transport_tsv" | wc -l | tr -d ' '
 }
 
-echo "::group::substrate equivalence: resolved-type owned-data discovery"
+phase_begin "substrate equivalence: resolved-type owned-data discovery"
 run_discovery_nonempty_or_fail
 transport_count="$(discovered_transport_count)"
 echo "::notice title=substrate equivalence::discovered ${transport_count} BoolWitnessClaim transport row(s) with complete projection (no committed corpus golden)"
-echo "::endgroup::"
+phase_end
 
-echo "::group::substrate equivalence: hermetic discovery completeness fixture"
+phase_begin "substrate equivalence: hermetic discovery completeness fixture"
 verify_discovery_completeness_fixture
 echo "::notice title=substrate equivalence::hermetic fixture transport row count matches by execution"
-echo "::endgroup::"
+phase_end
 
-echo "::group::substrate equivalence: witness_substrate_equivalence"
+phase_begin "substrate equivalence: witness_substrate_equivalence"
 run_witness "src/v4" "$model" witness_substrate_equivalence
-echo "::endgroup::"
+phase_end
 
 if [[ "$perturb" -eq 1 ]]; then
-  echo "::group::substrate equivalence perturb: empty discovery projection"
+  phase_begin "substrate equivalence perturb: empty discovery projection"
   tmp_empty="$(mktemp -d)"
   mkdir -p "$tmp_empty/empty_slice"
   empty_manifest="$tmp_empty/v4-discovered-owned-data-manifest.dag"
@@ -205,9 +223,9 @@ if [[ "$perturb" -eq 1 ]]; then
     echo "::error::empty-discovery perturb: modeled nonempty witness still passed"
     exit 1
   fi
-  echo "::endgroup::"
+  phase_end
 
-  echo "::group::substrate equivalence perturb: type-head flip excludes unified-claim arm"
+  phase_begin "substrate equivalence perturb: type-head flip excludes unified-claim arm"
   tmp_type_head="$(mktemp -d)"
   fixture_dir="$root/scripts/fixtures/v4_discovery_completeness_slice"
   fixture_copy="$tmp_type_head/slice"
@@ -252,7 +270,7 @@ if [[ "$perturb" -eq 1 ]]; then
     echo "::error::type-head perturb: modeled membership witness still passed after NodeCorpus flip"
     exit 1
   fi
-  echo "::endgroup::"
+  phase_end
 
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp" "$tmp_empty" "$tmp_type_head"' EXIT
@@ -260,12 +278,12 @@ if [[ "$perturb" -eq 1 ]]; then
   cp -a src/v4 "$tmp/src"
   perturbed_entry="$tmp/src/${model#src/v4/}"
   perturb_data_witness_to_false "$perturbed_entry" witness_substrate_equivalence
-  echo "::group::substrate equivalence perturb: witness_substrate_equivalence"
+  phase_begin "substrate equivalence perturb: witness_substrate_equivalence"
   if run_witness "$tmp/src" "$perturbed_entry" witness_substrate_equivalence; then
     echo "::error::perturbed witness_substrate_equivalence still passed"
     exit 1
   fi
-  echo "::endgroup::"
+  phase_end
 fi
 
 echo "::notice title=substrate equivalence::witness_substrate_equivalence passed"

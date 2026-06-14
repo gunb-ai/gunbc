@@ -28,7 +28,7 @@ data spine_translate_module_subject: Node = Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates translate Outcome<TargetNodeTree> directly without Bool projection.
 fn spine_translate_accepts_mvp1_inferred_tree() -> Bool {
   match translate(tree: mvp1_rust_inferred_tree, target: rust_mvp1_target_model()) {

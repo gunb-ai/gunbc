@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
-// Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
+// Scope: RFC 4180 CSV; format slice.
+// Status: scaffold — parse/emit, numeric lexeme, unique-name profile axes.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 
 module v4.extdeps.formats.csv
@@ -148,5 +148,5 @@ type CsvDocument {
 }
 
 
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
+// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
