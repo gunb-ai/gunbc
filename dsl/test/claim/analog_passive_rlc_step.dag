@@ -1,0 +1,59 @@
+// dsl/test/claim/analog_passive_rlc_step.dag — R/L/C map/fold step operator witness.
+//
+// Consumer: exercises std.analog_passive pointwise step operators by execution
+// on the v2 interpreter (Float arithmetic + record fields).
+//
+// Gate (claim-run):
+//   gunbc run --source-root dsl \
+//     --function analog_passive_rlc_step_witness \
+//     --entry dsl/test/claim/analog_passive_rlc_step.dag --claim-run
+
+module test.claim.analog_passive_rlc_step
+
+import std.analog_passive {
+  ResistorMapStep,
+  CapacitorFoldStep,
+  InductorFoldStep,
+  resistor_map_step,
+  capacitor_fold_step,
+  inductor_fold_step,
+  affine_voltage,
+  affine_voltage_add,
+  voltage_difference,
+  affine_voltage_volts,
+}
+import std.logic { Bool }
+
+fn analog_passive_rlc_step_witness() -> Bool {
+  // Resistor MAP: 1000 Ω × 0.002 A = 2 V
+  let v_r = resistor_map_step(
+    step: ResistorMapStep { resistance_ohms: 1000.0 },
+    current_amperes: 0.002
+  )
+  let resistor_ok = (v_r > 1.99) && (v_r < 2.01)
+
+  // Capacitor FOLD: C=1µF, dt=1µs, i=1A, v0=0 → Δv = 1 V
+  let v_c = capacitor_fold_step(
+    step: CapacitorFoldStep { capacitance_farads: 0.000001, dt_seconds: 0.000001 },
+    prev_voltage: 0.0,
+    current_amperes: 1.0
+  )
+  let capacitor_ok = (v_c > 0.99) && (v_c < 1.01)
+
+  // Inductor FOLD: L=1mH, dt=1µs, v=1V, i0=0 → Δi = 1 mA
+  let i_l = inductor_fold_step(
+    step: InductorFoldStep { inductance_henries: 0.001, dt_seconds: 0.000001 },
+    prev_current: 0.0,
+    voltage_volts: 1.0
+  )
+  let inductor_ok = (i_l > 0.00099) && (i_l < 0.00101)
+
+  // Affine voltage: point + vector = point
+  let v0 = affine_voltage(volts: 1.5)
+  let dv = voltage_difference(delta_volts: 0.5)
+  let v1 = affine_voltage_add(v: v0, d: dv)
+  let v1_volts = affine_voltage_volts(v: v1)
+  let affine_ok = (v1_volts > 1.99) && (v1_volts < 2.01)
+
+  resistor_ok && capacitor_ok && inductor_ok && affine_ok
+}

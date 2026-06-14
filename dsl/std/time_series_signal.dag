@@ -1,0 +1,37 @@
+// std/time_series_signal.dag — discrete-time signal carrier for stream operators.
+//
+// M9 DFS receipt:
+//   - Attaches to std.algebra FreeMonoid<List<T>> iteration (map/fold over samples).
+//   - Uniform dt is explicit data for Euler integration steps (Capacitor/Inductor folds).
+//
+// Authority: SPICE transient (.tran) analysis discretizes continuous time into
+// uniform steps; ngspice User's Manual (transient analysis) — same structural
+// fact as fold-over-dt passive integration in the parent lane thesis
+// (circuit = dataflow DAG of stream operators over time-series signals).
+//
+// Consumes: std.types List/Float, std.nat Nat; downstream analog_passive step operators.
+
+module std.time_series_signal
+
+import std.types { List, Float }
+import std.nat { Nat }
+
+type TimeSeriesSample<T> {
+  step_index: Nat
+  value: T
+}
+
+// Uniform-timestep discrete-time signal. `dt_seconds` is the integration step
+// shared by every sample (explicit dt for fold-shaped passive operators).
+type TimeSeriesSignal<T> {
+  samples: List<TimeSeriesSample<T>>
+  dt_seconds: Float
+}
+
+fn time_series_sample<T>(step_index: Nat, value: T) -> TimeSeriesSample<T> {
+  TimeSeriesSample { step_index: step_index, value: value }
+}
+
+fn time_series_signal<T>(samples: List<TimeSeriesSample<T>>, dt_seconds: Float) -> TimeSeriesSignal<T> {
+  TimeSeriesSignal { samples: samples, dt_seconds: dt_seconds }
+}
