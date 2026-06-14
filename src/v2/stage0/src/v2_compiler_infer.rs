@@ -5301,8 +5301,30 @@ pub fn expand_type_for_field_access(
             env,
             module_name,
             Rc::new(std::collections::BTreeSet::new()),
+            false,
         )
     }
+}
+
+// A record (Conj/Disj) field whose resolved TYPE is still a bare type variable —
+// i.e. an unsubstituted generic param. Used to fail closed when a parametric
+// alias chain dropped the substitution that this field needs.
+pub fn record_field_type_is_unresolved_param(field: Rc<Node>) -> bool {
+    match crate::v2_compiler_infer_lookup::product_field_result_type(field.clone()) {
+        Some(ft) => match ft.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
+            None => false,
+        },
+        None => false,
+    }
+}
+
+pub fn record_has_unresolved_param_field(record: Rc<Node>) -> bool {
+    record
+        .children
+        .clone()
+        .iter()
+        .any(|f| record_field_type_is_unresolved_param(f.clone()))
 }
 
 // Multi-hop alias field-access (G3): follow the alias chain to the structural
@@ -5315,11 +5337,24 @@ pub fn expand_type_for_field_access(
 // the alias's own name, so chain-following must key on the structural name.
 // `seen` (structural names already visited) terminates genuine self-references
 // (`type Nat` resolving to itself) and cycles.
+//
+// SCOPE BOUNDARY (G3 fail-closed, condition #1): following a STRUCTURAL-NAME hop
+// drops the use-site's type args (the alias param list is not retained on the
+// resolved binding — TypeBinding stores only `resolved`, see 04_env.dag). When
+// the chain is `lossy` (a name-hop dropped args) AND the reached record still
+// has a field typed by an unsubstituted param, we CANNOT type that field, so we
+// fail closed (return the un-expanded use-site -> "no field" diagnostic) rather
+// than silently returning the raw type variable. Param-INDEPENDENT fields
+// (e.g. Measure.count: Nat, where the alias param is phantom) resolve normally.
+// Dissolution trigger: the first real consumer with a param-DEPENDENT field
+// reached through a parametric-alias chain -> follow-up "TypeBinding param-list
+// preservation for param-substitution through parametric-alias chains".
 pub fn expand_alias_chain_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
     seen: Rc<std::collections::BTreeSet<String>>,
+    lossy: bool,
 ) -> Rc<Node> {
     let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
         peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
@@ -5331,7 +5366,11 @@ pub fn expand_alias_chain_for_field_access(
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
-        structural.clone()
+        if (lossy && record_has_unresolved_param_field(structural.clone())) {
+            n.clone()
+        } else {
+            structural.clone()
+        }
     } else {
         {
             let next_name = structural.name.clone();
@@ -5347,11 +5386,14 @@ pub fn expand_alias_chain_for_field_access(
                             s.insert(next_name.clone());
                             Rc::new(s)
                         };
+                        let next_lossy =
+                            (lossy || ((structural.children.clone().len() as i64) > 0));
                         expand_alias_chain_for_field_access(
                             target.clone(),
                             env.clone(),
                             module_name.clone(),
                             next_seen,
+                            next_lossy,
                         )
                     }
                     None => structural.clone(),
