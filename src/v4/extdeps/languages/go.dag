@@ -1490,7 +1490,38 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
       go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
-        target: go_integer_facts_node(facts: go_facts_int_additive_numeric)
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: ^go_facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.encoding)
+            ),
+            go_named_edge(
+              name: facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
       )
     ],
     occurrence_id: SyntheticOccurrence
