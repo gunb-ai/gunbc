@@ -1,42 +1,40 @@
 #!/usr/bin/env bash
-# 🟡 P-PROBE-CF-IMPORT repro (adhoc-20b17ff7-932 / zesty-swift-79).
-# Documents v4→dsl/std/compute_fabric import failure without living in src/v4
-# (M1 full-tree emit probe compiles all src/v4/*.dag — a broken import there breaks CI).
+# 🟡 P-PROBE-CF-IMPORT resolve-fail repro (adhoc-20b17ff7-932 / zesty-swift-79).
+# Asserts dual-root claim_batch still fails resolving dsl/test/claim/probe_selector_compute_fabric_import_repro.dag.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+entry="dsl/test/claim/probe_selector_compute_fabric_import_repro.dag"
+function="probe_selector_compute_fabric_import_repro_holds"
 
-repro_dag="$tmpdir/probe_selector_compute_fabric_import_repro.dag"
-cat >"$repro_dag" <<'EOF'
-module v4.test.claim.workflow.probe_selector_compute_fabric_import_repro
-
-import v4.std.logic { Bool }
-import std.compute_fabric { supply_srv1_offer }
-
-fn probe_selector_compute_fabric_import_repro_holds() -> Bool {
-  supply_srv1_offer.provider == supply_srv1_offer.provider
-}
-EOF
-
-bin="${CLAIM_BATCH:-$root/target/debug/claim_batch}"
+bin="${CLAIM_BATCH:-$root/target/release/claim_batch}"
+if [[ ! -x "$bin" ]]; then
+  bin="${CLAIM_BATCH:-$root/target/debug/claim_batch}"
+fi
 if [[ ! -x "$bin" ]]; then
   cargo build -p v2-compiler --bin claim_batch
+  bin="$root/target/debug/claim_batch"
 fi
 
 set +e
-"$bin" \
+out="$("$bin" \
   --source-root "$root/src/v4" \
   --source-root "$root/dsl" \
-  --entry "$repro_dag" \
-  --function probe_selector_compute_fabric_import_repro_holds
+  --entry "$entry" \
+  --function "$function" 2>&1)"
 rc=$?
 set -e
 
+printf '%s\n' "$out"
+
 if [[ "$rc" -eq 0 ]]; then
-  echo "error: expected resolve failure (Option vs Optional substrate gap)" >&2
+  echo "error: P-PROBE-CF-IMPORT repro resolved green — stale falsifier; flip ExpectFail row to ExpectPass" >&2
   exit 1
 fi
 
-echo "P-PROBE-CF-IMPORT repro: resolve failed as expected (exit $rc)"
+if ! printf '%s\n' "$out" | grep -q "name 'Option' not found"; then
+  echo "error: P-PROBE-CF-IMPORT repro failed but without expected Option-not-found diagnostic" >&2
+  exit 1
+fi
+
+echo "P-PROBE-CF-IMPORT repro: resolve failed as expected (Option substrate gap)"
