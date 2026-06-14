@@ -2,11 +2,19 @@
 
 Work item: `node://adhoc-4a3d8313-94c` (sleek-bee-765) · CI-investigation tree.
 
-**Status: DRAFT — operator framing locked (2026-06-14).** Spine confirmed; §2 + §10
-reflect operator reframe. §1 centerpiece and §3 instance roster unchanged.
+**Status: DRAFT — ROADMAP alignment pass (2026-06-14).** Operator-confirmed §2/§10 spine
+unchanged; vocabulary, carrier shape, ARC, and findings aligned to portfolio authority.
+§1 centerpiece and §3 instance roster unchanged.
+
+**Reader's map:** §1 proof it's real → §2 the law (+ ROADMAP vocabulary) → §3–4 instances
+and fix → §5–7 enforcement + migration → §9–10 falsifiers + summary.
 
 **Map / motivation only** — points at inline marks as durable authority; not a parallel
 ledger for per-cache facts (operator standing principle, 2026-05-19).
+
+**Portfolio authority:** [ctrl/ROADMAP.md — Realization pattern](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern)
+(ctrl #1609). ROADMAP cross-links this doc as its design root; this doc cross-links
+ROADMAP for shared vocabulary — reference, do not duplicate.
 
 **Durable solution home:** `dsl/std/{cache_identity,cache_interface,compute_fabric}.dag`.
 
@@ -76,7 +84,55 @@ existing invariant axes.
 
 **Named error class:** *recompute pure-of-content* — executing or re-deriving work whose
 result is already determined by declared **content facts** when a reified receipt (or
-memo/cache keyed on it) would make recomputation unnecessary and falsify impurity.
+memo/cache keyed on it) would make recomputation unnecessary and falsify impurity. Per
+[ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern):
+keying on anything other than the **content of declared inputs** (PR1 #4867 keyed on
+intern-table *size*).
+
+### Portfolio vocabulary — three primitives + carrier *(ctrl/ROADMAP.md)*
+
+The §2 spine (missing receipt carrier → two invariant faces) maps onto ROADMAP's shared
+vocabulary without respining:
+
+| ROADMAP primitive | Meaning | This doc's face |
+| --- | --- | --- |
+| **Content identity** | Key = hash over the transitive closure of declared inputs | §5 step 2; falsifier input-set |
+| **Hermetic realization** | Realizer reads only inputs in the key — enforced, not hoped | §5 step 3–4; un-enforced-purity face |
+| **Receipt + change-driven reconcile** | Persist `key → output`; on change, realize only the gap | §6 incremental execution; `RecomputePlan` / `AffectedSet` |
+
+**Substrate carrier (the N+M move):** `Realization<Spec, Effect>` — pure Node spec +
+content-hash identity + receipt + locality, **parameterized by an algebraic effect
+handler**. One kernel, N handlers (compute, build, provision, migrate, schedule). Partial
+pieces scatter in `cache_identity`, `cache_interface`, `compute_fabric`, and `v4.std.change`;
+the carrier is **staged-not-inhabited** — the root cause named in §2.
+
+**Sharpened findings (portfolio review, 2026-06-14):**
+
+- **A — Open vs closed world.** One-door hermeticity holds for the compiler; provisioning /
+  DB / cloud have a second door (external state drifts unobserved). The carrier needs two
+  handler classes.
+- **B — Oracle splits on reversibility.** Re-execution oracle (byte-identical cached vs cold)
+  is sound only when realization is free to redo. Irreversible handlers need durable receipt
+  + idempotency key (§5; §3.3 row 11 vs future provisioning).
+- **C — Same-code scope.** Byte-identical requirement applies to the **identity + receipt
+  kernel**, not the realize step or oracle (legitimately handler-parameterized). Matches the
+  operator rule: same code among our own code for the kernel; handlers may differ.
+
+**ARC — critical path sequencing** *(ROADMAP authority; inhabitant numbers fixed here):*
+
+1. **Resolve (inhabitant #1).** `resolve-cost PR2` (#4878) — receipt + falsifier + reconcile
+   on the compute handler; grounds staged `cache_interface` dims. PR1 (#4867) merged.
+2. **sccache / build cache (inhabitant #2, de-risking rung).** Closed-world + reversible —
+   proves the identity kernel carries across realize-steps; does **not** alone prove
+   open-world layer-agnosticism (§3.3 row 11).
+3. **§10 / container-runtime MVP provisioning (inhabitant #3, stress test).** Open-world +
+   irreversible — idempotency ("has this image been realized on this host?"). Requirement
+   met only when this handler carries on the same kernel (Finding A).
+4. **Confirm kernel carries** across #1–#3 (same identity+receipt kernel; realize/oracle may
+   differ per A/B).
+5. **Dissolve hand-rolls** — §3.3 sunny-lynx census trends to 0; delete in same PR as each
+   inhabitant (§7).
+6. **Endpoint — Realization Lens** — substrate forbids hand-rolled-realization shapes.
 
 ### Why v4 recurs — staged carrier, not v2 sloppiness
 
@@ -97,13 +153,16 @@ Per *Build Systems à la Carte* (Mok et al.): build/caching recurrence across la
 **structural consequence** of missing a shared, content-addressed reconciliation of
 **spec → effect** — not an accident of engineer discipline. gunbc’s version is the
 **Realization** pattern: content-addressed reconciliation of model spec to host effect
-across an impurity boundary. It is a **critical portfolio requirement** (ctrl#1607).
-**PR2 #4878** (resolve-cost, in flight) is inhabitant #1 — the deepest place is resolve.
+across an impurity boundary. Portfolio authority:
+[ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern)
+(operator-elevated 2026-06-14; supersedes ctrl#1607 dep-graph trees). **ARC inhabitant #1:**
+`resolve-cost PR2` (#4878, in flight) — the deepest place is resolve.
 
-**Systemic fix (TARGET, staged):** transparent memoization via
-`cache_identity` / `cache_interface` / `compute_fabric` — an execution receipt carrier
-that makes the run reifiable, keys results by content, and wires the purity-oracle
-falsifier as standing enforcement (§5–§6). Not claimed working today (§4.2).
+**Systemic fix (TARGET, staged):** transparent memoization = inhabited
+`Realization<Spec, Effect>` via `cache_identity` / `cache_interface` / `compute_fabric` —
+the receipt carrier that makes the run reifiable, keys results by content identity, and
+wires the purity-oracle falsifier as standing enforcement (§5–§6). Not claimed working
+today (§4.2).
 
 **Sharpest operator rule:** sharing must be the **same code among our own code**, not two
 abstractions that happen to agree — dogfood the fabric by dogfooding the compiler.
@@ -129,7 +188,7 @@ remain in source marks — this section cites them, does not mirror them.
 | **Resolve overlapping closure** | Each entry re-ran tokenize→parse→resolve→reconcile over overlapping modules before shared index | `cli_run.rs:270-303`; cold oracle vs `resolve_entry_with_index` |
 | **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v4/lens/complexity.dag`; `v2_interpreter.rs:4223-4239` (`eval_profile_*` at `:4318+`) |
 
-(`src/v2/stage0/src/v2_interpreter.rs:1286-1297`)
+`src/v2/stage0/src/v2_interpreter.rs:1286-1297`
 
 ```rust
     let param_names: Vec<String> = fn_node
@@ -189,9 +248,12 @@ projects it** (`tools/ci_affected_components/src/receipt.rs:11-13`).
 
 ## 4. Systemic fix — transparent memoization (TARGET, staged)
 
-**Transparent memoization** = first-class pure-content-addressed computation: memo/cache keyed
-on declared content identity, observationally equivalent to full re-execution, inserted when
-purity + content key are known — not part of the user-facing contract.
+**Transparent memoization** = inhabited `Realization<Spec, Effect>`: first-class
+pure-content-addressed computation keyed on **content identity**, hermetically realized,
+with **receipt + change-driven reconcile** — observationally equivalent to full
+re-execution, inserted when purity + content key are known — not part of the user-facing
+contract. Effect handler parameterizes the realize step; identity + receipt kernel is shared
+(Finding C).
 
 ### 4.1 Two scopes, one mechanism
 
@@ -250,22 +312,35 @@ inhabitants share content-key / eviction / locality shape — PR2 is the ≥2 tr
 
 ## 5. Enforcement mechanism — the cache as purity oracle
 
-1. Memoized unit **declares** its input content-set.
-2. **Content-key** = `content-hash(f-identity, input-content-hashes)` from exactly those inputs.
-3. Read **outside** declared set = **impurity** (ambient intern table, mutable env, unmodeled host state).
-4. Discharge: **(a)** effect discipline makes read impossible; **(b)** key misses hidden input → cached-vs-cold divergence → falsifier fires.
+Maps ROADMAP's three primitives to standing enforcement:
 
-**The equivalence falsifier IS the enforcement** — not a separate mechanism. PR1 (#4867) is
-the canonical receipt.
+1. **Content identity** — memoized unit **declares** its input content-set; **content-key** =
+   `content-hash(f-identity, input-content-hashes)` over the transitive closure of those
+   inputs only.
+2. **Hermetic realization** — read **outside** declared set = **impurity** (ambient intern
+   table, mutable env, unmodeled host state). Discharge: **(a)** effect discipline makes
+   read impossible; **(b)** key misses hidden input → cached-vs-cold divergence → falsifier
+   fires.
+3. **Receipt + reconcile** — persist `key → output`; on content-key change,
+   `RecomputePlan` / `AffectedSet` drives realize-only-the-gap (§6).
+
+**Finding B — oracle splits on reversibility:** the byte-identical cached-vs-cold falsifier
+(reversible handlers — compute, build/sccache) **is** the enforcement for closed-world
+realization. Irreversible handlers (provisioning, ARC inhabitant #3) need durable receipt +
+idempotency key instead of re-execution oracle alone.
+
+**The equivalence falsifier IS the enforcement** for reversible handlers — not a separate
+mechanism. PR1 (#4867) is the canonical receipt on the compute handler.
 
 ---
 
-## 6. Incremental re-execution vs spurious recompute
+## 6. Receipt + change-driven reconcile vs spurious recompute
 
 **Not every recompute is the error class.** When the content key **changes** — source edit,
-dependency change, invalidation trigger — re-executing dependent work is **correct**.
-`RecomputePlan` / `AffectedSet` (`v4.std.change`) model *what must rerun after change*; that
-is incremental execution done right.
+dependency change, invalidation trigger — re-executing dependent work is **correct**
+receipt + change-driven reconcile: realize only the gap. `RecomputePlan` / `AffectedSet`
+(`v4.std.change`) model *what must rerun after change*; that is incremental execution done
+right.
 
 **Spurious recompute** is the error: same content key, full re-derivation anyway — or a
 cache hit that diverges from cold oracle because purity was violated. Caching does not mean
@@ -293,9 +368,11 @@ green.
 | 1–4 | eval memos / interner | Content-keyed eval boundary; delete `HashMap` stores | — / partial (b) / — |
 | 5 | `typed_module_cache` | PR2 resolved-graph row + delete hand-roll | (a) partial / **(b) PR1** / (c) PR2 |
 | 6–10 | test/bootstrap/manifest artifacts | Artifact kind + parity receipt pattern | varies — see marks |
-| 11 | sccache | `sccache_local_facts` + CI projection; delete `ci.yml` hand-wire | **(a)** / (b) interim / (c) gated |
+| 11 | sccache | **ARC inhabitant #2** — `sccache_local_facts` + CI projection; delete `ci.yml` hand-wire; closed-world + reversible de-risking rung | **(a)** / (b) interim / (c) gated |
 
-PR2 = **(a)+(b)** for row 5; **(c)** honest-dormant until substrate eval lands.
+PR2 = **(a)+(b)** for row 5 (ARC #1); row 11 = ARC #2. **ARC inhabitant #3** (open-world +
+irreversible provisioning) is not a §3.3 hand-roll — it is the stress test where Finding A
+is met; see [ctrl/ROADMAP.md ARC §3](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern).
 
 ---
 
@@ -327,6 +404,7 @@ PR2 = **(a)+(b)** for row 5; **(c)** honest-dormant until substrate eval lands.
 **Recompute pure-of-content** is what happens when there is **no reified execution receipt**
 at the model→host boundary: redundancy violates Performance / Facts-Flow-Forward; silent
 impurity violates Fail-Closed (PR1 #4867). v4 recurs the pattern because the carrier is
-staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** (Realization;
-ctrl#1607; staged in `cache_identity` / `cache_interface` / `compute_fabric`) is the TARGET
-receipt carrier — PR2 #4878 is inhabitant #1 at resolve.
+staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** =
+inhabited `Realization<Spec, Effect>` ([ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern);
+staged in `cache_identity` / `cache_interface` / `compute_fabric`) is the TARGET receipt
+carrier — ARC #1 resolve (#4878), #2 sccache, #3 provisioning.
