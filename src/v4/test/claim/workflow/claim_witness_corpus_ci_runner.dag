@@ -346,4 +346,4 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_dsl_root_probe
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "16"
+data claim_witness_corpus_shard_b_row_count: String = "17"
