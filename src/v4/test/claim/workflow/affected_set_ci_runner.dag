@@ -454,6 +454,7 @@ data ci_runner_gate_row_four_phase: AffectedSetNodeFrontierClaimRunRow = Affecte
   function: "ci_runner_node_frontier_four_phase_discrimination_holds"
 }
 
+// 🟡 gated — feature:lens-affected-set-witness-roster — bind D1c (depends on R-reflect: coproduct-arm reflection substrate; gunbc#4759 is the closed label-hygiene anchor, NOT the impl) — dissolve-on-arrival: TestClaim-coproduct reflection auto-discovers these affected-set closure witnesses; delete these two hand-enrolled rows when R-reflect lands. forbidden: permanent hand-listed witness roster.
 data ci_runner_gate_row_closure_deep_chain: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
   label: "affected-set closure deep-chain root-seed marks |V|-deep leaf",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
