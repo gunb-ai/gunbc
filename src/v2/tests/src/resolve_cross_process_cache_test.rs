@@ -173,15 +173,15 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         }
         for (entry, f, expected) in witnesses {
             let got = cached_verdict(&roots, entry, f, &order_cache);
-            // BOUNDARY (crit-1, ties to crit-6): this asserts VERDICT equivalence (cached
-            // outcome_tag == cold-oracle outcome_tag), which proxies full ResolvedGraph
-            // byte-identity ONLY under resolve-determinism + the current Bool/verdict-only
-            // consumption. A verdict-equal but byte-different cached graph would pass here
-            // today yet violate crit-6 once emit/lower consume the cached ResolvedGraph.
-            // Named follow-up: add a canonical-serialized graph byte-compare when emit/lower
-            // inhabit the corpus (requires canonical graph serialization first — today's serde
-            // HashMap source_indices order is non-canonical, so a naive byte-compare would
-            // false-fail).
+            // CRIT-1 BOUNDARY (verdict-scope, tied to crit-6): this corpus asserts VERDICT-identity
+            // (outcome_tag) cached-vs-cold-oracle, NOT full serialized-ResolvedGraph byte-identity.
+            // Sound today because the corpus is eval-deterministic Bool-only, so the verdict is the
+            // sole observable and verdict-equivalence proxies byte-identity under resolve-determinism.
+            // FOLLOW-UP: when emit/lower consume the cached ResolvedGraph (a richer-than-Bool observable),
+            // add a canonical-serialized byte compare. Gated on canonical graph serialization first:
+            // source_indices serializes as a serde HashMap (non-canonical key order), so a byte compare
+            // today would false-fail on map order. A verdict-equal but byte-different cached graph would
+            // otherwise be an undetected crit-6 violation (cache changing behavior beyond latency at emit).
             assert_eq!(
                 got, expected,
                 "cached verdict for {f} diverged from cold oracle in order {order:?}"
