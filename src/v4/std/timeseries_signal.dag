@@ -10,7 +10,7 @@
 // M9 DFS: reuses v4.std.algebra {fold_list, fold_list_right, list_snoc_item},
 //         v4.std.collection {List, Optional}, v4.std.float {Float},
 //         v4.extdeps.formats.spice {Component, SpiceApproxVoltage, SpiceValue, NodeRef}.
-// Status: S1 modeled 2026-06-14 (valiant-ram-713).
+// Status: S1 modeled 2026-06-14 (deep-boar-635).
 
 module v4.std.timeseries_signal
 
@@ -208,6 +208,25 @@ fn resistor_map_step(
 }
 
 // i = C · dv/dt  ⇒  v[n] = v[n-1] + (i[n] · dt) / C
+fn capacitor_integrate_step(
+  capacitance: Capacitance,
+  field: PassiveFieldOps,
+  prev_v: AffineVoltage,
+  sample: TimeSeriesSample<AffineCurrent>,
+  dt: TimeStepDelta
+) -> TimeSeriesStepResult<AffineVoltage, AffineVoltage> {
+  let i_dt = field.mul(sample.value.magnitude, dt.seconds)
+  let dv = field.div(i_dt, capacitance.farads)
+  let next_v = AffineVoltage {
+    reference: prev_v.reference,
+    magnitude: field.add(prev_v.magnitude, dv)
+  }
+  TimeSeriesStepResult {
+    state: next_v,
+    output: TimeSeriesSample { value: next_v }
+  }
+}
+
 fn capacitor_fold_algebra(
   capacitance: Capacitance,
   initial_voltage: AffineVoltage,
@@ -216,21 +235,36 @@ fn capacitor_fold_algebra(
   TimeSeriesStepFold {
     init: initial_voltage,
     step: fn(prev_v, sample, dt) {
-      let i_dt = field.mul(sample.value.magnitude, dt.seconds)
-      let dv = field.div(i_dt, capacitance.farads)
-      let next_v = AffineVoltage {
-        reference: prev_v.reference,
-        magnitude: field.add(prev_v.magnitude, dv)
-      }
-      TimeSeriesStepResult {
-        state: next_v,
-        output: TimeSeriesSample { value: next_v }
-      }
+      capacitor_integrate_step(
+        capacitance: capacitance,
+        field: field,
+        prev_v: prev_v,
+        sample: sample,
+        dt: dt
+      )
     }
   }
 }
 
 // v = L · di/dt  ⇒  i[n] = i[n-1] + (v[n] · dt) / L
+fn inductor_integrate_step(
+  inductance: Inductance,
+  field: PassiveFieldOps,
+  prev_i: AffineCurrent,
+  sample: TimeSeriesSample<AffineVoltage>,
+  dt: TimeStepDelta
+) -> TimeSeriesStepResult<AffineCurrent, AffineCurrent> {
+  let v_dt = field.mul(sample.value.magnitude, dt.seconds)
+  let di = field.div(v_dt, inductance.henries)
+  let next_i = AffineCurrent {
+    magnitude: field.add(prev_i.magnitude, di)
+  }
+  TimeSeriesStepResult {
+    state: next_i,
+    output: TimeSeriesSample { value: next_i }
+  }
+}
+
 fn inductor_fold_algebra(
   inductance: Inductance,
   initial_current: AffineCurrent,
@@ -239,15 +273,13 @@ fn inductor_fold_algebra(
   TimeSeriesStepFold {
     init: initial_current,
     step: fn(prev_i, sample, dt) {
-      let v_dt = field.mul(sample.value.magnitude, dt.seconds)
-      let di = field.div(v_dt, inductance.henries)
-      let next_i = AffineCurrent {
-        magnitude: field.add(prev_i.magnitude, di)
-      }
-      TimeSeriesStepResult {
-        state: next_i,
-        output: TimeSeriesSample { value: next_i }
-      }
+      inductor_integrate_step(
+        inductance: inductance,
+        field: field,
+        prev_i: prev_i,
+        sample: sample,
+        dt: dt
+      )
     }
   }
 }
