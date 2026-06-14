@@ -5296,72 +5296,67 @@ pub fn expand_type_for_field_access(
     if is_deferred_field_access_base(n.clone(), env.clone()) {
         n.clone()
     } else {
+        expand_alias_chain_for_field_access(
+            n,
+            env,
+            module_name,
+            Rc::new(std::collections::BTreeSet::new()),
+        )
+    }
+}
+
+// Multi-hop alias field-access (G3): follow the alias chain to the structural
+// record (Conj/Disj) that actually carries the field. Each hop reuses the
+// single-hop machinery (parametric-struct generic instantiation + leaf-alias
+// scrutinee resolution); when that does not reach a record, follow ONE
+// STRUCTURAL-NAME hop (n.name, not the preserved brand) and recurse. The
+// structural name is the next link in the chain (e.g. MoneyMicros's resolved
+// carrier names MoneyAmount, which names Measure); the brand stays pinned to
+// the alias's own name, so chain-following must key on the structural name.
+// `seen` (structural names already visited) terminates genuine self-references
+// (`type Nat` resolving to itself) and cycles.
+pub fn expand_alias_chain_for_field_access(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    seen: Rc<std::collections::BTreeSet<String>>,
+) -> Rc<Node> {
+    let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+        peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
+    } else {
+        n.clone()
+    };
+    let structural =
+        structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+    if ((structural.connective.clone() == Connective::Conj)
+        || (structural.connective.clone() == Connective::Disj))
+    {
+        structural.clone()
+    } else {
         {
-            let dbgname = crate::v2_std_core::authored_name_at(
-                env.source_indices.clone(),
-                n.clone(),
-            );
-            let childnames: Vec<String> = n
-                .children
-                .clone()
-                .iter()
-                .map(|c| {
-                    crate::v2_std_core::authored_name_at(env.source_indices.clone(), c.clone())
-                })
-                .collect();
-            let lt = match lookup_type_for(env.clone(), n.clone()) {
-                Some(b) => format!(
-                    "Some(name={} conn={:?} ch={} inf={})",
-                    crate::v2_std_core::authored_name_at(env.source_indices.clone(), b.clone()),
-                    b.connective.clone(),
-                    b.children.clone().len(),
-                    b.inferred.is_some()
-                ),
-                None => "None".to_string(),
-            };
-            eprintln!(
-                "DBG expand IN rawname={} brand={} name={} conn={:?} children={} childnames={:?} inferred={} needs={} ugus={} lookup_type_for={}",
-                n.name.clone(),
-                crate::v2_compiler_infer_env::authored_name(env.clone(), n.clone()),
-                dbgname,
-                n.connective.clone(),
-                n.children.clone().len(),
-                childnames,
-                n.inferred.is_some(),
-                needs_alias_field_expansion(n.clone(), env.clone()),
-                is_user_generic_use_site(n.clone(), env.clone()),
-                lt
-            );
-            let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-                peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
+            let next_name = structural.name.clone();
+            if ((next_name.as_str() == "".to_string().as_str())
+                || seen.contains(&next_name))
+            {
+                structural.clone()
             } else {
-                n.clone()
-            };
-            eprintln!(
-                "DBG expand PEELED name={} conn={:?} children={} inferred={}",
-                crate::v2_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    peeled.clone()
-                ),
-                peeled.connective.clone(),
-                peeled.children.clone().len(),
-                peeled.inferred.is_some()
-            );
-            let out = structural_from_expanded_type(resolve_scrutinee_type_node(
-                env.clone(),
-                peeled,
-            ));
-            eprintln!(
-                "DBG expand OUT name={} conn={:?} children={} inferred={}",
-                crate::v2_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    out.clone()
-                ),
-                out.connective.clone(),
-                out.children.clone().len(),
-                out.inferred.is_some()
-            );
-            out
+                match lookup_type_by_name(env.clone(), next_name.clone()) {
+                    Some(target) => {
+                        let next_seen = {
+                            let mut s = (*seen).clone();
+                            s.insert(next_name.clone());
+                            Rc::new(s)
+                        };
+                        expand_alias_chain_for_field_access(
+                            target.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            next_seen,
+                        )
+                    }
+                    None => structural.clone(),
+                }
+            }
         }
     }
 }
