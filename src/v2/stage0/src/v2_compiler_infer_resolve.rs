@@ -6,8 +6,8 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
-pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{container_param_name, kernel_type_set};
 pub use crate::v2_compiler_infer_env::{
     authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
     lookup_type, lookup_type_by_name, lookup_type_for,
@@ -138,6 +138,121 @@ pub fn collect_unit_variant_phantom_matches(
                 None => acc.clone(),
             },
         )
+}
+
+pub fn is_alias_rhs_bare_leaf(rhs: Rc<Node>) -> bool {
+    (((rhs.connective.clone() == Connective::NoConnective)
+        && ((rhs.children.clone().len() as i64) == 0))
+        && (rhs.ident_span.clone() != None))
+}
+
+pub fn bare_rhs_alias_reference_names(env: Rc<TypeEnv>) -> Rc<Vec<String>> {
+    v2_rt::concat(
+        v2_rt::concat(
+            Rc::new(v2_rt::map_keys(&kernel_type_set())),
+            Rc::new(vec!["Optional".to_string()]),
+        ),
+        Rc::new({
+            let mut __result = Vec::new();
+            for b in Rc::new(v2_rt::map_values(&env.bindings.clone()))
+                .iter()
+                .cloned()
+            {
+                __result.push(b.name.clone());
+            }
+            __result
+        }),
+    )
+}
+
+pub fn is_bare_rhs_alias_reference_name(name: String, refs: Rc<Vec<String>>) -> bool {
+    {
+        let mut __found = false;
+        for r in refs.iter().cloned() {
+            if (r.clone().as_str() == name.clone().as_str()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn coalesce_single_variant_nullary_enum_binding(
+    binding: Rc<TypeBinding>,
+    bare_rhs_refs: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    {
+        let resolved = binding.resolved.clone();
+        if ((resolved.connective.clone() != Connective::NoConnective)
+            || (resolved.inferred.clone() == None))
+        {
+            binding.clone()
+        } else {
+            match resolved.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rhs, .. }) => {
+                    if (!is_alias_rhs_bare_leaf(rhs.clone())
+                        || is_bare_rhs_alias_reference_name(
+                            authored_name_at(source_indices.clone(), rhs.clone()),
+                            bare_rhs_refs,
+                        ))
+                    {
+                        binding.clone()
+                    } else {
+                        {
+                            let rhs_name = authored_name_at(source_indices.clone(), rhs.clone());
+                            let variant = Rc::new(Node {
+                                name: rhs_name,
+                                span: rhs.span.clone(),
+                                ident_span: rhs.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: None,
+                                return_cardinality: Cardinality::Required,
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            });
+                            Rc::new(TypeBinding {
+                                name: binding.name.clone(),
+                                resolved: Rc::new(Node {
+                                    name: resolved.name.clone(),
+                                    span: resolved.span.clone(),
+                                    ident_span: resolved.ident_span.clone(),
+                                    children: Rc::new(vec![variant]),
+                                    connective: Connective::Disj,
+                                    params: Rc::new(vec![]),
+                                    inferred: None,
+                                    return_cardinality: resolved.return_cardinality.clone(),
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                }),
+                                provenance: binding.provenance.clone(),
+                            })
+                        }
+                    }
+                }
+                _ => binding.clone(),
+            }
+        }
+    }
 }
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {

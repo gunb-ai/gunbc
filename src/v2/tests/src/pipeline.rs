@@ -216,6 +216,72 @@ fn single_variant_enum_compiles() {
 }
 
 #[test]
+fn single_variant_nullary_enum_alias_resolves() {
+    let source = r#"module distro_test
+
+type UbuntuDistribution = NobleNumbat2404Lts
+
+fn tag(d: UbuntuDistribution) -> UbuntuDistribution {
+  match d {
+    NobleNumbat2404Lts => NobleNumbat2404Lts
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn std_os_types_dag_resolves_without_option_import() {
+    let roots: Vec<String> = source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = workspace_root()
+        .join("dsl/std/os/types.dag")
+        .to_string_lossy()
+        .to_string();
+    let sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        msgs.is_empty(),
+        "std.os.types should resolve on v2 (T? + nullary enum aliases): {msgs:?}"
+    );
+}
+
+#[test]
+fn std_cpu_types_dag_resolves_without_option_import() {
+    let roots: Vec<String> = source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = workspace_root()
+        .join("dsl/std/cpu/types.dag")
+        .to_string_lossy()
+        .to_string();
+    let sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        msgs.is_empty(),
+        "std.cpu.types should resolve on v2 (kernel T? surface): {msgs:?}"
+    );
+}
+
+#[test]
 fn uses_binding_parses() {
     // uses clause parses but bindings are not added to scope (M2 bug).
     // This test ensures parsing doesn't regress.

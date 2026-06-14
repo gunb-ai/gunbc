@@ -76,6 +76,7 @@ pub use crate::v2_compiler_infer_patterns::{
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
+    bare_rhs_alias_reference_names, coalesce_single_variant_nullary_enum_binding,
     is_user_generic_use_site, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
     resolve_item_types, resolve_node,
 };
@@ -13133,6 +13134,7 @@ pub fn topo_resolve_types(
             }
             __result
         });
+        let bare_rhs_refs = bare_rhs_alias_reference_names(env.clone());
         if ((ready.clone().len() as i64) == 0) {
             {
                 let stuck_accum = remaining.clone().iter().cloned().fold(
@@ -13142,11 +13144,26 @@ pub fn topo_resolve_types(
                     }),
                     |acc: Rc<BindingsAccum>, name: String| {
                         let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
-                        match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
+                        match v2_rt::map_get(&acc.bindings.clone(), ident.clone()) {
                             Some(binding) => {
+                                let binding = coalesce_single_variant_nullary_enum_binding(
+                                    binding.clone(),
+                                    bare_rhs_refs.clone(),
+                                    env.source_indices.clone(),
+                                );
                                 let pre = binding.resolved.clone();
-                                let result =
-                                    resolve_node(pre.clone(), env.clone(), module_name.clone());
+                                let result = resolve_node(
+                                    pre.clone(),
+                                    Rc::new(TypeEnv {
+                                        bindings: acc.bindings.clone(),
+                                        recursive_types: env.recursive_types.clone(),
+                                        recursive_type_set: env.recursive_type_set.clone(),
+                                        inductive_fields: env.inductive_fields.clone(),
+                                        source_indices: env.source_indices.clone(),
+                                        intern_table: env.intern_table.clone(),
+                                    }),
+                                    module_name.clone(),
+                                );
                                 let resolved = preserve_nominal_brand_on_resolve(
                                     pre.clone(),
                                     result.resolved.clone(),
@@ -13196,10 +13213,26 @@ pub fn topo_resolve_types(
             }),
             |acc: Rc<BindingsAccum>, name: String| {
                 let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
-                match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
+                match v2_rt::map_get(&acc.bindings.clone(), ident.clone()) {
                     Some(binding) => {
+                        let binding = coalesce_single_variant_nullary_enum_binding(
+                            binding.clone(),
+                            bare_rhs_refs.clone(),
+                            env.source_indices.clone(),
+                        );
                         let pre = binding.resolved.clone();
-                        let result = resolve_node(pre.clone(), env.clone(), module_name.clone());
+                        let result = resolve_node(
+                            pre.clone(),
+                            Rc::new(TypeEnv {
+                                bindings: acc.bindings.clone(),
+                                recursive_types: env.recursive_types.clone(),
+                                recursive_type_set: env.recursive_type_set.clone(),
+                                inductive_fields: env.inductive_fields.clone(),
+                                source_indices: env.source_indices.clone(),
+                                intern_table: env.intern_table.clone(),
+                            }),
+                            module_name.clone(),
+                        );
                         let resolved = preserve_nominal_brand_on_resolve(
                             pre.clone(),
                             result.resolved.clone(),
