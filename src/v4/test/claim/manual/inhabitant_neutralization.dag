@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/inhabitant_neutralization.dag
-// Scope: generic cross-language inhabitant neutralization — python int -> std_projection -> ts number.
+// Scope: generic cross-language inhabitant neutralization — python int -> std_projection -> target inhabitant.
 // Status: hermetic receipt for std/inhabitant_neutralization.dag (emit-surface §3 critical path).
 
 module v4.test.claim.manual.inhabitant_neutralization
@@ -7,10 +7,17 @@ module v4.test.claim.manual.inhabitant_neutralization
 import v4.compiler.emit { emit }
 import v4.compiler.ingest { cross_language_compile }
 import v4.compiler.infer { infer }
+import v4.compiler.translate { translate }
 import v4.extdeps.languages.go {
+  go_facts_float64,
+  go_facts_int,
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
-  go_mvp1_target_model
+  go_int_additive_numeric_inhabitant_node,
+  go_int_inhabitant_node,
+  go_mvp1_source_text,
+  go_mvp1_target_model,
+  go_mvp1_target_model_int64_selection_policy
 }
 import v4.extdeps.languages.python {
   python_int_inhabitant_node,
@@ -25,8 +32,8 @@ import v4.std.inhabitant_neutralization {
   neutralize_core_for_target,
   target_inhabitant_for_std_projection
 }
-import v4.std.inhabitant_bridge { std_projection_additive_numeric }
 import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.inhabitant_bridge { std_projection_additive_numeric }
 import v4.std.logic { Bool }
 import v4.std.verification {
   BoolWitness,
@@ -67,13 +74,70 @@ fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_go_int64_target_lookup_holds() -> Bool {
+fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> Bool {
+  match inhabitant_std_projection_symbol(
+    inhabitant: go_int_additive_numeric_inhabitant_node()
+  ) {
+    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: std_projection_additive_numeric,
     target: go_mvp1_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// Both platform-int and int64 share std_projection_additive_numeric; tiebreak must select
+// platform int via go_mvp1_selection_policy (go_int_inhabitant_node fact-alignment).
+fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: selected, diagnostics: _ } =>
+      selected == go_int_additive_numeric_inhabitant_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (B) fail-closed discrimination: tiebreak winner is a function of selection_policy, not hardcoded.
+fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: std_projection_additive_numeric,
+    target: go_mvp1_target_model_int64_selection_policy()
+  ) {
+    Accepted { value: selected, diagnostics: _ } =>
+      selected == go_int64_additive_numeric_inhabitant_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Single-candidate platform path: canonical go_std_projection_int resolves without tiebreak.
+fn inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: go_facts_int.std_projection,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: selected, diagnostics: _ } =>
+      selected == go_int_inhabitant_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Fail-closed: std_projection with no declared inhabitant must Reject.
+fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds() -> Bool {
+  match target_inhabitant_for_std_projection(
+    std_projection: go_facts_float64.std_projection,
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -95,9 +159,23 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
   }
 }
 
+// Hermetic: python fixture core neutralizes to go platform int (not int64) via std_projection lookup.
+fn inhabitant_neutralization_neutralize_python_to_go_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
   inhabitant_neutralization_go_int64_std_projection_holds()
-    && inhabitant_neutralization_go_int64_target_lookup_holds()
+    && inhabitant_neutralization_go_int_additive_numeric_std_projection_holds()
+    && inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds()
+    && inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds()
+    && inhabitant_neutralization_neutralize_python_to_go_holds()
     && inhabitant_neutralization_go_int64_to_ts_emit_holds()
 }
 
@@ -182,6 +260,99 @@ fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> 
   }
 }
 
+// HEAVY (~627s): python->go cross-language cell — mirrors python->ts e2e above.
+// CONNECTED: live parse_tree is the literal cross_language_compile input (no fixture-fed core).
+// CORRECT-SOURCE: source == pinned go_mvp1_source_text (NOT non-empty / Cons overclaim).
+// GENERIC: routes through cross_language_compile + neutralize_core_for_target — NO go-specific arm.
+// Inhabitant routing (python int -> go platform int) is hermetic-green above; full e2e still RED
+// until go emit breadth accepts infer(neutralized) trees (separate §3 emit lane).
+fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_mvp1_target_model(),
+        target_model: go_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source == go_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// DISCRIMINATION: same REAL parsed tree against ts target must yield pinned ts source (positive control).
+// Proves the witness exercises target-specific emit — ts path is ChainProven (#4858), not vacuous !=/Rejected.
+fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
+  match python_mvp1_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_mvp1_target_model(),
+        target_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Composite heavy receipt (NOT BoolWitnessed — slow-lane / draft-until-sign).
+fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+  inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
+    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
+}
+
+// Emit-RED localization (draft-until-sign; NOT BoolWitnessed):
+// Stage chain for python_mvp1_emitted_add_fn_node -> go_mvp1_target_model:
+//   neutralize PASS | infer PASS | translate REJECT | emit REJECT (emit = translate ∘ serialize).
+// Reject site: v4.compiler.emit::emit -> translate::translate -> translate_node_mvp1
+//   (grammar row miss on python Arrow skeleton) -> translate_mvp1_fold_init Arrow arm
+//   -> coerce_grounded_node -> coercion_fold_exact_structural / find_witness
+//   (preservation_rule_exact_structural_equality_zip_fold) -> CoercionMismatchKind diagnostic
+//   (discriminant; NOT inhabitant_neutralization_*). Python Arrow lacks go_surface_fn_item edge
+//   present on native go_mvp1_emitted_add_fn_node — structural emit-breadth gap, independent of
+//   int64 vs platform-int inhabitant routing (tiebreak selects platform int; same translate failure).
+// Native go emit ACCEPTS with grounded InferredTree (mvp1_go_add_translate.dag::
+//   mvp1_go_emit_add_fn_accepts_holds); infer() on raw emitted Node is gated (#4760).
+// python->go RED is translate coercion on neutralized python Arrow skeleton, not native go emit-breadth.
+fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -208,5 +379,26 @@ data unified_claim_inhabitant_neutralization_emit_holds: UnifiedTestClaim = Bool
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
     function: inhabitant_neutralization_emit_after_neutralize_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_policy_flip_selects_int64_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_platform_baseline_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds
+  }
+}
+
+data unified_claim_inhabitant_neutralization_unqualified_lookup_rejects_holds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/inhabitant_neutralization.dag",
+    function: inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds
   }
 }

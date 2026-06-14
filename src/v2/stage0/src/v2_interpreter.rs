@@ -2141,12 +2141,21 @@ fn match_pattern(
 // v4.std.node coproduct reflection intercept (module-scoped bootstrap seam)
 // ---------------------------------------------------------------------------
 
-pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] =
-    &["resolve_type_node", "syntactic_coproduct_arm_keys"];
+pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
+    "resolve_type_node",
+    "syntactic_coproduct_arm_keys",
+    "syntactic_coproduct_arm_pairs",
+];
+
+pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
 /// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
+}
+
+pub fn std_node_query_bridge_fn_names() -> &'static [&'static str] {
+    STD_NODE_QUERY_BRIDGE_FNS
 }
 
 fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2156,6 +2165,15 @@ fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v4.std.node")
+}
+
+fn is_v4_std_node_query_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_NODE_QUERY_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v4.std.node_query")
 }
 
 // ---------------------------------------------------------------------------
@@ -2176,14 +2194,26 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // R-reflect Phase 2a: minimal v4.std.node bridges (resolve_type_node + Path-3 syntactic scan).
+    // R-reflect Phase 2a/2b: minimal v4.std.node bridges (resolve_type_node + Path-3 syntactic scan).
     if is_v4_std_node_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
             "resolve_type_node" => crate::coproduct_reflection::eval_resolve_type_node(ctx, &args),
             "syntactic_coproduct_arm_keys" => {
                 crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)
             }
+            "syntactic_coproduct_arm_pairs" => {
+                crate::coproduct_reflection::eval_syntactic_coproduct_arm_pairs(ctx, &args)
+            }
             _ => unreachable!("bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_node_query_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "coproduct_nullary_inhabitants" => {
+                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, &args)
+            }
+            _ => unreachable!("node_query bridge fn set mismatch"),
         };
     }
 
