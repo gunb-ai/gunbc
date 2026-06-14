@@ -1,0 +1,44 @@
+// extdeps/runtime/architecture/x86_64_linux.dag — x86-64 Linux architecture profile (cited facts).
+//
+// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile binding
+// TargetArchitecture::X86_64 to the cited sysv_amd64 Linux syscall convention and downward stack.
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (§3.2.2 stack grows down)
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/entry_64.S
+//         (entry_SYSCALL_64: rax=nr, rdi/rsi/rdx/r10/r8/r9=args)
+
+module extdeps.runtime.architecture.x86_64_linux
+
+import extdeps.runtime.abi.sysv_amd64 {
+  amd64_inhabitant_r10,
+  sysv_amd64_linux_syscall_convention,
+}
+import std.abi { StackLayout }
+import std.architecture_profile { ArchitectureProfile }
+import std.types { Bool }
+
+data x86_64_stack_grows_down: StackLayout = { grows_down: true }
+
+data x86_64_linux_architecture_profile: ArchitectureProfile = {
+  architecture: X86_64,
+  calling_convention: sysv_amd64_linux_syscall_convention,
+  stack_layout: x86_64_stack_grows_down,
+}
+
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+fn witness_architecture_is_x86_64() -> Bool {
+  x86_64_linux_architecture_profile.architecture == X86_64
+}
+
+fn witness_convention_arg3_is_r10() -> Bool {
+  x86_64_linux_architecture_profile.calling_convention.arg3 == amd64_inhabitant_r10
+}
+
+fn witness_stack_grows_down() -> Bool {
+  x86_64_linux_architecture_profile.stack_layout.grows_down == true
+}
+
+fn witness_profile_convention_matches_sysv_amd64() -> Bool {
+  x86_64_linux_architecture_profile.calling_convention == sysv_amd64_linux_syscall_convention
+}

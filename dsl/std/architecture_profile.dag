@@ -1,0 +1,19 @@
+// std/architecture_profile.dag — arch + ABI substrate for the §10 execution-contract layer.
+//
+// Scope: join architecture tag, CallingConvention, and StackLayout — the arch-specific
+// execution substrate before format and invocation-surface composition (exec-contract §4).
+// Per-arch cited inhabitants live in extdeps/runtime/architecture/*.dag (M3).
+
+module std.architecture_profile
+
+import std.abi { CallingConvention, StackLayout }
+
+// 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
+// Option import — dissolve-on: repoint architecture to std.cpu.types.CpuArchitecture when importable.
+type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+
+type ArchitectureProfile {
+  architecture: TargetArchitecture
+  calling_convention: CallingConvention
+  stack_layout: StackLayout
+}
