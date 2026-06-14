@@ -634,7 +634,10 @@ fn probe_catalog_entry_matches_host_probe(
   kind: HostHealthProbeKind
 ) -> Bool {
   let canonical = host_health_probe_canonical_entry(kind: kind)
-  entry.coverage == canonical.coverage && entry.cost == canonical.cost
+  probe_catalog_entry_label_eq(
+    entry: entry,
+    label: probe_catalog_entry_label(entry: canonical)
+  )
 }
 
 fn probe_catalog_contains_host_probe_kind(
