@@ -348,7 +348,14 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
                 n.name.clone(),
                 n.children.clone().len(),
                 lookup_type_for(env.clone(), n.clone()).map(|d| d.params.clone().len()),
-                ltn.map(|d| format!("Some(params={})", d.params.clone().len()))
+                ltn.clone()
+                    .map(|d| format!(
+                        "Some(params={} conn={:?} ch={} inf={})",
+                        d.params.clone().len(),
+                        d.connective.clone(),
+                        d.children.clone().len(),
+                        d.inferred.is_some()
+                    ))
                     .unwrap_or("None".to_string()),
             );
         }
