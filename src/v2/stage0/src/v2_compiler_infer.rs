@@ -5176,75 +5176,86 @@ pub fn infer_variant_constructor_call(
 pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     if ((n.connective.clone() == Connective::Conj) || (n.connective.clone() == Connective::Disj)) {
         false
-    } else if (((n.connective.clone() == Connective::NoConnective)
-        && ((n.children.clone().len() as i64) > 0))
-        && (n.inferred.clone() == None))
-    {
-        is_user_generic_use_site(n.clone(), env)
     } else {
-        match lookup_type_for(env.clone(), n.clone()) {
-            Some(binding) => {
-                if ((binding.connective.clone() == Connective::Conj)
-                    || (binding.connective.clone() == Connective::Disj))
-                {
-                    ((n.connective.clone() == Connective::NoConnective)
-                        && ((n.children.clone().len() as i64) == 0))
-                } else if (((binding.connective.clone() == Connective::NoConnective)
-                    && ((binding.children.clone().len() as i64) == 0))
-                    && (binding.inferred.clone() != None))
-                {
-                    true
-                } else if ((binding.connective.clone() == Connective::NoConnective)
-                    && ((binding.children.clone().len() as i64) > 0))
-                {
-                    (is_user_generic_use_site(binding.clone(), env.clone())
-                        || (binding.inferred.clone() != None))
-                } else {
-                    false
+        if (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
+            && (n.inferred.clone() == None))
+        {
+            is_user_generic_use_site(n.clone(), env.clone())
+        } else {
+            match lookup_type_for(env.clone(), n.clone()) {
+                Some(binding) => {
+                    if ((binding.connective.clone() == Connective::Conj)
+                        || (binding.connective.clone() == Connective::Disj))
+                    {
+                        ((n.connective.clone() == Connective::NoConnective)
+                            && ((n.children.clone().len() as i64) == 0))
+                    } else {
+                        if (((binding.connective.clone() == Connective::NoConnective)
+                            && ((binding.children.clone().len() as i64) == 0))
+                            && (binding.inferred.clone() != None))
+                        {
+                            true
+                        } else {
+                            if ((binding.connective.clone() == Connective::NoConnective)
+                                && ((binding.children.clone().len() as i64) > 0))
+                            {
+                                (is_user_generic_use_site(binding.clone(), env.clone())
+                                    || (binding.inferred.clone() != None))
+                            } else {
+                                false
+                            }
+                        }
+                    }
                 }
+                None => false,
             }
-            None => false,
+        }
+    }
+}
+
+pub fn peel_alias_once_for_field_access(
+    mut n: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+    mut module_name: String,
+) -> Rc<Node> {
+    loop {
+        let once = resolve_node(n, env.clone(), module_name.clone())
+            .resolved
+            .clone();
+        if ((once.connective.clone() == Connective::Conj)
+            || (once.connective.clone() == Connective::Disj))
+        {
+            break once.clone();
+        } else {
+            if (((once.connective.clone() == Connective::NoConnective)
+                && ((once.children.clone().len() as i64) > 0))
+                && (once.inferred.clone() == None))
+            {
+                {
+                    let __tco_0 = once.clone();
+                    n = __tco_0;
+                    continue;
+                }
+            } else {
+                break once.clone();
+            }
         }
     }
 }
 
 pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
     match normed.connective.clone() {
-        Connective::Conj | Connective::Disj => normed,
+        Connective::Conj => normed.clone(),
+        Connective::Disj => normed.clone(),
         _ => match normed.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                if target.connective.clone() == Connective::Conj
-                    || target.connective.clone() == Connective::Disj
-                {
-                    target
-                } else {
-                    normed
-                }
-            }
-            _ => normed,
+            Some(InferredNode::Resolved { node: target, .. }) => match target.connective.clone() {
+                Connective::Conj => target.clone(),
+                Connective::Disj => target.clone(),
+                _ => normed.clone(),
+            },
+            _ => normed.clone(),
         },
-    }
-}
-
-pub fn peel_alias_once_for_field_access(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Node> {
-    let once = resolve_node(n.clone(), env.clone(), module_name.clone())
-        .resolved
-        .clone();
-    if ((once.connective.clone() == Connective::Conj)
-        || (once.connective.clone() == Connective::Disj))
-    {
-        once
-    } else if (((once.connective.clone() == Connective::NoConnective)
-        && ((once.children.clone().len() as i64) > 0))
-        && (once.inferred.clone() == None))
-    {
-        peel_alias_once_for_field_access(once, env, module_name)
-    } else {
-        once
     }
 }
 
@@ -5253,12 +5264,14 @@ pub fn expand_type_for_field_access(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
-    let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-        peel_alias_once_for_field_access(n, env.clone(), module_name.clone())
-    } else {
-        n.clone()
-    };
-    structural_from_expanded_type(resolve_scrutinee_type_node(env, peeled))
+    {
+        let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
+        } else {
+            n.clone()
+        };
+        structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled))
+    }
 }
 
 pub fn record_lit_alias_struct_fields(

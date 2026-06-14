@@ -2666,18 +2666,22 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 
 
 fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
-  if n.connective == Conj || n.connective == Disj { false }
-  else if n.connective == NoConnective && n.children |> count > 0 && n.inferred == none {
+  if (n.connective == Conj || n.connective == Disj) {
+    false
+  } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred == none {
     is_user_generic_use_site(n: n, env: env)
   } else {
     match lookup_type_for(env: env, node: n) {
       Present { value: binding } =>
-        if binding.connective == Conj || binding.connective == Disj {
+        if (binding.connective == Conj || binding.connective == Disj) {
           n.connective == NoConnective && n.children |> count == 0
+        } else if binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none {
+          true
+        } else if binding.connective == NoConnective && binding.children |> count > 0 {
+          is_user_generic_use_site(n: binding, env: env) || binding.inferred != none
+        } else {
+          false
         }
-        else if binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none { true }
-        else if binding.connective == NoConnective && binding.children |> count > 0 { is_user_generic_use_site(n: binding, env: env) || binding.inferred != none }
-        else { false }
       Absent => false
     }
   }
@@ -2685,10 +2689,13 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
   let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-  if once.connective == Conj || once.connective == Disj { once }
-  else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
+  if (once.connective == Conj || once.connective == Disj) {
+    once
+  } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
     peel_alias_once_for_field_access(n: once, env: env, module_name: module_name)
-  } else { once }
+  } else {
+    once
+  }
 }
 
 fn structural_from_expanded_type(normed: Node) -> Node {

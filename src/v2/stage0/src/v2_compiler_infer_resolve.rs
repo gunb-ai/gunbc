@@ -320,29 +320,56 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
     resolve_node_bounded(n, env, module_name, 0)
 }
 
+pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
+    {
+        let brand = authored_name(env.clone(), n.clone());
+        match lookup_type_for(env.clone(), n.clone()) {
+            Some(decl) => {
+                if ((decl.params.clone().len() as i64) > 0) {
+                    decl.clone()
+                } else {
+                    if ((((n.children.clone().len() as i64) > 0)
+                        && (n.name.clone().as_str() != "".to_string().as_str()))
+                        && (n.name.clone().as_str() != brand.as_str()))
+                    {
+                        match lookup_type_by_name(env.clone(), n.name.clone()) {
+                            Some(structural) => structural.clone(),
+                            None => decl.clone(),
+                        }
+                    } else {
+                        decl.clone()
+                    }
+                }
+            }
+            None => match lookup_type_by_name(env.clone(), n.name.clone()) {
+                Some(decl) => decl.clone(),
+                None => n.clone(),
+            },
+        }
+    }
+}
+
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         if has_structure {
             false
         } else {
-            match lookup_type_for(env.clone(), n.clone()) {
-                Some(decl) => {
-                    if ((decl.params.clone().len() as i64) > 0) {
-                        if is_container_type(authored_name(env.clone(), n.clone())) {
-                            false
-                        } else {
-                            if (decl.inferred.clone() != None) {
-                                true
-                            } else {
-                                true
-                            }
-                        }
-                    } else {
+            {
+                let decl = resolve_generic_use_decl(env, n.clone());
+                if ((decl.params.clone().len() as i64) > 0) {
+                    if is_container_type(n.name.clone()) {
                         false
+                    } else {
+                        if (decl.inferred.clone() != None) {
+                            true
+                        } else {
+                            true
+                        }
                     }
+                } else {
+                    false
                 }
-                None => false,
             }
         }
     }
@@ -958,10 +985,7 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
-                    let decl = match lookup_type_for(env.clone(), n.clone()) {
-                        Some(d) => d.clone(),
-                        None => n.clone(),
-                    };
+                    let decl = resolve_generic_use_decl(env.clone(), n.clone());
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
                     let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
