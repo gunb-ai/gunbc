@@ -11,6 +11,7 @@ import v4.extdeps.languages.go {
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
   go_int_additive_numeric_inhabitant_node,
+  go_mvp1_emitted_add_fn_node,
   go_mvp1_source_text,
   go_mvp1_target_model
 }
@@ -195,6 +196,35 @@ fn inhabitant_neutralization_neutralize_python_to_go_emit_accepts_holds() -> Boo
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: go_mvp1_target_model()) {
             Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_go_native_emit_without_neutralize_holds() -> Bool {
+  match infer(tree: go_mvp1_emitted_add_fn_node()) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match emit(tree: inferred, target: go_mvp1_target_model()) {
+        Accepted { value: source, diagnostics: _ } => source == go_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_neutralize_go_native_to_go_emit_accepts_holds() -> Bool {
+  match neutralize_core_for_target(
+    core: go_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_mvp1_target_model()) {
+            Accepted { value: source, diagnostics: _ } => source == go_mvp1_source_text
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
