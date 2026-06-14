@@ -325,6 +325,26 @@ pub struct MultiEntryIndex {
 /// it changes no typecheck semantics. The full claim-witness corpus across
 /// permuted entry orders (vs the no-cache cold resolve as oracle) is the proof
 /// that the seed is complete — see `resolve_typed_cache_equivalence_test`.
+///
+/// SOUNDNESS PROPERTY (born-mark) — INTERN-ID CONTENT-STABILITY.
+/// A module's typed result is content-addressable (a pure function of its content
+/// + its imports' identities) ONLY IF the type-time-interned kernel type-name ids
+/// are content-stable, i.e. independent of how many tokens happen to precede them
+/// in the ambient intern table. Content-addressed memoization (this typed-module
+/// cache; the planned cross-process resolved-graph cache) is sound ONLY over a
+/// pure unit, so this property is a PRECONDITION for caching resolve at all — not
+/// a cache band-aid. It was discovered because the cache surfaced the latent
+/// violation: `build_type_env` assigns kernel-type ids by ambient table size, so
+/// the per-module typed result secretly depended on resolution-context state.
+///   Enforced by: this function (seed the kernel names so their ids are fixed
+///     across every entry in an index).
+///   Witness: `resolve_typed_cache_equivalence_test` (order-permuted, cold-oracle).
+///   TRIPWIRE: anyone who changes the kernel type-name set, the `build_type_env`
+///     type-time interning, or this seed MUST keep the witness green; a red
+///     witness means content-stability regressed and the cache is unsound. If the
+///     instability proves broader than a fixed name-set (genuinely table-SIZE
+///     dependent inside generated infer), that is a typechecker purity defect to
+///     fix in infer, not to paper over by extending this seed.
 fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     let mut t = table;
     for name in v2_rt::map_keys(&kernel_type_set()).iter().cloned() {
