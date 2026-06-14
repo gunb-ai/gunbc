@@ -5296,13 +5296,17 @@ pub fn expand_type_for_field_access(
     if is_deferred_field_access_base(n.clone(), env.clone()) {
         n.clone()
     } else {
-        expand_alias_chain_for_field_access(
-            n,
-            env,
-            module_name,
-            Rc::new(std::collections::BTreeSet::new()),
-            false,
-        )
+        {
+            let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
+            expand_alias_chain_for_field_access(
+                n,
+                env,
+                module_name,
+                origin_name,
+                Rc::new(std::collections::BTreeSet::new()),
+                false,
+            )
+        }
     }
 }
 
