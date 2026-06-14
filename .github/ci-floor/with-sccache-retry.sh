@@ -35,7 +35,9 @@ set -uo pipefail
 
 # Only these stderr shapes are treated as transient transport faults. Kept
 # narrow on purpose -- a broader match would retry (and mask) genuine errors.
-SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server'
+# EAGAIN / helper-thread spawn flakes on loaded srv2 runners (observed gunbc#4890,
+# run 27514188111) are transient resource pressure, not compile faults.
+SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server|Resource temporarily unavailable|failed to spawn helper thread'
 
 RETRIES="${SCCACHE_RETRY_ATTEMPTS:-2}"
 
