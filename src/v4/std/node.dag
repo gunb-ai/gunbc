@@ -58,8 +58,8 @@ fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
 }
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
-// forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Behavior variant list from coproduct reflection in std/node.dag; delete this mirror.
+// forbidden: parallel hand-enumerated Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
   | ConnectiveConjArm
@@ -67,18 +67,6 @@ type ConnectiveCoproductVariant
   | ConnectiveArrowArm
   | ConnectiveCardinalityArm
   | ConnectiveInstantiationArm
-
-
-fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
-  [
-    ConnectiveAtomArm,
-    ConnectiveConjArm,
-    ConnectiveDisjArm,
-    ConnectiveArrowArm,
-    ConnectiveCardinalityArm,
-    ConnectiveInstantiationArm,
-  ]
-}
 
 
 fn connective_from_coproduct_variant(
