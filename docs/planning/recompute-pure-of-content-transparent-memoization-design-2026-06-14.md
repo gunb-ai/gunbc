@@ -114,6 +114,23 @@ dimension facts remain in source marks — this section cites them, does not mir
 | **Resolve overlapping closure** | Each entry re-ran tokenize→parse→resolve→reconcile over overlapping modules before shared index | `cli_run.rs:270-303`; cold oracle vs `resolve_entry_with_index` |
 | **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `complexity.dag`; `v2_interpreter.rs:4187-4188` |
 
+(`src/v2/stage0/src/v2_interpreter.rs:1286-1297`)
+
+```rust
+    let param_names: Vec<String> = fn_node
+        .params
+        .iter()
+        .filter(|p| {
+            let name = authored_name_at(ctx.si(), (*p).clone());
+            match p.children.first() {
+                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                None => false,
+            }
+        })
+        .map(|p| authored_name_at(ctx.si(), p.clone()))
+        .collect();
+```
+
 ### 3.2 Purity exposed by cache — resolve-cost PR1 (#4867) *(distinct instance)*
 
 | Instance | What the cache revealed | Cite |
