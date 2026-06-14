@@ -257,6 +257,27 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_circuit_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "circuit S1 resistor map v=R*i",
+  entry: "src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag",
+  function: "circuit_anchor_resistor_map_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_circuit_capacitor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "circuit S1 capacitor fold dv=i*dt/C",
+  entry: "src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag",
+  function: "circuit_anchor_capacitor_fold_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_circuit_inductor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "circuit S1 inductor fold di=V*dt/L",
+  entry: "src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag",
+  function: "circuit_anchor_inductor_fold_holds",
+  expected: ExpectPass
+}
+
 // dsl/-root parametric gate probe — permanent self-owned fixture proving the corpus gate
 // can host dsl/-rooted witnesses end-to-end (--source-root dsl, shard b).
 // NOT a domain model; lives here to prove the gate infrastructure, not to model facts.
@@ -299,10 +320,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_circuit_resistor_map,
+  corpus_ci_gate_row_circuit_capacitor_fold,
+  corpus_ci_gate_row_circuit_inductor_fold,
   corpus_ci_gate_row_dsl_root_probe
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "32"
+data claim_witness_corpus_claim_run_row_count: String = "35"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -343,7 +367,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_circuit_resistor_map,
+  corpus_ci_gate_row_circuit_capacitor_fold,
+  corpus_ci_gate_row_circuit_inductor_fold,
   corpus_ci_gate_row_dsl_root_probe
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "17"
+data claim_witness_corpus_shard_b_row_count: String = "20"
