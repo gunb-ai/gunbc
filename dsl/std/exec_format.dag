@@ -8,11 +8,21 @@
 
 module std.exec_format
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool }
 
-// Format identity as a cited fact-bundle (Slice 1: family name only; per-format rows in extdeps).
+// Closed format-family coproduct: arms added when extdeps/formats/<fmt>/ lands a cited inhabitant.
+// 🟢 TERMINAL — Elf, Pe, MachO are irreducible gABI/PE-COFF/Mach-O loader families.
+// Uninhabited-generality guard: Pe + MachO are prose-anticipated; arms present to close the
+// string-sum before those slices land, preventing the undeclared-sum anti-pattern flagged by
+// modeling discipline. No PE/Mach-O data inhabits these arms until their extdeps/ slices ship.
+type ExecutableFormatFamily
+  = Elf    // ELF (gABI); extdeps/formats/elf/ (Slice 1 complete)
+  | Pe     // PE32+ (Microsoft PECOFF); extdeps/formats/pe/ (Slice 2, anticipated)
+  | MachO  // Mach-O (Apple); extdeps/formats/mach_o/ (Slice 3, anticipated)
+
+// Format identity carrier — one row per concrete binary format targeting this OS pillar.
 type ExecutableFormat {
-  family: NonEmptyStr
+  family: ExecutableFormatFamily
 }
 
 type SegmentPermission {

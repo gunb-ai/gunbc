@@ -6,7 +6,7 @@
 
 module extdeps.formats.elf.primitives
 
-import std.exec_format { ExecutableFormat }
+import std.exec_format { ExecutableFormat, Elf }
 
 // 🟢 terminal — gABI ELFMAG0..ELFMAG3 are irreducible identification bytes.
 type ElfMagicByte = Mag0 | Mag1 | Mag2 | Mag3
@@ -61,4 +61,4 @@ data elf64_ehdr_size: Int = 64
 data elf64_phdr_size: Int = 56
 
 // Cited ELF format row inhabiting std.exec_format.ExecutableFormat.
-data linux_x86_64_elf_format: ExecutableFormat = ExecutableFormat { family: "elf" }
+data linux_x86_64_elf_format: ExecutableFormat = ExecutableFormat { family: Elf }

@@ -6,9 +6,9 @@
 
 module extdeps.formats.elf.relocation
 
-import std.exec_format { Relocation }
-
 // x86-64 relocation types cited from gABI / x86-64 psABI (subset).
+// 🟡 dissolve-on: Relocation decode deferred to Slice 2 (shift/mask primitives for sym+type split
+//    from Elf64Rela.info; do NOT add elf64_rela_to_relocation here until that lands).
 data r_x86_64_none: Int = 0
 data r_x86_64_64: Int = 1
 data r_x86_64_pc32: Int = 2
@@ -22,10 +22,3 @@ type Elf64Rela {
   addend: Int
 }
 
-fn elf64_rela_to_relocation(rela: Elf64Rela) -> Relocation {
-  Relocation {
-    offset: rela.offset,
-    symbol_index: rela.info,
-    relocation_type: rela.info,
-  }
-}

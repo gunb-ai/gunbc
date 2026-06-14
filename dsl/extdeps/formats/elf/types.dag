@@ -50,6 +50,8 @@ type Elf64Ehdr {
   shstrndx: Int
 }
 
+// 🟡 fail-open: OOB offset yields 0 (a valid byte value). Bounded by callers that always pass a
+//    full-length fixture. dissolve-on: decode-result carrier + bounds-checked access primitive.
 fn byte_at(bytes: List<Int>, offset: Int) -> Int {
   match bytes |> get(offset) {
     null => 0
@@ -69,6 +71,10 @@ fn read_u64_le(bytes: List<Int>, offset: Int) -> Int {
   byte_at(bytes, offset) + byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) * 65536 + byte_at(bytes, offset + 3) * 16777216 + byte_at(bytes, offset + 4) * 4294967296 + byte_at(bytes, offset + 5) * 1099511627776 + byte_at(bytes, offset + 6) * 281474976710656 + byte_at(bytes, offset + 7) * 72057594037927936
 }
 
+// 🟡 decode-overload: unknown raw bytes collapse into spec-defined *None arms (ElfClassNone etc.)
+//    which conflates "gABI ELFCLASSNONE" with "decode failed / unsupported class". Safe for
+//    Slice 1's single-fixture witness (the fixture has known-good class/data/type/machine values).
+//    dissolve-on: a separate ElfDecodeUnknown arm (or decode-result coproduct) for unknown raw bytes.
 fn decode_elf_class(raw: Int) -> ElfClass {
   if raw == elf_class_64 { ElfClass64 } else { ElfClassNone }
 }
