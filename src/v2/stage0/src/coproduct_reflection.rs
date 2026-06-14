@@ -76,7 +76,6 @@ fn variant_is_nullary(variant: &Rc<Node>, _ctx: &InterpContext) -> bool {
     match payload.connective {
         Connective::NoConnective => payload.children.is_empty(),
         Connective::Conj => payload.children.is_empty(),
-        Connective::Atom(_) => true,
         _ => false,
     }
 }
