@@ -71,21 +71,31 @@ fn structural_type_for_variant_lookup(env: TypeEnv, ty: Node) -> Node {
   } else { ty }
 }
 
-fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
-  fold(map_keys(env.bindings), init: none, f: (acc, ident) =>
-    if acc != none { acc }
-    else {
-      match lookup_type(env: env, ident: ident) {
-        Present { value: ty_node } =>
-          unit_variant_in_coproduct(
-            env: env,
-            ty: structural_type_for_variant_lookup(env: env, ty: ty_node),
-            variant_name: variant_name
-          )
-        Absent => none
-      }
+fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
+  fold(map_keys(env.bindings), init: [], f: (acc, ident) =>
+    match lookup_type(env: env, ident: ident) {
+      Present { value: ty_node } =>
+        match unit_variant_in_coproduct(
+          env: env,
+          ty: structural_type_for_variant_lookup(env: env, ty: ty_node),
+          variant_name: variant_name
+        ) {
+          Present { value: variant } => concat(acc, [variant])
+          Absent => acc
+        }
+      Absent => acc
     }
   )
+}
+
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
+  let matches = collect_unit_variant_phantom_matches(env: env, variant_name: variant_name)
+  if matches |> count == 1 {
+    match matches |> first {
+      Present { value: variant } => Present { value: variant }
+      Absent => none
+    }
+  } else { none }
 }
 
 // Gate #60 Slice Z: anonymous decimal width literals in `<…>` type-arg position.
@@ -570,13 +580,29 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
-            match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
-              Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
-              Absent =>
-                NodeResolveResult {
-                  resolved: n,
-                  diagnostics: [make_error_node(diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
-                }
+            let variant_name = authored_name(env: env, node: n)
+            let phantom_matches = collect_unit_variant_phantom_matches(env: env, variant_name: variant_name)
+            let phantom_match_count = phantom_matches |> count
+            if phantom_match_count > 1 {
+              NodeResolveResult {
+                resolved: n,
+                diagnostics: [make_error_node(
+                  diagnostic: InternalError {
+                    message: concat("ambiguous phantom unit variant '", variant_name, "' — multiple coproducts expose this name"),
+                    span: n.span
+                  },
+                  module_name: module_name
+                )]
+              }
+            } else {
+              match lookup_unit_variant_phantom_type(env: env, variant_name: variant_name) {
+                Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
+                Absent =>
+                  NodeResolveResult {
+                    resolved: n,
+                    diagnostics: [make_error_node(diagnostic: UnresolvedType { name: variant_name, span: n.span }, module_name: module_name)]
+                  }
+              }
             }
           }
       }

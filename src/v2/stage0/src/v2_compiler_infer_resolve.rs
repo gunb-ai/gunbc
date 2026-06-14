@@ -100,27 +100,37 @@ pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<
     }
 }
 
+pub fn collect_unit_variant_phantom_matches(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new(v2_rt::map_keys(&env.bindings.clone()).iter().cloned().fold(
+        Vec::new(),
+        |mut acc: Vec<Rc<Node>>, ident: i64| {
+            if let Some(ty_node) = lookup_type(env.clone(), ident) {
+                if let Some(variant) = unit_variant_in_coproduct(
+                    env.clone(),
+                    structural_type_for_variant_lookup(env.clone(), ty_node),
+                    variant_name.clone(),
+                ) {
+                    acc.push(variant);
+                }
+            }
+            acc
+        },
+    ))
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Option<Rc<Node>> {
-    Rc::new(v2_rt::map_keys(&env.bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(None, |acc: _, ident: i64| {
-            if (acc.clone() != None) {
-                acc.clone()
-            } else {
-                match lookup_type(env.clone(), ident.clone()) {
-                    Some(ty_node) => unit_variant_in_coproduct(
-                        env.clone(),
-                        structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
-                        variant_name.clone(),
-                    ),
-                    None => None,
-                }
-            }
-        })
+    let matches = collect_unit_variant_phantom_matches(env, variant_name);
+    if (matches.len() as i64) == 1 {
+        matches.first().cloned()
+    } else {
+        None
+    }
 }
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
@@ -1490,19 +1500,55 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
-    Some(phantom) => Rc::new(NodeResolveResult {
-    resolved: phantom.clone(),
-    diagnostics: Rc::new(vec![]),
-}),
-    None => Rc::new(NodeResolveResult {
-    resolved: n.clone(),
-    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
-    name: authored_name(env.clone(), n.clone()),
-    span: n.span.clone(),
-}), module_name.clone())]),
-}),
-}
+                                                let variant_name =
+                                                    authored_name(env.clone(), n.clone());
+                                                let phantom_matches =
+                                                    collect_unit_variant_phantom_matches(
+                                                        env.clone(),
+                                                        variant_name.clone(),
+                                                    );
+                                                let phantom_match_count =
+                                                    phantom_matches.len() as i64;
+                                                if phantom_match_count > 1 {
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: n.clone(),
+                                                        diagnostics: Rc::new(vec![make_error_node(
+                                                            Rc::new(
+                                                                CompilerDiagnostic::InternalError {
+                                                                    message: format!(
+                                                                        "ambiguous phantom unit variant '{}' — multiple coproducts expose this name",
+                                                                        variant_name
+                                                                    ),
+                                                                    span: n.span.clone(),
+                                                                },
+                                                            ),
+                                                            module_name.clone(),
+                                                        )]),
+                                                    })
+                                                } else {
+                                                    match lookup_unit_variant_phantom_type(
+                                                        env.clone(),
+                                                        variant_name.clone(),
+                                                    ) {
+                                                        Some(phantom) => Rc::new(
+                                                            NodeResolveResult {
+                                                                resolved: phantom.clone(),
+                                                                diagnostics: Rc::new(vec![]),
+                                                            },
+                                                        ),
+                                                        None => Rc::new(NodeResolveResult {
+                                                            resolved: n.clone(),
+                                                            diagnostics: Rc::new(vec![
+                                                                make_error_node(Rc::new(
+                                                                    CompilerDiagnostic::UnresolvedType {
+                                                                        name: variant_name,
+                                                                        span: n.span.clone(),
+                                                                    },
+                                                                ), module_name.clone()),
+                                                            ]),
+                                                        }),
+                                                    }
+                                                }
                                             }
                                         }
                                     }
