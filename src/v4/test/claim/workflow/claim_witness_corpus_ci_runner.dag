@@ -247,6 +247,44 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
+// §10 execution-contract anchoring keystones (gunbc#4870): keep the REAL x86-64 syscall NRs
+// (read=0/write=1/mmap=9/execve=59/exit=60, syscall_64.tbl) standing-gated — a future edit that
+// breaks a number must fail CI (a wrong syscall number breaks the native=real-contract thesis).
+data corpus_ci_gate_row_exec_linux_read_number: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "exec-contract linux read syscall number is 0",
+  entry: "dsl/extdeps/runtime/syscalls/linux.dag",
+  function: "witness_read_number_is_0",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_exec_linux_write_number: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "exec-contract linux write syscall number is 1",
+  entry: "dsl/extdeps/runtime/syscalls/linux.dag",
+  function: "witness_write_number_is_1",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_exec_linux_mmap_number: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "exec-contract linux mmap syscall number is 9",
+  entry: "dsl/extdeps/runtime/syscalls/linux.dag",
+  function: "witness_mmap_number_is_9",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_exec_linux_execve_number: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "exec-contract linux execve syscall number is 59",
+  entry: "dsl/extdeps/runtime/syscalls/linux.dag",
+  function: "witness_execve_number_is_59",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_exec_linux_exit_number: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "exec-contract linux exit syscall number is 60",
+  entry: "dsl/extdeps/runtime/syscalls/linux.dag",
+  function: "witness_exit_number_is_60",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -277,10 +315,15 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_host_http_backend,
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_exec_linux_read_number,
+  corpus_ci_gate_row_exec_linux_write_number,
+  corpus_ci_gate_row_exec_linux_mmap_number,
+  corpus_ci_gate_row_exec_linux_execve_number,
+  corpus_ci_gate_row_exec_linux_exit_number
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "30"
+data claim_witness_corpus_claim_run_row_count: String = "35"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -319,7 +362,12 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_host_http_backend,
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed
+  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_exec_linux_read_number,
+  corpus_ci_gate_row_exec_linux_write_number,
+  corpus_ci_gate_row_exec_linux_mmap_number,
+  corpus_ci_gate_row_exec_linux_execve_number,
+  corpus_ci_gate_row_exec_linux_exit_number
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "15"
+data claim_witness_corpus_shard_b_row_count: String = "20"
