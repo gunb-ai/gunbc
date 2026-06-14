@@ -222,34 +222,34 @@ type MoneyAmount<S> = Measure<Currency, S>
 // (cent), so a minor-unit `<One>` carrier could not hold them losslessly.
 type MoneyMicros = MoneyAmount<Micro>
 
-fn money_micros(count: Int) -> MoneyMicros {
+fn money_micros(count: Nat) -> MoneyMicros {
   MoneyMicros { count: count }
 }
 
-fn money_micros_count(m: MoneyMicros) -> Int {
+fn money_micros_count(m: MoneyMicros) -> Nat {
   m.count
 }
 
-fn byte_size(count: Int) -> ByteSize {
+fn byte_size(count: Nat) -> ByteSize {
   ByteSize { count: count }
 }
 
-fn byte_size_count(b: ByteSize) -> Int {
+fn byte_size_count(b: ByteSize) -> Nat {
   b.count
 }
 
-fn hertz(count: Int) -> Hertz {
+fn hertz(count: Nat) -> Hertz {
   Hertz { count: count }
 }
 
-fn hertz_count(h: Hertz) -> Int {
+fn hertz_count(h: Hertz) -> Nat {
   h.count
 }
 
-fn hardware_thread_count(count: Int) -> HardwareThreadCount {
+fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
   HardwareThreadCount { count: count }
 }
 
-fn hardware_thread_count_value(t: HardwareThreadCount) -> Int {
+fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   t.count
 }
