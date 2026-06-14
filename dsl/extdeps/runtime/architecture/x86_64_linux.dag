@@ -23,6 +23,7 @@ import extdeps.runtime.abi.sysv_amd64 {
 import extdeps.runtime.syscalls.linux { linux_x86_64_syscall_abi }
 import std.abi { ArchitecturalRegister, StackLayout }
 import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
 
 data x86_64_stack_grows_down: StackLayout = { grows_down: true }
@@ -40,11 +41,11 @@ data x86_64_general_purpose_registers: List<ArchitecturalRegister> = [
 
 data x86_64_linux_architecture_profile: ArchitectureProfile = {
   architecture: X86_64,
-  word_width_bits: 64,
-  pointer_width_bits: 64,
+  word_width: bit_width(64),
+  pointer_width: bit_width(64),
   endianness: LittleEndian,
-  page_size_bytes: 4096,
-  default_alignment_bytes: 16,
+  page_size: byte_size(4096),
+  default_alignment: byte_size(16),
   register_file: x86_64_general_purpose_registers,
   calling_convention: sysv_amd64_linux_syscall_convention,
   stack_layout: x86_64_stack_grows_down,
@@ -62,11 +63,11 @@ fn witness_architecture_is_x86_64() -> Bool {
 }
 
 fn witness_word_width_is_64() -> Bool {
-  x86_64_linux_architecture_profile.word_width_bits == 64
+  bit_width_count(x86_64_linux_architecture_profile.word_width) == 64
 }
 
 fn witness_page_size_is_4096() -> Bool {
-  x86_64_linux_architecture_profile.page_size_bytes == 4096
+  byte_size_count(x86_64_linux_architecture_profile.page_size) == 4096
 }
 
 fn witness_convention_arg3_is_r10() -> Bool {
