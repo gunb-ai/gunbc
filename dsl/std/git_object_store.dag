@@ -1,0 +1,136 @@
+// std/git_object_store.dag — content-addressed git object store + refs (gunbhub S1).
+//
+// Read-only forge plumbing foundation: repository identity, object store keyed by
+// content digest, symbolic ref bindings. Porcelain (clone/push/web UI) builds on
+// this in later slices; extdeps.git carries domain facts, this module carries
+// store shape.
+//
+// Content identity composes std.cache_identity (ArtifactKindId) + std.types.ContentHash
+// — no hand-rolled hash keys (Realization / cache-interface pattern).
+
+module std.git_object_store
+
+import std.types { Bytes, ContentHash, GitRef, NonEmptyStr }
+import std.cache_identity { ArtifactKindId }
+import extdeps.git { GitAuthor }
+
+// --- artifact kinds (content-addressed object discriminant) ------------------
+
+data git_blob_artifact_kind: ArtifactKindId = "git-blob"
+data git_tree_artifact_kind: ArtifactKindId = "git-tree"
+data git_commit_artifact_kind: ArtifactKindId = "git-commit"
+data git_tag_artifact_kind: ArtifactKindId = "git-tag"
+
+// --- content identity --------------------------------------------------------
+//
+// Git on-wire object IDs are SHA-1 digests of `type size\0payload`; modeled here
+// as ContentHash + ArtifactKindId (same spine as CacheInterfaceFacts CAS rows).
+
+type GitObjectId = ContentHash where brand("GitObjectId")
+
+type GitObjectIdentity {
+  digest: GitObjectId
+  artifact_kind: ArtifactKindId
+}
+
+// --- stored object payloads --------------------------------------------------
+
+type GitBlobObject {
+  identity: GitObjectIdentity
+  payload: Bytes
+}
+
+type GitTreeEntry {
+  mode: NonEmptyStr
+  name: NonEmptyStr
+  object_id: GitObjectId
+}
+
+type GitTreeObject {
+  identity: GitObjectIdentity
+  entries: List<GitTreeEntry>
+}
+
+type GitCommitObject {
+  identity: GitObjectIdentity
+  tree_id: GitObjectId
+  parent_ids: List<GitObjectId>
+  author: GitAuthor
+  committer: GitAuthor
+  message: String
+}
+
+type GitTagObject {
+  identity: GitObjectIdentity
+  target_id: GitObjectId
+  tagger: GitAuthor
+  message: String
+}
+
+// 🟢 TERMINAL coproduct — Git's four stored object kinds (extdeps.git ObjectType).
+type GitStoredObject
+  = StoredBlob { object: GitBlobObject }
+  | StoredTree { object: GitTreeObject }
+  | StoredCommit { object: GitCommitObject }
+  | StoredTag { object: GitTagObject }
+
+// --- object store + refs -----------------------------------------------------
+
+type GitObjectStore {
+  objects: Map<GitObjectId, GitStoredObject>
+}
+
+type GitRefs {
+  targets: Map<GitRef, GitObjectId>
+}
+
+type RepositoryId = NonEmptyStr where brand("RepositoryId")
+
+type GitRepository {
+  id: RepositoryId
+  object_store: GitObjectStore
+  refs: GitRefs
+}
+
+// --- pure accessors (read-only plumbing) -------------------------------------
+
+fn git_stored_object_id(object: GitStoredObject) -> GitObjectId {
+  match object {
+    StoredBlob { object: o } => o.identity.digest
+    StoredTree { object: o } => o.identity.digest
+    StoredCommit { object: o } => o.identity.digest
+    StoredTag { object: o } => o.identity.digest
+  }
+}
+
+fn git_stored_object_kind(object: GitStoredObject) -> ArtifactKindId {
+  match object {
+    StoredBlob { object: o } => o.identity.artifact_kind
+    StoredTree { object: o } => o.identity.artifact_kind
+    StoredCommit { object: o } => o.identity.artifact_kind
+    StoredTag { object: o } => o.identity.artifact_kind
+  }
+}
+
+fn object_store_lookup(store: GitObjectStore, id: GitObjectId) -> GitStoredObject? {
+  lookup(store.objects, id)
+}
+
+fn refs_lookup(refs: GitRefs, name: GitRef) -> GitObjectId? {
+  lookup(refs.targets, name)
+}
+
+fn repository_resolve_ref(repo: GitRepository, name: GitRef) -> GitStoredObject? {
+  let object_id = refs_lookup(refs: repo.refs, name: name)
+  match object_id {
+    Some { value: id } => object_store_lookup(store: repo.object_store, id: id)
+    None => none
+  }
+}
+
+// Witness: artifact-kind constants are pairwise distinct (content-identity spine).
+fn witness_git_object_artifact_kinds_distinct() -> Bool {
+  git_blob_artifact_kind != git_tree_artifact_kind
+    && git_tree_artifact_kind != git_commit_artifact_kind
+    && git_commit_artifact_kind != git_tag_artifact_kind
+}
