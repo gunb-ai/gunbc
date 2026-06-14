@@ -43,6 +43,31 @@ type Behavior
   | Bind
 
 
+// R-reflect Phase 2a — coproduct-arm reflection substrate (docs/design-coproduct-arm-reflection.md §4).
+// Compile-time only: arm keys/projections resolve from closed Disj declarations; bodies are
+// intercepted by the v2 reflection builtin (fail-closed stubs if intercept is bypassed).
+type CoproductArm {
+  label: Symbol
+  payload: NodeShape
+}
+
+fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
+  []
+}
+
+fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
+  []
+}
+
+fn coproduct_arms(type_name: Symbol) -> List<CoproductArm> {
+  []
+}
+
+fn coproduct_nullary_inhabitants(type_name: Symbol) -> List<Symbol> {
+  []
+}
+
+
 // 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
