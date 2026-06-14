@@ -18,6 +18,12 @@ import v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt {
 import v4.test.claim.lens_affected_set.irt1_fail_closed_absorption_receipt {
   irt1_fail_closed_absorption_receipt_claim_holds
 }
+import v4.test.claim.lens_affected_set.closure_deep_chain {
+  closure_deep_chain_claim_holds
+}
+import v4.test.claim.lens_affected_set.closure_superset_safe {
+  closure_superset_safe_claim_holds
+}
 
 
 
@@ -43,6 +49,16 @@ fn lens_affected_set_irt1_fail_closed_absorption_holds() -> Bool {
 
 fn lens_affected_set_irt1_empty_diff_frontier_holds() -> Bool {
   irt1_empty_diff_frontier_receipt_claim_holds()
+}
+
+
+fn lens_affected_set_closure_deep_chain_holds() -> Bool {
+  closure_deep_chain_claim_holds()
+}
+
+
+fn lens_affected_set_closure_superset_safe_holds() -> Bool {
+  closure_superset_safe_claim_holds()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
@@ -78,5 +94,21 @@ data unified_claim_lens_affected_set_irt1_empty_diff: UnifiedTestClaim = BoolWit
   witness: BoolWitness {
     entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
     function: lens_affected_set_irt1_empty_diff_frontier_holds
+  }
+}
+
+// Co-located with `lens_affected_set_closure_deep_chain_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_closure_deep_chain: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_closure_deep_chain_holds
+  }
+}
+
+// Co-located with `lens_affected_set_closure_superset_safe_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_affected_set_closure_superset_safe: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_closure_superset_safe_holds
   }
 }

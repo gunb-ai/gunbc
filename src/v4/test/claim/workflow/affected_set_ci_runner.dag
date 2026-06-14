@@ -454,6 +454,19 @@ data ci_runner_gate_row_four_phase: AffectedSetNodeFrontierClaimRunRow = Affecte
   function: "ci_runner_node_frontier_four_phase_discrimination_holds"
 }
 
+// 🟡 gated — feature:lens-affected-set-witness-roster — bind D1c (depends on R-reflect: coproduct-arm reflection substrate; gunbc#4759 is the closed label-hygiene anchor, NOT the impl) — dissolve-on-arrival: TestClaim-coproduct reflection auto-discovers these affected-set closure witnesses; delete these two hand-enrolled rows when R-reflect lands. forbidden: permanent hand-listed witness roster.
+data ci_runner_gate_row_closure_deep_chain: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set closure deep-chain root-seed marks |V|-deep leaf",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_closure_deep_chain_holds"
+}
+
+data ci_runner_gate_row_closure_superset_safe: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set closure substrate superset-safe",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_closure_superset_safe_holds"
+}
+
 data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
   ci_runner_gate_row_narrow_selection,
   ci_runner_gate_row_fail_closed_superset,
@@ -463,7 +476,9 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_discovered_fail_closed,
   ci_runner_gate_row_discovered_shape,
   ci_runner_gate_row_discovered_inner,
-  ci_runner_gate_row_four_phase
+  ci_runner_gate_row_four_phase,
+  ci_runner_gate_row_closure_deep_chain,
+  ci_runner_gate_row_closure_superset_safe
 ]
 
-data ci_runner_node_frontier_claim_run_row_count: String = "9"
+data ci_runner_node_frontier_claim_run_row_count: String = "11"
