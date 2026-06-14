@@ -247,14 +247,16 @@ fn provenance_producer_selectivity_superset_discriminates_holds() -> Bool {
         provenance: provenance_producer_node_precision_provenance
       ) {
         Holds { value: wide } =>
-          provenance_producer_node_in_reading_affected(
-            nodes: wide,
-            needle: affected_set_leaf
-          )
-            && (provenance_producer_node_in_reading_affected(
+          (length(xs: narrow) == 3)
+            && (length(xs: wide) == 3)
+            && provenance_producer_node_in_reading_affected(
               nodes: narrow,
-              needle: affected_set_leaf
-            ) == false)
+              needle: affected_set_mid
+            )
+            && provenance_producer_node_in_reading_affected(
+              nodes: wide,
+              needle: affected_set_root
+            )
         Violates { diagnostic: _ } => false
       }
     Violates { diagnostic: _ } => false
