@@ -3870,7 +3870,29 @@ fn translate_node_mvp1(
   if target_value_expr_arrow_has_value_expression_body(arrow: node) {
     translate_bodied_arrow_preserve_producer_ir(arrow: node)
   } else {
-    translate_node_mvp1_fold(node: node, tree: tree, target: target)
+    bind_outcome(
+      o: fold_node(
+        n: node,
+        algebra: NodeFold {
+          init: fn(n0) { translate_type_fold_init(node: n0) },
+          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+        }
+      ),
+      f: fn(raw) {
+        // Grammar-first short-circuit (parity with translate_type_expression_tree :3736, the
+        // ProjectionPresent/SG-2 path): if the structure-preserving (raw) folded node matches a
+        // grammar relation row, return it RAW so serialize routes through the mode-1 whole-node
+        // grammar match -> pre-baked concrete tokens (e.g. the mvp1 add fn). Nodes WITHOUT a
+        // grammar row fall through to the existing coercing MVP1 fold, UNTOUCHED. translate_node_mvp1
+        // is gated to dissolve INTO the projection path (see translate_node mark), so this converges
+        // with the arc rather than adding a steady-state dual path.
+        match translate_grammar_relation_row_match(target: target, emitted: raw) {
+          Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
+          Rejected { diagnostics: _ } =>
+            translate_node_mvp1_fold(node: node, tree: tree, target: target)
+        }
+      }
+    )
   }
 }
 fn translate_node(
