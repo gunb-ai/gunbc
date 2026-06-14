@@ -11,7 +11,7 @@
 
 module extdeps.git
 
-import std.types { CommitSha, FilePath, GitRef, Timestamp }
+import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp }
 
 // -- Object model --------------------------------------------------
 
@@ -34,7 +34,83 @@ type GitCommit {
   parent_shas: List<CommitSha>
 }
 
-// -- Refs ----------------------------------------------------------
+// -- Content-addressed object store (Git spec plumbing) ------------
+//
+// Authority: Git loose object format — gitformat-pack(5), gitformat-commit(5).
+// GitObjectId is the SHA-1 of `type SP size NUL content` (pre-zlib). The object
+// database is keyed solely by this digest — content-addressed identity.
+
+type GitObjectId = CommitSha
+
+// 🟢 TERMINAL — tree entry modes per Git tree object wire format.
+type TreeEntryMode = Mode100644 | Mode100755 | Mode040000 | Mode160000 | Mode120000
+
+type GitTreeEntry {
+  mode: TreeEntryMode
+  name: NonEmptyStr
+  object_id: GitObjectId
+}
+
+type GitTreeObject {
+  entries: List<GitTreeEntry>
+}
+
+type GitBlobObject {
+  bytes: String
+}
+
+// Stored commit object — distinct from decoded GitCommit view above.
+type GitCommitObject {
+  tree_id: GitObjectId
+  parent_ids: List<GitObjectId>
+  author: GitAuthor
+  committer: GitAuthor
+  message: String
+}
+
+type GitObjectPayload
+  = BlobPayload { blob: GitBlobObject }
+  | TreePayload { tree: GitTreeObject }
+  | CommitPayload { commit: GitCommitObject }
+
+type StoredGitObject {
+  kind: ObjectType
+  object_id: GitObjectId
+  payload: GitObjectPayload
+}
+
+type GitObjectStore {
+  objects: List<StoredGitObject>
+}
+
+// -- Plumbing refs (.git/refs) -------------------------------------
+
+// 🟢 TERMINAL — ref namespaces under `.git/refs/` per Git spec.
+type RefNamespace
+  = Heads
+  | Tags
+  | Remotes { remote_name: NonEmptyStr }
+
+type GitRefName {
+  namespace: RefNamespace
+  leaf: NonEmptyStr
+}
+
+type GitRefTarget {
+  object_id: GitObjectId
+  peeled_id: GitObjectId?
+}
+
+type GitRefEntry {
+  name: GitRefName
+  target: GitRefTarget
+}
+
+type GitRefStore {
+  refs: List<GitRefEntry>
+}
+
+// -- Refs (porcelain) ----------------------------------------------
 
 type GitBranch {
   name: String
