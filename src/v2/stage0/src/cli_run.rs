@@ -11,12 +11,13 @@ use crate::std_syntax::LiteralValue;
 use crate::v2_compiler_compile;
 use crate::v2_compiler_infer;
 use crate::v2_compiler_infer_env::lookup_type_by_name;
-use crate::v2_compiler_infer_items::{ItemKind, ResolvedGraph, TypedModule};
+use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v2_compiler_normalize;
 use crate::v2_compiler_parse;
 use crate::v2_compiler_resolve;
 use crate::v2_compiler_tokenize;
 use crate::v2_interpreter;
+use crate::v2_rt;
 use crate::v2_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
@@ -277,6 +278,27 @@ pub struct MultiEntryIndex {
     /// Lazily-populated parse cache: file path → (ParseResult, NewlineIndex).
     /// Populated on first access for each file; shared across all entry resolves.
     parse_cache: RefCell<HashMap<String, (Rc<v2_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
+    /// Lazily-populated typed-module cache: module name → its
+    /// `TypecheckModuleResult` (typed module + its diagnostics). Populated on
+    /// first type-reconciliation of each module; reused across all entry resolves
+    /// that share this index.
+    ///
+    /// Why module name is a sound (alias-free) key WITHIN one index: each entry's
+    /// closure is read once into `source_files`, so a module name maps to exactly
+    /// one immutable source file. A module's typed result is a pure function of
+    /// (its own resolved AST) + (the typed results of the modules it imports,
+    /// looked up by name) + (the foundational `std.types` env) — `typecheck_module`
+    /// consults `parent_index` only for those (v2_compiler_infer.rs build_type_env
+    /// / collect_parent_envs), never the rest of the closure, and modules are
+    /// processed in topological order so a module's imports are always already
+    /// typed. The shared interner table grows monotonically, so a token's id is
+    /// stable across entries. Therefore the same name always yields the same typed
+    /// result, and reuse is byte-identical to recomputation. This is the
+    /// resolve-cost lever PR1: it collapses N near-identical full
+    /// type-reconciliations (one per entry, ~30-50 modules each, heavily
+    /// overlapping) into one shared core typed once plus per-entry leaves. Sibling
+    /// to `parse_cache`.
+    typed_module_cache: RefCell<HashMap<String, Rc<v2_compiler_infer::TypecheckModuleResult>>>,
 }
 
 /// Scan the given source roots once and return a `MultiEntryIndex`. Only the
@@ -288,6 +310,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         source_files: build_module_index(source_roots),
         intern_table: RefCell::new(empty_intern_table()),
         parse_cache: RefCell::new(HashMap::new()),
+        typed_module_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -419,8 +442,12 @@ fn resolve_entry_with_parse_cache(
         return Err(format_error_nodes(&norm.diagnostics, &source_indices));
     }
 
-    let typed =
-        v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), global_table);
+    let typed = reconcile_with_typed_cache(
+        norm.graph.clone(),
+        source_indices.clone(),
+        global_table,
+        &index.typed_module_cache,
+    );
 
     let has_type_errors = typed
         .diagnostics
@@ -449,6 +476,88 @@ fn resolve_entry_with_parse_cache(
     }
 
     Ok((typed, source_indices))
+}
+
+/// Host-side memoized form of `v2_compiler_infer::reconcile`. Produces the same
+/// `ResolvedGraph` it would, but per-module typed results come from (and populate)
+/// `typed_cache`, so modules shared across many entry resolves are type-reconciled
+/// once instead of once per entry (the resolve-cost lever, PR1).
+///
+/// Single-authority note: this is an alternate ORCHESTRATION over the exact pure
+/// primitives the generated `typecheck_modules` loop drives — `collect_parent_envs`,
+/// `typecheck_module`, `expand_transitive_services`, `build_emit_graph_info` — not a
+/// reimplementation of type checking. It mirrors that loop step-for-step (same per-
+/// module ops, same topological module order, same diagnostic-chunk ordering, same
+/// 5-pass service expansion) and threads a typed-module cache the way
+/// `resolve_entry_with_parse_cache` threads a parse cache. With an empty cache the
+/// output is byte-identical to `reconcile`; a cache hit reuses a result that is, by
+/// the argument on `MultiEntryIndex::typed_module_cache`, equal to recomputation.
+/// (Falsifier: witness verdicts must be byte-identical with the cache warm vs cold —
+/// gated by the claim-witness corpus + perturb pass.)
+fn reconcile_with_typed_cache(
+    graph: Rc<v2_compiler_resolve::ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    typed_cache: &RefCell<HashMap<String, Rc<v2_compiler_infer::TypecheckModuleResult>>>,
+) -> Rc<ResolvedGraph> {
+    let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
+    let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v2_rt::rc_empty_map();
+    let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v2_rt::rc_empty_map();
+    let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+
+    for resolved in graph.modules.iter().cloned() {
+        // collect_parent_envs is cheap (import-scoped lookups) and its diagnostics
+        // depend on the live module_index; recompute it every iteration exactly as
+        // the generated loop does — only the expensive typecheck_module is cached.
+        let parent_result = v2_compiler_infer::collect_parent_envs(
+            resolved.clone(),
+            module_index.clone(),
+            source_indices.clone(),
+        );
+        let mod_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+        let cached = typed_cache.borrow().get(&mod_name).cloned();
+        let tc_result = match cached {
+            Some(hit) => hit,
+            None => {
+                let computed = v2_compiler_infer::typecheck_module(
+                    resolved.clone(),
+                    module_index.clone(),
+                    source_indices.clone(),
+                    intern_table.clone(),
+                );
+                typed_cache
+                    .borrow_mut()
+                    .insert(mod_name.clone(), computed.clone());
+                computed
+            }
+        };
+        let typed = tc_result.typed.clone();
+        modules = v2_rt::rc_list_push(modules, typed.clone());
+        module_index = v2_rt::rc_map_insert(
+            module_index,
+            authored_name_at(source_indices.clone(), typed.module.clone()),
+            typed.clone(),
+        );
+        item_registry = v2_rt::rc_map_merge(item_registry, typed.item_registry.clone());
+        diag_chunks.push(parent_result.diagnostics.clone());
+        diag_chunks.push(tc_result.diagnostics.clone());
+    }
+
+    let expanded_registry = v2_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = Vec::new();
+        for chunk in &diag_chunks {
+            acc.extend(chunk.iter().cloned());
+        }
+        acc
+    });
+    let emit_graph_info = v2_compiler_infer::build_emit_graph_info(modules.clone());
+    Rc::new(ResolvedGraph {
+        modules,
+        item_registry: expanded_registry,
+        diagnostics,
+        emit_graph_info,
+    })
 }
 
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
