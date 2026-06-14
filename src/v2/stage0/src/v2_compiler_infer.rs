@@ -5382,17 +5382,22 @@ pub fn expand_alias_chain_for_field_access(
     };
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+    if std::env::var("DBG_FC").is_ok() {
+        eprintln!(
+            "DBG frame n.name={} struct.name={} conn={:?} ch={} lossy={} has_unres={} origin={}",
+            n.name.clone(),
+            structural.name.clone(),
+            structural.connective.clone(),
+            structural.children.clone().len(),
+            lossy,
+            record_has_unresolved_param_field(structural.clone(), env.clone()),
+            origin_name,
+        );
+    }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
         if (lossy && record_has_unresolved_param_field(structural.clone(), env.clone())) {
-            if std::env::var("DBG_FC").is_ok() {
-                eprintln!(
-                    "DBG failclosed origin_name={} is_deferred_of_leaf={}",
-                    origin_name,
-                    is_deferred_field_access_base(nominal_type_ref(origin_name.clone()), env.clone())
-                );
-            }
             // Fail closed: the reached record has a field typed by a param the
             // dropped-arg chain cannot substitute. Return a bare nominal leaf so
             // field lookup yields a "no field" diagnostic instead of silently
