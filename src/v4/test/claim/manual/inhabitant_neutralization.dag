@@ -12,7 +12,6 @@ import v4.extdeps.languages.go {
   go_int64_additive_numeric_inhabitant_node,
   go_int64_falsifier_emitted_add_fn_node,
   go_int_additive_numeric_inhabitant_node,
-  go_mvp1_emitted_add_fn_node,
   go_mvp1_source_text,
   go_mvp1_target_model
 }
@@ -273,37 +272,9 @@ fn inhabitant_neutralization_python_to_go_holds() -> Bool {
 //   (discriminant; NOT inhabitant_neutralization_*). Python Arrow lacks go_surface_fn_item edge
 //   present on native go_mvp1_emitted_add_fn_node — structural emit-breadth gap, independent of
 //   int64 vs platform-int inhabitant routing (tiebreak selects platform int; same translate failure).
-// Native go_mvp1: infer PASS | translate PASS | emit REJECT — routing-independent emit-breadth repro.
-// Native go_mvp1 stage probes (draft-until-sign; localization anchor):
-fn inhabitant_neutralization_go_mvp1_native_infer_holds() -> Bool {
-  match infer(tree: go_mvp1_emitted_add_fn_node()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_go_mvp1_native_translate_holds() -> Bool {
-  match infer(tree: go_mvp1_emitted_add_fn_node()) {
-    Accepted { value: inferred, diagnostics: _ } =>
-      match translate(tree: inferred, target: go_mvp1_target_model()) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_go_mvp1_native_emit_rejects() -> Bool {
-  match infer(tree: go_mvp1_emitted_add_fn_node()) {
-    Accepted { value: inferred, diagnostics: _ } =>
-      match emit(tree: inferred, target: go_mvp1_target_model()) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
+// Native go emit ACCEPTS with grounded InferredTree (mvp1_go_add_translate.dag::
+//   mvp1_go_emit_add_fn_accepts_holds); infer() on raw emitted Node is gated (#4760).
+// python->go RED is translate coercion on neutralized python Arrow skeleton, not native go emit-breadth.
 fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
   match neutralize_core_for_target(
     core: python_mvp1_emitted_add_fn_node(),
