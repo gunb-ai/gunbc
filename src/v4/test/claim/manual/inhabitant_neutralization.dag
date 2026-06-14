@@ -46,6 +46,10 @@ import v4.std.inhabitant_neutralization {
   target_inhabitant_for_std_projection
 }
 import v4.std.coercion {
+  AmbiguousTargetCandidate,
+  NoTargetCandidate,
+  StructuralMismatch,
+  WouldLoseInformation,
   coercion_find_witness_reason_unmapped,
   coercion_mismatch_candidate_set_not_closed,
   coercion_not_realized
