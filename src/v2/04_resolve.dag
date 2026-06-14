@@ -228,24 +228,39 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
 
+// Applied-generic use sites may still carry the alias brand in ident_span
+// (ByteSize) while the authored carrier name is structural (Measure). Env
+// lookup by brand returns the alias decl (0 params); generic instantiation
+// must resolve the structural decl instead.
+fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
+  let brand = authored_name(env: env, node: n)
+  match lookup_type_for(env: env, node: n) {
+    Present { value: decl } =>
+      if decl.params |> count > 0 { decl }
+      else if n.children |> count > 0 && n.name != "" && n.name != brand {
+        match lookup_type_by_name(env: env, name: n.name) {
+          Present { value: structural } => structural
+          Absent => decl
+        }
+      } else { decl }
+    Absent =>
+      match lookup_type_by_name(env: env, name: n.name) {
+        Present { value: decl } => decl
+        Absent => n
+      }
+  }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
-    match lookup_type_for(env: env, node: n) {
-      Present { value: decl } =>
-        if decl.params |> count > 0 {
-          // Container types (Map, List, Set, etc.) stay unexpanded regardless
-          // of alias (INVARIANTS.md: "container_types controls which types stay
-          // unexpanded during resolve"). Map = PartialFunction<K,V> is an
-          // inhabitation declaration, not an alias to expand. Algebra fields
-          // are added on demand via enrich_kernel_type during method lookup.
-          if is_container_type(name: authored_name(env: env, node: n)) { false }
-          else if decl.inferred != none { true }
-          else { true }
-        } else { false }
-      Absent => false
-    }
+    let decl = resolve_generic_use_decl(env: env, n: n)
+    if decl.params |> count > 0 {
+      if is_container_type(name: n.name) { false }
+      else if decl.inferred != none { true }
+      else { true }
+    } else { false }
   }
 }
 
@@ -436,7 +451,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type_for(env: env, node: n) { Present { value: d } => d  Absent => n }
+    let decl = resolve_generic_use_decl(env: env, n: n)
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {

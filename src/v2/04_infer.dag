@@ -2685,7 +2685,10 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
   let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-  if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none { resolve_node(n: once, env: env, module_name: module_name).resolved } else { once }
+  if once.connective == Conj || once.connective == Disj { once }
+  else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
+    peel_alias_once_for_field_access(n: once, env: env, module_name: module_name)
+  } else { once }
 }
 
 fn structural_from_expanded_type(normed: Node) -> Node {

@@ -5226,25 +5226,35 @@ pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn peel_alias_once_for_field_access(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    let once = resolve_node(n.clone(), env.clone(), module_name.clone())
+        .resolved
+        .clone();
+    if ((once.connective.clone() == Connective::Conj)
+        || (once.connective.clone() == Connective::Disj))
+    {
+        once
+    } else if (((once.connective.clone() == Connective::NoConnective)
+        && ((once.children.clone().len() as i64) > 0))
+        && (once.inferred.clone() == None))
+    {
+        peel_alias_once_for_field_access(once, env, module_name)
+    } else {
+        once
+    }
+}
+
 pub fn expand_type_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
     let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-        let once = resolve_node(n.clone(), env.clone(), module_name.clone())
-            .resolved
-            .clone();
-        if (((once.connective.clone() == Connective::NoConnective)
-            && ((once.children.clone().len() as i64) > 0))
-            && (once.inferred.clone() == None))
-        {
-            resolve_node(once.clone(), env.clone(), module_name.clone())
-                .resolved
-                .clone()
-        } else {
-            once
-        }
+        peel_alias_once_for_field_access(n, env.clone(), module_name.clone())
     } else {
         n.clone()
     };

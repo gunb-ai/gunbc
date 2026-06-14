@@ -52,6 +52,7 @@ fn bytesize_alias_binding_with_resolved_rhs_expands_for_field_access() {
     use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
     use v2_compiler::v2_compiler_infer_lookup::lookup_field_type_node;
     use v2_compiler::v2_compiler_infer_resolve::resolve_node;
+    use v2_compiler::v2_compiler_infer_resolve::is_user_generic_use_site;
     use v2_compiler::v2_std_core::{default_ident_span, make_span, Connective, InferredNode, Node};
 
     let src = r#"
@@ -134,6 +135,19 @@ fn byte_size_count(b: ByteSize) -> Nat {
     let once = resolve_node(base_rt.clone(), env.clone(), "m".to_string())
         .resolved
         .clone();
+    let twice = resolve_node(once.clone(), env.clone(), "m".to_string())
+        .resolved
+        .clone();
+    eprintln!(
+        "is_user_generic_use_site(once)={}",
+        is_user_generic_use_site(once.clone(), env.clone())
+    );
+    eprintln!(
+        "once inferred={} twice inferred={} twice connective={:?}",
+        once.inferred.is_some(),
+        twice.inferred.is_some(),
+        twice.connective
+    );
     let expanded = expand_type_for_field_access(base_rt.clone(), env.clone(), "m".to_string());
     let field = lookup_field_type_node(
         expanded.clone(),
