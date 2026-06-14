@@ -1,245 +1,317 @@
-# Recompute pure-of-content — one error class, transparent memoization, compute/cache substrate
+# [DRAFT] Recompute pure-of-content — one fundamental error, transparent memoization
 
-Work item: `node://adhoc-4a3d8313-94c` (sleek-bee-765) · CI-investigation tree (swift-stag-552).
+Work item: `node://adhoc-4a3d8313-94c` (sleek-bee-765) · CI-investigation tree.
 
-**Status: DESIGN / MAP ONLY.** No substrate lands from this doc. It names one fundamental
-error class, catalogs code-verified instances, states the systemic fix (transparent
-memoization), and motivates why `std.compute_fabric` + `std.cache_interface` are the
-cross-run landing zone — not a third parallel cache story.
+**Status: DRAFT — for operator framing review.** Not done. Structure and verified content
+first; prose polish second. Awaiting operator confirmation of the **spine** (§2 thesis +
+two-faces framing) before closeout. Centerpiece (§1) and instance catalog (§§3–4, §7) are
+evidence sections — thesis reframe should not require rewriting them.
 
-Companion receipts: RR-L (`docs/planning/v4-incremental-bootstrap-ci-perf-rr-l-worksheet-2026-06-02.md`
-cache-key law), RR-K (`docs/planning/v4-affected-set-selected-execution-rr-k-worksheet-2026-06-02.md`
-"projects, does not recompute"), thesis automatic memoization
-(`docs/thesis/what-else-falls-out.md` §Automatic memoization / §Incremental cross-run execution).
+**Map / motivation only** — points at inline marks as durable authority; not a parallel
+ledger for per-cache facts (operator standing principle, 2026-05-19).
+
+**Durable solution home:** `dsl/std/{cache_identity,cache_interface,compute_fabric}.dag`.
 
 ---
 
-## 1. The one error class
+## 1. Centerpiece — resolve-cost PR1 revealed impurity, did not cause it
 
-**Name:** *recompute pure-of-content*.
+When resolve-cost PR1 (#4867) added a per-module typed cache on `MultiEntryIndex`, claim
+verdicts **flipped depending on entry order**. The cache did not introduce a new bug — it
+made a **pre-existing content-impurity** observable.
 
-**Shape:** A consumer executes (or re-derives) work whose result is already determined by
-declared **content facts**, when an observationally equivalent answer exists from memoization
-or cache lookup keyed on those same facts.
+**What was wrong structurally:** `build_type_env` interns kernel type names into a *local
+clone* of the ambient intern table at type time. Kernel-type ids therefore depended on how
+many tokens happened to precede them in that table — table-**size**-dependent, not
+content-stable. A module typed for an early entry baked ids at one table size; a later entry
+reused that binding under different ids; lookups missed and types collapsed to the `Json`
+fallback — an order-dependent verdict flip.
 
-**Pure-of-content** (the positive predicate the error violates):
+**Manual discharge today (not automatic enforcement):**
 
-| Leg | Meaning | Authority already in tree |
+- `seed_kernel_intern_names` pre-seeds the shared table so kernel names get stable ids across
+  every entry in an index (`src/v2/stage0/src/cli_run.rs:306-347`).
+- `resolve_typed_cache_equivalence_test` is a **standing purity-oracle gate**: cached resolve
+  must be byte-identical to the no-cache cold oracle in every entry order
+  (`src/v2/tests/src/resolve_typed_cache_equivalence_test.rs:1-19`).
+
+**Moral:** A cache that changes a verdict is not a cache bug — it is a **purity bug the
+cache exposed**. Making a computation content-addressable *requires* it be pure-of-content;
+without enforced purity, manual caching is both necessary (redundancy face) and dangerous
+(correctness face).
+
+Model authority for the type-time interning shape:
+`src/v2/04_infer.dag:5453-5460` (`build_type_env` folds `kernel_type_set` into the table).
+
+---
+
+## 2. Thesis — one root, two faces *(spine; subject to operator refinement)*
+
+> **Modular thesis block.** If the operator sharpens the root articulation, revise this
+> section (and §10 summary) only. §1 centerpiece, §§3–4 instances, §§5–7 substrate/migration
+> evidence stay.
+
+The language/compiler has **no first-class notion** that *a value is a pure function of its
+inputs' content*. Because of that gap, every consumer that needs an already-computed result
+either:
+
+1. **Recomputes from scratch** — redundant work (perf face), or
+2. **Hand-rolls a local cache** — necessary but **unsafe** when purity was never checked
+   (correctness face).
+
+These are not two bug classes. They are one root defect with two symptoms.
+
+| Face | Symptom | Structural shape |
 | --- | --- | --- |
-| **Pure** | No side effects; same inputs ⇒ same outputs (within the modeled evaluation strategy). | `std/effects.dag` partition; v2 interpreter `is_structural_pure_fn` gate; R3 auto-memoization claims |
-| **Of-content** | The lookup identity is a **content fact** — structural form, `content_hash`, source span, declared input digests — not a mutable context id (intern-table slot, env generation, host path without modeled invalidation, frame count, declaration *name* alone). | `EvalMemoKey` / `EvalStateKey`; `ParsePositionKey`; `TestClaimCacheKey`; RR-L §2.1 cache-key law (#4282) |
+| **Redundancy** | Pure-of-content work repeated when the content key is unchanged | Same content-determined value derived again instead of projected from a memo |
+| **Un-enforced purity** | Hand-rolled cache returns wrong answers silently | Hidden input (ambient state) leaked into a result claimed to be content-keyed |
 
-**Why this is ONE class, not many bugs:** In a closed system, "I forgot to cache," "I cached on
-the wrong key," "I rebuilt what an upstream carrier already held," and "the host transport
-re-derived modeled facts" are the same structural defect viewed at different boundaries —
-**duplicate derivation of a content-determined fact** (INVARIANTS P1 "No duplicate
-representations," P5 "Progress Is Dissolution"). The perf symptom varies (O(n²), exponential
-parse, CI wall-clock, false-green); the causal shape is identical.
+**Named error class:** *recompute pure-of-content* — executing or re-deriving work whose
+result is already determined by declared **content facts** when memoization or cache lookup
+on those facts would be observationally equivalent.
 
-**Concept-unification test** (`docs/thesis/concept-unification.md`): if fixing the next
-instance requires inventing a new mechanism rather than applying transparent memoization with
-a content key, investigate whether the instance is really distinct. A parallel cache authority
-is evidence of a missed unification.
+**Pure-of-content predicate** (the positive law the error violates):
 
----
+- **Pure:** no side effects; same declared inputs ⇒ same outputs within the modeled strategy.
+- **Of-content:** lookup identity is a **content fact** — structural form, `content_hash`,
+  source span, declared input digests — not a mutable context id (intern-table slot without
+  stability proof, env generation, host path without modeled invalidation, declaration name
+  alone).
 
-## 2. Systemic fix — transparent memoization
+### Duplicate representation — enforcing an existing invariant, not inventing a rule
 
-**Definition:** Insert a memo or cache layer keyed on the declared content identity of a
-pure-of-content computation such that:
+Per INVARIANTS **no duplicate representations**: maintaining the same content-determined
+value in many recomputed or separately-cached forms is a **duplicate-representation
+violation**. The redundancy face is not merely "slow" — it is the same fact represented
+many times by recomputation. Transparent memoization enforces the invariant the thesis
+already commits to: **one authoritative representation keyed by content**, projected
+everywhere else.
 
-1. **Observational equivalence** — hits produce bit-identical results (and, where modeled,
-   identical diagnostics) to a full re-execution. Performance caches are invisible rewrites
-   (RR-L §2.1).
-2. **Content-keyed** — keys cite immutable content authority; mutable context ids are rejected
-   as primary identity (RR-L rejected pattern: intern-id keys across `TypeEnv` rebinds).
-3. **Single authority** — one producer owns the fact; downstream **projects** it, never
-   recomputes a parallel derivation (RR-K §2.4; `docs/perf/clone-elimination.md` Rule 3:
-   after threading X, delete "recompute X").
-4. **Transparent to the author** — memoization is not part of the user-facing contract
-   (M0/M1 doctrine: lenses are pure readers; memo is a local concern if profiling demands it).
-   The compiler/runner may insert it when purity + content key + cost facts are already known
-   (thesis §Automatic memoization).
-
-**Two scopes, one mechanism:**
-
-| Scope | Mechanism | Substrate hook |
-| --- | --- | --- |
-| **Within-run** | In-process memo table (evaluator, parse table, import closure, pure-call memo) | `EvalMemoKey`, `ParseTable`, v2 `pure_call_memo` |
-| **Cross-run** | Content-addressable artifact store with declared invalidation | `std.cache_interface` facts rows + `ExecutionReceipt` linkage |
-
-Cross-run caching is not a separate product idea — it is within-run memoization with persistence
-and explicit invalidation triggers (`InvalidationTrigger` on `CacheInterfaceFacts`). The thesis
-already states both consequences (`docs/thesis/what-else-falls-out.md` lines 405–441).
+**Sharpest statement (operator governing rule):** the sharing must be the **same code among
+our own code**, not two abstractions that happen to agree. Dogfood the compute fabric by
+dogfooding the compiler — one placement-with-eviction kernel, not eleven ad-hoc stores.
 
 ---
 
-## 3. Code-verified instances (qualitative catalog)
+## 3. Structural redundancy instances (qualitative)
 
-Each row was verified against the tree at design time (2026-06-14). "Consumer" names the
-green test, claim, or operational receipt that would fail if the fix were wrong.
+These illustrate the error class structurally. They are not benchmark arguments.
 
-### 3.1 Within-run — missing or wrong memo
+### 3.1 `call_function` re-derives static parameter metadata every call
 
-| Instance | Symptom | Content key (correct) | Wrong pattern | Consumer / receipt |
-| --- | --- | --- | --- | --- |
-| **Parse table** | Exponential re-walk on right-recursive grammars without `(position × production)` memo | `ParsePositionKey { position, production }` → `ParseTable` | Re-parse shared `(pos, prod)` cells | `src/v4/compiler/02_parse.dag:155–161`; claim `parse_production accepts right-recursive A = 'x' A? … via memoized ParseTable` (`grammar_validation.dag`) |
-| **v2 structural pure calls** | Redundant re-traversal of `content_hash`, `fold_node`, `well_formed`, … in emit pipeline | Resolved fn identity + arg `Rc` identities (sharing-preserving) | Re-execute structural predicates on every call site | `src/v2/stage0/src/v2_interpreter.rs:2180–2232` (`pure_call_memo_*`, `is_structural_pure_fn`); comment names emit-pipeline collapse |
-| **Module import closure** | Re-load / re-parse same module path in one compile | Module path string (parser is single authority) | Second load per import edge | `src/v2/tests/src/helpers.rs:96–101` (OnceLock module index; "loaded exactly once (memoized by module path)") |
-| **v3 evaluator memo key** | Would cache on name/frame-count fingerprint | `EvalMemoKey { program, node, state_key: EvalStateStack, strategy }` | String digest, declaration name, frame count | `src/v3/std/runtime.dag:92–122` (TERMINAL marks: "Memoization identity is structural") |
-| **v4 TestClaim eval cache** | Re-run identical claim interpretation | `TestClaimCacheKey` → `interpretation_hash` over claim + facts + `evaluator_input` `content_hash` | Parallel stored digest fields; identity-only keys | `src/v4/compiler/05_eval.dag:526–537`; `test_claim_cache_digest_sensitivity.dag` (distinct diagnostics ⇒ distinct hash; Node input participates) |
+On **every** invocation, `call_function` filters `fn_node.params`, runs
+`authored_name_at` substring extraction per parameter, allocates a `Vec` and `HashMap`, and
+re-derives which parameters are value params — work that is a **pure function of `fn_node`
+shape** (static for the function's lifetime).
 
-### 3.2 Within-run — cache key used mutable context (false hit / false miss)
+```1282:1293:src/v2/stage0/src/v2_interpreter.rs
+    let param_names: Vec<String> = fn_node
+        .params
+        .iter()
+        .filter(|p| {
+            let name = authored_name_at(ctx.si(), (*p).clone());
+            match p.children.first() {
+                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                None => false,
+            }
+        })
+        .map(|p| authored_name_at(ctx.si(), p.clone()))
+        .collect();
+```
 
-| Instance | Symptom | Content key (correct) | Wrong pattern | Consumer / receipt |
-| --- | --- | --- | --- | --- |
-| **v2 infer lookup/reconcile** (#4282) | O(n²) reconcile or false cache hits when `TypeEnv` rebinds intern ids | Source span / content-stable scrutinee key | Memo keyed on intern id across env updates | RR-L §1 landed evidence (#4282); §2.1 accepted vs rejected patterns |
-| **Byte-offset cache boundary** | Aliasing or false eligibility at eval cache boundary | `byte_offset_cache_key` from `ByteOffsetCacheDigestAuthority` (eligible vs ineligible tagged) | Bare `Hash` or Peano on magnitude without authority | `src/v4/std/node.dag:678,1431–1449`; `test_claim_cache_digest_sensitivity.dag` fingerprint inequality claims |
+Surfaced by the #4865 interpreter profiler context (`v2_interpreter.rs:4187-4199`):
+witness eval routes through `eval_expr` for cost/complexity lens folds; redundant per-call
+setup amplifies tree-walk cost.
 
-### 3.3 Cross-boundary — parallel re-derivation (second authority)
+### 3.2 Resolve re-walks overlapping module closure
 
-| Instance | Symptom | Content key (correct) | Wrong pattern | Consumer / receipt |
-| --- | --- | --- | --- | --- |
-| **Affected-set host transport** | Drift between modeled frontier and hand-maintained path buckets | Project `CiComponentAffected` / `AffectedSet` modeled facts | `detect-affected-components.sh`-style second detector; per-job `changed?` re-read of git diff | RR-K §2.1–2.4; `tools/ci_affected_components/src/receipt.rs:11–13` ("projects, does not recompute") |
-| **CI timing ledger** | Re-derive timings from raw windows in multiple places | `job_windows_to_timings` single authority | Duplicate timestamp math in shell + Rust | `receipt.rs:11–12` |
-| **merge_envs / fact-flow** | Downstream rebuilds fact already threaded on input | Return the authoritative input carrier | `merge_envs` reconstructs `InternTable` already on `TypeEnv` | `docs/perf/clone-elimination.md` Rule 3–4 (PR2 negative receipt) |
-| **NodeArtifactProvenance** | Allowlist narrower than real compile closure | Fold `source_ir_node_artifact_provenance` over source-root ingest | Hand-maintained path→bucket table parallel to compiler closure | `docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md` §Why this exists |
-| **Bootstrap hash pins** | Placeholder digest aliases until fixed-point proves convergence | Merkle `content_hash` per stage (T-15 dissolution) | Symbolic `Hash` data aliases standing in for computed digests | `src/v4/workflow/bootstrap.dag:3,33,414` (needs-more-work marks) |
+Before PR1, each entry re-ran tokenize → parse → resolve → reconcile over heavily
+overlapping module closures. PR1's `typed_module_cache` on `MultiEntryIndex` is a
+**hand-rolled** compute-once-store for the shared core (`cli_run.rs:273-303`,
+`reconcile_with_typed_cache` at `:539+`). PR2 (swift-lark-563, in flight) extends the lever
+cross-process — first real consumer grounding `cache_interface` dims.
 
-### 3.4 Cross-run — cache without modeled interface (interim transport)
+### 3.3 Cost/complexity lens folds re-traverse the AST
 
-| Instance | Symptom | Content key (correct) | Wrong pattern | Consumer / receipt |
-| --- | --- | --- | --- | --- |
-| **sccache in CI** | Hand-wired `RUSTC_WRAPPER=sccache` probe in `ci.yml` | `sccache_local_facts` row: `NativeInternalHash` over `RustcInvocation` + `ToolchainSpec`; `content_verified_on_read: true` | Ad-hoc socket probe + env flip without `cache_interface` projection | `.github/workflows/ci.yml:70–91`; `dsl/std/cache_interface.dag:280–321` |
-| **GHA Actions cache** | Prefix fallback keys without typed miss/reject semantics | `gha_actions_cache_facts` (`PrefixFallback`, `InvalidationTrigger` list) | Untyped cache key strings in workflow YAML only | `cache_interface.dag:230–277` |
-| **BuildBuddy CAS** | Remote CAS without producer receipt linkage | `buildbuddy_cas_facts` + `ProducerReceipt` / `CachedArtifactReceipt` | Raw remote hash without `CacheRejectReason` surface | `cache_interface.dag:324+` (row skeleton) |
+The cost and complexity lenses fold symbolically over the AST during witness evaluation with
+no shared memo across nodes — full re-traversal per lens application (`src/v2/complexity.dag`
+structural `fold` chains; eval cost acknowledged `v2_interpreter.rs:4187-4188`).
 
-### 3.5 Planned / gated — compiler-inserted memo (not yet territory)
+### 3.4 Host transport that re-derives modeled facts (brief)
 
-| Instance | Expected content key | Status | Consumer / receipt |
+When host code recomputes facts already owned by `.dag` authority — a second affected-set
+detector, timing math duplicated outside the single ledger function — that is the same
+error class at the CI boundary: duplicate derivation instead of projection. The fix direction
+is always: **one authority produces the fact; transport projects it**.
+
+---
+
+## 4. The eleven hand-rolled caches — same pattern, eleven localities
+
+The sunny-lynx census (11 inhabitants) is facts-before-abstraction satisfied: eleven real
+compute-once-store re-implementations warrant abstracting ONE interface — not premature
+generality. Each row below cites where the hand-roll lives; **per-cache dimension facts
+remain in those marks** — this section names the pattern only.
+
+| # | Hand-roll | What it caches (structurally) | Authority cite |
 | --- | --- | --- | --- |
-| **R3 auto-memoization** | Repeated pure call sites emit cache scaffolding; one-shot sites do not | Gates in `r3_free_consequences_first_batch.dag`; repeated-call caching deferred | `r3_free_consequences_first_batch_test.rs` (`auto_memoization_*` claims) |
-| **Dependency `RecomputePlan`** | `AffectedSet` + `ReadinessLayer` list — *what* to re-execute after change, not spurious full recompute | Wave-2 fixture | `dependency_recompute_plan.dag` + `v4.std.change.RecomputePlan` |
-| **Emit hang diagnosis** | — | **Refuted:** emit hang was v2-interpreter runtime cost, not missing `fold_node` memo (INVARIANTS read-this-first receipt) | `INVARIANTS.md` lines 40–45; `docs/v4-compiler-migration.md` |
+| 1 | `pure_call_memo` | Structural pure fn results keyed by fn identity + arg sharing | `v2_interpreter.rs:1022, 2180-2250` |
+| 2 | `data_cache` | Nullary / data CAF values by node identity | `v2_interpreter.rs:1019, 1516-1520` |
+| 3 | `parse_cache` | File path → parse result + newline index | `cli_run.rs:280-282` |
+| 4 | `SymbolInterner` | String → `Symbol` dedup (identity table) | `v2_interpreter.rs:108-118, 1028` |
+| 5 | `typed_module_cache` | Module name → typecheck result (resolve-cost PR1) | `cli_run.rs:287-303, 539+` |
+| 6 | `COMPILE_CACHE` | Per-(source, file) `compile_to_dag` outcome | `cached_compile.rs:63-70` |
+| 7 | Bootstrap snapshots | Committed `Dag` snapshot reuse | `lib.rs` (`std_fixture_bootstrap_snapshot`); `pb1_bootstrap_full_snapshot_test.rs` |
+| 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v4-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
+| 9 | Discovered-owned-data manifest | Host scan → manifest DAG | `discover_owned_data.rs:8-12`; `host_discovered_owned_data_manifest.dag:2-3` |
+| 10 | `.freshness-check` | Stage0 regen verify temp tree | `dsl/gunbc/tools/freshness.dag:68-89`; `Makefile:56` |
+| 11 | sccache (interim CI) | Rustc invocation → object file | `.github/workflows/ci.yml:70-91`; modeled row `cache_interface.dag:280-321` |
+
+**Footnote — same class in newer substrate (not roster expansion):** v4 `ParseTable`
+(`02_parse.dag:155-161`) and `TestClaimCacheKey` (`05_eval.dag:526+`) show the pattern
+recurring even where the compiler pipeline is being rebuilt — evidence the root issue is
+fundamental, not v2-specific.
 
 ---
 
-## 4. Why `compute_fabric` + `cache_interface` (not a third cache story)
+## 5. Systemic fix — transparent memoization (TARGET, staged)
 
-The within-run fixes above are locally correct but do not compose into a **typed cross-run
-contract**. CI already runs three cache surfaces (sccache, GHA cache, BuildBuddy) as interim
-host transport. Without a modeled interface, each surface reinvents key derivation,
-invalidation, and fail-closed reject reasons — the cross-run form of "recompute
-pure-of-content" (re-execute rustc when `sccache_local_facts` says hit; or trust a prefix key
-without `CacheRejectReason::SubjectDigestMismatch`).
+**Transparent memoization** = first-class pure-content-addressed computation: a memo or
+cache layer keyed on declared content identity such that hits are observationally equivalent
+to full re-execution, inserted by the compiler/runner when purity + content key are known —
+not part of the user-facing contract.
 
-**Composition law (already landed in std):**
+### 5.1 What is staged vs realized today
 
-```
-compute_fabric.dag header:
-  "Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface."
-
-cache_interface.dag header:
-  "Composition: compute via ExecutionReceiptRef<T> digest only — MUST NOT import compute_fabric."
-```
-
-Acyclic on purpose — one digest seam, two authorities:
-
-| Module | Owns | Cache touchpoint |
+| Layer | Today | Notes |
 | --- | --- | --- |
-| **`std.compute_fabric`** | *Demand* satisfied, *lease*, wall-clock/cost `ExecutionReceipt<T>` | `ToolchainCapability.linked_cache_interface: Option<CacheInterfaceId>` (`compute_fabric.dag:259–264`); receipt carries `output: Outcome<ArtifactRef<T>>` (`:448–456`) |
-| **`std.cache_interface`** | *Store* semantics per backend (`CacheInterfaceFacts`, lookup/write/miss, eviction, reject reasons) | `ExecutionReceiptRef<T> { receipt_digest: ContentHash }` as producer witness only (`cache_interface.dag:203–210`); `CachedArtifactReceipt` on hit (`:215–220`) |
+| **Substrate types** | Staged, self-authoritative | `cache_identity.dag`, `cache_interface.dag`, `compute_fabric.dag` — marks are authority; do not cite consumed scaffolding worksheets |
+| **Structure on v2** | Partially resolves | Type shapes load; full claim-**run** (evaluation) not wired end-to-end |
+| **End-to-end eval on self-hosted compiler** | Not yet wired | Three resolve gaps remain (each has a worker in flight): optional fields don't resolve on v2 yet; single-case catalog tags (one-of-one enums) don't resolve on v2; reading values through a chain of type aliases (money/Measure carrier) doesn't resolve on v2 |
+| **PR1 (#4867)** | Manual discharge | `seed_kernel_intern_names` + equivalence falsifier — not automatic enforcement |
+| **PR2 (swift-lark-563)** | First real consumer | Structural grounding + Rust-side behavioral proof; compute_fabric-eval witness honest-dormant until (c) below |
 
-**Transparent memoization across runs** is then mechanical:
+**Do not read this doc as "the fix already works."** The three TARGET properties below are
+what the substrate is built **toward**.
 
-1. Pure-of-content work item `W` runs under a `ComputeLease` → `ExecutionReceipt<T>`.
-2. `output` digest + declared `ArtifactKindId` + subject digest form the cache key per the
-   linked `CacheInterfaceFacts.key_derivation` row (e.g. sccache `NativeInternalHash`,
-   GHA `HandAuthoredString` + prefix fallback).
-3. On cache hit, `CacheLookupResult::Hit` carries `CachedArtifactReceipt` — **project** the
-   artifact, do not re-execute `W` (RR-K §2.4 pattern at the compute/cache boundary).
-4. On mismatch, typed `CacheRejectReason` (fail-closed — no fabricated hit).
+### 5.2 Three TARGET properties (not claimed working)
 
-This is the dissolve target for every `ci.yml` "INTERIM sccache transport" block: the workflow
-becomes a **projection** of `cache_store_view(sccache_local_facts)` (and sibling rows), not a
-parallel cache authority.
+| Property | Target meaning | Today |
+| --- | --- | --- |
+| **(a) Automatic memo** | Compiler/runner inserts memo at purity+cost boundaries; authors don't hand-roll | Eleven hand-rolls; v2/v4 local memos |
+| **(b) Enforced purity at boundary** | Non-pure computation cannot be soundly memoized; impurities surface as errors or falsifier failures | Manual seeds + standing gates (PR1); purity oracle mechanism below |
+| **(c) Content-keyed invalidation** | Minimal invalidation via Merkle/content hashes, not heuristic file deps | Partially modeled in `CacheInterfaceFacts` rows; host transport still interim for sccache |
 
-**Why not fold cache into compute_fabric only?** Store semantics vary orthogonally from host
-supply (Worksheet A vs B §1.6 grid — locality, eviction, consistency, auth). One
-`ComputeHost` can link multiple `CacheInterfaceId`s; one sccache row serves many toolchains.
-Merging would recreate the dual-representation defect the composition law prevents.
+### 5.3 Substrate motivation (do not re-architect)
 
----
+`compute_fabric` and `cache_interface` form a **symmetric pair** with a bidirectional
+firewall (each module's header marks forbid importing the other; they meet at a digest seam
+only):
 
-## 5. Decision procedure (for implementers)
+- **Compute side:** demand, lease, `ExecutionReceipt<T>`; `ToolchainCapability.linked_cache_interface`
+- **Cache side:** store semantics per backend; `ExecutionReceiptRef<T>` as digest-only producer witness
 
-When reviewing code or designing a new stage:
+`ExecutionReceipt` **is** a cache entry on the compute timeline; `PersistenceLocality` on
+the cache side aligns with `ComputeArtifactLocality` on the compute side — one
+placement-with-eviction kernel viewed from two angles.
 
-```
-1. Is the computation pure-of-content?
-   - Pure: check effects partition / evaluator purity gate.
-   - Of-content: can you name the content authority (hash, span, digest, structural key)?
-     If the only stable id is a mutable context slot → STOP; fix the key first (RR-L).
-
-2. Is the result already available from an upstream carrier?
-   - YES → project; delete recompute (clone-elimination Rule 3).
-   - NO  → go to 3.
-
-3. Will this run more than once with the same content key?
-   - Within one process → transparent memo (table/map at the boundary).
-   - Across runs → link `CacheInterfaceId` on the toolchain/host; record
-     `ExecutionReceipt` + lookup via `cache_interface` semantics.
-
-4. Does a host transport re-derive modeled facts?
-   - Forbidden (RR-K). Transport projects `.dag` facts or fails safe.
-```
+**Do not claim** a unified `CacheFabric<T>` is built. Per modeling discipline: extract the
+shared kernel only when ≥2 inhabitants provably share content-key / eviction / locality
+shape. PR2 grounding `cache_interface` as first consumer is the ≥2 trigger to watch.
 
 ---
 
-## 6. Non-goals (this design doc)
+## 6. Enforcement mechanism — the cache as purity oracle
 
-- No new memo substrate in `std/node` or compiler stages from this PR — map only.
-- No promotion of R3 auto-memoization gates to emitted scaffolding without a consumer slice.
-- No `ci.yml` rewrite in this doc — dissolve-on-arrival when cache_interface projection
-  consumer lands (existing comments in workflow).
-- No conflation of **incremental re-execution after source change** (`RecomputePlan`,
-  `AffectedSet`) with **spurious recompute** — change-driven recompute is correct when the
-  content key *changes*; the error class is recompute when it has not.
-- No claim that hash equality is semantic equality — lookup verification on read
-  (`content_verified_on_read`, `CacheRejectReason::ContentDigestMismatch`) handles collision
-  at the store boundary (thesis caveat, `what-else-falls-out.md` lines 434–437).
+Assertion is not enough. The enforcement mechanism is:
 
----
+1. A memoized unit **declares** its input content-set (the facts that may influence the
+   result).
+2. The **content-key** is derived from exactly those declared inputs:
+   `content-hash(f-identity, input-content-hashes)`.
+3. Any read **outside** the declared set — ambient intern table size, mutable env generation,
+   host state without modeled invalidation — is an **impurity**.
+4. Discharge paths:
+   - **(a) Impossible:** effect/capability discipline prevents the ambient read at the
+     authoring boundary.
+   - **(b) Caught:** the key fails to capture the hidden input → **cached-vs-cold
+     divergence** → the standing falsifier fires.
 
-## 7. Falsification probes (before an implementation PR claims PROVEN)
+**Enforced purity at the boundary is not a separate mechanism from the falsifier — the
+equivalence falsifier IS the enforcement.** A cached-vs-cold divergence means some
+determinant of the output is not in the content key: a hidden input = an impurity. Wire
+this gate continuously (not only when someone remembers to add a test).
 
-| ID | Probe | Receipt |
-| -- | ----- | ------- |
-| F1 | Memo/cache hit is observationally identical to miss path on a fixed fixture | Equivalence test (RR-L R5 form for cross-run; eval cache claims for within-run) |
-| F2 | Cache key does not use mutable context id for facts that change across env updates | #4282-class test / RR-L R1 |
-| F3 | Host transport does not recompute facts owned by `.dag` authority | RR-K R7 diff review |
-| F4 | Cross-run hit carries `CachedArtifactReceipt` with typed reject on mismatch | `CacheRejectReason` exhaustiveness + negative hit test |
-| F5 | `compute_fabric` / `cache_interface` acyclic import law preserved | `handwritten_parser_accepts_*_dag` integration tests |
-| F6 | One-shot pure calls emit no memo scaffolding (no spurious cache) | `auto_memoization_no_caching_for_one_shot` gate |
+PR1 is the canonical instance: hidden intern-table-size → order-dependent verdict →
+`seed_kernel_intern_names` restores content-stable ids → byte-identical oracle restored.
 
----
-
-## 8. Suggested landing order (downstream workers)
-
-1. **Within-run receipts first** — extend existing memo boundaries (`05_eval` cache key,
-   parse table, v2 pure-call memo) with falsification tests F1–F2.
-2. **cache_interface projection consumer** — CI workflow reads `sccache_local_facts` /
-   `gha_actions_cache_facts` rows; retires hand-wire (F3, F4).
-3. **compute_fabric linkage** — populate `ToolchainCapability.linked_cache_interface` on
-   grounded supply rows; `ExecutionReceipt` output digests feed cache lookup planner (F5).
-4. **R3 emitter auto-memo** — only after purity+cost lens can prove content keys at emit
-   time (gates already staged; repeated-call half deferred).
+Open design work remains where the substrate does not yet close effect-boundary checking
+for every ambient read — but the mechanism is named: **declare inputs, derive key, falsify
+equivalence**.
 
 ---
 
-## 9. One-line summary
+## 7. Migration path — target inventory, facts-first dissolution
+
+Each roster cache dissolves only when a **real provider grounds** it: add
+`cache_interface` row (or link from `compute_fabric`) + delete the hand-rolled impl.
+Falsifier for dissolution: hand-roll count trends to zero; cached-vs-cold gate stays green.
+
+**Three maturity states** (per row — stops reading the table as "done"):
+
+| State | Meaning |
+| --- | --- |
+| **(a) Structurally grounded** | `cache_interface` row + dim inhabited in substrate (staged) |
+| **(b) Realized in host** | Rust host enforces + behavioral falsifier green (bootstrap seed today) |
+| **(c) Realized in substrate** | `compute_fabric` evaluates cache verdict on v2 (end goal; gated on resolve gaps) |
+
+| # | Cache | Dissolve move (when grounded) | Maturity today |
+| --- | --- | --- | --- |
+| 1 | `pure_call_memo` | Eval memo keyed by declared `EvalMemoKey` / content-hash subject; delete interpreter `HashMap` | — / — / — |
+| 2 | `data_cache` | Same eval-cache boundary as (1) | — / — / — |
+| 3 | `parse_cache` | Cache row for parse artifact + subject digest; delete `parse_cache` map | — / — / — |
+| 4 | `SymbolInterner` | Identity intern as cache locality on string content-key | — / (b) partial / — |
+| 5 | `typed_module_cache` | PR1 manual; PR2 cross-process resolved-graph row + delete hand-roll | (a) partial / **(b) PR1** / (c) PR2 |
+| 6 | `COMPILE_CACHE` | `compile_to_dag` artifact kind + parity receipt (#4171 pattern) | — / (b) test-only / — |
+| 7 | Bootstrap snapshots | Content-hash pinned bootstrap plan (T-15 dissolution marks) | (a) partial / (b) / — |
+| 8 | `.claim-map` | Corpus execution receipt as cache artifact | — / — / — |
+| 9 | Discovered-owned manifest | Producer fold authority (no parallel scanner) | — / (b) / — |
+| 10 | `.freshness-check` | Freshness as cache miss on regen artifact | — / (b) / — |
+| 11 | sccache | `sccache_local_facts` row + CI projection; delete `ci.yml` hand-wire | **(a) row exists** / (b) interim / (c) gated |
+
+PR2 resolved-graph cache targets **(a)+(b)** for row 5; **(c)** remains honest-dormant
+until compute_fabric evaluates end-to-end on v2.
+
+---
+
+## 8. Non-goals
+
+- Not a parallel ledger for per-cache dimension facts (marks win; debate in PR review).
+- Not claiming automatic enforcement, unified `CacheFabric<T>`, or collapse of all eleven
+  caches before real inhabitation.
+- Not reconstructing consumed scaffolding worksheets referenced by early `.dag` headers.
+- Not expanding the canonical eleven into thirteen (v4 footnotes only).
+- Not using benchmark numbers as proof (scale may appear once; structure is the argument).
+
+---
+
+## 9. Falsification — standing gates, not one-off tests
+
+| Probe | Receipt |
+| --- | --- |
+| Cached-vs-cold byte-identical on fixed fixtures | Equivalence tests (PR1 pattern; #4171 parity for artifacts) |
+| Order-permutation independence for shared-index caches | `resolve_typed_cache_equivalence_test` |
+| Hand-roll count trends down per migration row | Diff review + deletion of cited `HashMap`/`OnceLock` stores |
+| Host transport projects modeled facts | No second detector re-deriving frontier/timing |
+| Substrate acyclic import law preserved | `handwritten_parser_accepts_compute_fabric_dag` / `cache_interface_dag` |
+
+---
+
+## 10. One-line summary
 
 **Recompute pure-of-content** is duplicating work that declared content facts already
-determine; **transparent memoization** is the single fix (within-run table, cross-run
-`cache_interface`, linked from `compute_fabric` receipts) — and the repo already contains
-qualitative proof instances at every layer from parse memo through CI sccache interim transport.
+determine — a duplicate-representation violation with a scary correctness face when
+hand-rolled caches hide impurity. **Transparent memoization** (staged in
+`cache_identity` / `cache_interface` / `compute_fabric`) is the TARGET fix: purity oracle
+falsifiers today, automatic content-keyed memo tomorrow; PR1/manual, PR2/first consumer,
+substrate eval end goal.
