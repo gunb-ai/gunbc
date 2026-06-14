@@ -76,6 +76,34 @@ fn byte_size_count(b: ByteSize) -> Nat {
     );
 }
 
+#[test]
+fn g3_repro_multihop_alias_field_access() {
+    let src = r#"
+module m
+
+type Nat
+
+type Quantity = Memory | Count | Currency | Frequency
+type Scale = One | Micro
+
+type Measure<Q, S> {
+  count: Nat
+}
+
+type MoneyAmount<S> = Measure<Currency, S>
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros_count(m: MoneyMicros) -> Nat {
+  m.count
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        msgs.is_empty(),
+        "G3 multi-hop alias field access should resolve, got: {msgs:?}"
+    );
+}
+
 // NOTE: a `measure_dag_v2_loads_without_field_errors` test (asserting all of
 // measure.dag loads on v2 with zero diagnostics) is deliberately NOT in this
 // proven-G1+G2 slice. It currently fails with `no field 'count' on type
