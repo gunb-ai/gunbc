@@ -11,7 +11,6 @@ import v4.std.logic { Bool }
 import v4.std.node {
   Symbol,
   coproduct_arm_keys,
-  coproduct_nullary_inhabitants,
   syntactic_coproduct_arm_keys
 }
 
@@ -43,13 +42,18 @@ fn witness_behavior_arm_key_set_path3() -> Bool {
 }
 
 
-fn witness_behavior_nullary_inhabitants_count() -> Bool {
-  count(coproduct_nullary_inhabitants(type_name: reflect_behavior_type)) == 5
+// Discrimination: Connective and Behavior arm key-sets must differ (proves bag_eq is not vacuous).
+fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
+  !bag_eq(
+    xs: coproduct_arm_keys(type_name: reflect_connective_type),
+    ys: coproduct_arm_keys(type_name: reflect_behavior_type),
+    eq: symbol_eq
+  )
 }
 
 
 fn coproduct_reflection_conformance_holds() -> Bool {
   witness_connective_arm_key_set_path3()
     && witness_behavior_arm_key_set_path3()
-    && witness_behavior_nullary_inhabitants_count()
+    && witness_connective_behavior_arm_sets_are_distinct()
 }

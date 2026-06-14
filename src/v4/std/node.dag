@@ -43,28 +43,20 @@ type Behavior
   | Bind
 
 
-// R-reflect Phase 2a — coproduct-arm reflection substrate (docs/design-coproduct-arm-reflection.md §4).
-// Compile-time only: arm keys/projections resolve from closed Disj declarations; bodies are
-// intercepted by the v2 reflection builtin (fail-closed stubs if intercept is bypassed).
-type CoproductArm {
-  label: Symbol
-  payload: NodeShape
-}
-
+// R-reflect Phase 2a — coproduct-arm reflection substrate (design-coproduct-arm-reflection.md §4).
+// Compile-time only: arm keys resolve from closed Disj declarations at the v2 interpreter
+// intercept (bootstrap Rust in src/v2/stage0/src/coproduct_reflection.rs). Dissolve-on-arrival:
+// substrate compiler builtin once type-name → resolved Disj is expressible in v4 .dag.
+// 🟡 gated — feature:coproduct-reflection-intercept-only — bind gunbc#4863 — dissolve-on-arrival:
+// substrate reflection builtin; forbidden: silent empty-list default ([]) on bypass.
 fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  []
+  coproduct_arm_keys(type_name: type_name)
 }
 
+// 🟡 gated — feature:coproduct-reflection-intercept-only — bind gunbc#4863 — dissolve-on-arrival:
+// substrate reflection builtin; forbidden: silent empty-list default ([]) on bypass.
 fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  []
-}
-
-fn coproduct_arms(type_name: Symbol) -> List<CoproductArm> {
-  []
-}
-
-fn coproduct_nullary_inhabitants(type_name: Symbol) -> List<Symbol> {
-  []
+  syntactic_coproduct_arm_keys(type_name: type_name)
 }
 
 

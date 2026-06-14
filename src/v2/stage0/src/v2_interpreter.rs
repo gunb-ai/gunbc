@@ -2131,31 +2131,14 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // R-reflect Phase 2a: compile-time coproduct-arm reflection (intercept before module fn).
+    // R-reflect Phase 2a: compile-time coproduct-arm reflection (intercept-only; stub bodies
+    // self-recurse fail-closed if bypassed — see std/node.dag).
     match func_name.as_str() {
         "coproduct_arm_keys" => {
-            if let Some(v) = crate::coproduct_reflection::eval_coproduct_arm_keys(ctx, &args)? {
-                return Ok(v);
-            }
+            return crate::coproduct_reflection::eval_coproduct_arm_keys(ctx, &args);
         }
         "syntactic_coproduct_arm_keys" => {
-            if let Some(v) =
-                crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)?
-            {
-                return Ok(v);
-            }
-        }
-        "coproduct_arms" => {
-            if let Some(v) = crate::coproduct_reflection::eval_coproduct_arms(ctx, &args)? {
-                return Ok(v);
-            }
-        }
-        "coproduct_nullary_inhabitants" => {
-            if let Some(v) =
-                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, &args)?
-            {
-                return Ok(v);
-            }
+            return crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args);
         }
         _ => {}
     }
