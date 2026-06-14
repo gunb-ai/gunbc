@@ -45,11 +45,11 @@ type DiagnosticCapabilityFacts {
   interfaces: List<DiagnosticInterfaceKind>
 }
 
-// 🟡 P-PROBE-CF-IMPORT — v4 cannot import dsl/std/compute_fabric (transitive closure fails:
-// dsl/std/cpu/types.dag + dsl/std/os/types.dag import Option from std.types but Option is absent).
-// Repro: src/v4/test/claim/workflow/probe_selector_compute_fabric_import_repro.dag
-// Dissolution: diagnostic_capability_from_offer(offer: ComputeOffer) reading offer.supply.execution.isolation;
-// delete HostSupplyProjectionInput when import resolves (escalate substrate gap if not surmountable).
+// 🟡 P-PROBE-CF-IMPORT — v4 cannot import dsl/std/compute_fabric (Option<T> vs Optional<T>;
+// std.* namespace collides under dual source-root). Escalation: zesty-swift-79 /
+// work-item adhoc-20b17ff7-932. Repro: probe_selector_compute_fabric_import_repro.dag.
+// Dissolution: diagnostic_capability_from_offer(offer: ComputeOffer) reading
+// offer.supply.execution.isolation; delete HostSupplyProjectionInput on arrival.
 type HostSupplyProjectionInput {
   identity: String
   isolation_is_vm: Bool
@@ -514,7 +514,7 @@ fn diagnostic_capability_from_host_supply(
   }
 }
 
-// 🟡 P-PROBE-CF-IMPORT rows — identities cite supply_srv{1,2}_offer / supply_hetzner_cax41_offer.
+// 🟡 P-PROBE-CF-IMPORT rows (adhoc-20b17ff7-932) — cite supply_srv{1,2}_offer / supply_hetzner_cax41_offer.
 data host_supply_srv1: HostSupplyProjectionInput = host_supply_projection_input(
   identity: "srv1",
   isolation_is_vm: false

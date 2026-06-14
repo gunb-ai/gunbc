@@ -1,4 +1,4 @@
-// Minimal repro: v4 module importing dsl/std/compute_fabric (BLOCKER 1 substrate gap).
+// Minimal repro: v4 module importing dsl/std/compute_fabric (🟡 P-PROBE-CF-IMPORT / adhoc-20b17ff7-932).
 // Run:
 //   claim_batch --source-root src/v4 --source-root dsl \
 //     --entry src/v4/test/claim/workflow/probe_selector_compute_fabric_import_repro.dag \
