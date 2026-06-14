@@ -1,0 +1,27 @@
+// std/abi.dag — arch-agnostic ABI vocabulary for the §10 execution-contract layer.
+//
+// Scope: shared register-role and calling-convention carriers. Concrete GPR names and cited
+// register maps live in extdeps/runtime/abi/*.dag (M3: extdeps model specs).
+//
+// Uses only Int / Bool / NonEmptyStr / List / records / enums — no distribution-enum imports.
+
+module std.abi
+
+import std.types { Bool, NonEmptyStr }
+
+// Register *role* in an invocation convention (not a concrete architecture GPR name).
+// 🟢 terminal — irreducible role distinctions at the ABI boundary (arg slot vs nr vs return).
+type RegisterClass = Arg0 | Arg1 | Arg2 | Arg3 | Arg4 | Arg5 | SyscallNumber | ReturnValue
+
+// Stack growth direction for stack-based conventions (function-call ABIs land in later slices).
+type StackLayout {
+  grows_down: Bool
+}
+
+// Arch-agnostic calling convention: ordered argument roles plus syscall-number and return roles.
+// Concrete register bindings (e.g. rdi/rsi/…/rax) inhabit extdeps/runtime/abi/*.dag.
+type CallingConvention {
+  arg_registers: List<RegisterClass>
+  number_register: RegisterClass
+  return_register: RegisterClass
+}

@@ -10,6 +10,7 @@
 
 module extdeps.runtime.syscalls.linux
 
+import extdeps.runtime.abi.sysv_amd64 { sysv_amd64_linux_syscall_convention }
 import std.os.invocation { SyscallEntry, SyscallAbi }
 
 // Real x86-64 syscall numbers from syscall_64.tbl (kernel 6.8).
@@ -27,7 +28,7 @@ data linux_x86_64_syscall_subset: List<SyscallEntry> = [
 
 data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
   table: linux_x86_64_syscall_subset,
-  convention: "sysv_amd64_syscall"  // 🟡 feature:sysv-amd64-abi-module
+  convention: sysv_amd64_linux_syscall_convention,
 }
 
 // Green-by-execution falsifiers — each real syscall NR vs syscall_64.tbl.

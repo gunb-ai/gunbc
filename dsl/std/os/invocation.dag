@@ -1,9 +1,11 @@
 // std/os/invocation.dag — open invocation-surface model for the §10 execution-contract layer.
 // Scope: the stable contract a binary binds to, modeled OPEN over invocation paradigms (Slice 1: SyscallAbi).
+// Uses std.abi types only — no distribution-enum imports (v2-green standalone).
 // Anchor: per-inhabitant spec URLs live with the inhabiting data (extdeps/runtime/*).
 
 module std.os.invocation
 
+import std.abi { CallingConvention }
 import std.types { NonEmptyStr }
 
 // One entry in a flat syscall table: the stable (number, name, arity) fact a kernel publishes.
@@ -14,9 +16,9 @@ type SyscallEntry {
   arg_count: Int
 }
 
-// The SyscallAbi paradigm: the syscall numbers + a named register convention ARE the stable public
-// contract (e.g. Linux). `convention` names the ABI modeled in extdeps/runtime/abi/*.dag.
+// The SyscallAbi paradigm: the syscall numbers + a typed register convention ARE the stable public
+// contract (e.g. Linux). `convention` references the ABI modeled in extdeps/runtime/abi/*.dag.
 type SyscallAbi {
   table: List<SyscallEntry>
-  convention: NonEmptyStr  // 🟡 feature:sysv-amd64-abi-module
+  convention: CallingConvention
 }

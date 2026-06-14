@@ -1,0 +1,53 @@
+// extdeps/runtime/abi/sysv_amd64.dag — AMD64 System V ABI facts (Linux syscall subset).
+//
+// Scope: Slice-1 Linux x86-64 syscall register convention cited to the real kernel/psABI docs.
+// Args flow rdi → rsi → rdx → r10 → r8 → r9; syscall NR and return value in rax. The fourth
+// argument uses r10 (not rcx) because the SYSCALL instruction clobbers rcx — a review spot-check.
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (x86-64 psABI register roles)
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
+//         (Linux x86-64 syscall convention; see arch/x86/include/asm/syscall.h)
+
+module extdeps.runtime.abi.sysv_amd64
+
+import std.abi { CallingConvention, RegisterClass }
+import std.types { Bool }
+
+// 🟢 terminal — cited AMD64 GPR names are irreducible spec atoms, not compressible roles.
+type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
+
+type Amd64RegisterBinding {
+  role: RegisterClass
+  gpr: Amd64Gpr
+}
+
+data sysv_amd64_arg0_binding: Amd64RegisterBinding = { role: Arg0, gpr: Rdi }
+data sysv_amd64_arg1_binding: Amd64RegisterBinding = { role: Arg1, gpr: Rsi }
+data sysv_amd64_arg2_binding: Amd64RegisterBinding = { role: Arg2, gpr: Rdx }
+data sysv_amd64_arg3_binding: Amd64RegisterBinding = { role: Arg3, gpr: R10 }
+data sysv_amd64_arg4_binding: Amd64RegisterBinding = { role: Arg4, gpr: R8 }
+data sysv_amd64_arg5_binding: Amd64RegisterBinding = { role: Arg5, gpr: R9 }
+data sysv_amd64_number_binding: Amd64RegisterBinding = { role: SyscallNumber, gpr: Rax }
+data sysv_amd64_return_binding: Amd64RegisterBinding = { role: ReturnValue, gpr: Rax }
+
+data sysv_amd64_linux_syscall_bindings: List<Amd64RegisterBinding> = [
+  sysv_amd64_arg0_binding,
+  sysv_amd64_arg1_binding,
+  sysv_amd64_arg2_binding,
+  sysv_amd64_arg3_binding,
+  sysv_amd64_arg4_binding,
+  sysv_amd64_arg5_binding,
+  sysv_amd64_number_binding,
+  sysv_amd64_return_binding,
+]
+
+data sysv_amd64_linux_syscall_convention: CallingConvention = CallingConvention {
+  arg_registers: [Arg0, Arg1, Arg2, Arg3, Arg4, Arg5],
+  number_register: SyscallNumber,
+  return_register: ReturnValue,
+}
+
+// Green-by-execution: the fourth syscall arg uses r10, not rcx (SYSCALL clobbers rcx).
+fn witness_arg3_register_is_r10() -> Bool { sysv_amd64_arg3_binding.gpr == R10 }
+fn witness_number_register_is_rax() -> Bool { sysv_amd64_number_binding.gpr == Rax }
+fn witness_return_register_is_rax() -> Bool { sysv_amd64_return_binding.gpr == Rax }
