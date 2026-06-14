@@ -56,9 +56,19 @@ import v4.std.find_witness {
   find_witness_reason_no_candidate,
   find_witness_reason_not_realized
 }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  outcome_rejected,
+  node_locus
+}
 import v4.std.inhabitant_bridge { std_projection_additive_numeric }
-import v4.std.diagnostic { Accepted, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
+import v4.std.node { Symbol }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -529,6 +539,31 @@ fn inhabitant_neutralization_python_to_go_translate_reject_coercion_not_realized
   inhabitant_neutralization_python_to_go_translate_reject_reason(
     expected: coercion_not_realized
   )
+}
+
+// Draft probe: surface translate rejection reason for emit-RED localization (NOT BoolWitnessed).
+fn inhabitant_neutralization_python_to_go_translate_reject_reason_symbol() -> Outcome<Symbol> {
+  match neutralize_core_for_target(
+    core: python_mvp1_emitted_add_fn_node(),
+    target: go_mvp1_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: go_mvp1_target_model()) {
+            Rejected { diagnostics: d } =>
+              Accepted { value: d.head.reason, diagnostics: None }
+            Accepted { value: _, diagnostics: _ } =>
+              outcome_rejected(
+                inhabitant_neutralization_no_target_diagnostic(
+                  std_projection: std_projection_additive_numeric
+                )
+              )
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
 }
 
 fn inhabitant_neutralization_python_to_go_translate_reject_grammar_inverse_caret() -> Bool {
