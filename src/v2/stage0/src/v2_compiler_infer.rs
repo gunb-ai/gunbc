@@ -5328,9 +5328,15 @@ pub fn record_field_type_is_unresolved_param(
             {
                 match ft.inferred.clone() {
                     Some(inf) => is_type_variable(inf.clone()),
-                    None => param_names.contains(
-                        &authored_name_at(env.source_indices.clone(), ft.clone()),
-                    ),
+                    None => {
+                        let fname = authored_name_at(env.source_indices.clone(), ft.clone());
+                        // Flag a bare-leaf field type that is an unsubstituted param:
+                        // either explicitly named among the record's retained params,
+                        // or matching the codebase type-var-name convention (T/K/V/...).
+                        // (The reached record's `params` are often dropped along with the
+                        // alias args, so the convention check carries the common case.)
+                        (param_names.contains(&fname) || is_type_variable_name(fname.clone()))
+                    }
                 }
             } else {
                 false
@@ -5393,40 +5399,6 @@ pub fn expand_alias_chain_for_field_access(
     };
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
-    if std::env::var("DBG_FC").is_ok() {
-        let pnames: Vec<String> = structural
-            .params
-            .clone()
-            .iter()
-            .map(|p| crate::v2_std_core::generic_param_name_at(p.clone(), env.source_indices.clone()))
-            .collect();
-        let fnames: Vec<String> = structural
-            .children
-            .clone()
-            .iter()
-            .map(|f| {
-                let ft = crate::v2_compiler_infer_lookup::product_field_result_type(f.clone());
-                match ft {
-                    Some(t) => format!(
-                        "{}:{}",
-                        f.name.clone(),
-                        authored_name_at(env.source_indices.clone(), t.clone())
-                    ),
-                    None => format!("{}:?", f.name.clone()),
-                }
-            })
-            .collect();
-        eprintln!(
-            "DBG frame n={} struct={} conn={:?} params={:?} fields={:?} lossy={} has_unres={}",
-            n.name.clone(),
-            structural.name.clone(),
-            structural.connective.clone(),
-            pnames,
-            fnames,
-            lossy,
-            record_has_unresolved_param_field(structural.clone(), env.clone()),
-        );
-    }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
