@@ -158,8 +158,8 @@ The pattern is **not** “v2 was sloppy and v4 will be clean.” v4 **already** 
 same hand-rolled compute-once-store pattern because the receipt carrier is
 **staged-not-inhabited**:
 
-- `ParseTable` — memoized `(position × production)` at `02_parse.dag:155-161`
-- `TestClaimCacheKey` / `interpretation_hash` — eval cache boundary at `05_eval.dag:526+`
+- `ParseTable` — memoized `(position × production)` at `src/v4/compiler/02_parse.dag:155-161`
+- `TestClaimCacheKey` / `interpretation_hash` — eval cache boundary at `src/v4/compiler/05_eval.dag:526+`
 
 Eleven v2 hand-rolls (§3.3) plus these v4 instances are **the same theorem recurring**:
 without an inhabited execution receipt, each layer re-implements store-and-project locally.
@@ -249,10 +249,10 @@ elsewhere.
 | 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v4-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
 | 9 | Discovered-owned-data manifest | Host scan → manifest DAG | `discover_owned_data.rs:8-12`; `host_discovered_owned_data_manifest.dag:2-3` |
 | 10 | `.freshness-check` | Stage0 regen verify temp tree | `dsl/gunbc/tools/freshness.dag:68-89`; `Makefile:56` |
-| 11 | sccache (interim CI) | **ARC inhabitant #2** — rustc invocation → object file; closed-world + reversible de-risking rung | `.github/workflows/ci.yml:70-91`; `cache_interface.dag:280-321` |
+| 11 | sccache (interim CI) | **ARC inhabitant #2** — de-risking *handler instance* of the carrier (not a rows 1–10 dissolve target; §7 row 11 governs migration); rustc invocation → object file; closed-world + reversible | `.github/workflows/ci.yml:70-91`; `cache_interface.dag:280-321` |
 
 **Footnote — same class in newer substrate (not roster expansion):** v4 `ParseTable`
-(`02_parse.dag:155-161`) and `TestClaimCacheKey` (`05_eval.dag:526+`) — pattern recurs in
+(`src/v4/compiler/02_parse.dag:155-161`) and `TestClaimCacheKey` (`src/v4/compiler/05_eval.dag:526+`) — pattern recurs in
 v4; not added to the canonical eleven.
 
 ### 3.4 Parallel re-derivation — duplicate authority (not a cache)
