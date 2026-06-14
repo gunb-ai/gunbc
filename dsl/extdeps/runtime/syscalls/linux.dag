@@ -1,0 +1,44 @@
+// extdeps/runtime/syscalls/linux.dag — Linux x86-64 system-call surface (cited facts).
+//
+// Scope: Slice-1 subset (process I/O + memory + spawn + exit) inhabiting std.os.invocation.SyscallAbi.
+// The numbers are the real x86-64 syscall NRs (a stable kernel ABI); arg_count follows the man(2)
+// prototype. Every value here traces to the cited table — an invented number would break the
+// "native = a real modeled contract" thesis (operator hard-requirement).
+//
+// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
+//         (the authoritative x86-64 syscall-number table; column 1 = NR, column 3 = name)
+
+module extdeps.runtime.syscalls.linux
+
+import std.os.invocation { SyscallEntry, SyscallAbi }
+
+// Real x86-64 syscall numbers from syscall_64.tbl (kernel 6.8).
+data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
+data sys_write: SyscallEntry  = SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
+data sys_mmap: SyscallEntry   = SyscallEntry { number: 9,  name: "mmap",   arg_count: 6 }
+data sys_execve: SyscallEntry = SyscallEntry { number: 59, name: "execve", arg_count: 3 }
+data sys_exit: SyscallEntry   = SyscallEntry { number: 60, name: "exit",   arg_count: 1 }
+
+// The Slice-1 Linux x86-64 syscall surface (subset). `convention` -> extdeps/runtime/abi/sysv_amd64.dag
+// (args rdi, rsi, rdx, r10, r8, r9; nr in rax; return in rax — r10 not rcx, SYSCALL clobbers rcx).
+data linux_x86_64_syscall_subset: List<SyscallEntry> = [
+  sys_read, sys_write, sys_mmap, sys_execve, sys_exit
+]
+
+data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
+  table: linux_x86_64_syscall_subset,
+  // 🟡 dissolve-on-abi-module: `convention` is a raw string INTERIM. When
+  // extdeps/runtime/abi/sysv_amd64.dag lands, this becomes a TYPED reference to its
+  // CallingConvention (model-facts-as-identity, not a raw string that duplicates the abi
+  // identity — dual-representation smell). Tracked debt, not a silent stopgap.
+  convention: "sysv_amd64_syscall"
+}
+
+// Standing-gated in the dsl-rooted claim-witness corpus (src/v4/test/claim/workflow/
+// claim_witness_corpus_ci_runner.dag, shard b) via scripts/v4-claim-witness-corpus-gate.sh
+// with --source-root dsl. CI job: v4_claim_witness_corpus_b.
+fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
+fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
+fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }
+fn witness_execve_number_is_59() -> Bool { sys_execve.number == 59 }
+fn witness_exit_number_is_60() -> Bool   { sys_exit.number == 60 }
