@@ -96,9 +96,9 @@ vocabulary without respining:
 
 | ROADMAP primitive | Meaning | This doc's face |
 | --- | --- | --- |
-| **Content identity** | Key = hash over the transitive closure of declared inputs | §5 step 2; falsifier input-set |
-| **Hermetic realization** | Realizer reads only inputs in the key — enforced, not hoped | §5 step 3–4; un-enforced-purity face |
-| **Receipt + change-driven reconcile** | Persist `key → output`; on change, realize only the gap | §6 incremental execution; `RecomputePlan` / `AffectedSet` |
+| **Content identity** | Key = hash over the transitive closure of declared inputs | §5.1; falsifier input-set |
+| **Hermetic realization** | Realizer reads only inputs in the key — enforced, not hoped | §5.2; un-enforced-purity face |
+| **Receipt + change-driven reconcile** | Persist `key → output`; on change, realize only the gap | §5.3; §6; `RecomputePlan` / `AffectedSet` |
 
 **Substrate carrier (the N+M move):** `Realization<Spec, Effect>` — pure Node spec +
 content-hash identity + receipt + locality, **parameterized by an algebraic effect
