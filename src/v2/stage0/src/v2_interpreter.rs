@@ -2,11 +2,12 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::time::Instant;
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
 // v4.std.value_carrier declarations: HamtMap is a hash array mapped trie
@@ -1329,9 +1330,32 @@ fn call_function(
 // ---------------------------------------------------------------------------
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
+    // Fast path: no profiling. Zero added work on the green/CI eval path — the
+    // per-instruction profiler (below) only engages under GUNBC_INTERP_PROFILE=1.
+    if !eval_profile_enabled() {
+        return stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
+            eval_expr_inner(node, env, ctx)
+        });
+    }
+
+    // Profiling path: record one eval of this instruction, then attribute SELF
+    // time = gross frame time minus time spent in child `eval_expr` frames. All
+    // recursive sub-evaluation routes through this same function, so each frame's
+    // gross time bubbles up to its parent via CHILD_NANOS — the classic
+    // self-time decomposition. Runs on both the Ok and Err (`?`-propagated)
+    // paths because the result is captured, not early-returned.
+    let idx = expr_variant_index(&node.expr_data);
+    EVAL_COUNTS.with(|c| c.borrow_mut()[idx] += 1);
+    let saved_children = CHILD_NANOS.replace(0);
+    let start = Instant::now();
+    let result = stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
         eval_expr_inner(node, env, ctx)
-    })
+    });
+    let gross = start.elapsed().as_nanos();
+    let children = CHILD_NANOS.get();
+    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += gross.saturating_sub(children));
+    CHILD_NANOS.set(saved_children + gross);
+    result
 }
 
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -4155,6 +4179,141 @@ fn record_flatten(items: usize) {
         let (calls, total) = c.get();
         c.set((calls + 1, total + items as u64));
     });
+}
+
+// ---------------------------------------------------------------------------
+// Per-instruction eval profiler
+// ---------------------------------------------------------------------------
+// The v4 lens CI gate runs Bool witnesses whose eval — AFTER resolve — can run
+// for seconds (the cost/complexity lenses fold symbolically over an AST) even
+// though the witness returns a trivial Bool. "Where does that eval time go?"
+// could not be answered with an external profiler: CI runners ship no
+// perf/valgrind and run under `perf_event_paranoid` > 2, so sampling is blocked.
+//
+// Instead the interpreter self-reports an instruction histogram. Because every
+// (sub-)expression evaluation routes through `eval_expr`, instrumenting that one
+// function captures the whole tree walk. For each `ExprData` variant we record:
+//   - COUNT: how many nodes of that variant were evaluated, and
+//   - SELF nanoseconds: gross frame time minus the time charged to child
+//     `eval_expr` frames (so a hot `ExprCall` that mostly waits on its callee's
+//     body shows the body's cost under the body's variants, not under the call).
+// Counts pinpoint the hot instruction; self-time confirms where the wall goes.
+//
+// All of it is gated behind GUNBC_INTERP_PROFILE=1 (cached per-thread on first
+// read) so the default eval path pays nothing — see `eval_expr`'s fast path.
+
+/// Number of `ExprData` variants. Keep in sync with `expr_variant_index`.
+pub const EXPR_VARIANT_COUNT: usize = 22;
+
+/// Stable index for an `ExprData` variant (0..EXPR_VARIANT_COUNT). The order is
+/// internal to the profiler — `expr_variant_name` is the only public mapping.
+fn expr_variant_index(d: &ExprData) -> usize {
+    match d {
+        ExprData::NoExprData => 0,
+        ExprData::ExprLiteral { .. } => 1,
+        ExprData::ExprError { .. } => 2,
+        ExprData::ExprVar { .. } => 3,
+        ExprData::ExprFieldAccess { .. } => 4,
+        ExprData::ExprCall { .. } => 5,
+        ExprData::ExprMethodCall { .. } => 6,
+        ExprData::ExprMatch => 7,
+        ExprData::ExprIf => 8,
+        ExprData::ExprLet => 9,
+        ExprData::ExprRecordLit { .. } => 10,
+        ExprData::ExprListLit => 11,
+        ExprData::ExprBinOp { .. } => 12,
+        ExprData::ExprUnaryOp { .. } => 13,
+        ExprData::ExprLambda => 14,
+        ExprData::ExprStringInterp => 15,
+        ExprData::ExprBlock => 16,
+        ExprData::ExprCast => 17,
+        ExprData::ExprForEach => 18,
+        ExprData::ExprIndex => 19,
+        ExprData::ExprSlice => 20,
+        ExprData::ExprReturn => 21,
+    }
+}
+
+/// Human-readable name for a profiler variant index (see `expr_variant_index`).
+pub fn expr_variant_name(i: usize) -> &'static str {
+    const NAMES: [&str; EXPR_VARIANT_COUNT] = [
+        "NoExprData",
+        "ExprLiteral",
+        "ExprError",
+        "ExprVar",
+        "ExprFieldAccess",
+        "ExprCall",
+        "ExprMethodCall",
+        "ExprMatch",
+        "ExprIf",
+        "ExprLet",
+        "ExprRecordLit",
+        "ExprListLit",
+        "ExprBinOp",
+        "ExprUnaryOp",
+        "ExprLambda",
+        "ExprStringInterp",
+        "ExprBlock",
+        "ExprCast",
+        "ExprForEach",
+        "ExprIndex",
+        "ExprSlice",
+        "ExprReturn",
+    ];
+    NAMES.get(i).copied().unwrap_or("?")
+}
+
+thread_local! {
+    /// Per-variant eval counts and self-nanoseconds for the active thread.
+    static EVAL_COUNTS: RefCell<[u64; EXPR_VARIANT_COUNT]> =
+        const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
+        const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    /// Gross nanoseconds charged by the child `eval_expr` frames of the frame
+    /// currently running — read by a parent frame to subtract its children's
+    /// time. Reset to 0 on frame entry, restored (plus the frame's own gross)
+    /// on exit. See `eval_expr`.
+    static CHILD_NANOS: Cell<u128> = const { Cell::new(0) };
+    /// Cached GUNBC_INTERP_PROFILE flag (None until first read).
+    static PROFILE_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
+}
+
+/// True when GUNBC_INTERP_PROFILE=1 (read once per thread, then cached).
+fn eval_profile_enabled() -> bool {
+    PROFILE_FLAG.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let b = std::env::var("GUNBC_INTERP_PROFILE")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            c.set(Some(b));
+            b
+        }
+    })
+}
+
+/// A snapshot of the per-instruction eval profile (per-variant count + self-ns).
+#[derive(Clone)]
+pub struct EvalProfile {
+    pub counts: [u64; EXPR_VARIANT_COUNT],
+    pub self_nanos: [u128; EXPR_VARIANT_COUNT],
+}
+
+/// Snapshot the current thread's per-instruction profile. Pair with
+/// `eval_profile_reset` around one witness eval for a per-witness breakdown.
+pub fn eval_profile_snapshot() -> EvalProfile {
+    EvalProfile {
+        counts: EVAL_COUNTS.with(|c| *c.borrow()),
+        self_nanos: EVAL_SELF_NANOS.with(|c| *c.borrow()),
+    }
+}
+
+/// Zero the current thread's per-instruction profile (counts + self-ns + the
+/// child-time accumulator).
+pub fn eval_profile_reset() {
+    EVAL_COUNTS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    CHILD_NANOS.set(0);
 }
 
 /// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a

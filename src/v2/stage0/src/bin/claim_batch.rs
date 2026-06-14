@@ -47,6 +47,12 @@
 //! (ctrl#1533) on stderr after the run.  In multi-entry mode only the
 //! flatten-counter delta and RSS lines are printed (mutation counters are
 //! per-context and each context is dropped after its entry's witnesses finish).
+//!
+//! Set GUNBC_INTERP_PROFILE=1 to additionally print, per witness, the
+//! per-instruction eval breakdown (`[eval-profile]`): each `ExprData` variant's
+//! eval count and self-time, sorted by self-time.  This answers "where do the
+//! witness ms go" for the cost/complexity lens witnesses whose trivial Bool
+//! result hides a multi-million-node symbolic tree walk.
 
 // Binary entrypoint: it reports witness results directly on stdout/stderr, so
 // println!/eprintln! are appropriate here (the disallowed-macros lint is aimed
@@ -296,13 +302,64 @@ fn run_claim_timed(
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) {
+    // Under GUNBC_INTERP_PROFILE=1 the interpreter records a per-instruction
+    // eval histogram; reset before this witness so the breakdown is per-row.
+    v2_compiler::v2_interpreter::eval_profile_reset();
     let started = Instant::now();
     let outcome = run_claim(ctx, function);
     let ms = started.elapsed().as_millis();
     report_outcome(function, outcome, any_failed);
     eprintln!("[witness] {}: {}ms", function, ms);
+    print_eval_profile(function);
     timings.witnesses += 1;
     timings.witness_ms += ms;
+}
+
+/// Print the per-instruction eval breakdown for the witness just run, sorted by
+/// self-time. No-op unless GUNBC_INTERP_PROFILE=1 produced a profile (all-zero
+/// snapshot ⇒ profiling was off). Answers "where do the witness ms go" —
+/// each `ExprData` variant's eval count and self-nanoseconds (gross frame time
+/// minus child eval frames), so a reader sees the hot instruction directly.
+fn print_eval_profile(function: &str) {
+    use v2_compiler::v2_interpreter::{
+        eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
+    };
+    let prof = eval_profile_snapshot();
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return; // profiling disabled
+    }
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
+        function,
+        total_count,
+        total_ns as f64 / 1.0e6,
+    );
+    for i in rows {
+        let ns = prof.self_nanos[i];
+        let count = prof.counts[i];
+        eprintln!(
+            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
+            expr_variant_name(i),
+            count,
+            ns as f64 / 1.0e6,
+            if total_ns == 0 {
+                0.0
+            } else {
+                100.0 * ns as f64 / total_ns as f64
+            },
+            if count == 0 {
+                0.0
+            } else {
+                ns as f64 / count as f64
+            },
+        );
+    }
 }
 
 fn run_witnesses(
