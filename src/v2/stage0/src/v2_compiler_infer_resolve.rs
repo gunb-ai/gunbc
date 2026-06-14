@@ -1096,7 +1096,7 @@ pub fn resolve_node_bounded(
                                     substitute_type_slots(
                                         target.clone(),
                                         slot_bindings.clone(),
-                                        type_name.clone(),
+                                        decl_name.clone(),
                                         env.source_indices.clone(),
                                     )
                                 }
@@ -1168,7 +1168,7 @@ pub fn resolve_node_bounded(
                                     __result.push(substitute_type_slots(
                                         child.clone(),
                                         slot_bindings.clone(),
-                                        type_name.clone(),
+                                        decl_name.clone(),
                                         env.source_indices.clone(),
                                     ));
                                 }
