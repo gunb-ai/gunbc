@@ -4,6 +4,7 @@
 
 module std.os.invocation
 
+import std.abi { CallingConvention }
 import std.types { NonEmptyStr }
 
 type SyscallEntry {
@@ -14,5 +15,5 @@ type SyscallEntry {
 
 type SyscallAbi {
   table: List<SyscallEntry>
-  convention: NonEmptyStr  // 🟡 feature:sysv-amd64-abi-module
+  convention: CallingConvention
 }

@@ -4,6 +4,7 @@
 
 module extdeps.runtime.syscalls.linux
 
+import extdeps.runtime.abi.sysv_amd64 { sysv_amd64_linux_syscall_convention }
 import std.os.invocation { SyscallEntry, SyscallAbi }
 
 data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
@@ -16,11 +17,13 @@ data linux_x86_64_syscall_subset: List<SyscallEntry> = [
   sys_read, sys_write, sys_mmap, sys_execve, sys_exit
 ]
 
-data linux_x86_64_syscall_abi: SyscallAbi = SyscallAbi {
+data linux_x86_64_syscall_abi: SyscallAbi = {
   table: linux_x86_64_syscall_subset,
-  convention: "sysv_amd64_syscall"  // 🟡 feature:sysv-amd64-abi-module
+  convention: sysv_amd64_linux_syscall_convention,
 }
 
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until swift-stag dsl corpus gate lands.
 fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
 fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
 fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }
