@@ -9,7 +9,8 @@ use std::rc::Rc;
 
 use crate::v2_compiler_infer_items::ItemKind;
 use crate::v2_interpreter::{InterpContext, InterpError, InterpResult, Value};
-use crate::v2_std_core::{authored_name_at, child_type_node, Connective, Node};
+use crate::v2_compiler_infer_types::child_type_node;
+use crate::v2_std_core::{authored_name_at, Connective, Node};
 
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
     match value {
@@ -67,7 +68,7 @@ fn disj_variant_labels(item: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Vec
 
 fn symbol_list_value(labels: &[String]) -> Value {
     let items: Vec<Value> = labels.iter().map(|label| Value::Str(label.clone())).collect();
-    super::v2_interpreter::list_value(items)
+    crate::v2_interpreter::list_value(items)
 }
 
 fn variant_is_nullary(variant: &Rc<Node>, ctx: &InterpContext) -> bool {
@@ -223,7 +224,7 @@ pub fn eval_coproduct_arms(
             ])),
         });
     }
-    Ok(Some(super::v2_interpreter::list_value(arms)))
+    Ok(Some(crate::v2_interpreter::list_value(arms)))
 }
 
 pub fn eval_coproduct_nullary_inhabitants(
@@ -251,7 +252,7 @@ pub fn eval_coproduct_nullary_inhabitants(
         .iter()
         .map(|variant| Value::Str(authored_name_at(si.clone(), variant.clone())))
         .collect();
-    Ok(Some(super::v2_interpreter::list_value(inhabitants)))
+    Ok(Some(crate::v2_interpreter::list_value(inhabitants)))
 }
 
 #[cfg(test)]
