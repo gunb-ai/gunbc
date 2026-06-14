@@ -8,9 +8,42 @@
 
 use std::fs;
 use std::process::{Command, ExitStatus};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Serialize mutations to the process-global `GUNBC_RESOLVED_GRAPH_CACHE_DIR`.
+/// TESTING.md: libtest runs `#[test]` in parallel by default; env restore in one
+/// test must not clear the var while another test (or thread) is still resolving.
+static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+struct CacheEnvGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    prev: Option<std::ffi::OsString>,
+}
+
+impl CacheEnvGuard {
+    fn set(cache_dir: &std::path::Path) -> Self {
+        let lock = CACHE_ENV_MUTEX
+            .lock()
+            .expect("GUNBC_RESOLVED_GRAPH_CACHE_DIR env mutex poisoned");
+        let prev = std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR");
+        std::env::set_var(
+            "GUNBC_RESOLVED_GRAPH_CACHE_DIR",
+            cache_dir.to_string_lossy().as_ref(),
+        );
+        Self { _lock: lock, prev }
+    }
+}
+
+impl Drop for CacheEnvGuard {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(v) => std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR", v),
+            None => std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
+        }
+    }
+}
 
 use v2_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
@@ -84,17 +117,8 @@ fn write_fixture(dir: &std::path::Path) -> (Vec<String>, String, String, String)
 }
 
 fn with_cache_env<T, F: FnOnce() -> T>(cache_dir: &std::path::Path, f: F) -> T {
-    let prev = std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR");
-    std::env::set_var(
-        "GUNBC_RESOLVED_GRAPH_CACHE_DIR",
-        cache_dir.to_string_lossy().as_ref(),
-    );
-    let out = f();
-    match prev {
-        Some(v) => std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR", v),
-        None => std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
-    }
-    out
+    let _guard = CacheEnvGuard::set(cache_dir);
+    f()
 }
 
 fn cold_oracle(roots: &[String], entry: &str, function: &str) -> String {
@@ -207,30 +231,25 @@ fn concurrent_resolve_write_once_no_torn_read() {
     let barrier = Arc::new(Barrier::new(2));
     let roots_a = roots.clone();
     let entry = a.clone();
-    let cache_a = cache_dir.clone();
-    let cache_b = cache_dir.clone();
     let b1 = barrier.clone();
     let b2 = barrier.clone();
 
+    let _env = CacheEnvGuard::set(cache_dir.as_path());
     let t1 = thread::spawn(move || {
         b1.wait();
-        with_cache_env(cache_a.as_path(), || {
-            let index = build_multi_entry_index(&roots_a);
-            let (graph, si) = resolve_entry_with_index(&index, &entry).expect("resolve t1");
-            let ctx = make_eval_context(&graph, si);
-            outcome_tag(&run_claim(&ctx, "witness_a_true"))
-        })
+        let index = build_multi_entry_index(&roots_a);
+        let (graph, si) = resolve_entry_with_index(&index, &entry).expect("resolve t1");
+        let ctx = make_eval_context(&graph, si);
+        outcome_tag(&run_claim(&ctx, "witness_a_true"))
     });
     let roots_b = roots.clone();
     let a_b = a.clone();
     let t2 = thread::spawn(move || {
         b2.wait();
-        with_cache_env(cache_b.as_path(), || {
-            let index = build_multi_entry_index(&roots_b);
-            let (graph, si) = resolve_entry_with_index(&index, &a_b).expect("resolve t2");
-            let ctx = make_eval_context(&graph, si);
-            outcome_tag(&run_claim(&ctx, "witness_a_true"))
-        })
+        let index = build_multi_entry_index(&roots_b);
+        let (graph, si) = resolve_entry_with_index(&index, &a_b).expect("resolve t2");
+        let ctx = make_eval_context(&graph, si);
+        outcome_tag(&run_claim(&ctx, "witness_a_true"))
     });
 
     let v1 = t1.join().expect("t1 join");
