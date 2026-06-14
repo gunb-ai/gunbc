@@ -1,0 +1,210 @@
+// src/v4/std/circuit.dag
+// Scope: analog circuit stream operators — S1 passives as map/fold over time-series signals.
+// Anchor: ROADMAP §Cross-cutting primitive dogfood — Analog circuits (ctrl#1615);
+//         SPICE3 netlist semantics via extdeps/formats/spice.dag (consume, don't fork).
+// Status: S1 — TimeSeriesSignal carrier + R/L/C step operators; affine voltage types;
+//         per-tick KCL/KVL solve deferred to S2 (SolveStep named, not inhabited).
+// M9 receipt: attaches to std.algebra (fold_list_right), std.integer (int_add/int_mul),
+//             std.collection (List); does not duplicate graph SCC machinery (std.graph /
+//             future S2 solve investigation).
+// Units: fixed-point Int micro-scalars until value-Measure inhabitants land (snappy-stag);
+//        volts-as-flat-scalar rejected — AbsolutePotential vs PotentialDifference.
+
+
+module v4.std.circuit
+
+
+import v4.std.algebra { Cons, Empty, fold_list_right, FreeMonoid }
+import v4.std.collection { List }
+import v4.std.integer { Int, int_add, int_mul }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+
+
+// --- Affine voltage (gauge discipline) --------------------------------------
+//
+// Absolute potential is meaningful only against a chosen reference node.
+// Potential difference is gauge-free. Adding two absolutes is ill-typed by
+// construction (no binary add on AbsolutePotential).
+
+type PotentialReference {
+  node: Symbol
+}
+
+// 🟡 needs-more-work — feature:circuit-exact-volt-measure — dissolve-on: Measure<Volt, _>
+// exact carrier + snappy-stag value-Measure v2 resolution.
+type AbsolutePotential {
+  reference: PotentialReference
+  microvolts: Int
+}
+
+// 🟢 grounded — gauge-free vector (potential difference across two nodes).
+type PotentialDifference {
+  microvolts: Int
+}
+
+fn potential_difference_from(
+  high: AbsolutePotential,
+  low: AbsolutePotential,
+) -> PotentialDifference {
+  PotentialDifference {
+    microvolts: int_add(a: high.microvolts, b: int_negate_compat(low.microvolts))
+  }
+}
+
+fn int_negate_compat(v: Int) -> Int {
+  0 - v
+}
+
+type BranchCurrent {
+  microamperes: Int
+}
+
+type BranchVoltage {
+  difference: PotentialDifference
+}
+
+// --- Time-series signal carrier ---------------------------------------------
+
+type TimeSeriesSample {
+  tick: Nat
+  microvolts: Int
+}
+
+type TimeSeriesSignal = List<TimeSeriesSample>
+
+fn time_series_append(
+  signal: TimeSeriesSignal,
+  sample: TimeSeriesSample,
+) -> TimeSeriesSignal {
+  fold_list_right(
+    xs: signal,
+    empty: Cons { head: sample, tail: Empty },
+    snoc: fn(acc, item) { Cons { head: item, tail: acc } }
+  )
+}
+
+// --- Primitive kind tags (map / fold / solve investigation) -----------------
+
+// 🟢 TERMINAL at S1 scope — declares the three-axis decomposition; SolveStep is
+// named for S2 but has no discharge inhabitant until execution proves need.
+type CircuitPrimitiveKind
+  = MapStep
+  | FoldStep
+  | SolveStep
+
+type TimeStep {
+  dt_microseconds: Int
+}
+
+// --- MAP: Resistor (stateless v = R·i) --------------------------------------
+
+type ResistorRating {
+  microohms: Int
+}
+
+type ResistorMap {
+  kind: MapStep
+  rating: ResistorRating
+}
+
+fn resistor_map_voltage(
+  element: ResistorMap,
+  current: BranchCurrent,
+) -> BranchVoltage {
+  BranchVoltage {
+    difference: PotentialDifference {
+      microvolts: int_mul(a: element.rating.microohms, b: current.microamperes)
+    }
+  }
+}
+
+// --- FOLD: Capacitor (state = charge / voltage; opposes dV/dt) --------------
+
+type CapacitorRating {
+  microfarads: Int
+}
+
+type CapacitorState {
+  voltage: PotentialDifference
+  charge_microcoulombs: Int
+}
+
+type CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating
+}
+
+// v[t] = v[t-1] + (1/C)·i·dt — normalized S1: when microfarads = 1_000_000,
+// dv_microvolts = i_microamperes * dt_microseconds / 1_000_000; we accumulate
+// charge and mirror dv into voltage in micro-unit fixed point (C absorbed into scale).
+fn capacitor_fold_step(
+  element: CapacitorFold,
+  state: CapacitorState,
+  current: BranchCurrent,
+  dt: TimeStep,
+) -> CapacitorState {
+  let charge_delta = int_mul(a: current.microamperes, b: dt.dt_microseconds)
+  let new_charge = int_add(a: state.charge_microcoulombs, b: charge_delta)
+  let dv = int_mul(a: charge_delta, b: element.rating.microfarads)
+  CapacitorState {
+    voltage: PotentialDifference {
+      microvolts: int_add(a: state.voltage.microvolts, b: dv)
+    }
+    charge_microcoulombs: new_charge
+  }
+}
+
+fn fold_capacitor_transient(
+  element: CapacitorFold,
+  initial: CapacitorState,
+  currents: List<BranchCurrent>,
+  dt: TimeStep,
+) -> CapacitorState {
+  fold_list_right(
+    xs: currents,
+    empty: initial,
+    snoc: fn(state, current) {
+      capacitor_fold_step(
+        element: element,
+        state: state,
+        current: current,
+        dt: dt,
+      )
+    }
+  )
+}
+
+// --- FOLD: Inductor (dual — state = flux / current; opposes dI/dt) ----------
+
+type InductorRating {
+  microhenries: Int
+}
+
+type InductorState {
+  current: BranchCurrent
+  flux_microwebers: Int
+}
+
+type InductorFold {
+  kind: FoldStep
+  rating: InductorRating
+}
+
+fn inductor_fold_step(
+  element: InductorFold,
+  state: InductorState,
+  voltage: BranchVoltage,
+  dt: TimeStep,
+) -> InductorState {
+  let flux_delta = int_mul(a: voltage.difference.microvolts, b: dt.dt_microseconds)
+  let new_flux = int_add(a: state.flux_microwebers, b: flux_delta)
+  let di = int_mul(a: flux_delta, b: element.rating.microhenries)
+  InductorState {
+    current: BranchCurrent {
+      microamperes: int_add(a: state.current.microamperes, b: di)
+    }
+    flux_microwebers: new_flux
+  }
+}

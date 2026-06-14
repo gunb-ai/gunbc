@@ -1,0 +1,165 @@
+// std/circuit.dag -- Analog circuit stream operators (S1 passives as map/fold).
+//
+// Companion to src/v4/std/circuit.dag (v4 authority). ROADMAP §Analog circuits:
+// Resistor = map (pure v = R·i); Capacitor/Inductor = fold over time; netlist
+// cyclic constraint-solve deferred to S2. Voltage is affine: AbsolutePotential
+// (gauge-dependent) vs PotentialDifference (gauge-free).
+//
+// M9 receipt: std.algebra (fold), std.types (Float/Int); consumes
+// extdeps/formats/spice.dag for netlist emission — does not fork.
+
+module std.circuit
+
+import std.types { Float, Int }
+
+// --- Affine voltage ---------------------------------------------------------
+
+type PotentialReference {
+  node_name: String
+}
+
+// Gauge-dependent — no add operator declared (ill-typed by absence).
+type AbsolutePotential {
+  reference: PotentialReference
+  volts: Float
+}
+
+// Gauge-free difference vector.
+type PotentialDifference {
+  volts: Float
+}
+
+type BranchCurrent {
+  amperes: Float
+}
+
+type BranchVoltage {
+  difference: PotentialDifference
+}
+
+// --- Time-series signal -----------------------------------------------------
+
+type TimeSeriesSample {
+  tick: Int
+  volts: Float
+}
+
+type TimeSeriesSignal {
+  samples: List<TimeSeriesSample>
+}
+
+// --- Primitive tags ---------------------------------------------------------
+
+type CircuitPrimitiveKind
+  = MapStep
+  | FoldStep
+  | SolveStep
+
+type TimeStep {
+  dt_seconds: Float
+}
+
+// --- MAP: Resistor ----------------------------------------------------------
+
+type ResistorRating {
+  ohms: Float
+}
+
+type ResistorMap {
+  kind: MapStep
+  rating: ResistorRating
+}
+
+fn resistor_map_voltage(
+  element: ResistorMap,
+  current: BranchCurrent,
+) -> BranchVoltage {
+  BranchVoltage {
+    difference: PotentialDifference {
+      volts: element.rating.ohms * current.amperes
+    }
+  }
+}
+
+// --- FOLD: Capacitor --------------------------------------------------------
+
+type CapacitorRating {
+  farads: Float
+}
+
+type CapacitorState {
+  voltage: PotentialDifference
+  charge_coulombs: Float
+}
+
+type CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating
+}
+
+fn capacitor_fold_step(
+  element: CapacitorFold,
+  state: CapacitorState,
+  current: BranchCurrent,
+  dt: TimeStep,
+) -> CapacitorState {
+  let charge_delta = current.amperes * dt.dt_seconds
+  let dv = charge_delta / element.rating.farads
+  CapacitorState {
+    voltage: PotentialDifference {
+      volts: state.voltage.volts + dv
+    }
+    charge_coulombs: state.charge_coulombs + charge_delta
+  }
+}
+
+fn fold_capacitor_transient(
+  element: CapacitorFold,
+  initial: CapacitorState,
+  current_samples: List<BranchCurrent>,
+  dt: TimeStep,
+) -> CapacitorState {
+  fold(
+    current_samples,
+    init: initial,
+    f: (state, current) =>
+      capacitor_fold_step(
+        element: element,
+        state: state,
+        current: current,
+        dt: dt,
+      )
+  )
+}
+
+// --- FOLD: Inductor ---------------------------------------------------------
+
+type InductorRating {
+  henries: Float
+}
+
+type InductorState {
+  current: BranchCurrent
+  flux_webers: Float
+}
+
+type InductorFold {
+  kind: FoldStep
+  rating: InductorRating
+}
+
+fn inductor_fold_step(
+  element: InductorFold,
+  state: InductorState,
+  voltage: BranchVoltage,
+  dt: TimeStep,
+) -> InductorState {
+  let flux_delta = voltage.difference.volts * dt.dt_seconds
+  let di = flux_delta / element.rating.henries
+  InductorState {
+    current: BranchCurrent {
+      amperes: state.current.amperes + di
+    }
+    flux_webers: state.flux_webers + flux_delta
+  }
+}

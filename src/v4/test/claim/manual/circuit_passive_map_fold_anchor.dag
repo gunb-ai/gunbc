@@ -1,0 +1,81 @@
+// src/v4/test/claim/manual/circuit_passive_map_fold_anchor.dag
+// Scope: S1 compile anchor — TimeSeriesSignal + R/L/C map/fold step operators.
+// Status: compile-only IN-B anchor; validates std.circuit carriers wire through v4.
+
+module v4.test.claim.manual.circuit_passive_map_fold_anchor
+
+import v4.std.algebra { Cons, Empty }
+import v4.std.circuit {
+  BranchCurrent,
+  CapacitorFold,
+  CapacitorRating,
+  CapacitorState,
+  FoldStep,
+  MapStep,
+  PotentialDifference,
+  ResistorMap,
+  ResistorRating,
+  TimeSeriesSample,
+  TimeSeriesSignal,
+  TimeStep,
+  capacitor_fold_step,
+  resistor_map_voltage,
+}
+import v4.std.nat { Zero }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+}
+
+data circuit_anchor_resistor: ResistorMap = ResistorMap {
+  kind: MapStep
+  rating: ResistorRating { microohms: 1000 }
+}
+
+data circuit_anchor_current: BranchCurrent = BranchCurrent { microamperes: 2 }
+
+data circuit_anchor_resistor_voltage: PotentialDifference =
+  resistor_map_voltage(
+    element: circuit_anchor_resistor,
+    current: circuit_anchor_current,
+  ).difference
+
+data circuit_anchor_capacitor: CapacitorFold = CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating { microfarads: 1 }
+}
+
+data circuit_anchor_cap_initial: CapacitorState = CapacitorState {
+  voltage: PotentialDifference { microvolts: 0 }
+  charge_microcoulombs: 0
+}
+
+data circuit_anchor_dt: TimeStep = TimeStep { dt_microseconds: 1000 }
+
+data circuit_anchor_cap_step: CapacitorState = capacitor_fold_step(
+  element: circuit_anchor_capacitor,
+  state: circuit_anchor_cap_initial,
+  current: circuit_anchor_current,
+  dt: circuit_anchor_dt,
+)
+
+data circuit_anchor_tick0: TimeSeriesSample = TimeSeriesSample {
+  tick: Zero
+  microvolts: 0
+}
+
+data circuit_anchor_signal: TimeSeriesSignal =
+  Cons { head: circuit_anchor_tick0, tail: Empty }
+
+data claim_circuit_passive_map_fold_compiles: TestClaim = CompilesClaim {
+  label: "manual/circuit_passive_map_fold_anchor: S1 map/fold passives compile",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: circuit_anchor_resistor,
+  expected_value: circuit_anchor_resistor,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
