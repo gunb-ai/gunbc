@@ -5414,7 +5414,12 @@ pub fn expand_alias_chain_for_field_access(
     } else {
         {
             let next_name = structural.name.clone();
-            if ((next_name.as_str() == "".to_string().as_str()) || seen.contains(&next_name)) {
+            let is_optional =
+                (structural.return_cardinality.clone() == Cardinality::CardOptional);
+            if (is_optional
+                || (next_name.as_str() == "".to_string().as_str())
+                || seen.contains(&next_name))
+            {
                 structural.clone()
             } else {
                 match lookup_type_by_name(env.clone(), next_name.clone()) {
