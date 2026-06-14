@@ -6,7 +6,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { Absent, List, Map, Present, map_get, map_insert }
-import v4.std.algebra { contains, list_append, list_snoc_item }
+import v4.std.algebra { contains, length, list_append, list_snoc_item }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -217,6 +217,12 @@ type AffectedSetReading {
 type AffectedSetClosureAcc {
   frontier: List<Node>
   dependencies: List<FrontierDependency>
+}
+
+
+type AffectedSetClosureFixpointState {
+  acc: AffectedSetClosureAcc
+  stable: Bool
 }
 
 
@@ -431,18 +437,53 @@ fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSe
 }
 
 
+fn affected_set_closure_frontier_unchanged(
+  before: AffectedSetClosureAcc,
+  after: AffectedSetClosureAcc
+) -> Bool {
+  length(xs: before.frontier) == length(xs: after.frontier)
+}
+
+
+// Convergence bound: at most one frontier growth per round, so 2×|dependencies| rounds
+// subsume any |V|-deep chain (|dependencies| ≥ |V|−1 on tree-shaped substrates).
+fn affected_set_closure_convergence_rounds(dependencies: List<DependencyView>) -> List<DependencyView> {
+  list_append(left: dependencies, right: dependencies)
+}
+
+
+fn affected_set_closure_fixpoint_step(
+  dependencies: List<DependencyView>,
+  state: AffectedSetClosureFixpointState
+) -> AffectedSetClosureFixpointState {
+  if state.stable {
+    state
+  } else {
+    let next_acc = affected_set_closure_pass(dependencies: dependencies, acc: state.acc)
+    AffectedSetClosureFixpointState {
+      acc: next_acc,
+      stable: affected_set_closure_frontier_unchanged(before: state.acc, after: next_acc)
+    }
+  }
+}
+
+
 // 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
 fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
-  fold(
-    dependencies,
-    init: AffectedSetClosureAcc {
-      frontier: [edit_locus],
-      dependencies: []
+  let state = fold(
+    affected_set_closure_convergence_rounds(dependencies: dependencies),
+    init: AffectedSetClosureFixpointState {
+      acc: AffectedSetClosureAcc {
+        frontier: [edit_locus],
+        dependencies: []
+      },
+      stable: false
     },
-    f: fn(acc, _) {
-      affected_set_closure_pass(dependencies: dependencies, acc: acc)
+    f: fn(state, _) {
+      affected_set_closure_fixpoint_step(dependencies: dependencies, state: state)
     }
   )
+  state.acc
 }
 
 
