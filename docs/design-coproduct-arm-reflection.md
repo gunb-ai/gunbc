@@ -168,12 +168,14 @@ declaration states about an arm and nothing more.
   payload-carrying arm**, this **fails closed** with a typed diagnostic — the
   primitive never fabricates an inhabitant for a payload arm (C-1/C-9; a default
   payload would be a fabrication). Payload-arm coproducts get keys, not values.
-- **`common_field_projection(T, field) -> ...`** — when *every* arm of `T`
-  carries a field of the same name and type (e.g. `TestClaim.label`,
-  `TestClaim.anchor`, `TestClaim.classification`), the field is projectable
-  generically. This replaces `test_claim_label()` and the
-  `test_claim_*`-family common-field hand-projections. If an arm lacks the
-  field, it fails closed (the field is not common).
+- **`common_field_projection(T, field) -> ...`** *(Phase-2b — split out per
+  design-sign Q2; lands after C1 + the corrected gate are green on
+  Connective/Behavior).* When *every* arm of `T` carries a field of the same name
+  and type (e.g. `TestClaim.label`, `TestClaim.anchor`,
+  `TestClaim.classification`), the field is projectable generically. This
+  replaces `test_claim_label()` and the `test_claim_*`-family common-field
+  hand-projections. If an arm lacks the field, it fails closed (the field is not
+  common).
 
 **Discipline of the primitive** (all enforced, not aspirational):
 
@@ -190,12 +192,18 @@ declaration states about an arm and nothing more.
 ### 4.3 Compiler support (Phase-2 scope; named here, not built)
 
 The primitive requires the compiler to resolve a type reference `T` at its call
-site to the declaration's `Disj` node and project its arm edges — the same
-class of capability the existing `substrate_reflection` submodule uses to
-project program nodes into `FieldValue`. This resolution-and-projection is the
-**primary Phase-2 build risk** and is exactly what the §5 conformance gate
-protects. It is *extension of* the existing reflection submodule, per
-INVARIANTS:385 — not a new ad-hoc surface.
+site to the declaration's `Disj` node and project its arm edges. This
+resolution-and-projection is the **primary Phase-2 build risk** and is exactly
+what the §5 conformance gate protects.
+
+**Layer-boundary precision (design-sign condition 2).** This is **new v4
+substrate**, *analogous to* — not an extension of — the existing v3-Rust
+`substrate_reflection` submodule (`lens_declaration_apply.rs`). That v3 surface
+is **bootstrap seed**: per src/v3/SELF_HOSTING.md the seed *shrinks* while v4
+substrate *grows*. The v4 primitive is authored as v4 `.dag` substrate + v4
+compiler support; it does not inherit from or call the v3 seed. The v3 reflection
+is relevant only as (a) a shape precedent and (b) a *cross-generation* check
+factor in the gate (§5.2), never as the home of the new capability.
 
 ---
 
@@ -211,52 +219,59 @@ the substrate reflection first, then migrate consumers." Making drift
 *unrepresentable* strictly dominates *catching* it. **No 2FA replacement is
 needed for class (ii); the drift class is dissolved.**
 
-### 5.2 Class (i) drift — one tree-wide by-execution conformance gate
+### 5.2 Class (i) drift — the by-execution conformance gate (corrected per design-sign Q1)
 
-The mechanism-drift concern is answered by replacing **N hand-mirrors with ONE
-executed conformance theorem**: for every closed coproduct, the reflection
-output must equal an **independently-derived** arm set. The independent factor
-is a *different compiler subsystem* than the reflection lowering, so a bug in one
-cannot silently corrupt the other — that is the 2FA, generalized:
+The mechanism-drift concern is answered by a **by-execution conformance gate**:
+for every gated coproduct, the reflection output must equal an
+**independently-derived** arm set, where "independent" means *derived through a
+distinct lowering path* — not merely "a different function." A bug that corrupts
+the reflection builtin must NOT also corrupt the witness, or the gate is
+**circular** and passes falsely (the self-hosting class-(i) drift the ban
+guards). The factors below are graded by that independence test.
 
-- **Independent witness A (type-checker).** Match-exhaustiveness is computed by
-  inference, independently of the reflection builtin. A conformance witness
-  asserts `count(coproduct_arm_keys(T))` equals the arm count the
-  exhaustiveness checker requires, and that the key set matches the patterns the
-  checker admits. If reflection drops or adds an arm, the two disagree → red by
-  execution.
+**Why the obvious factor fails (the load-bearing correction).** The natural
+candidate — v4 type-checker match-exhaustiveness — is **NOT independent on its
+own.** v4 inference and the v4 reflection builtin **both resolve `T` to the same
+parsed `Disj` node**; a common-mode resolver/parse arm-drop corrupts *both*
+sides, and the gate passes falsely. So exhaustiveness-count is **common-mode with
+the thing it is checking** and cannot be the gate's independent factor.
+Similarly, the v3 `reflect_program_dag_nodes_in_file` posture is **not a
+pre-existing factor**: it is v3-Rust *seed*, partial, and INVARIANTS:381-383
+explicitly tags it "not yet a closed mechanical theorem … not a substitute for a
+future full conformance gate." It is the gate we are **building**, not one we can
+lean on.
 
-  > **Non-circularity condition (LOAD-BEARING — required for design-sign and
-  > Phase-2 by construction).** Witness A is a genuine second factor *only if*
-  > the exhaustiveness checker derives its arm set via a **distinct lowering
-  > path** from `coproduct_arms`. If both the reflection builtin and the
-  > exhaustiveness path route through one shared arm-enumeration code path, a bug
-  > in that shared path corrupts *both* sides and the gate passes **falsely** —
-  > a circular check with no 2FA value. Therefore Phase-2 must keep the two
-  > derivations **separate by construction** (the inference-stage variant table
-  > must not call the reflection primitive), and design-sign must confirm this
-  > non-shared-path property holds for the chosen implementation. An ungated or
-  > circularly-gated reflection consumer is exactly the single-broken-authority
-  > hazard the ban protected against, so this condition is a hard precondition,
-  > not a nicety.
-- **Independent witness B (the existing reflection-conformance posture).** This
-  generalizes what INVARIANTS §"Reflection evidence is not structural proof"
-  already mandates for `reflect_program_dag_nodes_in_file` ("conformance is
-  enforced where sums are built … extend those tests or add a walker"). We make
-  it a *general* gate over all coproducts rather than per-carrier ratchets.
-- **Independent witness C (consumer-side discovery — the D1c seam).** Some
-  consumers already carry an independent derivation of the same set. The CI
+**The gate (REQUIRED).** For every gated coproduct, at least one of the
+following *path-distinct* witnesses must hold by execution:
+
+- **Path 3 — syntactic Disj-children count (primary, required for non-roster
+  coproducts).** A parser/syntactic derivation of the arm set — counting the
+  `|`-separated arms at the grammar level, *before* the shared resolver the
+  reflection builtin uses — compared against `coproduct_arm_keys(T)`. Because it
+  is computed on a distinct (syntactic) path, a resolver/lowering bug in the
+  reflection builtin does not corrupt it. This is the genuine second factor.
+- **Cross-generation check (where v3 covers the carrier).** For carriers the v3
+  seed reflects, `v4 coproduct_arm_keys(Behavior) == v3 reflect_behavior_list`
+  arm set. Two generations, two independent code paths — a strong factor for the
+  Behavior/Connective carriers v3 already covers, usable in addition to Path 3.
+- **Frontier-discovery equality (roster clusters only — the D1c seam).** The CI
   roster cluster has `affected_set_ci_runner.dag:287`
   `ci_runner_selected_matches_frontier_discovered`: "discovered == roster:
   selection output must equal explicit frontier discovery, not hand-roster
-  laundering." For those clusters the conformance witness is
-  **reflection-generated roster == independently frontier-discovered set** — so
-  the migration is *provably non-laundering*.
+  laundering." For those clusters the witness is **reflection-generated roster ==
+  independently frontier-discovered set** — naturally path-independent
+  (consumer-side derivation) and the strongest factor *there*, but roster-scoped,
+  not a general gate.
 
-This is **strictly stronger** than the hand-mirrors: it is checked **by
-execution**, it covers **every** coproduct (including ones nobody wrote a mirror
-for), and it is **one** authority to maintain instead of N driftable lists. The
-mirrors were a weaker, partial, by-inspection form of this gate.
+**Explicitly rejected as the gate's independent factor:** v4 exhaustiveness-count
+alone (common-mode), and the v3 reflection posture alone (the gate being built).
+The exhaustiveness check may still run as a *consistency* signal, but it does not
+discharge the independence obligation.
+
+This corrected gate is **strictly stronger** than the hand-mirrors: it is checked
+**by execution**, it covers **every** gated coproduct via a genuinely
+path-distinct witness, and it is **one** gate to maintain instead of N driftable
+lists. The mirrors were a weaker, partial, by-inspection form of it.
 
 ### 5.3 Per-arm semantics — fail-closed total maps keyed by the reflected set
 
@@ -264,11 +279,16 @@ Some consumers are **not** structurally determined: they assign a value *per arm
 that is not recoverable from the arm's shape* (e.g.
 `impossible_bug_class_from_diagnostic_reason`, per-arm cost/complexity tables).
 Reflection cannot derive these, and silently defaulting them would be a C-8/M5
-fabrication. These do **not** dissolve into pure reflection. Instead they become
-**total maps keyed by `coproduct_arm_keys(T)`**: the reflected key set is the
-*domain*; the consumer supplies the *codomain*; a missing key is a **typed
-diagnostic at build time**, not a silent fall-through (P3 "Case enumeration for
-open sets" → typed table; M7 data-table single-authority).
+fabrication. These do **not** dissolve into pure reflection. Instead they
+**reuse the existing `TotalMap<K,V>`** (`std/collection.dag:165`, `lookup:
+fn(K) -> V`) — *no* new carrier (declaring a `TotalArmMap<T,V>` parallel to
+`TotalMap` would be the very parallel-authority anti-pattern this lane kills, per
+design-sign Q3 / M9). "Keyed by the reflected set" is **not a type** — it is a
+**conformance witness**: `domain(map) == coproduct_arm_keys(T)`. A
+smart-constructor that builds a `TotalMap` and emits that domain-equality witness
+is the sanctioned shape. The consumer supplies the codomain; a missing key is a
+**typed diagnostic at build time**, not a silent fall-through (P3 "Case
+enumeration for open sets" → typed table; M7 data-table single-authority).
 
 This **preserves and strengthens** the class-(ii) exhaustiveness 2FA: "did you
 handle the new arm?" moves from "a hand-written `match` fails to compile" to
@@ -286,9 +306,9 @@ Every census entry sorts into exactly one bucket:
 | Bucket | Mechanism | Census members |
 |---|---|---|
 | **C1 — pure enumeration** (arm list / keys / nullary inhabitants) | `coproduct_arm_keys` / `coproduct_nullary_inhabitants` + conformance gate | `connective_coproduct_variant_keys`, `behavior_coproduct_variants`, `impossible_bug_class_coproduct_variants`, `TestClaimCoproductVariant` key-enum + `test_claim_coproduct_variant`, `coproduct_exhaustiveness.dag` arm checks |
-| **C2 — common-field projection** (field present on every arm) | `common_field_projection` | `test_claim_label` and the `test_claim_*` common-field family |
+| **C2 — common-field projection** (field present on every arm) | `common_field_projection` *(Phase-2b)* | `test_claim_label` and the `test_claim_*` common-field family |
 | **C3 — structural equality / discriminant** | derived discriminant over arms (L1.1 lens target) | `connective_eq`/`behavior_eq`/`test_claim_coproduct_variant_eq` (broader family) |
-| **C4 — per-arm semantics** (value not in the shape) | fail-closed **total map** keyed by reflected set | `impossible_bug_class_from_diagnostic_reason`, `coverage.dag:947` reason membership, `lens_cost/*` & `lens_complexity/*` arm tables |
+| **C4 — per-arm semantics** (value not in the shape) | fail-closed **`TotalMap<K,V>`** (std/collection.dag:165) + `domain == coproduct_arm_keys(T)` witness | `impossible_bug_class_from_diagnostic_reason`, `coverage.dag:947` reason membership, `lens_cost/*` & `lens_complexity/*` arm tables |
 | **C5 — item rosters** (lists kept in sync with a registry/frontier) | reflection-generated roster + **D1c :287 equality witness** | `manual_corpus_roster`, `affected_set_ci_runner` / `affected_testgen_ci_runner` / `lens_ownership/subject_roster` (swift-stag-552 D1c) |
 
 C4 honestly does **not** vanish into pure reflection — it dissolves the *arm
