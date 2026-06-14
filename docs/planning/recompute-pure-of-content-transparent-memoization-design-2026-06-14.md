@@ -231,7 +231,7 @@ elsewhere.
 | 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v4-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
 | 9 | Discovered-owned-data manifest | Host scan → manifest DAG | `discover_owned_data.rs:8-12`; `host_discovered_owned_data_manifest.dag:2-3` |
 | 10 | `.freshness-check` | Stage0 regen verify temp tree | `dsl/gunbc/tools/freshness.dag:68-89`; `Makefile:56` |
-| 11 | sccache (interim CI) | Rustc invocation → object file | `.github/workflows/ci.yml:70-91`; `cache_interface.dag:280-321` |
+| 11 | sccache (interim CI) | **ARC inhabitant #2** — rustc invocation → object file; closed-world + reversible de-risking rung | `.github/workflows/ci.yml:70-91`; `cache_interface.dag:280-321` |
 
 **Footnote — same class in newer substrate (not roster expansion):** v4 `ParseTable`
 (`02_parse.dag:155-161`) and `TestClaimCacheKey` (`05_eval.dag:526+`) — pattern recurs in
