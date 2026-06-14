@@ -9,13 +9,25 @@ module v4.compiler.source_authority
 
 
 import v4.compiler.normalize { normalize, NormalizedTree }
-import v4.compiler.parse { parse, parse_module }
+import v4.compiler.parse {
+  ParseArtifact,
+  grammar_validate_for_parse,
+  parse,
+  parse_module,
+  parse_production_tree,
+  parse_stage_locus_port
+}
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag {
   DagLanguageModel,
+  dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
+import v4.std.collection { Set }
+import v4.std.compilers.lexing { TokenStream }
+import v4.std.grammar { GrammarRoot }
+import v4.std.provenance { span_index_empty }
 import v4.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.diagnostic {
