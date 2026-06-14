@@ -76,6 +76,36 @@ fn byte_size_count(b: ByteSize) -> Nat {
     );
 }
 
+// Fail-closed boundary (G3 condition #1): a field whose TYPE is a generic param
+// threaded THROUGH a parametric-alias chain cannot be substituted (the alias
+// param list is dropped on the resolved binding), so it MUST error -- never
+// silently resolve to the raw type variable. This case is uninhabited in dsl
+// today; the test pins the honest fail so a future regression to silent-wrong
+// is caught. `Wrap<T> = Box<T>` then `IntWrap = Wrap<Int>`; `w.value` would be
+// `T`, unsubstitutable through the parametric-alias hop.
+#[test]
+fn g3_param_dependent_field_through_parametric_alias_chain_fails_closed() {
+    let src = r#"
+module m
+
+type Box<T> {
+  value: T
+}
+
+type Wrap<T> = Box<T>
+type IntWrap = Wrap<Int>
+
+fn unwrap(w: IntWrap) -> Int {
+  w.value
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        !msgs.is_empty(),
+        "param-dependent field through a parametric-alias chain must fail closed (got no diagnostics: silent-wrong)"
+    );
+}
+
 #[test]
 fn g3_repro_multihop_alias_field_access() {
     let src = r#"
