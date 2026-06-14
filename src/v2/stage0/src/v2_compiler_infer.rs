@@ -5310,13 +5310,17 @@ pub fn expand_type_for_field_access(
     }
 }
 
-// A record (Conj/Disj) field whose resolved TYPE is still an unsubstituted
-// generic param — a bare leaf that is either an explicit TypeVariable or a name
-// that does not resolve to any declared type in this env (an alias-dropped param
-// such as `T`/`S`/`U`). Used to fail closed when a parametric alias chain dropped
-// the substitution that this field needs. A concrete field type (Nat, Int, ...)
-// resolves via lookup_type_by_name, so it is never flagged.
-pub fn record_field_type_is_unresolved_param(field: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+// A record (Conj/Disj) field whose resolved TYPE is still one of the record's own
+// declared generic params — i.e. an unsubstituted param (a bare leaf named after
+// a param the chain could not substitute, such as `T`/`S`/`U`). Used to fail
+// closed when a parametric alias chain dropped the substitution this field needs.
+// A concrete field type (Nat, Int, ...) is not among the record's params, so it
+// is never flagged; an explicit TypeVariable field is also flagged.
+pub fn record_field_type_is_unresolved_param(
+    field: Rc<Node>,
+    param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> bool {
     match crate::v2_compiler_infer_lookup::product_field_result_type(field.clone()) {
         Some(ft) => {
             if (((ft.connective.clone() == Connective::NoConnective)
@@ -5324,22 +5328,9 @@ pub fn record_field_type_is_unresolved_param(field: Rc<Node>, env: Rc<TypeEnv>) 
             {
                 match ft.inferred.clone() {
                     Some(inf) => is_type_variable(inf.clone()),
-                    None => match lookup_type_by_name(env.clone(), ft.name.clone()) {
-                        Some(b) => {
-                            if std::env::var("DBG_FC").is_ok() {
-                                eprintln!(
-                                    "DBG detector ft.name={} -> Some(name={} conn={:?} ch={} inf={})",
-                                    ft.name.clone(),
-                                    authored_name_at(env.source_indices.clone(), b.clone()),
-                                    b.connective.clone(),
-                                    b.children.clone().len(),
-                                    b.inferred.is_some()
-                                );
-                            }
-                            false
-                        }
-                        None => true,
-                    },
+                    None => param_names.contains(
+                        &authored_name_at(env.source_indices.clone(), ft.clone()),
+                    ),
                 }
             } else {
                 false
@@ -5350,11 +5341,19 @@ pub fn record_field_type_is_unresolved_param(field: Rc<Node>, env: Rc<TypeEnv>) 
 }
 
 pub fn record_has_unresolved_param_field(record: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    let param_names = Rc::new(
+        record
+            .params
+            .clone()
+            .iter()
+            .map(|p| crate::v2_std_core::generic_param_name_at(p.clone(), env.source_indices.clone()))
+            .collect::<Vec<String>>(),
+    );
     record
         .children
         .clone()
         .iter()
-        .any(|f| record_field_type_is_unresolved_param(f.clone(), env.clone()))
+        .any(|f| record_field_type_is_unresolved_param(f.clone(), param_names.clone(), env.clone()))
 }
 
 // Multi-hop alias field-access (G3): follow the alias chain to the structural
@@ -5394,25 +5393,6 @@ pub fn expand_alias_chain_for_field_access(
     };
     let structural =
         structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
-    if std::env::var("DBG_FC").is_ok() {
-        let pnames: Vec<String> = structural
-            .params
-            .clone()
-            .iter()
-            .map(|p| generic_param_name_at(env.source_indices.clone(), p.clone()))
-            .collect();
-        eprintln!(
-            "DBG frame n.name={} struct.name={} conn={:?} ch={} params={:?} lossy={} has_unres={} origin={}",
-            n.name.clone(),
-            structural.name.clone(),
-            structural.connective.clone(),
-            structural.children.clone().len(),
-            pnames,
-            lossy,
-            record_has_unresolved_param_field(structural.clone(), env.clone()),
-            origin_name,
-        );
-    }
     if ((structural.connective.clone() == Connective::Conj)
         || (structural.connective.clone() == Connective::Disj))
     {
