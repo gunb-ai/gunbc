@@ -425,8 +425,8 @@ is met; see [ctrl/ROADMAP.md ARC §3](https://github.com/gunb-ai/ctrl/blob/main/
 **Recompute pure-of-content** is what happens when there is **no reified execution receipt**
 at the model→host boundary: redundancy violates Performance / Facts-Flow-Forward; silent
 impurity violates Fail-Closed (PR1 #4867). v4 recurs the pattern because the carrier is
-staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** =
-inhabited `Realization<Spec, Effect>` ([ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern);
+staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** = TARGET
+`Realization<Spec, Effect>` ([ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern);
 staged in `cache_identity` / `cache_interface` / `compute_fabric`; TARGET carrier name only
 per §4.4 staging guard) is the receipt carrier — ARC #1 resolve (#4878), #2 sccache,
 #3 provisioning.
