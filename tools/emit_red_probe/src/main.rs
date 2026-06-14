@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use v2_compiler::cli_run::{build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_value};
-use v2_compiler::v2_interpreter::Value;
 
 fn main() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,16 +19,7 @@ fn main() {
     let (graph, nl) = resolve_entry_with_index(&index, &entry).unwrap_or_else(|e| panic!("resolve: {e}"));
     let ctx = make_eval_context(Rc::clone(&graph), nl);
     match run_value(&ctx, function) {
-        Ok(Value::OutcomeAccepted { value, .. }) => match value.as_ref() {
-            Value::Sym(s) => println!("REASON_SYM: {s}"),
-            other => println!("REASON_VALUE: {}", ctx.format_value(other)),
-        },
-        Ok(Value::OutcomeRejected { diagnostics, .. }) => {
-            for d in diagnostics {
-                println!("REJECTED_DIAG: {}", d.message);
-            }
-        }
-        Ok(other) => println!("OTHER: {}", ctx.format_value(&other)),
+        Ok(v) => println!("RESULT: {}", ctx.format_value(&v)),
         Err(e) => eprintln!("RUNTIME_ERROR: {e}"),
     }
 }
