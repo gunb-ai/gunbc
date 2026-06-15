@@ -72,9 +72,30 @@ data windows_ntdll_boundary: LibraryApiBoundary = {
   exports: windows_ntdll_exports,
 }
 
+// Win32 user-mode stable contract spans kernel32 + ntdll exports (per-entry module names the DLL).
+data windows_11_user_mode_exports: List<ApiEntry> = [
+  kernel32_create_file_w,
+  kernel32_read_file,
+  kernel32_write_file,
+  kernel32_exit_process,
+  kernel32_load_library_w,
+  kernel32_get_proc_address,
+  kernel32_virtual_alloc,
+  ntdll_nt_read_file,
+  ntdll_nt_write_file,
+  ntdll_nt_create_file,
+  ntdll_nt_allocate_virtual_memory,
+  ntdll_nt_terminate_process,
+]
+
+data windows_11_user_mode_boundary: LibraryApiBoundary = {
+  library: "win32",
+  exports: windows_11_user_mode_exports,
+}
+
 // Composite stable surface for Windows 11 — apps bind to kernel32 + ntdll, not raw syscall numbers.
 data windows_11_library_api_surface: StableInvocationSurface = LibraryApiBoundarySurface {
-  boundary: windows_nt_kernel32_boundary,
+  boundary: windows_11_user_mode_boundary,
 }
 
 // Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
@@ -102,11 +123,23 @@ fn witness_windows_surface_is_library_api_boundary() -> Bool {
   }
 }
 
-fn witness_windows_boundary_library_is_kernel32() -> Bool {
+fn witness_windows_boundary_library_is_win32() -> Bool {
   match windows_11_library_api_surface {
-    LibraryApiBoundarySurface { boundary: b } => b.library == "kernel32"
+    LibraryApiBoundarySurface { boundary: b } => b.library == "win32"
     _ => false
   }
+}
+
+fn witness_windows_boundary_exports_match_user_mode() -> Bool {
+  match windows_11_library_api_surface {
+    LibraryApiBoundarySurface { boundary: b } => b.exports == windows_11_user_mode_exports
+    _ => false
+  }
+}
+
+fn witness_windows_component_boundaries_preserved() -> Bool {
+  windows_nt_kernel32_boundary.exports == windows_nt_kernel32_exports
+    && windows_ntdll_boundary.exports == windows_ntdll_exports
 }
 
 // Cited spec fact: NT syscall numbers are not a stable public ABI across Windows builds.

@@ -31,8 +31,9 @@ type LibraryApiBoundary {
   exports: List<ApiEntry>
 }
 
-// Keystone coproduct — arms ship facts-first (SyscallAbi + LibraryApiBoundary only).
-// Additional paradigms (CapabilityInvocation, ImportResolution) land when cited inhabitants exist.
+// 🟡 feature:stable-invocation-surface-paradigms — open keystone coproduct; Slice 1–2 ship
+// SyscallAbiSurface + LibraryApiBoundarySurface arms. Dissolve-on: add CapabilityInvocation /
+// ImportResolution arms when cited inhabitants exist.
 type StableInvocationSurface
   = SyscallAbiSurface { abi: SyscallAbi }
   | LibraryApiBoundarySurface { boundary: LibraryApiBoundary }
