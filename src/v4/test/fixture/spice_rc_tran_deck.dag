@@ -13,6 +13,7 @@ import v4.extdeps.formats.spice {
   DeckDirective,
   DeckStatement,
   Ground,
+  InitialCondition,
   Named,
   NamedNode,
   Resistor,
@@ -56,12 +57,25 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
         },
         tail: Cons {
           head: DeckDirective {
-            directive: Tran {
-              tstep: SpiceValue { lexeme: "1us" },
-              tstop: SpiceValue { lexeme: "10ms" }
+            directive: InitialCondition {
+              assignments: {
+                first: {
+                  node: Named { node: NamedNode { name: ^n2 } },
+                  value: SpiceValue { lexeme: "0" }
+                },
+                rest: []
+              }
             }
           },
-          tail: Empty
+          tail: Cons {
+            head: DeckDirective {
+              directive: Tran {
+                tstep: SpiceValue { lexeme: "1us" },
+                tstop: SpiceValue { lexeme: "10ms" }
+              }
+            },
+            tail: Empty
+          }
         }
       }
     }

@@ -19,7 +19,7 @@ import v4.std.verification {
 
 // Single-authority expected string. Shell oracle (scripts/v4-spice-ngspice-rc-oracle.sh)
 // carries a copy of this heredoc; keep them in sync.
-data spice_rc_tran_ngspice_expected: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.tran 1us 10ms\n.end"
+data spice_rc_tran_ngspice_expected: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nprint v(n2)\n.endc\n.end"
 
 fn spice_rc_tran_emit_ngspice_matches_expected_holds() -> Bool {
   spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_ngspice_expected
@@ -32,9 +32,13 @@ fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
 
 fn spice_rc_tran_emit_ngspice_ends_with_end_holds() -> Bool {
   let text = spice_emit_ngspice(netlist: spice_rc_tran_deck)
-  // Structural: the emitted string must contain the .end terminator required by ngspice.
-  // Wave-1 check: exact equality with expected is the full claim; this verifies the suffix.
   text == spice_rc_tran_ngspice_expected
+}
+
+// SP-M1 closed-loop witness: the emitted ngspice-ready deck (including batch control
+// trailer) is exactly the string the shell oracle feeds to ngspice -b.
+fn spice_rc_ngspice_op_holds() -> Bool {
+  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_ngspice_expected
 }
 
 data unified_claim_spice_rc_tran_emit_ngspice_matches: UnifiedTestClaim = BoolWitnessClaim {
@@ -48,5 +52,12 @@ data unified_claim_spice_rc_tran_emit_ngspice_nonempty: UnifiedTestClaim = BoolW
   witness: BoolWitness {
     entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
     function: spice_rc_tran_emit_ngspice_nonempty_holds
+  }
+}
+
+data unified_claim_spice_rc_ngspice_op: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+    function: spice_rc_ngspice_op_holds
   }
 }
