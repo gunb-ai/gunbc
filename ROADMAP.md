@@ -87,6 +87,24 @@ v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std 
 
 Design direction: **model local, derive global** — every target modeled once in shared vocabulary; translations are derived homomorphisms, not hand-written adapters ([docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md)).
 
+### P2 gunbhub — render/forge product lane
+
+gunbhub is the public **render + forge** product surface: structured documents composed in the substrate, served over HTTP, browsing a content-addressed git forge. Lane node (goal / edges / owner / falsifier), threading **up** to the portfolio product pillar. Owner: P2 gunbhub lane (durable).
+
+**Spine — non-negotiable, carried end-to-end: the XSS scheme-allowlist *reject-witness*.** `std.markup.escape_url` is character-escaping only — `javascript:`/`data:` schemes pass through intact ([`dsl/std/markup.dag`](dsl/std/markup.dag) SECURITY SCOPE); every consumer MUST scheme-allowlist user-controlled `href`/`src` **fail-closed before** `escape_url`. This is an enforced CI tripwire, not a comment: `html_markup_xss_keystone` and `react_markup_keystone` carry **perturb-discrimination** witnesses (proving `escape_url` *alone* does NOT block the dangerous scheme) and are enrolled in **both** corpus shards ([`claim_witness_corpus_ci_runner.dag`](src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag)). **Adding a consumer without its reject-witness is the lane's dissolution trigger** — product-complete forbids any path that emits a user-controlled URL without passing the allowlist.
+
+**Product-complete milestones** (the falsifier is the CI-enrolled witness, not prose):
+
+| # | Milestone | Goal | Falsifier (witness) |
+|---|-----------|------|---------------------|
+| **M0** | Convergent markup spine ✅ merged | `std.markup` Fragment IR + ONE `serialize_fragment` fold; HTML + React consumers reduce to it (CoC=1). | `markup_serializer_keystone` / `html_markup_xss_keystone` / `react_markup_keystone` green both shards; perturb-discrimination goes red on any dropped escape rule. |
+| **M1** | Markdown consumer (3rd surface) | A `std.markdown` consumer reduces CommonMark structure → the **same** `serialize_fragment` fold (CoC=1), carrying the scheme-allowlist reject-witness on link/image URLs (`[x](javascript:…)`, `![x](data:…)` fail-closed). | `markdown_markup_xss_keystone` + perturb-discrimination, enrolled both shards. |
+| **M2** | Served render surface (hosting) | gunbhub pages bound to `extdeps.http.server` route→listener bindings ([`server.dag`](dsl/extdeps/http/server.dag) `NodeHttpCreateServer*`): a request resolves to a serialized page (browse, blob/file view, rendered README). | End-to-end witness: served response body == consumer serialization; a hostile-href page is **rejected before** it reaches the response. |
+| **M3** | Forge-backed browse | `extdeps.git.object_store` reads drive the page: `Tree` → browse-list (entries derived from `TreeEntry`, not hardcoded), `Blob` → file view, distinct markup per entry kind. | Witness: a composed `Tree` renders the expected browse page; Blob / Subtree / Commit entries render distinct markup. |
+| **M4** | Spine carried end-to-end | EVERY consumer (HTML, React, Markdown) **and** the served-page path enforce the reject-witness; no path emits a user-controlled URL without the allowlist. | Cross-consumer obligation: each consumer's reject-witness in the corpus; a new consumer landed without one fails the lane gate. |
+
+Edges: M1 ⟂ M0 (independent third consumer); M2 depends on M0; M3 depends on M2 + `object_store`; M4 gates on M1 + M2 + M3. The spine (reject-witness) is invariant across all five.
+
 ### Coercion in both directions — ingestion and emission
 
 Coercion is one mechanism, run both ways. **Ingestion is coercion and emission is coercion**: a structure-preserving search over declared inhabitants, performed by the compiler rather than any hand-written adapter ([`src/v4/std/coercion.dag`](src/v4/std/coercion.dag)). The whole language is **`.dag → IR → .dag`**, where a `.dag` can be anything modeled in the substrate — *including a language itself*. Ingesting a program coerces it from its language model into the canonical IR; emitting coerces the IR back out into a target's declared inhabitants. The same **semantic realization search** underlies ingestion and emission once both sides are modeled as declared inhabitants; tokenize/parse and print/render remain boundary projections and must not become separate adapter authorities. This is what makes omni-ingestion and omni-emission cheap — model N targets once and *derive* the N×M translations (**model local, derive global**), instead of authoring an adapter per pair. Here `.dag → IR → .dag` means canonical `.dag` *source* regeneration, not a JSON IR receipt; JSON remains a boundary/debug artifact unless explicitly promoted by Branch H's canonical source AST and serializer.
