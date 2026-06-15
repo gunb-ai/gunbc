@@ -285,6 +285,29 @@ data annotation_set_output_prefix: String = "::set-output name="
 data annotation_add_mask_prefix: String = "::add-mask::"
 data annotation_stop_commands_prefix: String = "::stop-commands::"
 
+// Render a modeled annotation to the GitHub Actions stdout wire format.
+// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
+fn render_log_annotation(annotation: LogAnnotation) -> String {
+  match annotation {
+    AnnotationError { message: m, file: _, line: _, col: _ } =>
+      concat("::error::", m)
+    AnnotationWarning { message: m, file: _, line: _, col: _ } =>
+      concat("::warning::", m)
+    AnnotationNotice { message: m, file: _, line: _, col: _ } =>
+      concat("::notice::", m)
+    AnnotationGroup { title: t } =>
+      concat(annotation_group_prefix, t)
+    AnnotationEndGroup =>
+      annotation_endgroup
+    SetOutput { name: n, value: v } =>
+      concat(annotation_set_output_prefix, n, "}", v)
+    AddMask { value: v } =>
+      concat(annotation_add_mask_prefix, v)
+    StopCommands { token: t } =>
+      concat(annotation_stop_commands_prefix, t)
+  }
+}
+
 // -- Artifacts --------------------------------------------------------
 // Upload/download operations for build artifacts.
 // Spec: https://docs.github.com/en/actions/using-workflows/storing-workflow-data-as-artifacts
