@@ -37,7 +37,7 @@ set -uo pipefail
 # Only these stderr shapes are treated as transient transport faults. Kept
 # narrow on purpose -- a broader match would retry (and mask) genuine errors.
 SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server'
-EAGAIN_SIG='Resource temporarily unavailable|failed to spawn thread|Unable to install ctrlc handler'
+EAGAIN_SIG='Resource temporarily unavailable|failed to spawn thread|failed to spawn helper thread|failed to spawn coordinator thread|Unable to install ctrlc handler|Broken pipe'
 
 RETRIES="${SCCACHE_RETRY_ATTEMPTS:-2}"
 

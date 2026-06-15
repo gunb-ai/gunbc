@@ -22,24 +22,60 @@ fn cargo_binary() -> &'static str {
     }
 }
 
-/// Compile the v2-compiler lib test harness (`compiler_tests` module). Invoked by the
-/// always-on parity test so CI exercises the stage0 self-test surface.
-pub fn assert_v2_compiler_lib_tests_compile() {
-    let output = std::process::Command::new(cargo_binary())
-        .arg("test")
+/// True when nested cargo failed from shared-runner sccache/EAGAIN pressure, not Rc regressions.
+fn is_fleet_sccache_infra_failure(stdout: &str, stderr: &str) -> bool {
+    let combined = format!("{stdout}{stderr}");
+    [
+        "Resource temporarily unavailable",
+        "failed to spawn helper thread",
+        "failed to spawn coordinator thread",
+        "failed to execute compile",
+        "Failed to send data to or receive data from server",
+        "Broken pipe",
+    ]
+    .iter()
+    .any(|sig| combined.contains(sig))
+}
+
+fn run_v2_compiler_lib_test_compile(cold: bool) -> std::process::Output {
+    let mut cmd = std::process::Command::new(cargo_binary());
+    cmd.arg("test")
         .arg("-p")
         .arg("v2-compiler")
         .arg("--lib")
         .arg("--no-run")
         .arg("--release")
         .arg("--quiet")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to spawn cargo test -p v2-compiler --lib --no-run");
+        .current_dir(workspace_root());
+    if cold {
+        // Nested --no-run compile inherits CI's RUSTC_WRAPPER=sccache; under fleet pressure
+        // ring/cc-rs flakes (observed ci_floor_parity run 27581068975 / #4978).
+        cmd.env_remove("RUSTC_WRAPPER");
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+    cmd.output()
+        .expect("failed to spawn cargo test -p v2-compiler --lib --no-run")
+}
 
+/// Compile the v2-compiler lib test harness (`compiler_tests` module). Invoked by the
+/// always-on parity test so CI exercises the stage0 self-test surface.
+pub fn assert_v2_compiler_lib_tests_compile() {
+    let output = run_v2_compiler_lib_test_compile(false);
     if output.status.success() {
         return;
     }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let output = if is_fleet_sccache_infra_failure(&stdout, &stderr) {
+        let retry = run_v2_compiler_lib_test_compile(true);
+        if retry.status.success() {
+            return;
+        }
+        retry
+    } else {
+        output
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
