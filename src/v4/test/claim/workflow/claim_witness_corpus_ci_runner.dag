@@ -315,6 +315,30 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
+// Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
+// that breaks on regression of the magnitude generalization (gunbc#4929): GATE0 M=Nat,
+// GATE1 signed M=Int, and the two-hop alias-chain `.count` round-trip (G3 + multi-hop).
+data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "measure carrier M=Nat magnitude round-trip",
+  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  function: "measure_nat_magnitude_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_measure_signed_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "measure carrier signed M=Int magnitude round-trip",
+  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  function: "measure_signed_magnitude_roundtrip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "measure carrier two-hop alias .count round-trip",
+  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  function: "measure_two_hop_alias_count_roundtrip_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -353,10 +377,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "38"
+data claim_witness_corpus_claim_run_row_count: String = "41"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -403,7 +430,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "20"
+data claim_witness_corpus_shard_b_row_count: String = "23"
