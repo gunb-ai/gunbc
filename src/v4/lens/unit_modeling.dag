@@ -1,0 +1,223 @@
+// src/v4/lens/unit_modeling.dag
+// Scope: universal .dag unit-modeling discipline lens — flags a flat-scalar
+//        leaf field whose authored NAME carries unit/scale semantics yet whose
+//        declared type resolves to a bare kernel scalar instead of attaching to
+//        the `Measure<Quantity, Scale>` carrier (dsl/std/measure.dag) or an
+//        existing alias (ByteSize, Hertz, Duration, Milliseconds, MoneyMicros,
+//        Bandwidth, HardwareThreadCount, CoreCount, …). MODELING.md M12 /
+//        modeling-discipline.md Practice 13 (JIT modeling) — a domain quantity
+//        may not ship as a raw scalar.
+//
+// Mode: ADVISORY lens (CompileLensIntrospect). Modeled structurally on
+//       fact_density.dag — a per-node gate `node: Node -> Outcome<Witness<Node>>`
+//       that self-traverses the resolved typed subtree. The `InferredTree`
+//       compile-gate wrapper + registration in `always_required_lenses()`
+//       (00_compile.dag) is the deliberately-HELD wiring — see 🟡 at the foot.
+//
+// First slice (deliberately narrow, zero-false-positive):
+//   - LEAF TYPE: `Int` only — `^dag_binding_type_int` is the one confirmed
+//     resolved kernel-scalar binding symbol. `Nat` / `Float` / `Real` leaves are
+//     a 🟡 follow-up pending their canonical resolved symbols (snappy).
+//   - DETECTION + EXEMPTION: exact-Symbol-keyed token map, NOT substring — so
+//     `discount`/`recount` (contain "count") and `matrix_index` (contains
+//     "index") never misfire. The membership test follows the additive-
+//     cardinality rule (zesty/snappy): a value is unit-bearing iff ADDITION and
+//     a UNIT are meaningful on it; it stays bare `Int` iff it is a LABEL
+//     (enum tag / opcode / status code / version / id) or a COORDINATE (array
+//     index / offset / positional ordinal). Structural counts (queue depth,
+//     retry attempts, child arity) ARE additive cardinalities → in scope.
+//   - SCOPE: only quantities whose `Quantity` is already in the catalog
+//     (Frequency, Memory/Information, DataRate, Time, Currency, Count). Electrical
+//     quantities (volts/amps/ohms/watts) are GATE-2-pending and are deliberately
+//     EXCLUDED from this table — flagging them as "fixable now" would be wrong.
+
+module v4.lens.unit_modeling
+
+import v4.std.node {
+  Node,
+  Edge,
+  Named,
+  Positional,
+  TypeNode,
+  ComputationNode,
+  Symbol,
+  node_subtree_nodes
+}
+import v4.std.node_query { edge_field_type_name }
+import v4.std.collection {
+  List,
+  Map,
+  Optional,
+  Present,
+  Absent,
+  empty_map,
+  map_insert,
+  map_get
+}
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Accepted,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  node_locus
+}
+import v4.std.witness { Holds, Witness }
+
+// One authored unit-bearing field name → the canonical carrier it should attach
+// to. The `carrier` is advisory guidance only (it names the alias a fix would
+// reach for); detection turns purely on key membership. Every key is an EXACT
+// authored field Symbol — never a substring — per the exact-Symbol-keyed ruling.
+type UnitFieldRow {
+  field: Symbol
+  carrier: Symbol
+}
+
+// 🟢 First-slice token rows. High-confidence exact field Symbols drawn from the
+// frozen ctrl/gunbc census (placement / host-shape / cpu / branch-review decls),
+// aligned to the Layer-0 scanner stems in
+// ctrl scripts/lib/dag_unit_modeling_review.mjs. Quantity-catalog members only;
+// electrical (GATE-2) excluded by construction.
+data unit_field_rows: List<UnitFieldRow> = [
+  // Frequency (Hertz)
+  UnitFieldRow { field: ^clock_hz, carrier: ^Hertz },
+  UnitFieldRow { field: ^cpu_reserved_hz, carrier: ^Hertz },
+  UnitFieldRow { field: ^cpu_capacity_hz, carrier: ^Hertz },
+  // Memory / Information (ByteSize)
+  UnitFieldRow { field: ^ram_bytes, carrier: ^ByteSize },
+  UnitFieldRow { field: ^ram_reserved_bytes, carrier: ^ByteSize },
+  UnitFieldRow { field: ^ram_cap_bytes, carrier: ^ByteSize },
+  UnitFieldRow { field: ^memory_bytes, carrier: ^ByteSize },
+  UnitFieldRow { field: ^disk_bytes, carrier: ^ByteSize },
+  // Currency (MoneyMicros)
+  UnitFieldRow { field: ^hourly_eur_micros, carrier: ^MoneyMicros },
+  UnitFieldRow { field: ^monthly_cap_eur_micros, carrier: ^MoneyMicros },
+  // Time (Duration / Milliseconds)
+  UnitFieldRow { field: ^timeout_seconds, carrier: ^Duration },
+  UnitFieldRow { field: ^lifetime_seconds, carrier: ^Duration },
+  UnitFieldRow { field: ^timeout_ms, carrier: ^Milliseconds },
+  UnitFieldRow { field: ^duration_ms, carrier: ^Milliseconds },
+  // DataRate (Bandwidth)
+  UnitFieldRow { field: ^bandwidth_bps, carrier: ^Bandwidth },
+  // Count (additive cardinality — Measure<Count,One> aliases). These pass the
+  // additive-cardinality test (2 cores + 3 cores = 5 cores); they are NOT labels
+  // or coordinates, so they are in scope per the snappy/zesty ruling.
+  UnitFieldRow { field: ^hardware_threads, carrier: ^HardwareThreadCount },
+  UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount },
+  UnitFieldRow { field: ^core_count, carrier: ^CoreCount },
+  UnitFieldRow { field: ^cpu_cores, carrier: ^CoreCount }
+]
+
+// Build the exact-Symbol-keyed lookup once by folding the rows into an empty Map.
+// M9: a single Symbol-keyed authority, not re-literaled symbol comparisons
+// scattered across the gate.
+fn unit_field_token_map() -> Map<Symbol, Symbol> {
+  fold(unit_field_rows, init: empty_map(), f: fn(acc, row) {
+    map_insert(m: acc, key: row.field, value: row.carrier)
+  })
+}
+
+// Exact-key membership: is this authored field name a known unit-bearing token?
+// `map_get` returns `Accepted { value: Present { .. } }` on a hit. Anything else
+// (Absent, or the empty/never-Rejected map) is a miss — no substring match.
+fn field_name_is_unit_token(name: Symbol) -> Bool {
+  match map_get(m: unit_field_token_map(), key: name) {
+    Accepted { value: Present { value: _ } } => true
+    _ => false
+  }
+}
+
+// Does the field's declared type resolve to the bare kernel `Int` binding?
+// 🟡 First slice: `Int` only. `^dag_binding_type_int` (04_infer.dag) is the one
+// confirmed resolved kernel-scalar symbol; Nat/Float/Real leaves await their
+// canonical symbols before they can be flagged without false positives.
+fn type_is_flat_scalar(target: Node) -> Bool {
+  edge_field_type_name(target: target) == ^dag_binding_type_int
+}
+
+// First-present combiner — keep the earliest violation found in a fold over a
+// list of `Optional<Diagnostic>`s (left-biased).
+fn first_present(a: Optional<Diagnostic>, b: Optional<Diagnostic>) -> Optional<Diagnostic> {
+  match a {
+    Present { value: _ } => a
+    Absent => b
+  }
+}
+
+// One field edge → an Optional violation. A flat-scalar unit leaf is exactly a
+// Named field whose name is a unit token AND whose target resolves to bare Int.
+// Positional edges have no authored name to carry a unit token, so they never
+// violate.
+fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
+  match edge.label {
+    Named { name: nm } =>
+      if field_name_is_unit_token(name: nm) {
+        if type_is_flat_scalar(target: edge.target) {
+          Present { value: unit_modeling_diagnostic(carrier: carrier) }
+        } else {
+          Absent
+        }
+      } else {
+        Absent
+      }
+    Positional => Absent
+  }
+}
+
+// First violating field within a single carrier. Only TypeNodes carry field
+// children; ComputationNodes are skipped.
+fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
+  match carrier.kind {
+    TypeNode { connective: _ } =>
+      fold(carrier.children, init: Absent, f: fn(acc, edge) {
+        first_present(a: acc, b: field_unit_violation(carrier: carrier, edge: edge))
+      })
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+// First violating field across the whole resolved typed subtree rooted at `node`.
+// 🟡 First slice reports ONE diagnostic (the first violation), matching
+// fact_density's single-diagnostic gate shape; multi-violation accumulation is a
+// follow-up once the introspect harvest needs every site at once.
+fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
+  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
+    first_present(a: acc, b: carrier_first_unit_violation(carrier: n))
+  })
+}
+
+// The advisory diagnostic for a flat-scalar unit leaf. `correction` is
+// `Unavailable { ExternalContractUnknown }` — the fix (attach Measure<Q,S>) is
+// prose-known but not a mechanical rewrite the lens can synthesize, matching the
+// fact_density precedent.
+fn unit_modeling_diagnostic(carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^unit_modeling_flat_scalar_unit_leaf,
+    at: node_locus(node: carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The lens gate. Self-traverses the resolved typed subtree; rejects (advisory,
+// under CompileLensIntrospect) on the first flat-scalar unit leaf, otherwise
+// witnesses the node clean. Same `Node -> Outcome<Witness<Node>>` shape as
+// fact_density_hollow_alias_gate so the 00_compile.dag wrapper + registration is
+// a drop-in beside `fact_density_lens`.
+fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
+  match subtree_first_unit_violation(node: node) {
+    Present { value: d } => outcome_rejected(d)
+    Absent => outcome_accepted(value: Holds { value: node })
+  }
+}
+
+// 🟡 HELD WIRING (00_compile.dag, infra-gated — do NOT land in this slice):
+//   fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+//     unit_modeling_gate(node: tree.root)
+//   }
+//   data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
+//   // register in always_required_lenses() ALONGSIDE fact_density_lens, run via
+//   // apply_compile_lens_introspect (advisory: Rejected demoted to Accepted +
+//   // diagnostics). Held until the build-infra (rustc-spawn EAGAIN / sccache
+//   // WouldBlock) recovers so the wiring can be compile-verified before landing.
