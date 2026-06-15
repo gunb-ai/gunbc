@@ -2,6 +2,7 @@
 //! `compile_to_resolved` output directly into v4 `InferredTree` and run
 //! `run_required_lens_gates_on_subtree`. Non-termination is parse-only; infer is
 //! unnecessary when native already carries `InferredNode::Resolved`.
+//! CI: decisive test `#[ignore]` until host adapter closes the Connective shape gap.
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
