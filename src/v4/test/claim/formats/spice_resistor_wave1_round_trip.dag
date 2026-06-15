@@ -1,0 +1,57 @@
+// src/v4/test/claim/formats/spice_resistor_wave1_round_trip.dag
+// Scope: P4 SPICE wave-1 — resistor line emit + lex/grammar parse round-trip.
+// Status: claim-witness corpus enrollment (sleek-wolf-815 closeout).
+
+module v4.test.claim.formats.spice_resistor_wave1_round_trip
+
+import v4.compiler.parse { parse }
+import v4.compiler.tokenize { tokenize }
+import v4.extdeps.formats.spice {
+  spice_emit_resistor_line,
+  spice_wave1_emit_matches_fixture_holds,
+  spice_wave1_grammar,
+  spice_wave1_lex,
+  spice_wave1_resistor_fixture_text,
+  spice_wave1_witness_resistor
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data spice_wave1_fixture_file: Symbol = ^spice_wave1_resistor_fixture_file
+
+fn spice_wave1_parse_accepted(text: String) -> Bool {
+  match tokenize(
+    text: text,
+    file: spice_wave1_fixture_file,
+    rules: spice_wave1_lex()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse(tokens: tokens, grammar: spice_wave1_grammar()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn spice_wave1_emit_parse_round_trip_holds() -> Bool {
+  let emitted = spice_emit_resistor_line(resistor: spice_wave1_witness_resistor)
+  spice_wave1_emit_matches_fixture_holds()
+    && spice_wave1_parse_accepted(text: spice_wave1_resistor_fixture_text)
+    && spice_wave1_parse_accepted(text: emitted)
+}
+
+fn spice_resistor_wave1_round_trip_holds() -> Bool {
+  spice_wave1_emit_parse_round_trip_holds()
+}
