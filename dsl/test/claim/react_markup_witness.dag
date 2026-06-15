@@ -23,7 +23,6 @@ import std.react_markup {
   serialize_react_markup_unchecked,
   react_markup_node_to_fragment,
   is_allowed_url_scheme,
-  is_trusted_url_scheme,
   validate_react_markup_node,
 }
 import std.markup {
@@ -124,6 +123,13 @@ fn witness_http_scheme_allowed() -> Bool {
     && is_allowed_url_scheme(url: "https://example.com/path")
 }
 
+fn witness_lowercase_only_scheme_policy() -> Bool {
+  // Mixed-case scheme prefixes are rejected until String.to_lower is witnessable.
+  !is_allowed_url_scheme(url: "Http://example.com")
+    && !is_allowed_url_scheme(url: "HTTPS://example.com")
+    && is_allowed_url_scheme(url: "http://example.com")
+}
+
 fn witness_mailto_scheme_allowed() -> Bool {
   is_allowed_url_scheme(url: "mailto:user@example.com")
 }
@@ -190,6 +196,7 @@ fn react_markup_keystone_holds() -> Bool {
     && witness_serialize_rejects_javascript_href()
     && witness_serialize_rejects_data_href()
     && witness_http_scheme_allowed()
+    && witness_lowercase_only_scheme_policy()
     && witness_mailto_scheme_allowed()
     && witness_ftp_scheme_rejected_by_allowlist()
     && witness_http_href_serializes()

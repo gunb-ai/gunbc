@@ -44,23 +44,18 @@ type MarkupEmitResult
   = EmitOk { html: String }
   | EmitRejected { reason: MarkupRejectReason }
 
+// RFC 3986: schemes are case-insensitive. The v2 interpreter does not yet
+// implement String.to_lower, so normalization is explicit: only lowercase scheme
+// prefixes pass. Mixed-case schemes (e.g. Http://) are rejected fail-closed
+// until to_lower lands — safer than enumerating a few casing variants.
 fn is_allowed_url_scheme(url: String) -> Bool {
   starts_with(s: url, prefix: "http://")
     || starts_with(s: url, prefix: "https://")
-    || starts_with(s: url, prefix: "HTTP://")
-    || starts_with(s: url, prefix: "HTTPS://")
     || starts_with(s: url, prefix: "mailto:")
-    || starts_with(s: url, prefix: "Mailto:")
-    || starts_with(s: url, prefix: "MAILTO:")
     || starts_with(s: url, prefix: "/")
     || starts_with(s: url, prefix: "#")
     || starts_with(s: url, prefix: "?")
     || length(xs: split(s: url, delimiter: ":")) == 1
-}
-
-// Legacy name retained for witness imports.
-fn is_trusted_url_scheme(url: String) -> Bool {
-  is_allowed_url_scheme(url: url)
 }
 
 fn react_attr_escape_context(name: String) -> EscapeContext {
