@@ -18,11 +18,10 @@
 #   1. Run the command. On success, exit 0.
 #   2. On failure, ONLY if captured stderr matches the sccache transport
 #      signature: restart the server and retry (RETRIES attempts total).
-#   3. If the signature persists after the last attempt, FAIL the build
-#      (exit nonzero). We deliberately do NOT fall back to an uncached cold
-#      build: a repeatedly-unreachable sccache server is an infra regression
-#      we want surfaced loudly (ci-spot-rerun.yml will retry the whole job),
-#      not papered over by a silent slow build that hides the problem.
+#   3. If transport retries exhaust and stderr shows fleet EAGAIN pressure,
+#      one cold retry with CARGO_BUILD_JOBS=1 (observed layering_imports run
+#      27579125729 / #4978: sccache transport + rustc ctrlc EAGAIN). Otherwise
+#      fail loud on persistent transport failure.
 #   4. A failure that is NOT the transport signature: if stderr matches cargo
 #      EAGAIN thread-spawn pressure under fleet parallel compiles (observed
 #      v4_lens_ci run 27576127936 / #4978), retry ONCE cold with
@@ -38,7 +37,7 @@ set -uo pipefail
 # Only these stderr shapes are treated as transient transport faults. Kept
 # narrow on purpose -- a broader match would retry (and mask) genuine errors.
 SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server'
-EAGAIN_SIG='Resource temporarily unavailable|failed to spawn thread'
+EAGAIN_SIG='Resource temporarily unavailable|failed to spawn thread|Unable to install ctrlc handler'
 
 RETRIES="${SCCACHE_RETRY_ATTEMPTS:-2}"
 
@@ -79,8 +78,14 @@ while [ "$attempt" -le "$RETRIES" ]; do
   attempt=$((attempt + 1))
 done
 
-# Persistent transport failure: fail the build LOUD rather than silently
-# building cold. rc holds the last attempt's exit code (nonzero -- we only
-# reach here after a transport-signature failure); guard to 1 just in case.
+# Persistent transport failure: cold-retry once when fleet EAGAIN is present,
+# otherwise fail loud. rc holds the last attempt's exit code.
+if grep -qiE "$EAGAIN_SIG" "$log"; then
+  echo "::warning::fleet compile pressure (EAGAIN) after sccache transport retries; one cold retry with CARGO_BUILD_JOBS=1"
+  unset RUSTC_WRAPPER
+  if CARGO_BUILD_JOBS=1 "$@"; then
+    exit 0
+  fi
+fi
 echo "::error::sccache unreachable after ${RETRIES} attempts (transport failure persists); failing the build instead of building cold"
 exit "$(( rc != 0 ? rc : 1 ))"
