@@ -1253,16 +1253,18 @@ pub fn run_in_context_with_args(
     args: &[(Option<String>, Value)],
     eager_data_env: bool,
 ) -> InterpResult<Value> {
-    let item_node = ctx
-        .lookup_fn(entry_fn)
-        .ok_or(InterpError::NoMainFunction)?
-        .clone();
-    let env = if eager_data_env {
-        build_initial_env(ctx)?
-    } else {
-        Env::empty()
-    };
-    call_function(ctx, &item_node, args, &env)
+    with_active_ctx(ctx, || {
+        let item_node = ctx
+            .lookup_fn(entry_fn)
+            .ok_or(InterpError::NoMainFunction)?
+            .clone();
+        let env = if eager_data_env {
+            build_initial_env(ctx)?
+        } else {
+            Env::empty()
+        };
+        call_function(ctx, &item_node, args, &env)
+    })
 }
 
 /// Evaluate all `data` items to build the initial environment.
