@@ -479,8 +479,22 @@ data corpus_ci_gate_row_modelica_passive_model_equation_section: ClaimWitnessCor
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_dual_emission_spice_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/dual-emission: R1 SPICE emit → ngspice netlist line",
+  entry: "src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag",
+  function: "dual_emission_spice_emit_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_dual_emission_modelica_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/dual-emission: R1 Modelica emit → acausal declaration line",
+  entry: "src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag",
+  function: "dual_emission_modelica_emit_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_dual_emission_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "extdeps/dual-emission: B2-OMNI — same R1 element reaches SPICE + Modelica without contortion",
+  label: "extdeps/dual-emission: same R1 identity drives both SPICE emit + Modelica emit",
   entry: "src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag",
   function: "dual_emission_spice_and_modelica_both_hold",
   expected: ExpectPass

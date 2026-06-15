@@ -1,8 +1,16 @@
 // src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag
-// Scope: B2-OMNI paradigm falsifier — the SAME composed R1 resistor declaration
-//        emits to BOTH an ngspice netlist line (causal node graph) AND a
-//        Modelica ResistorInstance (acausal connector algebra).
-//        ONE `.dag` circuit → two simulators. T-4.10.
+// Scope: B2-OMNI paradigm falsifier — the SAME R1 resistor data drives BOTH
+//        `spice_emit_resistor_line` (ngspice causal netlist) AND
+//        `modelica_emit_resistor_line` (Modelica acausal declaration).
+//        The dual-emission is exercised through actual emit calls, not parallel
+//        construction. T-4.10.
+//
+// Gap note: the full paradigm probe (shared circuit carrier → both emitters)
+//   requires a `std/analog` circuit substrate layer that does not exist yet.
+//   This witness is the minimal honest slice: both emit functions are callable
+//   on the same R1 identity and both produce confirmed output. A shared
+//   `Circuit` type bridging SPICE `NodeRef` topology and Modelica
+//   `ConnectEquation` algebra is the next dissolution step.
 
 module v4.test.claim.extdeps.spice_modelica_dual_emission
 
@@ -18,9 +26,9 @@ import v4.extdeps.formats.spice {
 }
 import v4.extdeps.formats.modelica {
   ModelicaValue,
-  PassiveComponent,
   ResistorInstance,
-  TwoPinConnectorDecl,
+  modelica_emit_resistor_line,
+  modelica_wave1_string_eq,
   modelica_two_pin_connector_default
 }
 import v4.std.verification {
@@ -39,6 +47,10 @@ import v4.std.verification {
 data dual_emission_resistor_name: Symbol = ^r1
 data dual_emission_resistor_value_lexeme: String = "1000"
 
+// Expected outputs for each paradigm (different surface languages, same circuit).
+data dual_emission_spice_expected_line: String = "R1 n1 n2 1000"
+data dual_emission_modelica_expected_line: String = "Resistor R1 ( R = 1000 ) ;"
+
 
 // SPICE side: causal node graph — topology via shared NodeRef names.
 data dual_emission_spice_resistor: Resistor = Resistor {
@@ -48,61 +60,53 @@ data dual_emission_spice_resistor: Resistor = Resistor {
   value: SpiceValue { lexeme: dual_emission_resistor_value_lexeme }
 }
 
-data dual_emission_spice_expected_line: String = "R1 n1 n2 1000"
-
-
 // Modelica side: acausal connector algebra — topology via ConnectEquation.
-data dual_emission_modelica_resistor: PassiveComponent = ResistorInstance {
+data dual_emission_modelica_resistor: ResistorInstance = ResistorInstance {
   name: dual_emission_resistor_name,
   R: ModelicaValue { lexeme: dual_emission_resistor_value_lexeme },
   connectors: modelica_two_pin_connector_default
 }
 
 
-// Dual-emission probe 1: SPICE causal emission matches expected ngspice netlist line.
-fn dual_emission_spice_emits_expected_line_holds() -> Bool {
+// Dual-emission probe 1: SPICE causal emit produces expected ngspice netlist line.
+fn dual_emission_spice_emit_holds() -> Bool {
   spice_wave1_string_eq(
     a: spice_emit_resistor_line(resistor: dual_emission_spice_resistor),
     b: dual_emission_spice_expected_line
   )
 }
 
-
-// Dual-emission probe 2: Modelica acausal form carries the same identity and value.
-fn dual_emission_modelica_carries_same_identity_holds() -> Bool {
-  match dual_emission_modelica_resistor {
-    ResistorInstance { name: n, R: r, connectors: _ } =>
-      n == dual_emission_resistor_name && r.lexeme == dual_emission_resistor_value_lexeme
-    _ => false
-  }
+// Dual-emission probe 2: Modelica acausal emit produces expected declaration line.
+fn dual_emission_modelica_emit_holds() -> Bool {
+  modelica_wave1_string_eq(
+    a: modelica_emit_resistor_line(resistor: dual_emission_modelica_resistor),
+    b: dual_emission_modelica_expected_line
+  )
 }
 
-
-// Dual-emission keystone: BOTH probes pass in one assertion.
-// This is the B2-OMNI falsification result: the SAME R1 element is expressible
-// in both paradigms without contortion.
+// Dual-emission keystone: both emit functions produce confirmed output for the
+// same R1 identity. This exercises the actual emit paths, not just construction.
 fn dual_emission_spice_and_modelica_both_hold() -> Bool {
-  dual_emission_spice_emits_expected_line_holds()
-    && dual_emission_modelica_carries_same_identity_holds()
+  dual_emission_spice_emit_holds() && dual_emission_modelica_emit_holds()
 }
 
 
-data claim_dual_emission_spice_line: TestClaim = BoolWitnessClaim {
+data claim_dual_emission_spice_emit: TestClaim = BoolWitnessClaim {
   label: "extdeps/dual-emission: R1 SPICE emit → ngspice netlist line",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: dual_emission_spice_emits_expected_line_holds() },
+  witness: BoolWitness { holds: dual_emission_spice_emit_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_dual_emission_modelica_identity: TestClaim = BoolWitnessClaim {
-  label: "extdeps/dual-emission: R1 Modelica acausal form carries same identity + value",
+data claim_dual_emission_modelica_emit: TestClaim = BoolWitnessClaim {
+  label: "extdeps/dual-emission: R1 Modelica emit → acausal declaration line",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: dual_emission_modelica_carries_same_identity_holds() },
+  witness: BoolWitness { holds: dual_emission_modelica_emit_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_dual_emission_keystone: TestClaim = BoolWitnessClaim {
-  label: "extdeps/dual-emission: B2-OMNI — same R1 element reaches SPICE + Modelica without contortion",
+  label: "extdeps/dual-emission: same R1 identity drives both SPICE emit + Modelica emit",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   witness: BoolWitness { holds: dual_emission_spice_and_modelica_both_hold() },
   classification: TestClassification { tier: Tier1, layer: Unit }

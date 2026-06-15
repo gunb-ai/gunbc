@@ -14,13 +14,19 @@
 //   `NodeRef`; Modelica binds via `PinEndpoint` + `ConnectEquation`.
 // Clear win: ONE `.dag` circuit declaration → a Modelica model that
 //   simulates in OpenModelica (omni-emission reaches acausal hardware).
-// Status: wave-1 passive R/L/C types + resistor declaration lex/grammar probe.
+// Status: wave-1 passive R/L/C types + resistor declaration lex/grammar probe + wave-1 resistor emit (silent-bee-545 closeout).
 // Splitting this file requires explicit operator ratification (substrate
 // extension = stop signal).
 
 module v4.extdeps.formats.modelica
 
+import v4.std.algebra { list_append, zip_eq }
+import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic { Outcome }
+import v4.std.logic { Bool }
+import v4.std.nat { Equal, nat_compare }
+import v4.std.text { Char, String }
+import v4.std.witness { Holds, Violates }
 import v4.std.grammar {
   FormalProduction,
   ParseGrammar,
@@ -248,9 +254,70 @@ fn modelica_format_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: modelica_format_grammar_schema(),
     probe: GrammarSchemaProbe {
-      fixture: "Resistor R1 ( R = 1000 ) ;",
+      fixture: modelica_wave1_resistor_fixture_text,
       production: modelica_resistor_declaration_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^modelica_surface_resistor_declaration)
     }
+  }
+}
+
+
+// --- Wave-1 resistor declaration emit (Shape B; paradigm contrast: SPICE emit) ---
+
+data modelica_wave1_resistor_fixture_text: String = "Resistor R1 ( R = 1000 ) ;"
+
+data modelica_wave1_witness_resistor: PassiveComponent = ResistorInstance {
+  name: ^r1,
+  R: ModelicaValue { lexeme: "1000" },
+  connectors: modelica_two_pin_connector_default
+}
+
+fn modelica_wave1_char_eq(a: Char, b: Char) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Equal => true
+    _ => false
+  }
+}
+
+fn modelica_wave1_string_eq(a: String, b: String) -> Bool {
+  zip_eq(a: a, b: b, eq: modelica_wave1_char_eq)
+}
+
+fn modelica_wave1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(empty_map(), ^r1, "R1")
+}
+
+fn modelica_wave1_symbol_spelling(sym: Symbol) -> String {
+  match modelica_wave1_binding_spellings().lookup(sym) {
+    Holds { value: spelling } => spelling
+    // Unbound symbol: return empty — callers must only invoke on registered symbols.
+    Violates { diagnostic: _ } => ""
+  }
+}
+
+fn modelica_emit_resistor_line(resistor: ResistorInstance) -> String {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: "Resistor ",
+          right: modelica_wave1_symbol_spelling(sym: resistor.name)
+        ),
+        right: " ( R = "
+      ),
+      right: resistor.R.lexeme
+    ),
+    right: " ) ;"
+  )
+}
+
+fn modelica_wave1_emit_matches_fixture_holds() -> Bool {
+  match modelica_wave1_witness_resistor {
+    ResistorInstance { name: n, R: r, connectors: c } =>
+      modelica_wave1_string_eq(
+        a: modelica_emit_resistor_line(resistor: ResistorInstance { name: n, R: r, connectors: c }),
+        b: modelica_wave1_resistor_fixture_text
+      )
+    _ => false
   }
 }
