@@ -20,6 +20,14 @@ cd "$(dirname "$0")/.." || exit 2
 BIN="${V2_COMPILER:-target/release/gunbc}"
 CARGO="${CARGO_BIN:-cargo}"
 OUT="${RUNNER_TEMP:-/tmp}/time-affine-gate"
+# The EMITTED crate is generated code: gunbc's v2_rt.rs uses
+# `#[cfg(feature = "text_lookup_work_counter")]` which the runner's `-D warnings`
+# promotes from the `unexpected_cfgs` lint into a hard error, failing an
+# otherwise-clean `cargo check`. Cap lints at `warn` for these checks so
+# generated-code lint noise can't fail the gate -- while REAL type errors (the
+# negative gate's E0369 `cannot add Instant`) are hard errors, NOT lints, so they
+# still fail as required.
+export RUSTFLAGS="${RUSTFLAGS:-} --cap-lints=warn"
 [ -x "$BIN" ] || { echo "FAIL: build $BIN first (cargo build --release -p v2-compiler --bin gunbc)"; exit 2; }
 mkdir -p "$OUT"
 
