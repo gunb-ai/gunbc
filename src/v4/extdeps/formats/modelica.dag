@@ -9,7 +9,6 @@ module v4.extdeps.formats.modelica
 
 import v4.std.algebra { Cons, Empty, fold_list, list_append }
 import v4.std.collection { List, Optional, Absent, Present }
-import v4.std.diagnostic { Outcome }
 import v4.std.node { Symbol }
 import v4.extdeps.formats.spice {
   Capacitor,

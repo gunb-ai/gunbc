@@ -29,7 +29,7 @@
 module v4.extdeps.formats.spice
 
 
-import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, list_append }
 import v4.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
 import v4.std.diagnostic {
   Diagnostic,
@@ -39,7 +39,6 @@ import v4.std.diagnostic {
   Textual,
   Unavailable,
   WholeFile,
-  diagnostics_singleton,
   outcome_accepted,
   outcome_rejected
 }
