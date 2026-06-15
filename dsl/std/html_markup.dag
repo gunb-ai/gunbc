@@ -44,13 +44,25 @@ type HrefValidation
   = SafeHref { url: String }
   | RejectedHref { scheme: DangerousUrlScheme }
 
+fn href_scheme_is_javascript(s: String) -> Bool {
+  starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:")
+}
+
+fn href_scheme_is_data(s: String) -> Bool {
+  starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:")
+}
+
+fn href_scheme_is_vbscript(s: String) -> Bool {
+  starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:")
+}
+
 fn validate_href(url: String) -> HrefValidation {
-  let normalized = trim(url) |> to_lower
-  if starts_with(normalized, prefix: "javascript:") {
+  let normalized = trim(url)
+  if href_scheme_is_javascript(s: normalized) {
     RejectedHref { scheme: JavascriptScheme }
-  } else if starts_with(normalized, prefix: "data:") {
+  } else if href_scheme_is_data(s: normalized) {
     RejectedHref { scheme: DataScheme }
-  } else if starts_with(normalized, prefix: "vbscript:") {
+  } else if href_scheme_is_vbscript(s: normalized) {
     RejectedHref { scheme: VbscriptScheme }
   } else {
     SafeHref { url: url }
