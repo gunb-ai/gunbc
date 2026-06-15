@@ -1,40 +1,10 @@
-// extdeps/boot/framebuffer.dag — earliest visible output surfaces for QEMU x86 boot.
+// extdeps/boot/framebuffer.dag — VGA text-mode hardware facts for Slice-0.5 emit.
 //
 // Anchor: IBM PC VGA text mode buffer at 0xB8000 (hardware fact).
-// Anchor: Linux x86 boot protocol framebuffer boot params (Documentation/arch/x86/boot.rst).
-//
-// Unit discipline (IC-MODE / signed brief adhoc-9a43e671-159):
-//   Target: cols/rows/width/height = Measure<Count, One>; bpp = BitWidth (boot-sketches 3ed85a12fb).
-//   dsl-rooted claim-run cannot load std.measure yet (G2 alias .count + phantom-tag import gap —
-//   same failure reproduces on boot-sketches framebuffer @ 3ed85a12fb). Bare Int carriers below
-//   are 🟡 scaffold only; dissolve-on: std.measure imports resolve in dsl claim-run gate.
+// FramebufferSurface / FramebufferWrite types deferred to Slice-1 boot QA
+// (consumer lands with QEMU stage witnesses; see boot-sketches 3ed85a12fb).
 
 module extdeps.boot.framebuffer
 
-import std.types { Int }
-
-type FramebufferSurface
-  = VgaTextMode {
-      base: Int,
-      cols: Int,
-      rows: Int,
-    }
-  | LinearFramebuffer {
-      base: Int,
-      width: Int,
-      height: Int,
-      bpp: Int,
-    }
-
-type FramebufferWrite
-  = WriteChar {
-      surface: FramebufferSurface,
-      row: Int,
-      col: Int,
-      ch: Int,
-      attr: Int,
-    }
-  | FillSolid { surface: FramebufferSurface, color: Int }
-
-// Slice-0 default VGA text mode base (IBM PC hardware fact).
+// Slice-0.5 default VGA text mode base (IBM PC hardware fact).
 data vga_text_mode_base: Int = 753664
