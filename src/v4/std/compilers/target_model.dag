@@ -3710,6 +3710,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_effect_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprEffectApply,
+            node: wire
+          }
+        )
       } else {
         outcome_rejected(
           target_value_expression_emit_unsupported_kind_diagnostic(
