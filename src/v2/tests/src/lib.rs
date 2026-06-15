@@ -26,6 +26,8 @@ mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
+mod enforce_host_marshal_probe_test;
+#[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
 mod effects;
