@@ -458,6 +458,34 @@ data corpus_ci_gate_row_spice_resistor_wave1_round_trip: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_modelica_resistor_two_pin_connectors: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica: ResistorInstance carries default p/n connectors",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_resistor_instance_carries_two_pin_connectors_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_modelica_connect_equation_endpoints: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica: ConnectEquation binds PinEndpoint instances",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_connect_equation_binds_pin_endpoints_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_modelica_passive_model_equation_section: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica: ModelicaModel carries passive components + connect section",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_passive_model_carries_equation_section_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_dual_emission_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/dual-emission: B2-OMNI — same R1 element reaches SPICE + Modelica without contortion",
+  entry: "src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag",
+  function: "dual_emission_spice_and_modelica_both_hold",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -514,10 +542,14 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
-  corpus_ci_gate_row_spice_resistor_wave1_round_trip
+  corpus_ci_gate_row_spice_resistor_wave1_round_trip,
+  corpus_ci_gate_row_modelica_resistor_two_pin_connectors,
+  corpus_ci_gate_row_modelica_connect_equation_endpoints,
+  corpus_ci_gate_row_modelica_passive_model_equation_section,
+  corpus_ci_gate_row_dual_emission_keystone
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "55"
+data claim_witness_corpus_claim_run_row_count: String = "59"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -582,7 +614,11 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
-  corpus_ci_gate_row_spice_resistor_wave1_round_trip
+  corpus_ci_gate_row_spice_resistor_wave1_round_trip,
+  corpus_ci_gate_row_modelica_resistor_two_pin_connectors,
+  corpus_ci_gate_row_modelica_connect_equation_endpoints,
+  corpus_ci_gate_row_modelica_passive_model_equation_section,
+  corpus_ci_gate_row_dual_emission_keystone
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "36"
+data claim_witness_corpus_shard_b_row_count: String = "40"
