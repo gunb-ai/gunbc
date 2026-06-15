@@ -6,9 +6,9 @@
 # Two-step consumer chain (INVARIANTS.md E-10):
 #
 #   Step 1 — emit correctness: gunbc --claim-run on spice_rc_ngspice_oracle.dag.
-#     spice_rc_tran_emit_ngspice_matches_expected_holds() returns Bool; --claim-run
-#     exit code is the authority (exit 0 = true, exit 1 = false). A broken
-#     spice_emit_ngspice exits 1 here before ngspice ever runs.
+#     spice_rc_ngspice_op_holds() returns Bool; --claim-run exit code is the
+#     authority (exit 0 = true, exit 1 = false). A broken spice_emit_ngspice
+#     exits 1 here before ngspice ever runs.
 #
 #   Step 2 — ngspice execution: reads spice_rc_tran_deck_ngspice_golden from the
 #     fixture .dag (single string authority). Step 1 must pass before ngspice runs.
