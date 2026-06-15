@@ -10,13 +10,9 @@
 
 module extdeps.boot.uart
 
-// COM1 base I/O port (IBM PC hardware assignment; fixed by PC/AT standard).
-// 0x3F8 = 1016 decimal.
-data com1_base_port: Int = 1016
-
-// THR (Transmit Holding Register) offset from base = 0.
+// THR (Transmit Holding Register) — COM1 I/O port.
+// 0x3F8 = 1016 decimal (IBM PC/AT standard; base + offset 0).
 // Write data bytes here when THRE is set.
-// 0x3F8 + 0 = 0x3F8 = 1016.
 data com1_data_port: Int = 1016
 
 // LSR (Line Status Register) offset from base = 5.
