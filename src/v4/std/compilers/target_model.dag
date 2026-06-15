@@ -4578,6 +4578,10 @@ fn target_value_template_apply(
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
+    ValueCommaSequence =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
     ValueConditional =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
