@@ -16,6 +16,7 @@ import v4.compiler.parse {
   parse_table_empty,
   parse_table_fill_position,
   parse_table_fill_position_pass,
+  parse_table_fill_production_step,
   ParseTableBuildAcc,
   tokens_at_position,
   token_position_indices
@@ -24,6 +25,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.std.diagnostic { Accepted, Rejected, port_locus }
 import v4.std.grammar {
+  GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
   VoidGrammar,
@@ -198,6 +200,80 @@ fn finer_parse_expr_at_position_one_terminates() -> Bool {
           true
       }
   }
+}
+
+fn finer_warmup_passes_pos1(n: Int) -> ParseTableBuildAcc {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } =>
+      ParseTableBuildAcc { table: parse_table_empty(), prov: parse_prov_initial() }
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          fold_list(
+            xs: list_repeat_n(n: n),
+            empty: ParseTableBuildAcc {
+              table: parse_table_empty(),
+              prov: parse_prov_initial()
+            },
+            cons: fn(acc2, _) {
+              parse_table_fill_position_pass(
+                acc: acc2,
+                position: 1,
+                all_tokens: token_stream.tokens,
+                root: root
+              )
+            }
+          )
+        VoidGrammar =>
+          ParseTableBuildAcc { table: parse_table_empty(), prov: parse_prov_initial() }
+      }
+  }
+}
+
+fn finer_one_prod_step_after_19_warmup(name: Symbol) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let warmed = finer_warmup_passes_pos1(n: 19)
+          match grammar_lookup_production(root: root, name: name) {
+            Violates { diagnostic: _ } => true
+            Holds { value: production } =>
+              let _ = parse_table_fill_production_step(
+                acc: warmed,
+                production: production,
+                position: 1,
+                all_tokens: token_stream.tokens,
+                root: root
+              )
+              true
+          }
+        VoidGrammar => true
+      }
+  }
+}
+
+fn finer_module_prod_step_after_19_warmup_terminates() -> Bool {
+  finer_one_prod_step_after_19_warmup(name: ^dag_production_module)
+}
+
+fn finer_expr_prod_step_after_19_warmup_terminates() -> Bool {
+  finer_one_prod_step_after_19_warmup(name: ^dag_production_expr)
+}
+
+fn finer_production_count_report() -> Bool {
+  length(xs: finer_dag_grammar_root().productions) > 0
 }
 
 fn finer_current_position_at_suffix_one_is_one() -> Bool {
