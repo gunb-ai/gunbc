@@ -465,6 +465,20 @@ data corpus_ci_gate_row_modelica_model_statement_resistor_arm: ClaimWitnessCorpu
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_modelica_connect_equation_endpoints: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica ConnectEquation binds PinEndpoint instances",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_connect_equation_binds_pin_endpoints_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_modelica_passive_model_body: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica ModelicaModel.body carries StmtConnect topology",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_passive_model_body_carries_model_statement_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -522,10 +536,12 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
   corpus_ci_gate_row_modelica_wave1_resistor_parses,
-  corpus_ci_gate_row_modelica_model_statement_resistor_arm
+  corpus_ci_gate_row_modelica_model_statement_resistor_arm,
+  corpus_ci_gate_row_modelica_connect_equation_endpoints,
+  corpus_ci_gate_row_modelica_passive_model_body
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "56"
+data claim_witness_corpus_claim_run_row_count: String = "58"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -591,7 +607,9 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
   corpus_ci_gate_row_modelica_wave1_resistor_parses,
-  corpus_ci_gate_row_modelica_model_statement_resistor_arm
+  corpus_ci_gate_row_modelica_model_statement_resistor_arm,
+  corpus_ci_gate_row_modelica_connect_equation_endpoints,
+  corpus_ci_gate_row_modelica_passive_model_body
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "37"
+data claim_witness_corpus_shard_b_row_count: String = "39"
