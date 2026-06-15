@@ -1,0 +1,44 @@
+// extdeps/diagnostic/ssh.dag — OpenSSH session transport (in-band observe + probe run).
+// Anchor: https://datatracker.ietf.org/doc/html/rfc4253
+//
+// PS-0 observe/control boundary for host health workflows.
+
+module extdeps.diagnostic.ssh
+
+import std.types { NonEmptyStr }
+
+service diagnostic.ssh.Session {
+  operation Exec {
+    input { host: NonEmptyStr, command: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "{command}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote command failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, exit_success: true, stdout: "(mock)", stderr: "" } "Mock ssh exec"
+    }
+  }
+
+  operation Reachability {
+    input { host: NonEmptyStr }
+    output { reachable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "{host}", "true"] }
+    exit {
+      0 => Unit
+      nonzero => String "ssh unreachable"
+    }
+    mock_response {
+      0 => { reachable: true } "Mock ssh reachability"
+    }
+  }
+}

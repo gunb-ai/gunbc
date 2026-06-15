@@ -62,7 +62,8 @@ pub use crate::v2_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    resolve_known_method_node, resolve_scrutinee_type_node, set_element_type_in_env,
+    product_field_result_type, resolve_known_method_node, resolve_scrutinee_type_node,
+    set_element_type_in_env,
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -135,19 +136,19 @@ pub use crate::v2_std_core::{
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, float_type,
-    foreach_body, foreach_collection, foreach_variable_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
-    intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
-    is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
-    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
+    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all, index_base,
+    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
+    is_container_type, is_error_diagnostic, is_kernel_type, is_property_contraction,
+    is_tree_size_reducing, kernel_type_set, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_span,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_name_span, none_type, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    string_type, unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -5288,6 +5289,126 @@ pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn record_field_type_is_unresolved_param(
+    field: Rc<Node>,
+    param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match product_field_result_type(field) {
+        Some(ft) => {
+            if ((ft.connective.clone() == Connective::NoConnective)
+                && ((ft.children.clone().len() as i64) == 0))
+            {
+                match ft.inferred.clone() {
+                    Some(inf) => is_type_variable(inf.clone()),
+                    None => {
+                        let fname = authored_name_at(env.source_indices.clone(), ft.clone());
+                        let in_params = {
+                            let mut __found = false;
+                            for pn in param_names.iter().cloned() {
+                                if (pn.clone().as_str() == fname.clone().as_str()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let conv = is_type_variable_name(fname.clone());
+                        (in_params || conv)
+                    }
+                }
+            } else {
+                false
+            }
+        }
+        None => false,
+    }
+}
+
+pub fn record_has_unresolved_param_field(record: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    {
+        let param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in record.params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+            }
+            __result
+        });
+        {
+            let mut __found = false;
+            for f in record.children.clone().iter().cloned() {
+                if record_field_type_is_unresolved_param(
+                    f.clone(),
+                    param_names.clone(),
+                    env.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn expand_alias_chain_for_field_access(
+    mut n: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+    mut module_name: String,
+    mut origin_name: String,
+    mut seen: Rc<HashMap<String, bool>>,
+    mut lossy: bool,
+) -> Rc<Node> {
+    loop {
+        let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
+        } else {
+            n.clone()
+        };
+        let structural =
+            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+        let is_record = ((structural.connective.clone() == Connective::Conj)
+            || (structural.connective.clone() == Connective::Disj));
+        if is_record {
+            let fail_closed =
+                (lossy && record_has_unresolved_param_field(structural.clone(), env.clone()));
+            if fail_closed {
+                break nominal_type_ref(origin_name);
+            } else {
+                break structural.clone();
+            }
+        } else {
+            let next_name = structural.name.clone();
+            let is_optional = (structural.return_cardinality.clone() == Cardinality::CardOptional);
+            let stop = ((is_optional || (next_name.clone().as_str() == "".to_string().as_str()))
+                || emit_map_has(seen.clone(), next_name.clone()));
+            if stop {
+                break structural.clone();
+            } else {
+                match lookup_type_by_name(env.clone(), next_name.clone()) {
+                    Some(target) => {
+                        let next_seen = v2_rt::rc_map_insert(seen.clone(), next_name.clone(), true);
+                        let dropped_args = ((structural.children.clone().len() as i64) > 0);
+                        let next_lossy = (lossy || dropped_args);
+                        {
+                            let __tco_0 = target.clone();
+                            let __tco_1 = next_seen;
+                            let __tco_2 = next_lossy;
+                            n = __tco_0;
+                            seen = __tco_1;
+                            lossy = __tco_2;
+                            continue;
+                        }
+                    }
+                    None => {
+                        break structural.clone();
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn expand_type_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -5297,12 +5418,15 @@ pub fn expand_type_for_field_access(
         n.clone()
     } else {
         {
-            let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
-                peel_alias_once_for_field_access(n.clone(), env.clone(), module_name)
-            } else {
-                n.clone()
-            };
-            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled))
+            let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
+            expand_alias_chain_for_field_access(
+                n.clone(),
+                env.clone(),
+                module_name,
+                origin_name,
+                v2_rt::rc_empty_map::<String, bool>(),
+                false,
+            )
         }
     }
 }

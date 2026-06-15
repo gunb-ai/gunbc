@@ -215,6 +215,123 @@ fn single_variant_enum_compiles() {
     assert_no_diagnostics(&result);
 }
 
+// ── Leading-pipe single-variant nullary enum: the alias-vs-sum discriminator ──
+//
+// `type X = | Tag` is a DELIBERATE single-variant nullary sum; a bare `type X = Name`
+// stays an ALIAS and fails closed (UnresolvedType) when the RHS is not a declared
+// type. This replaces the over-widening coalesce of (closed) #4879, which silently
+// turned ANY unknown bare RHS into a nullary variant — swallowing typos. The leading
+// pipe makes the introduction explicit at the source surface, so the fix is
+// fail-closed BY CONSTRUCTION with no value/type coupling. (compute_fabric OS-catalog
+// ungate.)
+
+// Discriminator pair (a): the deliberate single-variant form resolves green — and,
+// unlike an inhabitance gate, needs NO constructor anywhere in the closure.
+#[test]
+fn leading_pipe_single_variant_nullary_enum_resolves() {
+    let source = r#"module lp_single
+
+type UbuntuDistribution = | NobleNumbat2404Lts
+
+fn tag(d: UbuntuDistribution) -> UbuntuDistribution {
+  match d {
+    NobleNumbat2404Lts => NobleNumbat2404Lts
+  }
+}
+"#;
+    assert_no_diagnostics(&compile_dag(source));
+}
+
+// Discriminator pair (b): the FAIL-CLOSED half. A bare `= Name` to an undeclared
+// type is a typo, not a single-variant enum, and must error with UnresolvedType.
+#[test]
+fn bare_alias_unknown_rhs_fails_closed() {
+    let source = "module typo_test\ntype Foo = NotARealType\nfn f(x: Foo) -> Foo { x }\n";
+    let msgs: Vec<_> = diagnostic_messages(&compile_dag(source))
+        .into_iter()
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("unresolved type") && m.contains("NotARealType")),
+        "bare `type Foo = NotARealType` (no leading pipe, undeclared RHS) must fail \
+         closed with UnresolvedType, got: {msgs:?}"
+    );
+}
+
+// Regression: a bare `= T` where T IS a declared type stays a working alias —
+// not erroring, not turned into a single-variant enum.
+#[test]
+fn bare_alias_to_declared_type_still_aliases() {
+    let source =
+        "module alias_test\nimport std.types { Int }\ntype Count = Int\nfn f(x: Count) -> Count { x }\n";
+    assert_no_diagnostics(&compile_dag(source));
+}
+
+// Regression: existing pipe-SEPARATED multi-variant (no leading pipe) is bit-for-bit
+// untouched by the optional-leading-pipe parse rule.
+#[test]
+fn pipe_separated_multi_variant_unchanged() {
+    let source = "module multi\ntype Color = Red | Green | Blue\nfn pick() -> Color { Green }\n";
+    assert_no_diagnostics(&compile_dag(source));
+}
+
+// Newly reachable path: a leading-pipe MULTI-variant list resolves as a normal sum.
+#[test]
+fn leading_pipe_multi_variant_resolves() {
+    let source =
+        "module lp_multi\ntype Color = | Red | Green | Blue\nfn pick() -> Color { Green }\n";
+    assert_no_diagnostics(&compile_dag(source));
+}
+
+// Class proof (NOT an OS special-case): two single-variant nullary enums in
+// different modules both resolve — mirrors std.os.types + gunbc.ci_emission.
+#[test]
+fn dual_site_single_variant_not_os_special_case() {
+    let a = "module site.a\ntype UbuntuDistribution = | NobleNumbat2404Lts\nfn t(d: UbuntuDistribution) -> UbuntuDistribution { match d { NobleNumbat2404Lts => NobleNumbat2404Lts } }\n";
+    let b = "module site.b\ntype WorkflowRuntime = | BinaryShim\nfn r(w: WorkflowRuntime) -> WorkflowRuntime { match w { BinaryShim => BinaryShim } }\n";
+    assert_no_diagnostics(&compile_multi(&[("site/a.dag", a), ("site/b.dag", b)]));
+}
+
+// Real-file witness: std.os.types resolves on v2 off the broken `Option` import —
+// kernel T? optional fields + leading-pipe distro enums.
+#[test]
+fn std_os_types_resolves_with_t_question_and_leading_pipe() {
+    let roots: Vec<String> = source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = workspace_root()
+        .join("dsl/std/os/types.dag")
+        .to_string_lossy()
+        .to_string();
+    let sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        msgs.is_empty(),
+        "std.os.types should resolve on v2 (T? + leading-pipe nullary enums): {msgs:?}"
+    );
+}
+
+// Real-file witness: std.cpu.types uses kernel T?, not an `Option` import (M9).
+#[test]
+fn std_cpu_types_uses_kernel_t_question() {
+    let content = read_v2_file("dsl/std/cpu/types.dag");
+    assert!(
+        !content.contains("Option"),
+        "std.cpu.types must use kernel T? (M9), not import std.types Option"
+    );
+    let source = "module cpu_t_witness\nimport std.types { Int, NonEmptyStr }\ntype Row { oem_listing_id: NonEmptyStr? }\n";
+    assert_no_diagnostics(&compile_dag(source));
+}
+
 #[test]
 fn uses_binding_parses() {
     // uses clause parses but bindings are not added to scope (M2 bug).

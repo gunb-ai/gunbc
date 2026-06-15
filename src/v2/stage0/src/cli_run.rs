@@ -29,6 +29,11 @@ use crate::v2_std_core::{
 };
 use serde::Serialize;
 
+use crate::resolved_graph_cache::{
+    lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
+    write as cross_process_write, CacheLookupResult,
+};
+
 /// Module that owns `UnifiedTestClaim` and its registration arms.
 pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v4.std.verification";
 pub const BOOL_WITNESS_CLAIM_TYPE: &str = "BoolWitnessClaim";
@@ -427,6 +432,16 @@ fn resolve_entry_with_parse_cache(
 > {
     let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
 
+    if let Some(cache_root) = resolved_graph_cache_root_from_env() {
+        let subject = subject_digest_for_closure(&sources);
+        match cross_process_lookup(&cache_root, &subject) {
+            CacheLookupResult::Hit(hit) => {
+                return Ok((hit.graph, hit.source_indices));
+            }
+            CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+        }
+    }
+
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
@@ -531,6 +546,11 @@ fn resolve_entry_with_parse_cache(
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
         return Err(format_error_nodes(&ownership_diags, &source_indices));
+    }
+
+    if let Some(cache_root) = resolved_graph_cache_root_from_env() {
+        let subject = subject_digest_for_closure(&sources);
+        let _ = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
     }
 
     Ok((typed, source_indices))

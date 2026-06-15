@@ -7,7 +7,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
+  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -139,7 +139,7 @@ import v2.compiler.infer_lookup {
   KnownMethodResolution,
   resolve_known_method_node, resolve_scrutinee_type_node,
   field_summary_for_type,
-  lookup_field_type_node, lookup_coproduct_common_field_node,
+  lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig
 }
@@ -2734,11 +2734,93 @@ fn structural_from_expanded_type(normed: Node) -> Node {
   }
 }
 
+// A record (Conj/Disj) field whose resolved TYPE is still an unsubstituted
+// generic param: an explicit TypeVariable, a bare leaf named among the record's
+// (retained) params, or a bare leaf matching the codebase type-var-name
+// convention (T/K/V/...). A concrete field type (Nat, Int, ...) is none of these.
+fn record_field_type_is_unresolved_param(field: Node, param_names: List<String>, env: TypeEnv) -> Bool {
+  match product_field_result_type(field: field) {
+    Present { value: ft } =>
+      if ft.connective == NoConnective && ft.children |> count == 0 {
+        match ft.inferred {
+          Present { value: inf } => is_type_variable(inferred: inf)
+          Absent =>
+            let fname = authored_name_at(source_indices: env.source_indices, node: ft)
+            let in_params = param_names |> any(pn => pn == fname)
+            let conv = is_type_variable_name(name: fname)
+            in_params || conv
+        }
+      } else { false }
+    Absent => false
+  }
+}
+
+fn record_has_unresolved_param_field(record: Node, env: TypeEnv) -> Bool {
+  let param_names = record.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+  record.children |> any(f => record_field_type_is_unresolved_param(field: f, param_names: param_names, env: env))
+}
+
+// Multi-hop alias field-access (G3): follow the alias chain to the structural
+// record (Conj/Disj) that carries the field. Each hop reuses the single-hop
+// machinery (parametric-struct generic instantiation + leaf-alias scrutinee
+// resolution); when that does not reach a record, follow ONE STRUCTURAL-NAME hop
+// (n.name, not the preserved alias brand) and recurse. The structural name is
+// the next link in the chain (MoneyMicros's resolved carrier names MoneyAmount,
+// which names Measure); the brand stays pinned to the alias's own name, so
+// chain-following must key on the structural name. `seen` (structural names
+// already visited) terminates genuine self-references (`type Nat` resolving to
+// itself) and cycles.
+//
+// SCOPE BOUNDARY (G3 fail-closed): following a STRUCTURAL-NAME hop drops the
+// use-site's type args -- the alias param list is not retained on the resolved
+// binding (TypeBinding stores only `resolved`, see 04_env.dag). When the chain is
+// `lossy` (a name-hop dropped args) AND the reached record still has a field
+// typed by an unsubstituted param, we CANNOT type that field, so we fail closed
+// (return a bare nominal leaf -> "no field" diagnostic) rather than silently
+// returning the raw type variable. Param-INDEPENDENT fields (Measure.count: Nat,
+// where the alias param is phantom) resolve normally. The unsubstituted-param
+// detection rides the type-var-name convention (T/K/V/...) since the reached
+// record's params are dropped too; a field typed by a non-convention param name
+// through a lossy chain is the same uninhabited gap. Dissolution trigger: the
+// first real consumer with a param-DEPENDENT field reached through a parametric-
+// alias chain -> follow-up "TypeBinding param-list preservation for param-
+// substitution through parametric-alias chains".
+fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
+  let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
+  let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
+  let is_record = structural.connective == Conj || structural.connective == Disj
+  if is_record {
+    let fail_closed = lossy && record_has_unresolved_param_field(record: structural, env: env)
+    if fail_closed {
+      nominal_type_ref(name: origin_name)
+    } else { structural }
+  } else {
+    let next_name = structural.name
+    // Optional types carry `.value` via the optional-unwrap path downstream; do
+    // not chain-follow them (following strips the cardinality). Also stop at an
+    // empty name or an already-visited hop (self-reference / cycle).
+    let is_optional = structural.return_cardinality == CardOptional
+    let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
+    if stop {
+      structural
+    } else {
+      match lookup_type_by_name(env: env, name: next_name) {
+        Present { value: target } =>
+          let next_seen = map_insert(seen, next_name, true)
+          let dropped_args = structural.children |> count > 0
+          let next_lossy = lossy || dropped_args
+          expand_alias_chain_for_field_access(n: target, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+        Absent => structural
+      }
+    }
+  }
+}
+
 fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
   if is_deferred_field_access_base(n: n, env: env) { n }
   else {
-    let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
-    structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
+    let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
+    expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: empty_map(), lossy: false)
   }
 }
 

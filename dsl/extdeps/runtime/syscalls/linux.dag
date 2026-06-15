@@ -1,11 +1,14 @@
-// extdeps/runtime/syscalls/linux.dag — Linux x86-64 system-call surface (cited facts).
-// Scope: Slice-1 subset inhabiting std.os.invocation.SyscallAbi.
+// extdeps/runtime/syscalls/linux.dag — Linux system-call surfaces (cited facts).
+// Scope: Slice-1 subsets inhabiting std.os.invocation.SyscallAbi (x86-64 + aarch64).
 // Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl
+// Anchor: https://github.com/torvalds/linux/v6.8/include/uapi/asm-generic/unistd.h
 
 module extdeps.runtime.syscalls.linux
 
+import extdeps.runtime.abi.aapcs64 { aapcs64_linux_syscall_convention }
 import extdeps.runtime.abi.sysv_amd64 { sysv_amd64_linux_syscall_convention }
 import std.os.invocation { SyscallEntry, SyscallAbi }
+import std.types { Bool }
 
 data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
 data sys_write: SyscallEntry  = SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
@@ -22,6 +25,21 @@ data linux_x86_64_syscall_abi: SyscallAbi = {
   convention: sysv_amd64_linux_syscall_convention,
 }
 
+data sys_aarch64_read: SyscallEntry   = SyscallEntry { number: 63,  name: "read",   arg_count: 3 }
+data sys_aarch64_write: SyscallEntry  = SyscallEntry { number: 64,  name: "write",  arg_count: 3 }
+data sys_aarch64_mmap: SyscallEntry   = SyscallEntry { number: 222, name: "mmap",   arg_count: 6 }
+data sys_aarch64_execve: SyscallEntry = SyscallEntry { number: 221, name: "execve", arg_count: 3 }
+data sys_aarch64_exit: SyscallEntry   = SyscallEntry { number: 93,  name: "exit",   arg_count: 1 }
+
+data linux_aarch64_syscall_subset: List<SyscallEntry> = [
+  sys_aarch64_read, sys_aarch64_write, sys_aarch64_mmap, sys_aarch64_execve, sys_aarch64_exit
+]
+
+data linux_aarch64_syscall_abi: SyscallAbi = {
+  table: linux_aarch64_syscall_subset,
+  convention: aapcs64_linux_syscall_convention,
+}
+
 // Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until swift-stag dsl corpus gate lands.
 fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }
@@ -29,3 +47,9 @@ fn witness_write_number_is_1() -> Bool   { sys_write.number == 1 }
 fn witness_mmap_number_is_9() -> Bool    { sys_mmap.number == 9 }
 fn witness_execve_number_is_59() -> Bool { sys_execve.number == 59 }
 fn witness_exit_number_is_60() -> Bool   { sys_exit.number == 60 }
+
+fn witness_aarch64_read_number_is_63() -> Bool    { sys_aarch64_read.number == 63 }
+fn witness_aarch64_write_number_is_64() -> Bool   { sys_aarch64_write.number == 64 }
+fn witness_aarch64_mmap_number_is_222() -> Bool   { sys_aarch64_mmap.number == 222 }
+fn witness_aarch64_execve_number_is_221() -> Bool { sys_aarch64_execve.number == 221 }
+fn witness_aarch64_exit_number_is_93() -> Bool    { sys_aarch64_exit.number == 93 }

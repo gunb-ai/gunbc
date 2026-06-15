@@ -1,0 +1,253 @@
+// extdeps/formats/elf/hello_static_witness.dag — end-to-end decode of one real static hello ELF.
+//
+// Fixture: musl-static x86-64 hello built in Alpine 3.20 (linux/amd64):
+//   cc -static -o hello 'write(1,"Hello\n",6); return 0;'
+// Bytes are the on-disk ELF-64 Ehdr (64 B) + first PT_LOAD Phdr (56 B) — verified with readelf.
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+
+module extdeps.formats.elf.hello_static_witness
+
+import extdeps.formats.elf.primitives {
+  ElfClass32,
+  ElfClass64,
+  ElfData2Lsb,
+  EtExec,
+  EmX86_64,
+  PtLoad,
+  elf64_ehdr_size,
+  elf64_phdr_size,
+  linux_x86_64_elf_format,
+  pf_r,
+}
+import extdeps.formats.elf.segments {
+  PhdrDecoded,
+  PhdrRejected,
+  decode_elf64_phdr,
+  elf64_phdr_to_load_segment,
+}
+import extdeps.formats.elf.types {
+  ElfDecoded,
+  ElfRejected,
+  decode_elf64_ehdr,
+  elf64_ehdr_entry_point,
+  elf_ident_has_valid_magic,
+}
+import std.exec_format { Elf }
+
+// Real static hello — ELF-64 Ehdr (64 bytes).
+data static_hello_elf64_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+// Continuation at file offset 64 — first PT_LOAD program header (56 bytes).
+data static_hello_first_phdr_bytes: List<Int> = [
+  1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0,
+  140, 2, 0, 0, 0, 0, 0, 0, 140, 2, 0, 0, 0, 0, 0, 0,
+  0, 16, 0, 0, 0, 0, 0, 0,
+]
+
+data static_hello_truncated_ehdr_bytes: List<Int> = [127, 69, 76, 70, 2]
+
+data static_hello_bad_class_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 99, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+data static_hello_bad_magic_ehdr_bytes: List<Int> = [
+  0, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+data static_hello_elf32_class_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+// Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+
+fn witness_format_atom_is_elf() -> Bool {
+  linux_x86_64_elf_format.family == Elf
+}
+
+fn witness_truncated_ehdr_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_truncated_ehdr_bytes) {
+    ElfRejected { reason: Truncated { required_bytes: _, available_bytes: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_unknown_class_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
+    ElfRejected { reason: UnsupportedElfClass { raw: 99 } } => true
+    _ => false
+  }
+}
+
+fn witness_invalid_magic_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_bad_magic_ehdr_bytes) {
+    ElfRejected { reason: InvalidElfMagic { mag0: 0, mag1: 69, mag2: 76, mag3: 70 } } => true
+    _ => false
+  }
+}
+
+fn witness_elf32_class_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf32_class_ehdr_bytes) {
+    ElfRejected { reason: ElfClassNotElf64 { class: ElfClass32 } } => true
+    _ => false
+  }
+}
+
+fn witness_ident_magic() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => elf_ident_has_valid_magic(hdr.ident)
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_ident_class_is_elf64() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ident.class == ElfClass64
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_ident_data_is_little_endian() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ident.data == ElfData2Lsb
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_file_type_is_exec() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.file_type == EtExec
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_machine_is_x86_64() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.machine == EmX86_64
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_entry_point_address() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => elf64_ehdr_entry_point(hdr).virtual_address == 4198443
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_phoff_is_64() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phoff == 64
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_shoff_is_43576() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.shoff == 43576
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_ehsize_is_64() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.ehsize == elf64_ehdr_size
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_phentsize_is_56() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phentsize == elf64_phdr_size
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_phnum_is_9() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } => hdr.phnum == 9
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_first_segment_is_pt_load() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => phdr.segment_type == PtLoad
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_first_segment_is_read_only() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => {
+      let seg = elf64_phdr_to_load_segment(phdr)
+      phdr.flags == pf_r
+        && seg.permissions.readable == true
+        && seg.permissions.writable == false
+        && seg.permissions.executable == false
+    }
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_first_load_segment_vaddr() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).virtual_address == 4194304
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_first_load_segment_filesz() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).file_size == 652
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_first_load_segment_align() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).alignment == 4096
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn main() -> Bool {
+  witness_format_atom_is_elf()
+    && witness_truncated_ehdr_rejects()
+    && witness_unknown_class_rejects()
+    && witness_invalid_magic_rejects()
+    && witness_elf32_class_rejects()
+    && witness_ident_magic()
+    && witness_ident_class_is_elf64()
+    && witness_ident_data_is_little_endian()
+    && witness_file_type_is_exec()
+    && witness_machine_is_x86_64()
+    && witness_entry_point_address()
+    && witness_phoff_is_64()
+    && witness_shoff_is_43576()
+    && witness_ehsize_is_64()
+    && witness_phentsize_is_56()
+    && witness_phnum_is_9()
+    && witness_first_segment_is_pt_load()
+    && witness_first_segment_is_read_only()
+    && witness_first_load_segment_vaddr()
+    && witness_first_load_segment_filesz()
+    && witness_first_load_segment_align()
+}

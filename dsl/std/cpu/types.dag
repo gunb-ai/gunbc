@@ -3,7 +3,7 @@
 module std.cpu.types
 
 import std.measure { HardwareThreadCount, Hertz }
-import std.types { Int, NonEmptyStr, Option }
+import std.types { Int, NonEmptyStr }
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
@@ -16,7 +16,7 @@ type CpuIdentity = AmpereCpu { model: AmpereCpuModel }
 
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
-  oem_listing_id: Option<NonEmptyStr>
+  oem_listing_id: NonEmptyStr?
   architecture: CpuArchitecture
   cores: Int
   threads: HardwareThreadCount

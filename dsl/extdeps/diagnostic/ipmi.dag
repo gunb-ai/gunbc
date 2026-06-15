@@ -1,0 +1,52 @@
+// extdeps/diagnostic/ipmi.dag — IPMI/ipmitool out-of-band BMC (sensor / SDR / SEL).
+// Anchor: https://www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html
+//
+// argv grounded in ipmitool(8) sensor/sdr/sel subcommands.
+
+module extdeps.diagnostic.ipmi
+
+import std.types { NonEmptyStr }
+
+service diagnostic.ipmi.Tool {
+  operation SensorList {
+    input { bmc_host: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sensor"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sensor failed"
+    }
+    mock_response {
+      0 => { stdout: "VDDQ | Volts | ok\n", success: true } "Mock ipmi sensor"
+    }
+  }
+
+  operation SdrList {
+    input { bmc_host: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sdr", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sdr failed"
+    }
+    mock_response {
+      0 => { stdout: "(mock sdr)", success: true } "Mock ipmi sdr"
+    }
+  }
+
+  operation SelList {
+    input { bmc_host: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sel", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sel failed"
+    }
+    mock_response {
+      0 => { stdout: "(mock sel)", success: true } "Mock ipmi sel"
+    }
+  }
+}

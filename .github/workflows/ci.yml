@@ -89,6 +89,7 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -99,6 +100,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -134,6 +159,30 @@ jobs:
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -153,6 +202,30 @@ jobs:
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -171,6 +244,30 @@ jobs:
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -228,6 +325,7 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -238,6 +336,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -306,6 +428,7 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -316,6 +439,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -420,6 +567,7 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -430,6 +578,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -502,6 +674,11 @@ jobs:
     # this reuses that crate and adds only the test's own ~ms of file I/O + resolve.
     - name: resolve typed-cache equivalence (order-permuted cold-oracle guard, #4867)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release resolve_typed_cache_equivalence_test::typed_module_cache_matches_cold_oracle_in_every_order -- --exact --quiet
+    # resolve-cost lever (PR2): cross-process resolved-graph cache falsifiers —
+    # cold-oracle equivalence, poisoned-hit RejectedHit, WriteOnce concurrency,
+    # key-mismatch miss, eval-deterministic corpus only.
+    - name: resolve cross-process cache falsifiers (PR2)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release resolve_cross_process_cache_test -- --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
@@ -540,6 +717,7 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -550,6 +728,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -637,6 +839,7 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -647,6 +850,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -730,6 +957,7 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -740,6 +968,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -794,6 +1046,8 @@ jobs:
     # matrix leg to succeed (fail-closed-on-skip).
     - name: affected-set node-frontier + testgen GREEN must-pass witnesses
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
+    - name: probe-selector keystone must-pass witnesses (PS-0 host-health)
+      run: bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
@@ -835,6 +1089,7 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -845,6 +1100,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -906,6 +1185,7 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -916,6 +1196,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:
@@ -964,6 +1268,7 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -974,6 +1279,30 @@ jobs:
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              echo "::warning::deleting dangling ref ${ref}"
+              git -C "$repo" update-ref -d "$ref" 2>/dev/null || true
+            fi
+          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
     - name: Checkout
       uses: actions/checkout@v5
       with:

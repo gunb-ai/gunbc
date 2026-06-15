@@ -1,6 +1,6 @@
 // std/cache_interface.dag — Elastic cache interface (Worksheet B / exploration §4.0f cases 9–19).
 //
-// Authority: docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md
+// Authority: this module (.dag self-authoritative; worksheet refs retired).
 // Composition: compute via ExecutionReceiptRef<T> digest only — MUST NOT import compute_fabric.
 //
 // CacheInterfaceFacts rows are first authority; CacheStoreView is a derived projection only.
@@ -9,7 +9,7 @@ module std.cache_interface
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.measure { ByteSize }
-import std.cache_identity { CacheInterfaceId, ArtifactKindId }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //
@@ -201,7 +201,7 @@ type CacheKeyProjection<T> {
 // Neutral digest ref to compute_fabric ExecutionReceipt<T> — producer discriminant
 // lives only on ProducerReceipt<T> (no parallel ProducerKind on this ref).
 type ExecutionReceiptRef<T> {
-  receipt_digest: ContentHash
+  receipt_digest: ExecutionReceiptDigest
 }
 
 // 🟢 TERMINAL — sole producer discriminant; ExecutionReceiptRef is digest-only.
@@ -438,6 +438,49 @@ data rustup_toolchain_store_facts: CacheInterfaceFacts = {
       evidence: VendorCitation {
         source: "rustup toolchain installation layout"
         url: "https://rust-lang.github.io/rustup/overrides.html"
+      }
+    },
+  ]
+}
+
+data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
+
+data resolved_graph_cache_facts: CacheInterfaceFacts = {
+  identity: resolved_graph_cache_id
+  backing_surface: "gunbc-resolved-graph-per-host-cache"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+    classification: ContentAddressedByValue
+    inputs_considered: [UpsertSubject]
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Org
+    invalidation_triggers: [ToolchainChange, ManualPurge]
+  }
+  lookup_semantics: ContentAddressLookup
+  write_semantics: WriteOnce
+  miss_semantics: MissThenCreate
+  value_shape: StructuredArtifact
+  locality: PerHostFilesystem
+  eviction: SizeBounded { cap_bytes: 10737418240 }
+  atomicity: WriteThenRename
+  auth: FilesystemPerms
+  read_latency: LocalDiskUs
+  consistency: ReadYourWrites
+  evidence: [
+    {
+      field: "atomicity"
+      evidence: OperatorObserved {
+        note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
+        observed_at: 0
+      }
+    },
+    {
+      field: "lookup_semantics"
+      evidence: OperatorObserved {
+        note: "subject_digest = closure content + resolve-logic version + intern-seed version"
+        observed_at: 0
       }
     },
   ]

@@ -158,6 +158,15 @@ classify_stdout() {
   echo error
 }
 
+run_resolve_fail_repro_if_bound() {
+  local bind_anchor="$1"
+  case "$bind_anchor" in
+    adhoc-20b17ff7-932)
+      bash scripts/v4-probe-selector-compute-fabric-import-repro.sh
+      ;;
+  esac
+}
+
 # GREEN pass: group functions by (source-root, entry), then one claim_batch call per
 # unique source-root so the module index is built once per root.  The prior version
 # hardcoded --source-root src/v4; this version derives the root from each entry's path
@@ -322,6 +331,7 @@ for row in "${fail_rows[@]}"; do
   actual="$(classify_stdout "$out")"
   echo "::endgroup::"
   if [[ "$actual" == false ]]; then
+    run_resolve_fail_repro_if_bound "$bind_anchor"
     continue
   fi
   failures=$((failures + 1))

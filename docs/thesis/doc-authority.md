@@ -126,6 +126,9 @@ flowchart LR
   subgraph area_docs_perf["docs/perf"]
     d_docs_perf_clone_elimination_md["docs/perf/clone-elimination.md"]
   end
+  subgraph area_docs_planning["docs/planning"]
+    d_docs_planning_recompute_pure_of_content_transparent_memoization_design_2026_06_14_md["docs/planning/recompute-pure-of-content-transparent-memoization-design-2026-06-14.md"]
+  end
   subgraph area_docs_thesis["docs/thesis"]
     d_docs_thesis_compiler_std_consolidation_md["docs/thesis/compiler-std-consolidation.md"]
     d_docs_thesis_compositional_layering_md["docs/thesis/compositional-layering.md"]
@@ -165,6 +168,7 @@ flowchart LR
   d_ROADMAP_md --> d_docs_architecture_md
   d_ROADMAP_md --> d_docs_audit_v4_encapsulation_touch_once_contract_2026_06_05_md
   d_ROADMAP_md --> d_docs_design_pure_bootstrap_zero_md
+  d_ROADMAP_md --> d_docs_planning_recompute_pure_of_content_transparent_memoization_design_2026_06_14_md
   d_ROADMAP_md --> d_docs_thesis_doc_authority_md
   d_ROADMAP_md --> d_docs_thesis_the_derived_homomorphism_md
   d_THESIS_md --> d_docs_audit_v4_encapsulation_touch_once_contract_2026_06_05_md
@@ -214,6 +218,7 @@ flowchart LR
   d_docs_perf_clone_elimination_md --> d_INVARIANTS_md
   d_docs_perf_clone_elimination_md --> d_ROADMAP_md
   d_docs_perf_clone_elimination_md --> d_THESIS_md
+  d_docs_planning_recompute_pure_of_content_transparent_memoization_design_2026_06_14_md --> d_ROADMAP_md
   d_docs_single_emitter_design_md --> d_INVARIANTS_md
   d_docs_single_emitter_design_md --> d_ROADMAP_md
   d_docs_single_emitter_design_md --> d_THESIS_md

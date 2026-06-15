@@ -1,0 +1,20 @@
+// extdeps/diagnostic/edac.dag — EDAC correctable counter read (ras-mc-ctl).
+// Anchor: https://www.kernel.org/doc/html/latest/admin-guide/ras.html
+
+module extdeps.diagnostic.edac
+
+service diagnostic.edac.RasMcCtl {
+  operation CorrectableCounts {
+    input {}
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ras-mc-ctl", "--summary"] }
+    exit {
+      0 => Unit
+      nonzero => String "ras-mc-ctl failed"
+    }
+    mock_response {
+      0 => { stdout: "CE count: 0\n", success: true } "Mock edac summary"
+    }
+  }
+}

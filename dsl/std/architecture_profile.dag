@@ -1,0 +1,44 @@
+// std/architecture_profile.dag — arch + ABI substrate for the §10 execution-contract layer.
+//
+// Scope: cited machine facts + CallingConvention + StackLayout — the arch-specific execution
+// substrate before format and invocation-surface composition (exec-contract §4).
+// M9: `architecture` attaches to std.cpu.types.CpuArchitecture (no parallel arch notion).
+// Per-arch cited inhabitants live in extdeps/runtime/architecture/*.dag (M3).
+
+module std.architecture_profile
+
+import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
+import std.measure { BitWidth, ByteSize }
+import std.os.invocation { SyscallAbi }
+
+// 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
+// Option import. `import std.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
+// fails: std.cpu.types imports named Option from std.types (unexported on v2; snappy-stag-903).
+// Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
+type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+
+// 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
+type Endianness = LittleEndian | BigEndian
+
+type ArchitectureProfile {
+  architecture: TargetArchitecture
+  // 🟡 feature:L-8-fixed-width-words — bind os-exec-contract-layer L-8 — dissolve-on: enforced
+  // fixed-width word carriers in std.bit replace Measure<Information, One> width fields.
+  word_width: BitWidth
+  pointer_width: BitWidth
+  endianness: Endianness
+  page_size: ByteSize
+  default_alignment: ByteSize
+  register_file: List<ArchitecturalRegister>
+  calling_convention: CallingConvention
+  stack_layout: StackLayout
+}
+
+// DeploymentTarget composes profile + invocation surface (zesty ruling §5).
+// operating_system attach is 🟡-gated on std.os.types v2 catalog flip (Option + single-variant enum).
+type DeploymentTarget {
+  profile: ArchitectureProfile
+  // 🟡 feature:stable-invocation-surface-coproduct — bind exec-contract Slice 2 (LibraryApiBoundary);
+  // dissolve-on: repoint invocation to StableInvocationSurface when macOS/Windows inhabitants land.
+  invocation: SyscallAbi
+}

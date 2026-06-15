@@ -1,0 +1,81 @@
+// extdeps/runtime/architecture/aarch64_linux.dag — aarch64 Linux architecture profile (cited facts).
+//
+// Scope: Slice-1 inhabitant #2 of std.architecture_profile.ArchitectureProfile — TargetArchitecture::Aarch64
+// with cited machine facts, aapcs64 syscall convention, and downward stack.
+//
+// Anchor: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst (§5.4.2 stack; §4.1 alignment)
+// Anchor: https://github.com/torvalds/linux/v6.8/arch/arm64/include/asm/page-def.h (PAGE_SIZE via PAGE_SHIFT)
+// Anchor: https://github.com/torvalds/linux/v6.8/arch/arm64/kernel/syscall.c
+
+module extdeps.runtime.architecture.aarch64_linux
+
+import extdeps.runtime.abi.aapcs64 {
+  aarch64_inhabitant_x0,
+  aarch64_inhabitant_x1,
+  aarch64_inhabitant_x2,
+  aarch64_inhabitant_x3,
+  aarch64_inhabitant_x4,
+  aarch64_inhabitant_x5,
+  aarch64_inhabitant_x8,
+  aapcs64_linux_syscall_convention,
+}
+import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
+import std.abi { ArchitecturalRegister, StackLayout }
+import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
+import std.types { Bool }
+
+data aarch64_stack_grows_down: StackLayout = { grows_down: true }
+
+data aarch64_general_purpose_registers: List<ArchitecturalRegister> = [
+  aarch64_inhabitant_x0,
+  aarch64_inhabitant_x1,
+  aarch64_inhabitant_x2,
+  aarch64_inhabitant_x3,
+  aarch64_inhabitant_x4,
+  aarch64_inhabitant_x5,
+  aarch64_inhabitant_x8,
+]
+
+data aarch64_linux_architecture_profile: ArchitectureProfile = {
+  architecture: Aarch64,
+  word_width: bit_width(64),
+  pointer_width: bit_width(64),
+  endianness: LittleEndian,
+  page_size: byte_size(4096),
+  default_alignment: byte_size(16),
+  register_file: aarch64_general_purpose_registers,
+  calling_convention: aapcs64_linux_syscall_convention,
+  stack_layout: aarch64_stack_grows_down,
+}
+
+data aarch64_linux_deployment_target: DeploymentTarget = {
+  profile: aarch64_linux_architecture_profile,
+  invocation: linux_aarch64_syscall_abi,
+}
+
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+fn witness_architecture_is_aarch64() -> Bool {
+  aarch64_linux_architecture_profile.architecture == Aarch64
+}
+
+fn witness_word_width_is_64() -> Bool {
+  bit_width_count(aarch64_linux_architecture_profile.word_width) == 64
+}
+
+fn witness_page_size_is_4096() -> Bool {
+  byte_size_count(aarch64_linux_architecture_profile.page_size) == 4096
+}
+
+fn witness_convention_syscall_number_is_x8() -> Bool {
+  aarch64_linux_architecture_profile.calling_convention.syscall_number == aarch64_inhabitant_x8
+}
+
+fn witness_stack_grows_down() -> Bool {
+  aarch64_linux_architecture_profile.stack_layout.grows_down == true
+}
+
+fn witness_deployment_invocation_matches_linux_abi() -> Bool {
+  aarch64_linux_deployment_target.invocation == linux_aarch64_syscall_abi
+}

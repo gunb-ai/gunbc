@@ -27,6 +27,17 @@ import v4.test.claim.lens_affected_set.closure_deep_chain {
 import v4.test.claim.lens_affected_set.closure_superset_safe {
   closure_superset_safe_claim_holds
 }
+import v4.test.claim.lens_affected_set.provenance_producer {
+  provenance_producer_coverage_receipt_holds,
+  provenance_producer_git_diff_wire_holds,
+  provenance_producer_parse_coverage_known_diff_fail_closed_holds,
+  provenance_producer_rejects_beyond_mvp1_surface_ingest_holds,
+  provenance_producer_rejects_malformed_ingest_holds,
+  provenance_producer_selectivity_superset_discriminates_holds,
+  provenance_producer_selectivity_superset_holds,
+  provenance_producer_single_read_emits_row_holds,
+  provenance_producer_unknown_diff_fail_closed_holds
+}
 
 
 
@@ -77,6 +88,51 @@ fn lens_affected_set_dimension_classification_conservative_discriminates_holds()
 
 fn lens_affected_set_changed_edit_yields_changed_subgraph_holds() -> Bool {
   irt1_public_affected_set_changed_edit_yields_changed_subgraph()
+}
+
+
+fn lens_affected_set_provenance_producer_single_read_emits_row_holds() -> Bool {
+  provenance_producer_single_read_emits_row_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_rejects_malformed_ingest_holds() -> Bool {
+  provenance_producer_rejects_malformed_ingest_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
+  provenance_producer_rejects_beyond_mvp1_surface_ingest_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
+  provenance_producer_parse_coverage_known_diff_fail_closed_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_coverage_receipt_holds() -> Bool {
+  provenance_producer_coverage_receipt_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_git_diff_wire_holds() -> Bool {
+  provenance_producer_git_diff_wire_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds() -> Bool {
+  provenance_producer_unknown_diff_fail_closed_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_selectivity_superset_holds() -> Bool {
+  provenance_producer_selectivity_superset_holds()
+}
+
+
+fn lens_affected_set_provenance_producer_selectivity_superset_discriminates_holds() -> Bool {
+  provenance_producer_selectivity_superset_discriminates_holds()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.

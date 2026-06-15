@@ -27,7 +27,9 @@ import extdeps.github.actions {
 // PythonShim and InlineGunbc stay off the enum until a real runtime consumer
 // lands with the corresponding substrate-prereq PR.
 
-type WorkflowRuntime = BinaryShim
+// Leading pipe marks a single-variant nullary sum (deliberate novel tag), not a
+// bare alias to an existing type — the latter fails closed on an unknown RHS.
+type WorkflowRuntime = | BinaryShim
 
 // Slice 5: BinaryShim thin-shim `Workflow` projection (design-ci-workflow-emitter-dispatch.md §5.2).
 //
