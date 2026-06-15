@@ -205,8 +205,12 @@ fn eval_plan(
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices);
-    let plan_value = run_value(&plan_ctx, plan_function)
-        .map_err(|msg| format!("plan eval failed ({}::{}): {}", plan_entry, plan_function, msg))?;
+    let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
+        format!(
+            "plan eval failed ({}::{}): {}",
+            plan_entry, plan_function, msg
+        )
+    })?;
     let batches = batches_from_plan(&plan_value, &plan_ctx)
         .map_err(|msg| format!("malformed plan value: {}", msg))?;
     // Plan graph/value are `Rc`-based (`!Send`); drop before spawning claim threads.
@@ -232,7 +236,11 @@ fn run_walk(source_roots: &[String], batches: &[Vec<ClaimRef>]) -> WalkOutcome {
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
-        eprintln!("claim_executor: batch {} — {} claim(s)", bi + 1, batch.len());
+        eprintln!(
+            "claim_executor: batch {} — {} claim(s)",
+            bi + 1,
+            batch.len()
+        );
         let handles: Vec<_> = batch
             .iter()
             .map(|claim| {
@@ -303,8 +311,9 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
         if ft.is_dir() {
             copy_dir_all(&entry.path(), &dest)?;
         } else {
-            fs::copy(entry.path(), &dest)
-                .map_err(|e| format!("copy {} -> {}: {e}", entry.path().display(), dest.display()))?;
+            fs::copy(entry.path(), &dest).map_err(|e| {
+                format!("copy {} -> {}: {e}", entry.path().display(), dest.display())
+            })?;
         }
     }
     Ok(())
@@ -422,7 +431,10 @@ fn run_perturb_check(
         })
         .collect();
 
-    eprintln!("claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking", gating.function);
+    eprintln!(
+        "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
+        gating.function
+    );
     let outcome = run_walk(&[temp_root], &remapped);
     let _ = fs::remove_dir_all(&tmp);
 
