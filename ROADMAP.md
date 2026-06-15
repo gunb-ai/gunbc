@@ -35,6 +35,24 @@ Keystone §1.1 landed (#4699): **4,912 → 3,973 lines** on main, `_go` accumula
 
 **§5 — self-hosting** (get-off-v3 caller-census ratchet → zero hand-maintained Rust). Depends on §3.
 
+### L1 v4-compiler-spine — self-hosting lane
+
+Drive the v4 compiler spine to **self-hosting**: §1 done (§1.8 `fold_source` excepted), §2 done, §3 WIP, §5 scaffold. Lane node (goal / edges / owner / falsifier), threading **up** to the LANGUAGE/v4 pillar under `zesty-swift-79`. Owner: L1 v4-compiler-spine lane (durable).
+
+**Target-independence (non-negotiable):** the §4 canonical program is authored **once** in substrate; TypeScript is only a backend. A target forcing a program-shape change is a thesis violation — escalate to the pillar, do not bend the program.
+
+**Self-hosting milestones** (the falsifier is the CI-enrolled execution witness, not prose):
+
+| # | Milestone | Goal | Falsifier (witness) |
+|---|-----------|------|---------------------|
+| **M1** | §3 emits a §4 program to TS | One canonical §4 program fixture (Branch + Bind + Loop + at least one effect arm) emits to TypeScript by execution — program written once, TS backend only. | `gunbc run --claim-run` green on the canonical §4-program TS emit witness; operand/catalog perturbation witnesses discriminate (target-independence tripwire). |
+| **M2** | §3 emits the compiler to TS | A **named, bounded** compiler subset (stages under `src/v4/compiler/`, ratcheted upward) emits TypeScript that compiles — not full L4 self-compile yet. | Executable emit receipt: emitted TS artifact passes `tsc`/host compile gate with structured PASS/FAIL headline; bounded slice named in the witness label. |
+| **M3** | §5 self-host fixed-point green | Iteration *N* emitted Rust digest equals iteration *N+1* — real merkle digests, not scaffold placeholders. | `claim_t15_self_host_fixed_point` + host harness `t_15_self_host_fixed_point` green **by execution** (EqualsClaim verdict, not parse/grep). |
+
+Edges: M2 depends on M1; M3 depends on M2 + B1 merkle digest carriers landing in `v4.bin.main`. **M1 completion unblocks L2-M2** (browser demo) — report to the LANGUAGE pillar the moment it lands.
+
+**T-22 eval harness scope (pillar question, answered):** `claim_t15` execution is blocked on (a) **B1 merkle digest operands** in `main.dag` — **in-scope for L1 / §5**; L1 lands the digest carriers as part of the M3 path. (b) **T-22 eval / host runner substrate** that executes `TestClaim` verdicts — **out-of-scope for L1 to rebuild**; it is a **root portfolio dependency** (`bold-crane-680` Runtime/TestClaim lane). L1 **consumes** the runner (wires claims, enrolls corpus rows, activates `claim_t15` green once the runner + digests exist) and does not duplicate parse/eval-host infrastructure. Absorb: §3 substance from the closed §3 ICs; `bold-dove-299` parse slice (#4957) folds into this lane when signed — do not re-task or duplicate parse work.
+
 ### Cross-cutting requirements (portfolio scale — threaded here)
 
 Some requirements span every layer of the stack; they are defined once at the portfolio scale and referenced — not duplicated — here where gunbc inhabits them. Full requirement, ARC, edges, and falsifier: [ctrl/ROADMAP.md — Realization pattern](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern). Design root: [`docs/planning/recompute-pure-of-content-transparent-memoization-design-2026-06-14.md`](docs/planning/recompute-pure-of-content-transparent-memoization-design-2026-06-14.md).
