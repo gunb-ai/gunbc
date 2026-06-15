@@ -1,0 +1,205 @@
+// extdeps/formats/elf/types.dag — ELF-64 carriers and header decode (Slice 1).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+
+module extdeps.formats.elf.types
+
+import extdeps.formats.elf.primitives {
+  ElfClass,
+  ElfClass64,
+  ElfDataEncoding,
+  ElfFileType,
+  ElfMachine,
+  elf_class_32,
+  elf_class_64,
+  elf_class_none,
+  elf_data_2lsb,
+  elf_data_2msb,
+  elf_data_none,
+  elf_mag0,
+  elf_mag1,
+  elf_mag2,
+  elf_mag3,
+  elf64_ehdr_size,
+  et_core,
+  et_dyn,
+  et_exec,
+  et_none,
+  et_rel,
+  em_none,
+  em_x86_64,
+}
+import std.exec_format { EntryPoint }
+import std.types { Bool }
+
+type ElfIdent {
+  mag0: Int
+  mag1: Int
+  mag2: Int
+  mag3: Int
+  class: ElfClass
+  data: ElfDataEncoding
+  version: Int
+  osabi: Int
+  abiversion: Int
+}
+
+type Elf64Ehdr {
+  ident: ElfIdent
+  file_type: ElfFileType
+  machine: ElfMachine
+  version: Int
+  entry: Int
+  phoff: Int
+  shoff: Int
+  flags: Int
+  ehsize: Int
+  phentsize: Int
+  phnum: Int
+  shentsize: Int
+  shnum: Int
+  shstrndx: Int
+}
+
+type ElfDecodeReason
+  = Truncated { required_bytes: Int, available_bytes: Int }
+  | InvalidElfMagic { mag0: Int, mag1: Int, mag2: Int, mag3: Int }
+  | ElfClassNotElf64 { class: ElfClass }
+  | UnsupportedElfClass { raw: Int }
+  | UnsupportedElfData { raw: Int }
+  | UnsupportedElfFileType { raw: Int }
+  | UnsupportedElfMachine { raw: Int }
+
+type ElfDecodeOutcome<T>
+  = ElfDecoded { value: T }
+  | ElfRejected { reason: ElfDecodeReason }
+
+// Caller must guarantee offset in bounds — used only after a length guard.
+fn byte_at_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  match bytes |> get(offset) {
+    null => 0
+    other => other
+  }
+}
+
+fn read_u16_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256
+}
+
+fn read_u32_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256 + byte_at_in_bounds(bytes, offset + 2) * 65536 + byte_at_in_bounds(bytes, offset + 3) * 16777216
+}
+
+fn read_u64_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256 + byte_at_in_bounds(bytes, offset + 2) * 65536 + byte_at_in_bounds(bytes, offset + 3) * 16777216 + byte_at_in_bounds(bytes, offset + 4) * 4294967296 + byte_at_in_bounds(bytes, offset + 5) * 1099511627776 + byte_at_in_bounds(bytes, offset + 6) * 281474976710656 + byte_at_in_bounds(bytes, offset + 7) * 72057594037927936
+}
+
+fn decode_elf_class(raw: Int) -> ElfDecodeOutcome<ElfClass> {
+  if raw == elf_class_none { ElfDecoded { value: ElfClassNone } }
+  else if raw == elf_class_32 { ElfDecoded { value: ElfClass32 } }
+  else if raw == elf_class_64 { ElfDecoded { value: ElfClass64 } }
+  else { ElfRejected { reason: UnsupportedElfClass { raw: raw } } }
+}
+
+fn decode_elf_data(raw: Int) -> ElfDecodeOutcome<ElfDataEncoding> {
+  if raw == elf_data_none { ElfDecoded { value: ElfDataNone } }
+  else if raw == elf_data_2lsb { ElfDecoded { value: ElfData2Lsb } }
+  else if raw == elf_data_2msb { ElfDecoded { value: ElfData2Msb } }
+  else { ElfRejected { reason: UnsupportedElfData { raw: raw } } }
+}
+
+fn decode_elf_type(raw: Int) -> ElfDecodeOutcome<ElfFileType> {
+  if raw == et_none { ElfDecoded { value: EtNone } }
+  else if raw == et_rel { ElfDecoded { value: EtRel } }
+  else if raw == et_exec { ElfDecoded { value: EtExec } }
+  else if raw == et_dyn { ElfDecoded { value: EtDyn } }
+  else if raw == et_core { ElfDecoded { value: EtCore } }
+  else { ElfRejected { reason: UnsupportedElfFileType { raw: raw } } }
+}
+
+fn decode_elf_machine(raw: Int) -> ElfDecodeOutcome<ElfMachine> {
+  if raw == em_none { ElfDecoded { value: EmNone } }
+  else if raw == em_x86_64 { ElfDecoded { value: EmX86_64 } }
+  else { ElfRejected { reason: UnsupportedElfMachine { raw: raw } } }
+}
+
+fn elf_ident_has_valid_magic(ident: ElfIdent) -> Bool {
+  ident.mag0 == elf_mag0 && ident.mag1 == elf_mag1 && ident.mag2 == elf_mag2 && ident.mag3 == elf_mag3
+}
+
+fn validate_elf64_ident(ident: ElfIdent) -> ElfDecodeOutcome<ElfIdent> {
+  if elf_ident_has_valid_magic(ident) == false { ElfRejected { reason: InvalidElfMagic { mag0: ident.mag0, mag1: ident.mag1, mag2: ident.mag2, mag3: ident.mag3 } } }
+  else {
+    match ident.class {
+      ElfClass64 => ElfDecoded { value: ident }
+      _ => ElfRejected { reason: ElfClassNotElf64 { class: ident.class } }
+    }
+  }
+}
+
+fn decode_elf64_ehdr_fields(bytes: List<Int>, ident: ElfIdent) -> ElfDecodeOutcome<Elf64Ehdr> {
+  match decode_elf_type(read_u16_le_in_bounds(bytes, 16)) {
+    ElfDecoded { value: file_type } => match decode_elf_machine(read_u16_le_in_bounds(bytes, 18)) {
+      ElfDecoded { value: machine } => ElfDecoded {
+        value: Elf64Ehdr {
+          ident: ident,
+          file_type: file_type,
+          machine: machine,
+          version: read_u32_le_in_bounds(bytes, 20),
+          entry: read_u64_le_in_bounds(bytes, 24),
+          phoff: read_u64_le_in_bounds(bytes, 32),
+          shoff: read_u64_le_in_bounds(bytes, 40),
+          flags: read_u32_le_in_bounds(bytes, 48),
+          ehsize: read_u16_le_in_bounds(bytes, 52),
+          phentsize: read_u16_le_in_bounds(bytes, 54),
+          phnum: read_u16_le_in_bounds(bytes, 56),
+          shentsize: read_u16_le_in_bounds(bytes, 58),
+          shnum: read_u16_le_in_bounds(bytes, 60),
+          shstrndx: read_u16_le_in_bounds(bytes, 62),
+        },
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
+    ElfRejected { reason: r } => ElfRejected { reason: r }
+  }
+}
+
+fn decode_elf_ident(bytes: List<Int>) -> ElfDecodeOutcome<ElfIdent> {
+  match decode_elf_class(byte_at_in_bounds(bytes, 4)) {
+    ElfDecoded { value: class } => match decode_elf_data(byte_at_in_bounds(bytes, 5)) {
+      ElfDecoded { value: encoding } => ElfDecoded {
+        value: ElfIdent {
+          mag0: byte_at_in_bounds(bytes, 0),
+          mag1: byte_at_in_bounds(bytes, 1),
+          mag2: byte_at_in_bounds(bytes, 2),
+          mag3: byte_at_in_bounds(bytes, 3),
+          class: class,
+          data: encoding,
+          version: byte_at_in_bounds(bytes, 6),
+          osabi: byte_at_in_bounds(bytes, 7),
+          abiversion: byte_at_in_bounds(bytes, 8),
+        },
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
+    ElfRejected { reason: r } => ElfRejected { reason: r }
+  }
+}
+
+fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
+  if count(bytes) < elf64_ehdr_size {
+    ElfRejected { reason: Truncated { required_bytes: elf64_ehdr_size, available_bytes: count(bytes) } }
+  } else {
+    match decode_elf_ident(bytes) {
+      ElfDecoded { value: ident } => match validate_elf64_ident(ident) {
+        ElfDecoded { value: validated_ident } => decode_elf64_ehdr_fields(bytes, validated_ident)
+        ElfRejected { reason: r } => ElfRejected { reason: r }
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
+  }
+}
+
+fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
+  EntryPoint { virtual_address: hdr.entry }
+}
