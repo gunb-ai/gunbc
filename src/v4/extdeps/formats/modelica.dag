@@ -1,0 +1,256 @@
+// src/v4/extdeps/formats/modelica.dag
+//
+// Scope: Modelica acausal model — direction-agnostic connector algebra.
+//        Components declare balanced across/through connector pairs; topology
+//        is expressed by connect() equations, NOT shared node names.
+// Anchor: Modelica Language Specification Version 3.6 (2024) —
+//         https://specification.modelica.org/
+//         Modelica.Electrical.Analog library (passive R/L/C vocabulary).
+// Stress (T-4.10 — B2-OMNI paradigm falsifier): Modelica is **Shape B**
+//   (a data format, per L-1) — NOT a `LanguageModel`. The decisive probe
+//   against SPICE is whether the SAME composed circuit declaration emits to
+//   BOTH an ngspice netlist (causal node graph) AND a Modelica model
+//   (acausal connect algebra) without contortion. SPICE binds topology via
+//   `NodeRef`; Modelica binds via `PinEndpoint` + `ConnectEquation`.
+// Clear win: ONE `.dag` circuit declaration → a Modelica model that
+//   simulates in OpenModelica (omni-emission reaches acausal hardware).
+// Status: wave-1 passive R/L/C types + resistor declaration lex/grammar probe.
+// Splitting this file requires explicit operator ratification (substrate
+// extension = stop signal).
+
+module v4.extdeps.formats.modelica
+
+import v4.std.diagnostic { Outcome }
+import v4.std.grammar {
+  FormalProduction,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_terminal
+}
+import v4.std.compilers.lexing {
+  CharClassPattern,
+  DigitChar,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v4.std.node { Symbol }
+
+
+type ModelicaValue {
+  lexeme: String
+}
+
+
+// --- Acausal connector algebra (paradigm contrast: SPICE NodeRef) -----------
+//
+// SPICE: components share `NodeRef` names — topology is implicit in node
+//        equality across element terminals.
+// Modelica: each instance exposes named connector pins; topology is explicit
+//           in `ConnectEquation` rows that equate potentials and sum flows.
+
+type PinEndpoint {
+  instance: Symbol
+  pin: Symbol
+}
+
+
+type ConnectEquation {
+  left: PinEndpoint
+  right: PinEndpoint
+}
+
+
+type TwoPinConnectorDecl {
+  p: Symbol
+  n: Symbol
+}
+
+
+data modelica_two_pin_connector_default: TwoPinConnectorDecl = TwoPinConnectorDecl {
+  p: ^p,
+  n: ^n
+}
+
+
+// --- Wave-1 passive components (Modelica.Electrical.Analog.Basic) -----------
+
+// 🟡 coproduct dissolution — feature:modelica-component-spec-exhaustive-coverage — dissolve-on-arrival: all Modelica.Electrical.Analog.Basic element kinds modeled structurally.
+type PassiveComponent
+  = ResistorInstance { name: Symbol, R: ModelicaValue, connectors: TwoPinConnectorDecl }
+  | CapacitorInstance { name: Symbol, C: ModelicaValue, connectors: TwoPinConnectorDecl }
+  | InductorInstance { name: Symbol, L: ModelicaValue, connectors: TwoPinConnectorDecl }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ModelStatement
+  = StmtComponent { component: PassiveComponent }
+  | StmtConnect { equation: ConnectEquation }
+
+
+type ModelicaEquationSection {
+  connects: List<ConnectEquation>
+}
+
+
+type ModelicaModel {
+  name: Symbol
+  components: List<PassiveComponent>
+  equations: ModelicaEquationSection
+}
+
+
+type ModelicaParseResult = Outcome<ModelicaModel>
+
+type ModelicaParse = fn(String) -> ModelicaParseResult
+
+type ModelicaEmit = fn(ModelicaModel) -> String
+
+type ModelicaIoContract {
+  parse: ModelicaParse
+  emit: ModelicaEmit
+}
+
+
+fn modelica_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn modelica_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn modelica_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn modelica_identifier_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn modelica_value_pattern() -> LexPattern {
+  OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+}
+
+
+fn modelica_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        modelica_lex_token(token_class: ^modelica_token_ident, pattern: modelica_identifier_pattern()),
+        modelica_lex_token(token_class: ^modelica_token_value, pattern: modelica_value_pattern()),
+        modelica_lex_token(token_class: ^modelica_token_lparen, pattern: LiteralPattern { lexeme: "(" } }),
+        modelica_lex_token(token_class: ^modelica_token_rparen, pattern: LiteralPattern { lexeme: ")" } }),
+        modelica_lex_token(token_class: ^modelica_token_equals, pattern: LiteralPattern { lexeme: "=" } }),
+        modelica_lex_token(token_class: ^modelica_token_semicolon, pattern: LiteralPattern { lexeme: ";" } })
+      ]
+    }
+  }
+}
+
+
+fn modelica_resistor_declaration_expr() -> GrammarExpr {
+  modelica_grammar_sequence(
+    left: modelica_grammar_terminal(token_class: ^modelica_token_ident),
+    right: modelica_grammar_sequence(
+      left: modelica_grammar_terminal(token_class: ^modelica_token_ident),
+      right: modelica_grammar_sequence(
+        left: modelica_grammar_terminal(token_class: ^modelica_token_lparen),
+        right: modelica_grammar_sequence(
+          left: modelica_grammar_terminal(token_class: ^modelica_token_ident),
+          right: modelica_grammar_sequence(
+            left: modelica_grammar_terminal(token_class: ^modelica_token_equals),
+            right: modelica_grammar_sequence(
+              left: modelica_grammar_terminal(token_class: ^modelica_token_value),
+              right: modelica_grammar_sequence(
+                left: modelica_grammar_terminal(token_class: ^modelica_token_rparen),
+                right: modelica_grammar_terminal(token_class: ^modelica_token_semicolon)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn modelica_wave1_grammar() -> ParseGrammar {
+  let start = GrammarProduction {
+    name: ^modelica_production_resistor_declaration,
+    expression: modelica_resistor_declaration_expr(),
+    emitted: grammar_atom(identity: ^modelica_surface_resistor_declaration)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^modelica_production_resistor_declaration,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn modelica_resistor_declaration_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^modelica_production_resistor_declaration),
+    rhs: [
+      grammar_formal_terminal(identity: ^modelica_token_ident),
+      grammar_formal_terminal(identity: ^modelica_token_ident),
+      grammar_formal_terminal(identity: ^modelica_token_lparen),
+      grammar_formal_terminal(identity: ^modelica_token_ident),
+      grammar_formal_terminal(identity: ^modelica_token_equals),
+      grammar_formal_terminal(identity: ^modelica_token_value),
+      grammar_formal_terminal(identity: ^modelica_token_rparen),
+      grammar_formal_terminal(identity: ^modelica_token_semicolon)
+    ]
+  }
+}
+
+
+fn modelica_format_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: modelica_wave1_lex(),
+    grammar: modelica_wave1_grammar()
+  }
+}
+
+
+fn modelica_format_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: modelica_format_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "Resistor R1 ( R = 1000 ) ;",
+      production: modelica_resistor_declaration_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ^modelica_surface_resistor_declaration)
+    }
+  }
+}
