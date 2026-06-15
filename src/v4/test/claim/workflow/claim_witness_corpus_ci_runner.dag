@@ -326,6 +326,16 @@ data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRo
   expected: ExpectPass
 }
 
+// gunbhub HTML consumer XSS reject-witness (dsl/std/html_markup.dag) — fail-closed
+// scheme allowlist + perturb-discrimination (escape_url passes javascript:, consumer
+// rejects). dsl/-rooted, shard b alongside markup_serializer_keystone.
+data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "html markup xss reject keystone",
+  entry: "dsl/test/claim/html_markup_xss_witness.dag",
+  function: "html_markup_xss_keystone_holds",
+  expected: ExpectPass
+}
+
 // Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
 // that breaks on regression of the magnitude generalization (gunbc#4929): GATE0 M=Nat,
 // GATE1 signed M=Int, and the two-hop alias-chain `.count` round-trip (G3 + multi-hop).
@@ -390,12 +400,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
+  corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "42"
+data claim_witness_corpus_claim_run_row_count: String = "43"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -444,9 +455,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
+  corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "24"
+data claim_witness_corpus_shard_b_row_count: String = "25"
