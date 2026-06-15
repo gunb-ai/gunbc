@@ -102,6 +102,26 @@ fn witness_round_trip_url() -> Bool {
   unescape_url(s: escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
+// -- REQ-A: URL-within-attribute composition ------------------------
+// An href value emitted inside a double-quoted attribute must neutralize the
+// closing quote (and & and <), so a URL cannot break out of the attribute. The
+// UrlContext escape composes with the attribute serializer: the `"` in a hostile
+// href becomes %22, the injected ` onmouseover=z` stays inside the value (space
+// → %20), and no new attribute is produced.
+
+fn req_a_breakout_fragment() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ Attribute { name: "href", ctx: UrlContext, value: "x\"&<y onmouseover=z" } ],
+    children: []
+  }
+}
+
+fn witness_url_within_attribute_composition() -> Bool {
+  serialize_fragment(frag: req_a_breakout_fragment()) ==
+    "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
+}
+
 // -- perturb-discrimination -----------------------------------------
 // A serializer that forgets the `<` rule. The pinned-correct output diverges
 // from the broken output, so the by-execution witnesses above go red on this
@@ -129,5 +149,6 @@ fn markup_serializer_keystone_holds() -> Bool {
     witness_round_trip_text() &&
     witness_round_trip_attribute() &&
     witness_round_trip_url() &&
+    witness_url_within_attribute_composition() &&
     witness_perturb_break_escape_goes_red()
 }
