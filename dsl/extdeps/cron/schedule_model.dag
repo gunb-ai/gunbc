@@ -92,7 +92,10 @@ fn render_cron_field(f: CronField) -> String {
     Listed { values } => values |> map(v => "{v}") |> join(separator: ",")
     Ranged { start: s, end: e } => "{s}-{e}"
     Step { start: st, step: sp } =>
-      if st == 0 then "*/{sp}" else "{st}/{sp}"
+      match st {
+        0 => "*/{sp}"
+        _ => "{st}/{sp}"
+      }
   }
 }
 
