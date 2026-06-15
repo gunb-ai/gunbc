@@ -295,29 +295,29 @@ fn modelica_wave1_symbol_spelling(sym: Symbol) -> String {
   }
 }
 
-fn modelica_emit_resistor_line(resistor: ResistorInstance) -> String {
-  list_append(
-    left: list_append(
-      left: list_append(
+fn modelica_emit_resistor_line(component: PassiveComponent) -> String {
+  match component {
+    ResistorInstance { name: n, R: r, connectors: _ } =>
+      list_append(
         left: list_append(
-          left: "Resistor ",
-          right: modelica_wave1_symbol_spelling(sym: resistor.name)
+          left: list_append(
+            left: list_append(
+              left: "Resistor ",
+              right: modelica_wave1_symbol_spelling(sym: n)
+            ),
+            right: " ( R = "
+          ),
+          right: r.lexeme
         ),
-        right: " ( R = "
-      ),
-      right: resistor.R.lexeme
-    ),
-    right: " ) ;"
-  )
+        right: " ) ;"
+      )
+    _ => ""
+  }
 }
 
 fn modelica_wave1_emit_matches_fixture_holds() -> Bool {
-  match modelica_wave1_witness_resistor {
-    ResistorInstance { name: n, R: r, connectors: c } =>
-      modelica_wave1_string_eq(
-        a: modelica_emit_resistor_line(resistor: ResistorInstance { name: n, R: r, connectors: c }),
-        b: modelica_wave1_resistor_fixture_text
-      )
-    _ => false
-  }
+  modelica_wave1_string_eq(
+    a: modelica_emit_resistor_line(component: modelica_wave1_witness_resistor),
+    b: modelica_wave1_resistor_fixture_text
+  )
 }
