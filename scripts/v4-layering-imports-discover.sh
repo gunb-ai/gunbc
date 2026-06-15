@@ -11,6 +11,7 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 scan_bin="${LAYERING_IMPORTS_SCAN:-target/release/layering_imports_scan}"
+scan_repo_root="${LAYERING_IMPORTS_REPO_ROOT:-$root}"
 manifest="${V4_LAYERING_IMPORTS_MANIFEST:-target/v4-layering-imports-manifest.dag}"
 
 if [[ ! -x "$scan_bin" ]]; then
@@ -19,7 +20,7 @@ if [[ ! -x "$scan_bin" ]]; then
 fi
 
 "$scan_bin" \
-  --repo-root "$root" \
+  --repo-root "$scan_repo_root" \
   --emit-dag-manifest "$manifest"
 
 if git ls-files --error-unmatch "$manifest" >/dev/null 2>&1; then

@@ -281,6 +281,8 @@ jobs:
         fetch-depth: 1
     - name: Ensure ci-claim-gate binary (layering imports)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: Ensure gunbc binary (layering imports scanner-execution witnesses)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: Ensure layering_imports_scan binary (layering imports)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p layering_imports_scan --release
     - name: Cross-layer import gate (clean tree + perturb receipts)

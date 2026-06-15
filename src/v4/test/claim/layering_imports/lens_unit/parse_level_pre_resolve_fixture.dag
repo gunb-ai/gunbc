@@ -3,7 +3,7 @@
 //        unrelated resolve errors (pre-resolution text scan, not resolved-edge).
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
-module v4.test.claim.layering_imports.parse_level_pre_resolve_fixture
+module v4.test.claim.layering_imports.lens_unit.parse_level_pre_resolve_fixture
 
 import v4.lens.layering_imports {
   LayerImportFact,

@@ -1,0 +1,25 @@
+// src/v4/test/claim/layering_imports/scanner/parse_level_pre_resolve.dag
+// Scope: scanner-execution receipt — host manifest must flag a forbidden import in a
+//        file that also contains unrelated resolve errors (pre-resolution text scan).
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v4.test.claim.layering_imports.scanner.parse_level_pre_resolve
+
+import v4.lens.layering_imports {
+  LayerStd,
+  LayeringImportViolation,
+  layering_imports_exact_violation_holds
+}
+import v4.std.logic { Bool }
+import v4.test.claim.workflow.host_layering_import_manifest { host_layer_import_facts }
+
+fn scanner_parse_level_pre_resolve_detects_holds() -> Bool {
+  layering_imports_exact_violation_holds(
+    facts: host_layer_import_facts,
+    expected: LayeringImportViolation {
+      layer: LayerStd,
+      path: "src/v4/std/_perturb_scanner_parse_level_pre_resolve.dag",
+      import_module: "v4.compiler.tokenize"
+    }
+  )
+}
