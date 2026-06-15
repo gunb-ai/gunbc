@@ -4,7 +4,6 @@
 module v4.test.claim.std.timeseries_signal_passives
 
 import v4.std.collection { Absent, Present }
-import v4.std.float { Float, Finite }
 import v4.std.logic { Bool }
 import v4.std.nat { Zero }
 import v4.std.timeseries_signal {
@@ -14,6 +13,8 @@ import v4.std.timeseries_signal {
   InductorPassive,
   PotentialDifference,
   ResistorPassive,
+  Voltage,
+  Current,
   absolute_potential_from_named_preserves_reference,
   branch_current_of_magnitude,
   named_affine_voltage,
@@ -22,7 +23,9 @@ import v4.std.timeseries_signal {
   potential_difference_of_magnitude,
   potential_reference_eq,
   potential_reference_of_named,
-  timeseries_witness_spice_approx_zero
+  timeseries_witness_spice_approx_zero,
+  voltage,
+  current,
 }
 import v4.extdeps.formats.spice {
   Capacitor,
@@ -46,13 +49,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 
-data witness_float_zero: Float = Float {
-  body: Finite {
-    sign: true,
-    biased_exponent: Zero,
-    trailing_significand: Zero
-  }
-}
+data witness_voltage_zero: Voltage = voltage(0)
+
+data witness_current_zero: Current = current(0)
 
 fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   let component = Resistor {
@@ -124,7 +123,7 @@ fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   )
   absolute_potential_from_named_preserves_reference(
     named: named,
-    magnitude: witness_float_zero
+    magnitude: witness_voltage_zero
   )
 }
 
@@ -173,16 +172,16 @@ data claim_absolute_potential_preserves_reference: TestClaim = BoolWitnessClaim 
 data claim_potential_difference_of_magnitude_structural: TestClaim = StructuralEqualsClaim {
   label: "std/timeseries_signal: potential_difference_of_magnitude is structural identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: PotentialDifference { magnitude: witness_float_zero },
-  rhs: potential_difference_of_magnitude(magnitude: witness_float_zero),
+  lhs: PotentialDifference { magnitude: witness_voltage_zero },
+  rhs: potential_difference_of_magnitude(magnitude: witness_voltage_zero),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_branch_current_of_magnitude_structural: TestClaim = StructuralEqualsClaim {
   label: "std/timeseries_signal: branch_current_of_magnitude is structural identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: BranchCurrent { magnitude: witness_float_zero },
-  rhs: branch_current_of_magnitude(magnitude: witness_float_zero),
+  lhs: BranchCurrent { magnitude: witness_current_zero },
+  rhs: branch_current_of_magnitude(magnitude: witness_current_zero),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

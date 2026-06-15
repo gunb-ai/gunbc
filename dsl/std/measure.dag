@@ -75,17 +75,18 @@ type Quantity =
   | Frequency
   | Count
   | Currency
-  // Electrical dimensions (Q-Unit-5 inhabitant: std.spice R/L/C passive map/fold,
-  // gunbc#4895/#4913). These five are consumed by EVERY form of the passive fold
-  // (v and i are always derived), so they are form-independent. ElectricCharge +
-  // MagneticFlux are pre-approved (carrier authority) to land WITH the fold that
-  // reads them (#4913 Form B: Q+=i*dt → v=Q/C; Φ+=v*dt → i=Φ/L) — minted with their
-  // inhabitant per Q-Unit-5, not speculatively here.
+  // Electrical dimensions (Q-Unit-5 inhabitant: v4.std.timeseries_signal R/L/C map/fold,
+  // gunbc#4895/#4913). R/L/C ratings + v/i samples are form-independent.
+  // ElectricCharge + MagneticFlux: pre-approved at gunbc#4929 forward-ref ("SPICE S1
+  // re-cut forthcoming"); minted with Form-B fold inhabitant in gunbc#4942 (Q+=i*dt,
+  // Φ+=v*dt — snappy-stag carrier-owner review rides this hunk).
   | ElectricPotential
   | ElectricCurrent
   | Resistance
   | Capacitance
   | Inductance
+  | ElectricCharge
+  | MagneticFlux
 
 // --- Scale: SI decimal scale exponent -------------------------------------
 //
@@ -203,8 +204,14 @@ fn scale_exponent(s: Scale) -> Int {
 // `Measure<ElectricPotential, Micro, Int>.count : Int`) resolves + evaluates on the v2
 // interpreter today (verified by execution post-#4885 G3 + multi-hop): M=Nat via the
 // single-hop alias projection, signed M=Int via a direct record literal, and a two-hop
-// alias chain (`MoneyMicros.count`) all round-trip — each backed by an enrolled witness
-// in dsl/test/claim/measure_magnitude_carrier.dag.
+// alias chain (`MoneyMicros.count`) all round-trip — dsl/test/claim/measure_magnitude_carrier.dag.
+// GATE1 signed SPICE *execution* (negative magnitude through map/fold, value asserted):
+// gunbc#4942 class-4 deciding artifact = ENROLLED shard-b
+// `timeseries_signed_magnitude_capacitor_fold_holds` (Form-B signed int_mul/int_add
+// crossing zero + int_div v=Q/C) in timeseries_passive_map_fold_anchor.dag.
+// Supplementary enrolled map witness: `timeseries_signed_magnitude_resistor_map_holds`
+// (signed int_mul R·i). NOT class-4: `measure_signed_magnitude_roundtrip_holds` is
+// projection roundtrip only (stores -5, reads back — not discriminating arithmetic).
 type Measure<Q, S, M> {
   count: M
 }
