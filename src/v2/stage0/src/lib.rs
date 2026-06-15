@@ -14,6 +14,7 @@
 
 pub mod cli_run;
 pub mod coproduct_reflection;
+pub mod enforce_host_validate;
 pub mod extdeps_cargo;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;

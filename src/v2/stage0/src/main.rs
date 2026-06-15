@@ -44,6 +44,18 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
+    /// Marshal an external MemorySpec fixture and run required v4 lens gates (enforce-host).
+    Validate {
+        /// Source root directories (default: ./src/v4 and ./dsl under cwd)
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// Bridge harness entry (default: enforce_host_lens_bridge_harness.dag)
+        #[arg(long, default_value = v2_compiler::enforce_host_validate::DEFAULT_HARNESS_ENTRY)]
+        harness_entry: String,
+        /// Subject fixture `.dag` declaring `MemorySpec` (bare-Int → exit 1, modeled carrier → exit 0)
+        #[arg(long)]
+        subject: String,
+    },
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -391,6 +403,18 @@ fn main() {
             claim_run,
         } => {
             cli_run::handle_run(source_roots, function, entry, claim_run);
+        }
+
+        Commands::Validate {
+            source_roots,
+            harness_entry,
+            subject,
+        } => {
+            v2_compiler::enforce_host_validate::handle_validate(
+                source_roots,
+                harness_entry,
+                subject,
+            );
         }
     };
 }
