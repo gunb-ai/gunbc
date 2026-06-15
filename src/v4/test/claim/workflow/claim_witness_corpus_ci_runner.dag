@@ -267,12 +267,17 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
   expected: ExpectPass
 }
 
-// 🟡 P-PROBE-CF-IMPORT — ExpectFail pin + resolve repro (adhoc-20b17ff7-932).
-data corpus_ci_gate_row_probe_selector_cf_import_falsifier: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "probe-selector compute_fabric import falsifier",
-  entry: "src/v4/test/claim/workflow/probe_selector_compute_fabric_import_falsifier.dag",
-  function: "probe_selector_compute_fabric_import_falsifier_holds",
-  expected: ExpectFail { bind_anchor: "adhoc-20b17ff7-932" }
+// P-PROBE-CF-IMPORT — resolved: `import std.compute_fabric` now resolves a real
+// supply offer (Option gap dissolved #4887 + Nat-mul algebra resolution landed in
+// this PR), so the ExpectFail pin (adhoc-20b17ff7-932) retires to a genuine
+// ExpectPass on the real dsl/-rooted repro (--source-root dsl, like the dsl-root
+// probe above). The old hardcoded falsifier proxy + its bound resolve-fail script
+// are removed in the same PR.
+data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "probe-selector compute_fabric import resolves",
+  entry: "dsl/test/claim/probe_selector_compute_fabric_import_repro.dag",
+  function: "probe_selector_compute_fabric_import_repro_holds",
+  expected: ExpectPass
 }
 
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -308,7 +313,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_falsifier
+  corpus_ci_gate_row_probe_selector_cf_import_resolves
 ]
 
 data claim_witness_corpus_claim_run_row_count: String = "33"
@@ -353,7 +358,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_falsifier
+  corpus_ci_gate_row_probe_selector_cf_import_resolves
 ]
 
 data claim_witness_corpus_shard_b_row_count: String = "18"

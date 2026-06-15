@@ -160,10 +160,12 @@ classify_stdout() {
 
 run_resolve_fail_repro_if_bound() {
   local bind_anchor="$1"
+  # Extension point: an ExpectFail row may bind a dual-root resolve-fail repro here
+  # (keyed on its bind_anchor) to prove the expected failure is genuinely a resolve
+  # failure, not a hardcoded false. None are currently bound -- P-PROBE-CF-IMPORT
+  # (adhoc-20b17ff7-932) resolved and retired to a genuine ExpectPass corpus row.
   case "$bind_anchor" in
-    adhoc-20b17ff7-932)
-      bash scripts/v4-probe-selector-compute-fabric-import-repro.sh
-      ;;
+    *) ;;
   esac
 }
 
