@@ -19,6 +19,7 @@ import extdeps.container.oci.image_config {
   ImageConfigAccepted,
   ImageConfigRejected,
   ImageRootfs,
+  RootfsLayers,
   accept_image_configuration,
   image_config_entrypoint,
   image_config_exposed_port,
@@ -116,10 +117,7 @@ data ctrl_session_image_config: ImageConfiguration = {
     WorkingDir: null,
     ExposedPorts: ["7681/tcp"],
   },
-  rootfs: {
-    rootfs_type: "layers",
-    diff_ids: [ctrl_session_first_diff_id],
-  },
+  rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
 }
 
 data ctrl_session_runtime_config: RuntimeBundleConfig = {
@@ -227,7 +225,7 @@ fn witness_image_config_rejects_empty_os() -> Bool {
     architecture: "arm64",
     os: "",
     config: null,
-    rootfs: { rootfs_type: "layers", diff_ids: [ctrl_session_first_diff_id] },
+    rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
   }
   match accept_image_configuration(bad) {
     ImageConfigRejected { reason: _ } => true
