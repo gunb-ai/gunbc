@@ -14,6 +14,7 @@ import v4.compiler.parse {
   parse_stage_locus_port,
   parse_table_empty,
   parse_table_fill_position,
+  parse_table_fill_position_pass,
   ParseTableBuildAcc,
   tokens_at_position,
   token_position_indices
@@ -28,7 +29,8 @@ import v4.std.grammar {
   grammar_empty_sync_tokens
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { Empty, length }
+import v4.std.algebra { Cons, Empty, fold_list, length }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 
 data finer_empty_source: Source = "module stage0.bisect.empty\n"
@@ -193,6 +195,182 @@ fn finer_parse_expr_at_position_one_terminates() -> Bool {
             prov: parse_prov_initial()
           )
           true
+      }
+  }
+}
+
+fn finer_n_passes_at_position_one(n: Int) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let init = ParseTableBuildAcc {
+            table: parse_table_empty(),
+            prov: parse_prov_initial()
+          }
+          let acc = fold_list(
+            xs: list_repeat_n(n: n),
+            empty: init,
+            cons: fn(acc2, _) {
+              parse_table_fill_position_pass(
+                acc: acc2,
+                position: 1,
+                all_tokens: token_stream.tokens,
+                root: root
+              )
+            }
+          )
+          let _ = acc
+          true
+        VoidGrammar => true
+      }
+  }
+}
+
+fn list_repeat_n(n: Int) -> List<Int> {
+  if n <= 0 {
+    Empty
+  } else {
+    Cons { head: n, tail: list_repeat_n(n: n - 1) }
+  }
+}
+
+fn finer_five_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 5)
+}
+
+fn finer_ten_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 10)
+}
+
+fn finer_two_passes_at_position_one_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let init = ParseTableBuildAcc {
+            table: parse_table_empty(),
+            prov: parse_prov_initial()
+          }
+          let after1 = parse_table_fill_position_pass(
+            acc: init,
+            position: 1,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          let _ = parse_table_fill_position_pass(
+            acc: after1,
+            position: 1,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          true
+        VoidGrammar => true
+      }
+  }
+}
+
+fn finer_one_pass_pos1_after_pos0_fill_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let init = ParseTableBuildAcc {
+            table: parse_table_empty(),
+            prov: parse_prov_initial()
+          }
+          let after0 = parse_table_fill_position(
+            acc: init,
+            position: 0,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          let _ = parse_table_fill_position_pass(
+            acc: after0,
+            position: 1,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          true
+        VoidGrammar => true
+      }
+  }
+}
+
+fn finer_one_pass_at_position_one_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let init = ParseTableBuildAcc {
+            table: parse_table_empty(),
+            prov: parse_prov_initial()
+          }
+          let _ = parse_table_fill_position_pass(
+            acc: init,
+            position: 1,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          true
+        VoidGrammar => true
+      }
+  }
+}
+
+fn finer_position_one_after_zero_fill_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let init = ParseTableBuildAcc {
+            table: parse_table_empty(),
+            prov: parse_prov_initial()
+          }
+          let after0 = parse_table_fill_position(
+            acc: init,
+            position: 0,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          let _ = parse_table_fill_position(
+            acc: after0,
+            position: 1,
+            all_tokens: token_stream.tokens,
+            root: root
+          )
+          true
+        VoidGrammar => true
       }
   }
 }
