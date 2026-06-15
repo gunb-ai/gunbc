@@ -1,0 +1,51 @@
+// src/v4/test/fixture/spice_rc_passive_deck.dag
+// Scope: canonical RC passive deck — ONE composed circuit consumed by spice + Modelica emitters.
+// Anchor: spice.dag Component/DeckStatement carriers; shared paradigm-falsification input.
+
+module v4.test.fixture.spice_rc_passive_deck
+
+import v4.std.algebra { Cons, Empty }
+import v4.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  DeckStatement,
+  Ground,
+  Named,
+  NamedNode,
+  Op,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  spice_emit
+}
+
+data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
+  title: "* rc passive witness",
+  body: Cons {
+    head: DeckComponent {
+      component: Resistor {
+        name: ^r1,
+        n_plus: Named { node: NamedNode { name: ^n1 } },
+        n_minus: Named { node: NamedNode { name: ^n2 } },
+        value: SpiceValue { lexeme: "1000" }
+      }
+    },
+    tail: Cons {
+      head: DeckComponent {
+        component: Capacitor {
+          name: ^c1,
+          n_plus: Named { node: NamedNode { name: ^n2 } },
+          n_minus: Ground,
+          value: SpiceValue { lexeme: "1" }
+        }
+      },
+      tail: Cons {
+        head: DeckDirective { directive: Op },
+        tail: Empty
+      }
+    }
+  }
+}
+
+data spice_rc_passive_deck_emitted: String = spice_emit(netlist: spice_rc_passive_deck)

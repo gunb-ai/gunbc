@@ -451,6 +451,27 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_spice_resistor_emit_parse_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice wave-1 resistor emit parse round trip",
+  entry: "src/v4/test/claim/formats/spice_resistor_round_trip.dag",
+  function: "spice_resistor_emit_parse_round_trip_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_spice_resistor_tokenize_parse: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice wave-1 resistor tokenize parse accepts probe",
+  entry: "src/v4/test/claim/formats/spice_resistor_round_trip.dag",
+  function: "spice_resistor_tokenize_parse_accepts_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_spice_dual_emission_same_deck: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice RC deck dual-emits spice netlist and Modelica model",
+  entry: "src/v4/test/claim/formats/spice_dual_emission.dag",
+  function: "spice_dual_emission_same_deck_both_targets_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -506,10 +527,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_spice_resistor_emit_parse_round_trip,
+  corpus_ci_gate_row_spice_resistor_tokenize_parse,
+  corpus_ci_gate_row_spice_dual_emission_same_deck
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "54"
+data claim_witness_corpus_claim_run_row_count: String = "57"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -573,7 +597,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_spice_resistor_emit_parse_round_trip,
+  corpus_ci_gate_row_spice_resistor_tokenize_parse,
+  corpus_ci_gate_row_spice_dual_emission_same_deck
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_b_row_count: String = "38"
