@@ -23,6 +23,7 @@ import gunbc.gunbhub_serve {
   serve_gunbhub_request,
   serve_gunbhub_page_source,
 }
+import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
 import std.react_markup {
   EmitOk,
   EmitRejected,
