@@ -16,6 +16,7 @@ ITEMS ([x]=done  [~]=partial  [ ]=todo)
 [ ] 9. LENS: error on unused / consumerless ANYTHING — unused imports (v2 is silent today), dead data/types/concepts. A "no consumerless concept" gate.
 
 NOTES
+- item 8 has been operator-requested for ~3-4 days with NO movement before this dispatch (crisp-bear-37) — long-stale; track that it actually lands this time.
 - verified clean (no change): std/placement_supply.dag (concept-only).
 - ctrl cloned at .ctrl-fleet-work (git-excluded); nodes.json is the fleet source-of-truth.
 - stale doc-comment ref to hetzner_cax41_cost_quote in dsl/examples/cost_estimate/cost_estimate.dag (cosmetic).
