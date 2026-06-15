@@ -1,0 +1,67 @@
+// extdeps/runtime/api/darwin.dag — macOS libSystem stable API boundary (cited facts).
+//
+// Scope: Slice-2 inhabitant of std.os.invocation.LibraryApiBoundary — POSIX-facing libSystem
+// exports are the stable contract; raw Mach/Darwin syscall numbers are not a public ABI.
+//
+// Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
+// Anchor: https://github.com/apple-oss-distributions/Libc/blob/main/gen/posix.defs
+// Anchor: https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/syscalls.master
+
+module extdeps.runtime.api.darwin
+
+import std.os.invocation {
+  ApiEntry,
+  LibraryApiBoundary,
+  LibraryApiBoundarySurface,
+  StableInvocationSurface,
+}
+import std.types { Bool }
+
+data libsystem_read: ApiEntry = ApiEntry { symbol: "read", module: "libSystem" }
+data libsystem_write: ApiEntry = ApiEntry { symbol: "write", module: "libSystem" }
+data libsystem_open: ApiEntry = ApiEntry { symbol: "open", module: "libSystem" }
+data libsystem_mmap: ApiEntry = ApiEntry { symbol: "mmap", module: "libSystem" }
+data libsystem_execve: ApiEntry = ApiEntry { symbol: "execve", module: "libSystem" }
+data libsystem_exit: ApiEntry = ApiEntry { symbol: "exit", module: "libSystem" }
+
+data macos_libsystem_exports: List<ApiEntry> = [
+  libsystem_read,
+  libsystem_write,
+  libsystem_open,
+  libsystem_mmap,
+  libsystem_execve,
+  libsystem_exit,
+]
+
+data macos_libsystem_boundary: LibraryApiBoundary = {
+  library: "libSystem",
+  exports: macos_libsystem_exports,
+}
+
+data macos_15_library_api_surface: StableInvocationSurface = LibraryApiBoundarySurface {
+  boundary: macos_libsystem_boundary,
+}
+
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+fn witness_libsystem_read_exported() -> Bool {
+  libsystem_read.symbol == "read"
+}
+
+fn witness_libsystem_read_module() -> Bool {
+  libsystem_read.module == "libSystem"
+}
+
+fn witness_macos_surface_is_library_api_boundary() -> Bool {
+  match macos_15_library_api_surface {
+    LibraryApiBoundarySurface { boundary: _ } => true
+    _ => false
+  }
+}
+
+fn witness_macos_boundary_library_is_libsystem() -> Bool {
+  match macos_15_library_api_surface {
+    LibraryApiBoundarySurface { boundary: b } => b.library == "libSystem"
+    _ => false
+  }
+}

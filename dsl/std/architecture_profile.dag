@@ -9,7 +9,7 @@ module std.architecture_profile
 
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.measure { BitWidth, ByteSize }
-import std.os.invocation { SyscallAbi }
+import std.os.invocation { StableInvocationSurface }
 
 // 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
 // Option import. `import std.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
@@ -38,7 +38,5 @@ type ArchitectureProfile {
 // operating_system attach is 🟡-gated on std.os.types v2 catalog flip (Option + single-variant enum).
 type DeploymentTarget {
   profile: ArchitectureProfile
-  // 🟡 feature:stable-invocation-surface-coproduct — bind exec-contract Slice 2 (LibraryApiBoundary);
-  // dissolve-on: repoint invocation to StableInvocationSurface when macOS/Windows inhabitants land.
-  invocation: SyscallAbi
+  invocation: StableInvocationSurface
 }

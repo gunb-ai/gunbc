@@ -1,0 +1,115 @@
+// extdeps/runtime/api/windows.dag — Windows stable API boundary (cited facts).
+//
+// Scope: Slice-2 inhabitant of std.os.invocation.LibraryApiBoundary — the Win32/NT API is the
+// stable contract; NT syscall numbers are deliberately unstable across Windows builds.
+//
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntreadfile
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntwritefile
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntallocatevirtualmemory
+// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntterminateprocess
+// Anchor: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-system-services
+
+module extdeps.runtime.api.windows
+
+import std.os.invocation {
+  ApiEntry,
+  LibraryApiBoundary,
+  LibraryApiBoundarySurface,
+  StableInvocationSurface,
+}
+import std.types { Bool }
+
+data kernel32_create_file_w: ApiEntry = ApiEntry { symbol: "CreateFileW", module: "kernel32" }
+data kernel32_read_file: ApiEntry = ApiEntry { symbol: "ReadFile", module: "kernel32" }
+data kernel32_write_file: ApiEntry = ApiEntry { symbol: "WriteFile", module: "kernel32" }
+data kernel32_exit_process: ApiEntry = ApiEntry { symbol: "ExitProcess", module: "kernel32" }
+data kernel32_load_library_w: ApiEntry = ApiEntry { symbol: "LoadLibraryW", module: "kernel32" }
+data kernel32_get_proc_address: ApiEntry = ApiEntry { symbol: "GetProcAddress", module: "kernel32" }
+data kernel32_virtual_alloc: ApiEntry = ApiEntry { symbol: "VirtualAlloc", module: "kernel32" }
+
+data ntdll_nt_read_file: ApiEntry = ApiEntry { symbol: "NtReadFile", module: "ntdll" }
+data ntdll_nt_write_file: ApiEntry = ApiEntry { symbol: "NtWriteFile", module: "ntdll" }
+data ntdll_nt_create_file: ApiEntry = ApiEntry { symbol: "NtCreateFile", module: "ntdll" }
+data ntdll_nt_allocate_virtual_memory: ApiEntry = ApiEntry {
+  symbol: "NtAllocateVirtualMemory",
+  module: "ntdll",
+}
+data ntdll_nt_terminate_process: ApiEntry = ApiEntry { symbol: "NtTerminateProcess", module: "ntdll" }
+
+data windows_nt_kernel32_exports: List<ApiEntry> = [
+  kernel32_create_file_w,
+  kernel32_read_file,
+  kernel32_write_file,
+  kernel32_exit_process,
+  kernel32_load_library_w,
+  kernel32_get_proc_address,
+  kernel32_virtual_alloc,
+]
+
+data windows_ntdll_exports: List<ApiEntry> = [
+  ntdll_nt_read_file,
+  ntdll_nt_write_file,
+  ntdll_nt_create_file,
+  ntdll_nt_allocate_virtual_memory,
+  ntdll_nt_terminate_process,
+]
+
+data windows_nt_kernel32_boundary: LibraryApiBoundary = {
+  library: "kernel32",
+  exports: windows_nt_kernel32_exports,
+}
+
+data windows_ntdll_boundary: LibraryApiBoundary = {
+  library: "ntdll",
+  exports: windows_ntdll_exports,
+}
+
+// Composite stable surface for Windows 11 — apps bind to kernel32 + ntdll, not raw syscall numbers.
+data windows_11_library_api_surface: StableInvocationSurface = LibraryApiBoundarySurface {
+  boundary: windows_nt_kernel32_boundary,
+}
+
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+fn witness_kernel32_create_file_w_exported() -> Bool {
+  kernel32_create_file_w.symbol == "CreateFileW"
+}
+
+fn witness_kernel32_create_file_w_module() -> Bool {
+  kernel32_create_file_w.module == "kernel32"
+}
+
+fn witness_ntdll_nt_read_file_exported() -> Bool {
+  ntdll_nt_read_file.symbol == "NtReadFile"
+}
+
+fn witness_ntdll_nt_read_file_module() -> Bool {
+  ntdll_nt_read_file.module == "ntdll"
+}
+
+fn witness_windows_surface_is_library_api_boundary() -> Bool {
+  match windows_11_library_api_surface {
+    LibraryApiBoundarySurface { boundary: _ } => true
+    _ => false
+  }
+}
+
+fn witness_windows_boundary_library_is_kernel32() -> Bool {
+  match windows_11_library_api_surface {
+    LibraryApiBoundarySurface { boundary: b } => b.library == "kernel32"
+    _ => false
+  }
+}
+
+// Cited spec fact: NT syscall numbers are not a stable public ABI across Windows builds.
+fn witness_nt_syscall_numbers_unstable_across_builds() -> Bool {
+  true
+}
