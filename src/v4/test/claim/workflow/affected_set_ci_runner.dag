@@ -565,8 +565,4 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_provenance_producer_selectivity_superset_discriminates
 ]
 
-// RETAINED, no longer cross-checked: the node-frontier gate's projected-vs-modeled count
-// comparison was retired (parallel-ledger drift; CLAUDE.md ledger principle). Unread by
-// scripts/v4-affected-set-node-frontier-gate.sh; kept only for the v2 emit-parity v4-slice
-// closure (deleting it diverges emit-from-resolved vs compile-sources). Dissolves at the glob cutover.
 data ci_runner_node_frontier_claim_run_row_count: String = "23"
