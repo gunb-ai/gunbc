@@ -1,0 +1,7 @@
+module extdeps.boot._hash_probe
+
+fn main() -> Bool {
+  let xs = [1, 2, 3]
+  let d = hash(xs)
+  d != ""
+}
