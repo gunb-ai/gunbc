@@ -45,7 +45,6 @@ import extdeps.formats.elf.primitives {
   PtLoad,
   elf64_ehdr_size,
   elf64_phdr_size,
-  elf64_shdr_size,
   pf_r,
   pf_x,
 }
@@ -78,11 +77,14 @@ fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {
   }
 }
 
-fn witness_emitted_ehdr_shentsize_is_shdr_size() -> Bool {
+fn witness_emitted_ehdr_no_section_headers() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   match decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
-      hdr.shentsize == elf64_shdr_size && hdr.shnum == 0
+      hdr.shnum == 0
+        && hdr.shentsize == 0
+        && hdr.shoff == 0
+        && hdr.shstrndx == 0
     ElfRejected { reason: _ } => false
   }
 }
@@ -227,7 +229,7 @@ fn main() -> Bool {
     && witness_emitted_file_size()
     && witness_emitted_digest_non_empty()
     && witness_emitted_ehdr_is_et_exec_x86_64()
-    && witness_emitted_ehdr_shentsize_is_shdr_size()
+    && witness_emitted_ehdr_no_section_headers()
     && witness_emitted_entry_point()
     && witness_emitted_first_phdr_is_pt_load_rx()
     && witness_emitted_load_segment_carries_code()

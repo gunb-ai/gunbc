@@ -22,7 +22,6 @@ import extdeps.formats.elf.primitives {
   PtLoad,
   elf64_phdr_size,
   elf64_ehdr_size,
-  elf64_shdr_size,
   elf_mag0,
   elf_mag1,
   elf_mag2,
@@ -81,7 +80,7 @@ fn freestanding_elf64_ehdr(code_bytes: List<Int>) -> Elf64Ehdr {
     ehsize: elf64_ehdr_size,
     phentsize: elf64_phdr_size,
     phnum: 1,
-    shentsize: elf64_shdr_size,
+    shentsize: 0,
     shnum: 0,
     shstrndx: 0,
   }
