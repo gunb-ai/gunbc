@@ -1,0 +1,13 @@
+[package]
+name = "layering_imports_scan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "layering_imports_scan"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1"

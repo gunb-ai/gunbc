@@ -1,0 +1,88 @@
+// src/v4/lens/layering_imports.dag
+// Scope: cross-layer import-direction lens — std/ and extdeps/ must not import
+//        v3.compiler.* or v4.compiler.* (INVARIANTS P2 dependency-direction).
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts, not this session.
+// Consumer: layering_imports_gate.dag → ci-claim-gate host transport.
+
+module v4.lens.layering_imports
+
+import v4.std.algebra {
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.text { Char, String }
+
+// Layer label for files under std/ or extdeps/ roots (host classifies at enumeration).
+type LayerLabel
+  = LayerStd
+  | LayerExtdeps
+
+// One import line fact from host enumeration (path relative to repo root).
+type LayerImportFact {
+  layer: LayerLabel
+  path: String
+  import_module: String
+}
+
+type LayeringImportViolation {
+  layer: LayerLabel
+  path: String
+  import_module: String
+}
+
+data forbidden_compiler_prefix_v3: String = "v3.compiler."
+data forbidden_compiler_prefix_v4: String = "v4.compiler."
+data forbidden_compiler_exact_v3: String = "v3.compiler"
+data forbidden_compiler_exact_v4: String = "v4.compiler"
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn is_forbidden_compiler_import(module: String) -> Bool {
+  module == forbidden_compiler_exact_v3
+    || module == forbidden_compiler_exact_v4
+    || is_prefix_of(prefix: forbidden_compiler_prefix_v3, xs: module, eq: char_eq)
+    || is_prefix_of(prefix: forbidden_compiler_prefix_v4, xs: module, eq: char_eq)
+}
+
+fn is_layering_violation(fact: LayerImportFact) -> Bool {
+  match fact.layer {
+    LayerStd => is_forbidden_compiler_import(module: fact.import_module)
+    LayerExtdeps => is_forbidden_compiler_import(module: fact.import_module)
+  }
+}
+
+fn scan_facts_for_violations(facts: List<LayerImportFact>) -> List<LayeringImportViolation> {
+  fold_list(
+    xs: facts,
+    empty: [],
+    cons: fn(acc, fact) {
+      if is_layering_violation(fact: fact) {
+        list_snoc_item(
+          xs: acc,
+          item: LayeringImportViolation {
+            layer: fact.layer,
+            path: fact.path,
+            import_module: fact.import_module
+          }
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn layering_imports_clean_holds(facts: List<LayerImportFact>) -> Bool {
+  is_empty(xs: scan_facts_for_violations(facts: facts))
+}
+
+fn layering_imports_violation_count(facts: List<LayerImportFact>) -> Int {
+  length(xs: scan_facts_for_violations(facts: facts))
+}

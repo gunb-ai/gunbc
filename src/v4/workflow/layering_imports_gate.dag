@@ -1,0 +1,57 @@
+// src/v4/workflow/layering_imports_gate.dag
+//
+// Cross-layer import gate transport authority (INVARIANTS P2 dependency direction).
+// Replaces scripts/check_v4_layering_imports.py — host enumerates import facts;
+// v4.lens.layering_imports owns violation semantics; ci-claim-gate runs witnesses.
+//
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v4.workflow.layering_imports_gate
+
+import v4.std.collection { List }
+import v4.std.algebra { fold_list_right }
+
+type LayeringImportsClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data layering_imports_claim_run_row_clean_tree: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/clean_tree",
+  entry: "src/v4/test/claim/layering_imports/clean_tree.dag",
+  function: "clean_tree_no_wrong_direction_imports_holds"
+}
+
+data layering_imports_claim_run_row_std_fixture: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/std_to_compiler_fixture",
+  entry: "src/v4/test/claim/layering_imports/std_to_compiler_fixture.dag",
+  function: "detects_std_to_compiler_import_holds"
+}
+
+data layering_imports_claim_run_row_extdeps_fixture: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/extdeps_to_compiler_fixture",
+  entry: "src/v4/test/claim/layering_imports/extdeps_to_compiler_fixture.dag",
+  function: "detects_extdeps_to_compiler_import_holds"
+}
+
+data layering_imports_claim_run_rows: List<LayeringImportsClaimRunRow> = [
+  layering_imports_claim_run_row_clean_tree,
+  layering_imports_claim_run_row_std_fixture,
+  layering_imports_claim_run_row_extdeps_fixture
+]
+
+fn layering_imports_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: layering_imports_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
