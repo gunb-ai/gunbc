@@ -16,7 +16,7 @@ import v4.std.change {
   AffectedSetReason,
   ChangeSet
 }
-import v4.std.algebra { count_equal, filter, length }
+import v4.std.algebra { contains, count_equal, filter, for_all, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
@@ -110,6 +110,11 @@ data ci_runner_narrow_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
   nodes: [ci_runner_touched_node]
 }
 
+// Strict subset of ci_runner_wide_rerun_nodes: touched-only frontier vs touched+other.
+data ci_runner_wide_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
+  nodes: [ci_runner_touched_node, ci_runner_other_node]
+}
+
 data ci_runner_fail_closed_evidence: AffectedSetEvidence = AffectedSetReason {
   reason: ^ci_runner_fail_closed_reason
 }
@@ -130,6 +135,47 @@ fn ci_runner_narrow_selection_holds() -> Bool {
       item: ci_runner_claim_touched,
       eq: fn(left, right) { left == right }
     ) != 0
+}
+
+fn ci_runner_strict_subset_discriminates_holds() -> Bool {
+  let narrow = ci_select_from_rerun_nodes(
+    roster: ci_runner_fixture_roster,
+    rerun: ci_runner_narrow_rerun_nodes
+  )
+  let wide = ci_select_from_rerun_nodes(
+    roster: ci_runner_fixture_roster,
+    rerun: ci_runner_wide_rerun_nodes
+  )
+  let superset = ci_select_from_affected_set(
+    roster: ci_runner_fixture_roster,
+    affected: ci_runner_fail_closed_affected
+  )
+  (length(xs: narrow) == 1)
+    && (length(xs: wide) == 2)
+    && count_equal(
+      xs: narrow,
+      item: ci_runner_claim_touched,
+      eq: fn(left, right) { left == right }
+    ) != 0
+    && count_equal(
+      xs: wide,
+      item: ci_runner_claim_touched,
+      eq: fn(left, right) { left == right }
+    ) != 0
+    && count_equal(
+      xs: wide,
+      item: ci_runner_claim_other,
+      eq: fn(left, right) { left == right }
+    ) != 0
+    && for_all(xs: narrow, predicate: fn(claim) {
+      contains(
+        xs: wide,
+        item: claim,
+        eq: fn(left, right) { left == right }
+      )
+    })
+    && (length(xs: superset) == length(xs: ci_runner_fixture_roster))
+    && (length(xs: wide) < length(xs: superset))
 }
 
 fn ci_runner_fail_closed_superset_holds() -> Bool {
@@ -179,6 +225,18 @@ fn ci_runner_fail_closed_superset_rhs() -> Node {
   }
 }
 
+fn ci_runner_strict_subset_discriminates_rhs() -> Node {
+  if ci_runner_strict_subset_discriminates_holds() {
+    ci_runner_touched_node
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
 data ci_runner_narrow_selection_claim: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: RerunNodeSet narrows TestClaim roster to touched input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -192,6 +250,14 @@ data ci_runner_fail_closed_superset_claim: TestClaim = EqualsClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_untouched_node,
   rhs: ci_runner_fail_closed_superset_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data ci_runner_strict_subset_discriminates_claim: TestClaim = EqualsClaim {
+  label: "workflow/affected_set_ci_runner: narrow⊂wide⊂fail-open full roster (strict-subset discrimination)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ci_runner_touched_node,
+  rhs: ci_runner_strict_subset_discriminates_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -406,6 +472,12 @@ data ci_runner_gate_row_narrow_selection: AffectedSetNodeFrontierClaimRunRow = A
   function: "ci_runner_narrow_selection_holds"
 }
 
+data ci_runner_gate_row_strict_subset_discriminates: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
+  label: "affected-set narrow⊂wide⊂fail-open strict-subset discrimination (perturb-red)",
+  entry: ci_runner_gate_entry,
+  function: "ci_runner_strict_subset_discriminates_holds"
+}
+
 data ci_runner_gate_row_fail_closed_superset: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
   label: "affected-set node-frontier phase-2 fail-closed superset",
   entry: ci_runner_gate_entry,
@@ -541,6 +613,7 @@ data ci_runner_gate_row_provenance_producer_selectivity_superset_discriminates: 
 
 data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRunRow> = [
   ci_runner_gate_row_narrow_selection,
+  ci_runner_gate_row_strict_subset_discriminates,
   ci_runner_gate_row_fail_closed_superset,
   ci_runner_gate_row_shape_collision,
   ci_runner_gate_row_inner_frontier,
