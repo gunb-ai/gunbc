@@ -73,8 +73,6 @@ data probe_selector_claim_run_rows: List<ProbeSelectorKeystoneClaimRunRow> = [
   probe_selector_gate_row_srv2_spine
 ]
 
-data probe_selector_claim_run_row_count: String = "3"
-
 fn probe_selector_ci_runner_availability_holds() -> Bool {
   probe_selector_availability_conditioning_holds()
 }
