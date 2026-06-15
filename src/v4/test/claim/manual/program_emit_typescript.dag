@@ -19,6 +19,7 @@ import v4.extdeps.languages.dag {
   dag_mvp1_type_atom_node
 }
 import v4.extdeps.languages.typescript {
+  ts_inhabitant_atom,
   ts_program_source_text,
   ts_program_target_model
 }
@@ -28,7 +29,6 @@ import v4.std.compilers.target_model {
   target_value_expression_projection_from_target,
   target_value_expression_tokens_from_target
 }
-import v4.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v4.program {
   program_effect_io_roundtrip,
   program_kw_true,
@@ -77,15 +77,15 @@ fn program_emit_arrow_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
+        target: ts_inhabitant_atom(id: ^ts_surface_empty_domain)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Named { name: arrow_body_edge },
@@ -156,15 +156,15 @@ fn program_emit_swapped_else_arrow_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
+        target: ts_inhabitant_atom(id: ^ts_surface_empty_domain)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Named { name: arrow_body_edge },
@@ -196,15 +196,15 @@ fn program_emit_false_condition_arrow_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
+        target: ts_inhabitant_atom(id: ^ts_surface_empty_domain)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^program_emit_return_type)
+        target: ts_inhabitant_atom(id: ^ts_token_ty_any)
       },
       Edge {
         label: Named { name: arrow_body_edge },
@@ -226,6 +226,39 @@ fn program_emit_from_tree(tree: InferredTree, target: TargetModel) -> Outcome<Ta
   emit(tree: tree, target: target)
 }
 
+fn program_emit_typescript_body_serialize_accepts() -> Bool {
+  match target_value_expression_projection_from_target(target: ts_program_target_model()) {
+    Accepted { value: projection, diagnostics: pd } =>
+      match target_project_arrow_body_to_value_expression(
+        arrow: program_emit_arrow_node(),
+        target: ts_program_target_model(),
+        handle_transform: fn(a, b, t) {
+          translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+        }
+      ) {
+        Accepted { value: expr, diagnostics: ed } =>
+          match target_value_expression_tokens_from_target(
+            expr: expr,
+            target: ts_program_target_model(),
+            projection: projection
+          ) {
+            Accepted { value: tokens, diagnostics: td } =>
+              match serialize_concrete_syntax_tokens_to_source(
+                target: ts_program_target_model(),
+                tokens: tokens
+              ) {
+                Accepted { value: _, diagnostics: sd } =>
+                  (pd == None) && (ed == None) && (td == None) && (sd == None)
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn program_emit_typescript_projection_accepts() -> Bool {
   match target_project_arrow_body_to_value_expression(
     arrow: program_emit_arrow_node(),
@@ -233,6 +266,16 @@ fn program_emit_typescript_projection_accepts() -> Bool {
     handle_transform: fn(a, b, t) {
       translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
     }
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn program_emit_typescript_emit_accepts() -> Bool {
+  match program_emit_from_tree(
+    tree: program_emit_inferred_tree(),
+    target: ts_program_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
