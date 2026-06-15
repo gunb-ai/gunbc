@@ -1,6 +1,6 @@
 // std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
 //
-// Authority: docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md
+// Authority: this module (.dag self-authoritative; worksheet refs retired).
 // Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
 //
 // Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
@@ -22,7 +22,7 @@ import std.os.types {
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
 import std.currency { CurrencyCode, Eur }
-import std.cache_identity { CacheInterfaceId, ArtifactKindId }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuDeploymentFacts,
   CpuFacts,
@@ -99,7 +99,7 @@ type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 type GpuFacts {
   vendor: NonEmptyStr
   model: NonEmptyStr
-  compute_capability: Option<NonEmptyStr>
+  compute_capability: NonEmptyStr?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
@@ -109,28 +109,28 @@ type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
 type MemoryDevice {
   capacity: ByteSize
   memory_kind: MemoryKind
-  bandwidth: Option<Bandwidth>
+  bandwidth: Bandwidth?
 }
 
 type StorageDevice {
   capacity: ByteSize
   medium: StorageMedium
-  read_bandwidth: Option<Bandwidth>
-  write_bandwidth: Option<Bandwidth>
+  read_bandwidth: Bandwidth?
+  write_bandwidth: Bandwidth?
   persistence: PersistenceKind
 }
 
 type NetworkInterface {
   addressability: NetworkAddressability
-  bandwidth: Option<Bandwidth>
-  latency_class: Option<LatencyClass>
+  bandwidth: Bandwidth?
+  latency_class: LatencyClass?
   locality: NetworkLocality
 }
 
 type ExecutionSurface {
   os: OperatingSystemSurface
   isolation: IsolationBoundary
-  container_runtime: Option<ContainerRuntime>
+  container_runtime: ContainerRuntime?
   toolchains: List<ToolchainCapability>
   mounted_storage: List<StorageMount>
   network: List<NetworkInterface>
@@ -161,7 +161,7 @@ type CostModel {
 type ComputeSupplyFacts {
   physical: ComputeHost
   execution: ExecutionSurface
-  cost: Option<CostModel>
+  cost: CostModel?
   observed_performance: List<PerformanceReceipt>
 }
 
@@ -171,7 +171,7 @@ type ProviderConstraint
   | MaxConcurrentRunners { cap: Int }
   | OomBehavior { signal: OomSignalClass }
 
-type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
+type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 // Lens: RAII borrow window — open acquires scope; close is optional early release.
 // Cost quote: a fixed-point money price tagged with its ISO 4217 currency.
 // The `expected_units: Float` / `currency: NonEmptyStr` stopgap (Float carrying
@@ -188,7 +188,7 @@ type ComputeOffer {
   provider: ProviderIdentity
   supply: ComputeSupplyFacts
   available_window: AvailabilityWindow
-  cost_quote: Option<CostEstimate>
+  cost_quote: CostEstimate?
   constraints: List<ProviderConstraint>
 }
 
@@ -228,18 +228,18 @@ fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: 
 // --- §1.2 demand -------------------------------------------------------------
 
 type ResourceEnvelope {
-  cpu: Option<CpuRequirement>
-  gpu: Option<GpuRequirement>
-  memory: Option<MemoryRequirement>
-  storage: Option<StorageRequirement>
-  network: Option<NetworkRequirement>
+  cpu: CpuRequirement?
+  gpu: GpuRequirement?
+  memory: MemoryRequirement?
+  storage: StorageRequirement?
+  network: NetworkRequirement?
 }
 
-type CpuRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
+type CpuRequirement { min_cores: Int, architecture: CpuArchitecture? }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
-type NetworkRequirement { egress: Option<NetworkEgressClass>, ambient_allowed: Bool }
+type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
 type OperatingSystemRequirement { surface: OperatingSystemSurface }
 type IsolationRequirement { boundary: IsolationBoundary }
 type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
@@ -260,13 +260,13 @@ type ToolchainCapability {
   name: NonEmptyStr
   version: NonEmptyStr
   env_isolation: ToolchainEnvIsolation
-  build_wrapper: Option<BuildWrapperKind>
-  linked_cache_interface: Option<CacheInterfaceId>
+  build_wrapper: BuildWrapperKind?
+  linked_cache_interface: CacheInterfaceId?
 }
 
 type WorkDemand {
   resources: ResourceEnvelope
-  os: Option<OperatingSystemRequirement>
+  os: OperatingSystemRequirement?
   isolation: IsolationRequirement
   toolchains: List<ToolchainRequirement>
   parallelism: ParallelismShape
@@ -289,9 +289,9 @@ type ParallelismShape
 
 type ReducerLaws {
   associative: ComputeWitness<Associativity>
-  commutative: Option<ComputeWitness<Commutativity>>
-  identity: Option<IdentityElement>
-  idempotent: Option<ComputeWitness<Idempotency>>
+  commutative: ComputeWitness<Commutativity>?
+  identity: IdentityElement?
+  idempotent: ComputeWitness<Idempotency>?
 }
 
 type ExecutionBudget {
@@ -414,11 +414,11 @@ type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
   wall_duration: Duration
-  cpu_seconds: Option<Float>
+  cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
-  cache_state_summary: Option<NonEmptyStr>
+  cache_state_summary: NonEmptyStr?
 }
 
 type PricingSource
@@ -440,9 +440,9 @@ type CostReceipt {
   // known-wrong field type is type-correctness, not abstraction ahead of
   // demand. `CostReceipt` stays uninhabited (no fabricated `data` rows until a
   // real observed-bill consumer lands).
-  amount: Option<MoneyMicros>
+  amount: MoneyMicros?
   pricing_source: PricingSource
-  amortization_scope: Option<AmortizationScope>
+  amortization_scope: AmortizationScope?
 }
 
 type ExecutionReceipt<T> {
@@ -675,4 +675,12 @@ fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
     Eligible { witness: _ } => true
     Rejected { reason: _ } => false
   }
+}
+
+// Content-pure digest projected from work identity (work.id) only; output
+// content_digest joins when ArtifactRef inhabits. Full canonical encoding
+// (action + inputs + output spec + output content_digest) supplied by the
+// harness when Outcome/ArtifactRef inhabit (Node stubs today).
+fn execution_receipt_digest<T>(receipt: ExecutionReceipt<T>) -> ExecutionReceiptDigest {
+  receipt.work.id
 }
