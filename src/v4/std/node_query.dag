@@ -19,7 +19,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Cons, Empty, FreeMonoid, is_empty, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
 import v4.std.collection { Absent, List, Present, list_at_optional }
 import v4.std.node {
   Ambiguous,
@@ -27,6 +27,7 @@ import v4.std.node {
   ArmPayload,
   Arrow,
   Behavior,
+  ComputationNode,
   Conj,
   CoproductArm,
   CoproductArmPayloadPair,
@@ -37,6 +38,7 @@ import v4.std.node {
   Nullary,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
   Typed,
   arrow_body_target_lookup,
