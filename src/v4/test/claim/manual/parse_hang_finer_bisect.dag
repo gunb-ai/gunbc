@@ -332,6 +332,22 @@ fn list_repeat_n(n: Int) -> List<Int> {
   }
 }
 
+fn finer_fourteen_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 14)
+}
+
+fn finer_eleven_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 11)
+}
+
+fn finer_twelve_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 12)
+}
+
+fn finer_thirteen_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 13)
+}
+
 fn finer_nineteen_passes_at_position_one_terminates() -> Bool {
   finer_n_passes_at_position_one(n: 19)
 }
