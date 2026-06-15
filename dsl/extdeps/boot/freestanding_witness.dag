@@ -27,9 +27,15 @@ import extdeps.boot.linux_x86_boot {
 }
 import extdeps.formats.elf.encode {
   encode_elf64_ehdr,
+  encode_elf64_phdr,
+  int_lists_equal,
   int_lists_equal_at,
+  witness_encode_decode_roundtrip_ehdr,
 }
-import extdeps.formats.elf.primitives { elf64_ehdr_size }
+import extdeps.formats.elf.hello_static_witness {
+  static_hello_elf64_ehdr_bytes,
+  static_hello_first_phdr_bytes,
+}
 import extdeps.formats.elf.primitives {
   EtExec,
   EmX86_64,
@@ -133,6 +139,19 @@ fn witness_emitted_code_bytes_at_offset() -> Bool {
   )
 }
 
+fn witness_shared_encode_roundtrips_hello_static_ehdr() -> Bool {
+  witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
+}
+
+fn witness_shared_encode_roundtrips_hello_static_phdr() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } =>
+      let out = encode_elf64_phdr(phdr)
+      count(out) == elf64_phdr_size && int_lists_equal(static_hello_first_phdr_bytes, out)
+    PhdrRejected { reason: _ } => false
+  }
+}
+
 fn witness_emitted_ehdr_encode_decode_roundtrip() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   match decode_elf64_ehdr(bytes) {
@@ -193,6 +212,8 @@ fn main() -> Bool {
     && witness_emitted_first_phdr_is_pt_load_rx()
     && witness_emitted_load_segment_carries_code()
     && witness_emitted_code_bytes_at_offset()
+    && witness_shared_encode_roundtrips_hello_static_ehdr()
+    && witness_shared_encode_roundtrips_hello_static_phdr()
     && witness_emitted_ehdr_encode_decode_roundtrip()
     && witness_emitted_payload_entry_matches_ehdr()
     && witness_boot_image_accepts_emitted_init()

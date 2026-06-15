@@ -3,8 +3,11 @@
 // Anchor: IBM PC VGA text mode buffer at 0xB8000 (hardware fact).
 // Anchor: Linux x86 boot protocol framebuffer boot params (Documentation/arch/x86/boot.rst).
 //
-// 🟡 feature:framebuffer-measure-carriers — bind Measure<Count, One> + BitWidth when dsl
-// bootstrap exports std.measure dimension phantoms in the dsl-rooted claim-run gate.
+// Unit discipline (IC-MODE / signed brief adhoc-9a43e671-159):
+//   Target: cols/rows/width/height = Measure<Count, One>; bpp = BitWidth (boot-sketches 3ed85a12fb).
+//   dsl-rooted claim-run cannot load std.measure yet (G2 alias .count + phantom-tag import gap —
+//   same failure reproduces on boot-sketches framebuffer @ 3ed85a12fb). Bare Int carriers below
+//   are 🟡 scaffold only; dissolve-on: std.measure imports resolve in dsl claim-run gate.
 
 module extdeps.boot.framebuffer
 
