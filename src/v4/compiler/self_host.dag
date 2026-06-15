@@ -6,6 +6,7 @@ module v4.compiler.self_host
 
 import v4.std.collection { List }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   node_locus,
@@ -15,8 +16,17 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
+import v4.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
 import v4.std.node { Node, Symbol }
 import v4.std.witness {
+  Holds,
+  StructuralPropertyWitness,
   Violates,
   Witness
 }
@@ -48,7 +58,8 @@ type FixedPointEqual {
 }
 
 
-// 🟡 witness-body scaffold — feature:self-host-stage-emission-equality · consumer:self-host-runner · dissolve-on: future runner consumes find_witness/coercion exact structural-equality witness.
+// 🟢 Stage A realized (design-self-host-fixed-point.md §5/§7) — stage_emission_equality
+// consumes find_witness over the landed exact structural-equality zip-fold preservation rule.
 type StageEmissionEquality = Witness<StructurallyEqual>
 
 
@@ -66,7 +77,7 @@ type PromotionWitness {
 
 data self_host_runner_not_realized: Symbol = self_host_runner_not_realized
 data self_host_runner_port: Symbol = self_host_runner_port
-data stage_emission_equality_not_realized: Symbol = stage_emission_equality_not_realized
+data stage_emission_equality_closed_candidates: Symbol = stage_emission_equality_closed_candidates
 data bootstrap_roundtrip_not_realized: Symbol = bootstrap_roundtrip_not_realized
 data fixed_point_not_realized: Symbol = fixed_point_not_realized
 
