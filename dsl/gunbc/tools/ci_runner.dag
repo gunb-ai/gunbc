@@ -56,6 +56,9 @@ fn ensure_discover_owned_data_binary() -> String {
 
 fn run_logged_script(inner: String, log_label: String) -> String {
   // Avoid ${VAR:-default} in DSL strings — v2 parser treats `:` as syntax.
+  // Honest-bar: redirect must not fail-open — capture inner ec before tail, then exit $ec
+  // (naive cmd>log; tail loses the failure signal). Keep in sync with run_logged_script_mirror
+  // in scripts/ci-floor-witnesses.sh for --red-demo gate-3.
   concat(
     "[ -n \"$RUNNER_TEMP\" ] || RUNNER_TEMP=/tmp; ",
     "LOG=$RUNNER_TEMP/gunbc-", log_label, ".log; ",
