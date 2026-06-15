@@ -1,0 +1,68 @@
+// dsl/examples/gunbhub_spine_demo.dag
+//
+// Local visible-progress demo of the gunbhub markup SPINE (no CI required).
+// Composes the already-merged canonical std.markup React consumer to show,
+// by execution through the v2 interpreter:
+//   1. a safe document RENDERS to HTML,
+//   2. a hostile javascript: href is REJECTED fail-closed (the XSS reject-witness),
+//   3. escape_url ALONE does NOT block it (the discriminator that makes the
+//      allowlist load-bearing rather than decorative).
+//
+// Run (prints the returned String, then exits non-ProcessExit — that's expected):
+//   gunbc run --source-root dsl --entry dsl/examples/gunbhub_spine_demo.dag --function <fn>
+
+module examples.gunbhub_spine_demo
+
+import std.react_markup {
+  ElementNode,
+  ReactTextNode,
+  ReactAttr,
+  ReactMarkupNode,
+  EmitOk,
+  EmitRejected,
+  UntrustedUrlScheme,
+  serialize_react_markup,
+  serialize_react_markup_unchecked,
+}
+
+// --- 1. safe doc renders -----------------------------------------------------
+
+fn safe_doc() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "https://gunbc.dev" } ],
+    children: [ ReactTextNode { text: "home" } ],
+  }
+}
+
+fn rendered_safe_doc() -> String {
+  match serialize_react_markup(node: safe_doc()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => "UNEXPECTED-REJECT"
+  }
+}
+
+// --- 2 & 3. hostile javascript: href ----------------------------------------
+
+fn hostile_js() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ ReactTextNode { text: "click" } ],
+  }
+}
+
+// Checked consumer entry — the spine. Fail-closed BEFORE escape_url.
+fn rejected_js_outcome() -> String {
+  match serialize_react_markup(node: hostile_js()) {
+    EmitOk { html: h } => concat("VULNERABLE-emitted: ", h)
+    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+      concat("REJECTED-fail-closed url=", u)
+  }
+}
+
+// Discriminator: escape_url is character-escaping only, so the unchecked path
+// emits the dangerous scheme intact. This is what the allowlist must block.
+fn unchecked_js_passthrough() -> String {
+  serialize_react_markup_unchecked(node: hostile_js())
+}
