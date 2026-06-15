@@ -284,8 +284,8 @@ type GeneratorHeader {
 // RenderDocument: deleted. Depended on Fragment (also deleted).
 // Both had zero consumers.
 //
-// Fragment: REINTRODUCED in std/markup.dag (now has a consumer — gunbhub markup
-// emit: HtmlNode #4927 and React ReactElement #4934 both reduce to that
+// Fragment: REINTRODUCED in std/markup.dag (now has consumers — gunbhub markup
+// emit: HtmlNode #4927 and React ReactMarkupNode #4934/R1 both reduce to that
 // Fragment IR, serialized by its single fold). It lives in std/markup.dag rather
 // than here because render.dag transitively imports std.unicode (v3-only
 // surface) and so is not by-execution-witnessable under the v2 interpreter;

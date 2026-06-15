@@ -1,0 +1,205 @@
+// dsl/test/claim/react_markup_witness.dag
+//
+// By-execution witnesses for the gunbhub R1 React/TSX consumer (std/react_markup.dag).
+// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
+//
+// Evidence:
+//   * ReactMarkupNode reduces to std.markup.Fragment and serializes through the
+//     ONE convergent serialize_fragment fold (CoC=1 with markup_serializer_witness);
+//   * XSS reject-witness — javascript:/data: href values are rejected before emit;
+//   * trusted relative URLs and REQ-A hostile href composition still emit correctly.
+
+module test.claim.react_markup_witness
+
+import std.react_markup {
+  ElementNode,
+  ReactTextNode,
+  ReactAttr,
+  ReactMarkupNode,
+  EmitOk,
+  EmitRejected,
+  UntrustedUrlScheme,
+  serialize_react_markup,
+  serialize_react_markup_unchecked,
+  react_markup_node_to_fragment,
+  is_allowed_url_scheme,
+  validate_react_markup_node,
+}
+import std.markup {
+  serialize_fragment,
+}
+
+fn sample_button() -> ReactMarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [ ReactAttr { name: "class", value: "primary" } ],
+    children: [ ReactTextNode { text: "Go" } ],
+  }
+}
+
+fn witness_react_consumer_reduces_and_serializes() -> Bool {
+  match serialize_react_markup(node: sample_button()) {
+    EmitOk { html: h } => h == "<button class=\"primary\">Go</button>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_react_fragment_matches_markup_fold() -> Bool {
+  let via_consumer = serialize_react_markup_unchecked(node: sample_button())
+  let via_fold = serialize_fragment(frag: react_markup_node_to_fragment(node: sample_button()))
+  via_consumer == via_fold
+}
+
+// -- XSS reject-witness: scheme allowlist before emit ------------------------
+
+fn hostile_javascript_href() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ ReactTextNode { text: "click" } ],
+  }
+}
+
+fn hostile_data_href() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "data:text/html,<script>alert(1)</script>" } ],
+    children: [],
+  }
+}
+
+fn witness_javascript_scheme_rejects() -> Bool {
+  !validate_react_markup_node(node: hostile_javascript_href())
+    && !is_allowed_url_scheme(url: "javascript:alert(1)")
+}
+
+fn witness_data_scheme_rejects() -> Bool {
+  !validate_react_markup_node(node: hostile_data_href())
+    && !is_allowed_url_scheme(url: "data:text/html,x")
+}
+
+// Discriminating: reject is NOT char-escape-only — unchecked emit passes the
+// dangerous scheme through escape_url intact (std/markup.dag SECURITY SCOPE).
+fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
+  match serialize_react_markup(node: hostile_javascript_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_react_markup_unchecked(node: hostile_javascript_href())
+      unchecked == "<a href=\"javascript:alert(1)\">click</a>"
+    }
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_data_reject_discriminates_from_char_escape() -> Bool {
+  match serialize_react_markup(node: hostile_data_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_react_markup_unchecked(node: hostile_data_href())
+      starts_with(s: unchecked, prefix: "<a href=\"data:")
+    }
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_serialize_rejects_javascript_href() -> Bool {
+  match serialize_react_markup(node: hostile_javascript_href()) {
+    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+      u == "javascript:alert(1)"
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_serialize_rejects_data_href() -> Bool {
+  match serialize_react_markup(node: hostile_data_href()) {
+    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+      starts_with(s: u, prefix: "data:")
+    EmitOk { html: _ } => false
+  }
+}
+
+// -- allowlist arms: http / https / mailto / relative -------------------------
+
+fn witness_http_scheme_allowed() -> Bool {
+  is_allowed_url_scheme(url: "http://example.com/path")
+    && is_allowed_url_scheme(url: "https://example.com/path")
+}
+
+fn witness_lowercase_only_scheme_policy() -> Bool {
+  // Mixed-case scheme prefixes are rejected until String.to_lower is witnessable.
+  !is_allowed_url_scheme(url: "Http://example.com")
+    && !is_allowed_url_scheme(url: "HTTPS://example.com")
+    && is_allowed_url_scheme(url: "http://example.com")
+}
+
+fn witness_mailto_scheme_allowed() -> Bool {
+  is_allowed_url_scheme(url: "mailto:user@example.com")
+}
+
+fn witness_ftp_scheme_rejected_by_allowlist() -> Bool {
+  !is_allowed_url_scheme(url: "ftp://example.com/file")
+}
+
+fn witness_http_href_serializes() -> Bool {
+  match serialize_react_markup(
+    node: ElementNode {
+      tag: "a",
+      attrs: [ ReactAttr { name: "href", value: "https://gunbc.dev" } ],
+      children: [ ReactTextNode { text: "home" } ],
+    }
+  ) {
+    EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// -- trusted URLs still emit (escaping delegated to std.markup) ---------------
+
+fn trusted_relative_link() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "/tree/dsl" } ],
+    children: [ ReactTextNode { text: "dsl" } ],
+  }
+}
+
+fn req_a_hostile_but_trusted_scheme() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
+    children: [],
+  }
+}
+
+fn witness_trusted_href_serializes() -> Bool {
+  match serialize_react_markup(node: trusted_relative_link()) {
+    EmitOk { html: h } => h == "<a href=\"/tree/dsl\">dsl</a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
+  match serialize_react_markup(node: req_a_hostile_but_trusted_scheme()) {
+    EmitOk { html: h } =>
+      h == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// -- keystone ----------------------------------------------------------------
+
+fn react_markup_keystone_holds() -> Bool {
+  witness_react_consumer_reduces_and_serializes()
+    && witness_react_fragment_matches_markup_fold()
+    && witness_javascript_scheme_rejects()
+    && witness_data_scheme_rejects()
+    && witness_javascript_reject_discriminates_from_char_escape()
+    && witness_data_reject_discriminates_from_char_escape()
+    && witness_serialize_rejects_javascript_href()
+    && witness_serialize_rejects_data_href()
+    && witness_http_scheme_allowed()
+    && witness_lowercase_only_scheme_policy()
+    && witness_mailto_scheme_allowed()
+    && witness_ftp_scheme_rejected_by_allowlist()
+    && witness_http_href_serializes()
+    && witness_trusted_href_serializes()
+    && witness_req_a_hostile_href_still_emits_with_escaping()
+}
