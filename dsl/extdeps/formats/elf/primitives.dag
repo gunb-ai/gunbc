@@ -59,6 +59,7 @@ data pf_r: Int = 4
 // gABI §ELF Header field sizes (ELF-64).
 data elf64_ehdr_size: Int = 64
 data elf64_phdr_size: Int = 56
+data elf64_shdr_size: Int = 64
 
 // Cited ELF format row inhabiting std.exec_format.ExecutableFormat.
 data linux_x86_64_elf_format: ExecutableFormat = ExecutableFormat { family: Elf }
