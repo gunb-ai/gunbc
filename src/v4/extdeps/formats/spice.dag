@@ -30,7 +30,7 @@ module v4.extdeps.formats.spice
 
 
 import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -41,7 +41,8 @@ import v4.std.diagnostic {
   Textual,
   Unavailable,
   WholeFile,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_accepted
 }
 import v4.std.logic { Bool }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
@@ -367,15 +368,15 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
 // Wave-1 ident spellings for grammar-probe + RC witness symbols (^r1 -> "R1", etc.).
 fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
   if ident == ^r1 {
-    Present { value: "R1" }
+    optional_present(value: "R1")
   } else if ident == ^c1 {
-    Present { value: "C1" }
+    optional_present(value: "C1")
   } else if ident == ^n1 {
-    Present { value: "n1" }
+    optional_present(value: "n1")
   } else if ident == ^n2 {
-    Present { value: "n2" }
+    optional_present(value: "n2")
   } else {
-    Absent
+    optional_absent()
   }
 }
 
@@ -513,18 +514,19 @@ fn spice_parse_reject_unsupported() -> SpiceParseResult {
   }
 }
 
+fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
+  (text == spice_wave1_probe_resistor_line)
+    || (text == spice_emit(netlist: spice_wave1_probe_resistor_netlist))
+}
+
+fn spice_parse_accept_probe() -> SpiceParseResult {
+  outcome_accepted(value: spice_wave1_probe_resistor_netlist)
+}
+
 // Wave-1 parse: structural inverse of spice_emit for enrolled witness netlists only.
 fn spice_parse(text: String) -> SpiceParseResult {
-  if text == spice_wave1_probe_resistor_line {
-    Accepted {
-      value: spice_wave1_probe_resistor_netlist,
-      diagnostics: None
-    }
-  } else if text == spice_emit(netlist: spice_wave1_probe_resistor_netlist) {
-    Accepted {
-      value: spice_wave1_probe_resistor_netlist,
-      diagnostics: None
-    }
+  if spice_parse_is_wave1_probe_line(text: text) {
+    spice_parse_accept_probe()
   } else {
     spice_parse_reject_unsupported()
   }
