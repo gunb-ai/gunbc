@@ -1,6 +1,6 @@
 //! Host transport projection of the operator-fleet CI runner pool.
 //!
-//! **Authority:** `dsl/std/compute_fabric.dag` (`CiRunnerPoolFacts`, `supply_srv{1,2}_ci_runner_pool`,
+//! **Authority:** `dsl/std/compute_fabric.dag` (`RunnerPoolFacts`, `supply_srv{1,2}_ci_runner_pool`,
 //! `supply_srv{1,2}_offer.constraints`). This module is the Rust host mirror for tools that have
 //! not yet routed gate-3 dispatch through compute-fabric eval (CF-M1). Dissolve when the
 //! one-binary CI runner consumes `gunbc.tools.ci_runner_pool` via v2 eval instead of these
@@ -8,7 +8,7 @@
 //!
 //! Parity witness: `dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag`.
 
-/// Host-side mirror of `std.compute_fabric::CiRunnerPoolFacts` for srv1/srv2.
+/// Host-side mirror of `std.compute_fabric::RunnerPoolFacts` for srv1/srv2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelfHostedRunnerPool {
     pub host: &'static str,

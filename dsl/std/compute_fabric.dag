@@ -175,7 +175,7 @@ type ProviderConstraint
 
 // CI self-hosted runner pool — projected from operator-fleet ComputeOffer constraints.
 // Consumer: gunbc.tools.ci_runner_pool (host transport) + CF-M1 gate-3 dispatch substrate.
-type CiRunnerPoolFacts {
+type RunnerPoolFacts {
   host: HostIdentity
   architecture: CpuArchitecture
   core_count: Int
@@ -550,7 +550,7 @@ data operator_fleet_jobserver_fifo: NonEmptyStr = "/var/lib/ctrl/jobserver/host.
 
 // CI runner pool facts: co-host counts from operator nodes.json commentary (srv1=20, srv2=30);
 // jobserver token caps from fleet governor wiring (runner_pool host mirror until CF-M1 eval lands).
-data supply_srv1_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
+data supply_srv1_ci_runner_pool: RunnerPoolFacts = RunnerPoolFacts {
   host: supply_srv1_host_identity,
   architecture: cpu_facts_architecture(supply_srv1_cpu),
   core_count: cpu_facts_cores(supply_srv1_cpu),
@@ -559,27 +559,13 @@ data supply_srv1_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
   jobserver_token_cap: 25,
 }
 
-data supply_srv2_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
+data supply_srv2_ci_runner_pool: RunnerPoolFacts = RunnerPoolFacts {
   host: supply_srv2_host_identity,
   architecture: cpu_facts_architecture(supply_srv2_cpu),
   core_count: cpu_facts_cores(supply_srv2_cpu),
   runner_count: 30,
   jobserver_fifo: operator_fleet_jobserver_fifo,
   jobserver_token_cap: 36,
-}
-
-fn ci_runner_pool_for_host(host: HostIdentity) -> CiRunnerPoolFacts? {
-  if host == supply_srv1_host_identity {
-    Present { value: supply_srv1_ci_runner_pool }
-  } else if host == supply_srv2_host_identity {
-    Present { value: supply_srv2_ci_runner_pool }
-  } else {
-    Absent
-  }
-}
-
-fn ci_runner_pool_from_offer(offer: ComputeOffer) -> CiRunnerPoolFacts? {
-  ci_runner_pool_for_host(host: offer.supply.physical.identity)
 }
 
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
