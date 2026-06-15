@@ -1,0 +1,188 @@
+// src/v4/test/fixture/rc_circuit.dag
+//
+// Scope: Canonical RC passive circuit fixture — composed .dag deck consumed by
+//        BOTH the SPICE emitter (causal netlist) AND the Modelica emitter (acausal model).
+// Anchor: T-4.10 paradigm-falsification probe — identical component values in two
+//         structurally opposed circuit description paradigms.
+// Circuit: 5V DC supply → 1kΩ resistor → 1µF capacitor → ground.
+//   SPICE view: node-voltage topology (causal, directed).
+//   Modelica view: port connection equations (acausal, undirected).
+// Bridge: shared String-valued lexeme constants (rc_resistance_lexeme, etc.) are
+//   the single authority for component values. Both projections reference the same
+//   constants. The cross-paradigm witnesses in spice_rc_modelica_claims.dag break
+//   when either projection diverges from its sibling.
+
+module v4.test.fixture.rc_circuit
+
+import v4.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  DeckStatement,
+  Directive,
+  Ground,
+  Named,
+  NamedNode,
+  NodeRef,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  Tran,
+  VoltageSource
+}
+import v4.extdeps.formats.modelica {
+  ModelicaCapacitor,
+  ModelicaCircuitModel,
+  ModelicaConnection,
+  ModelicaConstantVoltage,
+  ModelicaGround,
+  ModelicaIdentifier,
+  ModelicaPassiveComponent,
+  ModelicaPortRef,
+  ModelicaResistor
+}
+
+
+// --- Shared circuit parameters (the bridge between paradigms) ---------------
+// These are the single authority for all component values in both projections.
+// Changing one without updating both breaks the cross-paradigm claim witnesses.
+
+data rc_supply_voltage_lexeme: String = "5"
+data rc_resistance_lexeme: String = "1000"
+data rc_capacitance_lexeme: String = "0.000001"
+
+
+// --- SPICE projection (causal, node-voltage topology) -----------------------
+// Anchor: ngspice User's Manual release 44, §3 (element statements).
+// Node topology: n_vcc (supply rail) → n_rc (RC junction) → 0 (ground).
+
+data rc_node_vcc: NodeRef = Named { node: NamedNode { name: ^n_vcc } }
+data rc_node_rc: NodeRef = Named { node: NamedNode { name: ^n_rc } }
+
+data rc_spice_v1: Component = VoltageSource {
+  name: ^v1,
+  n_plus: rc_node_vcc,
+  n_minus: Ground,
+  value: SpiceValue { lexeme: rc_supply_voltage_lexeme }
+}
+
+data rc_spice_r1: Component = Resistor {
+  name: ^r1,
+  n_plus: rc_node_vcc,
+  n_minus: rc_node_rc,
+  value: SpiceValue { lexeme: rc_resistance_lexeme }
+}
+
+data rc_spice_c1: Component = Capacitor {
+  name: ^c1,
+  n_plus: rc_node_rc,
+  n_minus: Ground,
+  value: SpiceValue { lexeme: rc_capacitance_lexeme }
+}
+
+data rc_spice_tran: Directive = Tran {
+  tstep: SpiceValue { lexeme: "0.000001" },
+  tstop: SpiceValue { lexeme: "0.01" }
+}
+
+data rc_spice_netlist: SpiceNetlist = SpiceNetlist {
+  title: "RC passive circuit (gunbc T-4.10 paradigm-falsification fixture)",
+  body: [
+    DeckComponent { component: rc_spice_v1 },
+    DeckComponent { component: rc_spice_r1 },
+    DeckComponent { component: rc_spice_c1 },
+    DeckDirective { directive: rc_spice_tran }
+  ]
+}
+
+
+// --- Modelica projection (acausal, port connection equations) ---------------
+// Anchor: Modelica Language Specification 3.5 §4.5.
+// Classes: Modelica.Electrical.Analog.{Sources.ConstantVoltage,
+//          Basic.{Resistor,Capacitor,Ground}}.
+// Port names follow MSL 4.0 Electrical.Analog conventions: p (positive), n (negative).
+
+data rc_modelica_v1: ModelicaPassiveComponent = ModelicaConstantVoltage {
+  name: ModelicaIdentifier { name: ^v1 },
+  v: rc_supply_voltage_lexeme
+}
+
+data rc_modelica_r1: ModelicaPassiveComponent = ModelicaResistor {
+  name: ModelicaIdentifier { name: ^r1 },
+  r: rc_resistance_lexeme
+}
+
+data rc_modelica_c1: ModelicaPassiveComponent = ModelicaCapacitor {
+  name: ModelicaIdentifier { name: ^c1 },
+  c: rc_capacitance_lexeme
+}
+
+data rc_modelica_gnd: ModelicaPassiveComponent = ModelicaGround {
+  name: ModelicaIdentifier { name: ^gnd }
+}
+
+// Connection equations: connect(component.port, component.port)
+data rc_conn_v1p_r1p: ModelicaConnection = ModelicaConnection {
+  left: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^v1 },
+    port: ModelicaIdentifier { name: ^p }
+  },
+  right: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^r1 },
+    port: ModelicaIdentifier { name: ^p }
+  }
+}
+
+data rc_conn_r1n_c1p: ModelicaConnection = ModelicaConnection {
+  left: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^r1 },
+    port: ModelicaIdentifier { name: ^n }
+  },
+  right: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^c1 },
+    port: ModelicaIdentifier { name: ^p }
+  }
+}
+
+data rc_conn_v1n_gnd: ModelicaConnection = ModelicaConnection {
+  left: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^v1 },
+    port: ModelicaIdentifier { name: ^n }
+  },
+  right: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^gnd },
+    port: ModelicaIdentifier { name: ^p }
+  }
+}
+
+data rc_conn_c1n_gnd: ModelicaConnection = ModelicaConnection {
+  left: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^c1 },
+    port: ModelicaIdentifier { name: ^n }
+  },
+  right: ModelicaPortRef {
+    component: ModelicaIdentifier { name: ^gnd },
+    port: ModelicaIdentifier { name: ^p }
+  }
+}
+
+data rc_modelica_model: ModelicaCircuitModel = ModelicaCircuitModel {
+  name: ModelicaIdentifier { name: ^rc_circuit },
+  components: [rc_modelica_v1, rc_modelica_r1, rc_modelica_c1, rc_modelica_gnd],
+  connections: [rc_conn_v1p_r1p, rc_conn_r1n_c1p, rc_conn_v1n_gnd, rc_conn_c1n_gnd]
+}
+
+
+// --- Accessor functions (consumed by cross-paradigm claim witnesses) --------
+
+fn rc_fixture_spice_v1() -> Component { rc_spice_v1 }
+fn rc_fixture_spice_r1() -> Component { rc_spice_r1 }
+fn rc_fixture_spice_c1() -> Component { rc_spice_c1 }
+fn rc_fixture_spice_netlist() -> SpiceNetlist { rc_spice_netlist }
+fn rc_fixture_modelica_v1() -> ModelicaPassiveComponent { rc_modelica_v1 }
+fn rc_fixture_modelica_r1() -> ModelicaPassiveComponent { rc_modelica_r1 }
+fn rc_fixture_modelica_c1() -> ModelicaPassiveComponent { rc_modelica_c1 }
+fn rc_fixture_modelica_model() -> ModelicaCircuitModel { rc_modelica_model }
+fn rc_fixture_supply_voltage_lexeme() -> String { rc_supply_voltage_lexeme }
+fn rc_fixture_resistance_lexeme() -> String { rc_resistance_lexeme }
+fn rc_fixture_capacitance_lexeme() -> String { rc_capacitance_lexeme }

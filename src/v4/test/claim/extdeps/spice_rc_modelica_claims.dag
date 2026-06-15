@@ -1,0 +1,219 @@
+// src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag
+//
+// Scope: Cross-paradigm BoolWitnessClaim witnesses for the RC passive circuit fixture.
+//        Proves the SAME composed .dag deck (rc_circuit.dag) feeds BOTH a SPICE causal
+//        netlist emitter AND a Modelica acausal model emitter with consistent values.
+//
+// Witnesses fall into three groups:
+//   (A) SPICE structural — each component is the correct coproduct variant.
+//   (B) Modelica structural — same check on the Modelica side.
+//   (C) Cross-paradigm (discriminating) — SPICE value lexeme == Modelica parameter value.
+//       Group C is the paradigm-falsification gate: it turns red when either projection
+//       diverges from the shared constants in rc_circuit.dag without updating its sibling.
+//
+// E-10 receipt: every claim is arm-sharp — a wrong variant (A/B) or a value mismatch (C)
+//   turns the witness red. The green is not vacuous.
+
+module v4.test.claim.extdeps.spice_rc_modelica_claims
+
+import v4.std.logic { Bool }
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v4.extdeps.formats.spice {
+  Capacitor,
+  Component,
+  Resistor,
+  SpiceValue,
+  VoltageSource
+}
+import v4.extdeps.formats.modelica {
+  ModelicaCapacitor,
+  ModelicaConstantVoltage,
+  ModelicaPassiveComponent,
+  ModelicaResistor
+}
+import v4.test.fixture.rc_circuit {
+  rc_fixture_spice_c1,
+  rc_fixture_spice_r1,
+  rc_fixture_spice_v1,
+  rc_fixture_modelica_c1,
+  rc_fixture_modelica_r1,
+  rc_fixture_modelica_v1
+}
+
+
+// --- (A) SPICE structural witnesses -----------------------------------------
+
+fn rc_spice_r1_is_resistor() -> Bool {
+  match rc_fixture_spice_r1() {
+    Resistor { name: _, n_plus: _, n_minus: _, value: _ } => true
+    _ => false
+  }
+}
+
+fn rc_spice_c1_is_capacitor() -> Bool {
+  match rc_fixture_spice_c1() {
+    Capacitor { name: _, n_plus: _, n_minus: _, value: _ } => true
+    _ => false
+  }
+}
+
+fn rc_spice_v1_is_voltage_source() -> Bool {
+  match rc_fixture_spice_v1() {
+    VoltageSource { name: _, n_plus: _, n_minus: _, value: _ } => true
+    _ => false
+  }
+}
+
+
+// --- (B) Modelica structural witnesses --------------------------------------
+
+fn rc_modelica_r1_is_resistor() -> Bool {
+  match rc_fixture_modelica_r1() {
+    ModelicaResistor { name: _, r: _ } => true
+    _ => false
+  }
+}
+
+fn rc_modelica_c1_is_capacitor() -> Bool {
+  match rc_fixture_modelica_c1() {
+    ModelicaCapacitor { name: _, c: _ } => true
+    _ => false
+  }
+}
+
+fn rc_modelica_v1_is_voltage_source() -> Bool {
+  match rc_fixture_modelica_v1() {
+    ModelicaConstantVoltage { name: _, v: _ } => true
+    _ => false
+  }
+}
+
+
+// --- (C) Cross-paradigm discriminating witnesses ----------------------------
+// Each witness extracts the value lexeme from both projections and asserts equality.
+// Mutating rc_resistance_lexeme in spice.dag but not modelica.dag (or vice versa) → red.
+
+fn rc_spice_r1_value_lexeme() -> String {
+  match rc_fixture_spice_r1() {
+    Resistor { name: _, n_plus: _, n_minus: _, value: sv } => sv.lexeme
+    _ => ""
+  }
+}
+
+fn rc_modelica_r1_r_value() -> String {
+  match rc_fixture_modelica_r1() {
+    ModelicaResistor { name: _, r: rv } => rv
+    _ => ""
+  }
+}
+
+// Discriminates: mutate rc_resistance_lexeme in one projection → red.
+fn rc_cross_paradigm_r1_resistance_equal() -> Bool {
+  rc_spice_r1_value_lexeme() == rc_modelica_r1_r_value()
+}
+
+fn rc_spice_c1_value_lexeme() -> String {
+  match rc_fixture_spice_c1() {
+    Capacitor { name: _, n_plus: _, n_minus: _, value: sv } => sv.lexeme
+    _ => ""
+  }
+}
+
+fn rc_modelica_c1_c_value() -> String {
+  match rc_fixture_modelica_c1() {
+    ModelicaCapacitor { name: _, c: cv } => cv
+    _ => ""
+  }
+}
+
+// Discriminates: mutate rc_capacitance_lexeme in one projection → red.
+fn rc_cross_paradigm_c1_capacitance_equal() -> Bool {
+  rc_spice_c1_value_lexeme() == rc_modelica_c1_c_value()
+}
+
+fn rc_spice_v1_value_lexeme() -> String {
+  match rc_fixture_spice_v1() {
+    VoltageSource { name: _, n_plus: _, n_minus: _, value: sv } => sv.lexeme
+    _ => ""
+  }
+}
+
+fn rc_modelica_v1_v_value() -> String {
+  match rc_fixture_modelica_v1() {
+    ModelicaConstantVoltage { name: _, v: vv } => vv
+    _ => ""
+  }
+}
+
+// Discriminates: mutate rc_supply_voltage_lexeme in one projection → red.
+fn rc_cross_paradigm_v1_voltage_equal() -> Bool {
+  rc_spice_v1_value_lexeme() == rc_modelica_v1_v_value()
+}
+
+
+// --- BoolWitnessClaim registrations -----------------------------------------
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim markers.
+// Co-located with each witness so glob discovery resolves without a central roster.
+
+data unified_claim_rc_spice_r1_is_resistor: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_spice_r1_is_resistor
+  }
+}
+
+data unified_claim_rc_spice_c1_is_capacitor: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_spice_c1_is_capacitor
+  }
+}
+
+data unified_claim_rc_spice_v1_is_voltage_source: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_spice_v1_is_voltage_source
+  }
+}
+
+data unified_claim_rc_modelica_r1_is_resistor: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_modelica_r1_is_resistor
+  }
+}
+
+data unified_claim_rc_modelica_c1_is_capacitor: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_modelica_c1_is_capacitor
+  }
+}
+
+data unified_claim_rc_modelica_v1_is_voltage_source: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_modelica_v1_is_voltage_source
+  }
+}
+
+data unified_claim_rc_cross_paradigm_r1_resistance_equal: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_cross_paradigm_r1_resistance_equal
+  }
+}
+
+data unified_claim_rc_cross_paradigm_c1_capacitance_equal: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_cross_paradigm_c1_capacitance_equal
+  }
+}
+
+data unified_claim_rc_cross_paradigm_v1_voltage_equal: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+    function: rc_cross_paradigm_v1_voltage_equal
+  }
+}
