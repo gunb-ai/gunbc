@@ -19,7 +19,13 @@ import v4.extdeps.languages.typescript {
   ts_program_source_text,
   ts_program_target_model
 }
-import v4.std.compilers.target_model { TargetModel }
+import v4.std.compilers.target_model {
+  TargetModel,
+  target_project_arrow_body_to_value_expression,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
+}
+import v4.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v4.program {
   program_effect_io_roundtrip,
   program_kw_true,
@@ -215,6 +221,19 @@ fn program_emit_false_condition_tree() -> InferredTree {
 
 fn program_emit_from_tree(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
   emit(tree: tree, target: target)
+}
+
+fn program_emit_typescript_projection_accepts() -> Bool {
+  match target_project_arrow_body_to_value_expression(
+    arrow: program_emit_arrow_node(),
+    target: ts_program_target_model(),
+    handle_transform: fn(a, b, t) {
+      translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+    }
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn program_emit_typescript_keystone_holds() -> Bool {
