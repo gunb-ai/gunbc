@@ -8,7 +8,8 @@ import v4.compiler.parse {
   build_parse_table,
   grammar_has_left_recursion,
   grammar_validate_for_parse,
-  parse_stage_locus_port
+  parse_stage_locus_port,
+  token_position_indices
 }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
@@ -19,7 +20,7 @@ import v4.std.grammar {
   VoidGrammar,
   grammar_empty_sync_tokens
 }
-import v4.std.algebra { Empty }
+import v4.std.algebra { Empty, length }
 import v4.std.logic { Bool }
 
 data finer_empty_source: Source = "module stage0.bisect.empty\n"
@@ -48,6 +49,20 @@ fn finer_grammar_validate_terminates() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
+  }
+}
+
+fn finer_token_position_indices_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      let indices = token_position_indices(tokens: token_stream.tokens)
+      length(xs: indices) > 0
   }
 }
 
