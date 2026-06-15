@@ -116,6 +116,32 @@ run_scanner_perturb_case() {
   echo "::endgroup::"
 }
 
+# Coverage-domain completeness (subsumes scripts/check_v4_layering_imports.py).
+# Derived from the python gate's rule set, not sampled:
+#   - LAYER_ROOTS (check_v4_layering_imports.py:31) = exactly the 5 roots
+#     {src/v4/std, src/v3/std, dsl/std, src/v4/extdeps, dsl/extdeps}
+#   - files scanned = *.dag only (rglob, :87)
+#   - import form matched = leading `import <dotted.path>` (IMPORT_RE ^\s*import\s+([\w.]+), :26)
+#   - forbidden target = FORBIDDEN_EXACT {v3.compiler, v4.compiler} (:28)
+#       UNION FORBIDDEN_PREFIXES {v3.compiler., v4.compiler.} (:27), tested at :75-78.
+# Therefore the COMPLETE violation domain python detects is the cross-product
+#   {5 roots} x {4 target-forms: v3.compiler exact, v3.compiler.* prefix,
+#                v4.compiler exact, v4.compiler.* prefix}
+# over the leading-import form, *.dag only. The receipts below discharge it:
+#   (a) one host-execution plant under EACH of the 5 roots, scanned by the REAL
+#       layering_imports_scan binary, proves the scanner WALKS each root (the
+#       filesystem-scope axis the python rglob covers);
+#   (b) the planted forms collectively exercise EACH of the 4 target-forms;
+#   (c) the form-check is ROOT-INDEPENDENT by lens construction — both
+#       is_layering_violation arms (LayerStd, LayerExtdeps) call the same
+#       is_forbidden_compiler_import on the import_module string
+#       (src/v4/lens/layering_imports.dag) — so per-root x per-form coverage
+#       entails all 5x4 classes; no class is left unwitnessed.
+#   (d) the parse_level case plants a forbidden import alongside an unrelated
+#       resolve error and is still flagged, matching the python pre-resolve TEXT
+#       scan (IMPORT_RE over raw lines) — the phase axis.
+# Hence the lens gate subsumes the python gate over its full enumerable domain;
+# this is the coverage-domain-equivalence witness, not an example sample.
 run_scanner_perturb_receipts() {
   run_scanner_perturb_case \
     "src/v4/std × v4.compiler.* prefix" \
