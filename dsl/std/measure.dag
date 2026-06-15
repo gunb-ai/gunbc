@@ -251,10 +251,11 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 // e.g. `std.compute_fabric.CostEstimate { unit_price, currency }`.
 //
 // `MoneyAmount` is a MULTI-HOP alias (MoneyMicros = MoneyAmount<Micro> =
-// Measure<Currency, Micro>); its phantom type args resolve on v2 (G1 landed),
-// but reading its `.count` is the multi-hop alias field-access case that the
-// single-hop G2 does not yet cover -- the money VALUE on v2 lands with the G3
-// follow-up. `std.currency` (a plain enum) evaluates on v2 today.
+// Measure<Currency, Micro, Nat>); reading its `.count` is the multi-hop alias
+// field-access case, which now resolves + evaluates on v2 (G3 + multi-hop landed
+// in gunbc#4885, alias-chain peel) -- verified by execution, see
+// measure_two_hop_alias_count_roundtrip_holds. `std.currency` (a plain enum)
+// evaluates on v2 today.
 type MoneyAmount<S> = Measure<Currency, S, Nat>
 
 // Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
