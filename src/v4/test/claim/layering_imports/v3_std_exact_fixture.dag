@@ -1,0 +1,33 @@
+// src/v4/test/claim/layering_imports/v3_std_exact_fixture.dag
+// Scope: domain-spanning receipt — src/v3/std root, v3.compiler exact import form.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v4.test.claim.layering_imports.v3_std_exact_fixture
+
+import v4.lens.layering_imports {
+  LayerImportFact,
+  LayerStd,
+  LayeringImportViolation,
+  layering_imports_exact_violation_holds
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+
+data v3_std_exact_fixture_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerStd,
+    path: "src/v3/std/_perturb_v3_compiler_exact.dag",
+    import_module: "v3.compiler"
+  }
+]
+
+fn detects_v3_std_exact_compiler_import_holds() -> Bool {
+  layering_imports_exact_violation_holds(
+    facts: v3_std_exact_fixture_facts,
+    expected: LayeringImportViolation {
+      layer: LayerStd,
+      path: "src/v3/std/_perturb_v3_compiler_exact.dag",
+      import_module: "v3.compiler"
+    }
+  )
+}

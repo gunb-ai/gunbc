@@ -1,5 +1,5 @@
 // src/v4/test/claim/layering_imports/std_to_compiler_fixture.dag
-// Scope: perturb receipt — lens detects std/ → v4.compiler import (planted fixture).
+// Scope: perturb receipt — lens detects src/v4/std → v4.compiler.* prefix import.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v4.test.claim.layering_imports.std_to_compiler_fixture
@@ -7,7 +7,8 @@ module v4.test.claim.layering_imports.std_to_compiler_fixture
 import v4.lens.layering_imports {
   LayerImportFact,
   LayerStd,
-  layering_imports_violation_count
+  LayeringImportViolation,
+  layering_imports_exact_violation_holds
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
@@ -21,5 +22,12 @@ data std_to_compiler_fixture_facts: List<LayerImportFact> = [
 ]
 
 fn detects_std_to_compiler_import_holds() -> Bool {
-  layering_imports_violation_count(facts: std_to_compiler_fixture_facts) == 1
+  layering_imports_exact_violation_holds(
+    facts: std_to_compiler_fixture_facts,
+    expected: LayeringImportViolation {
+      layer: LayerStd,
+      path: "src/v4/std/_perturb_layering_std_to_compiler.dag",
+      import_module: "v4.compiler.tokenize"
+    }
+  )
 }

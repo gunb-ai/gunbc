@@ -1,0 +1,34 @@
+// src/v4/test/claim/layering_imports/parse_level_pre_resolve_fixture.dag
+// Scope: parse-level discriminating receipt — forbidden import survives alongside
+//        unrelated resolve errors (pre-resolution text scan, not resolved-edge).
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v4.test.claim.layering_imports.parse_level_pre_resolve_fixture
+
+import v4.lens.layering_imports {
+  LayerImportFact,
+  LayerStd,
+  LayeringImportViolation,
+  layering_imports_exact_violation_holds
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+
+data parse_level_pre_resolve_fixture_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerStd,
+    path: "src/v4/std/_perturb_parse_level_pre_resolve.dag",
+    import_module: "v4.compiler.tokenize"
+  }
+]
+
+fn detects_parse_level_pre_resolve_import_holds() -> Bool {
+  layering_imports_exact_violation_holds(
+    facts: parse_level_pre_resolve_fixture_facts,
+    expected: LayeringImportViolation {
+      layer: LayerStd,
+      path: "src/v4/std/_perturb_parse_level_pre_resolve.dag",
+      import_module: "v4.compiler.tokenize"
+    }
+  )
+}

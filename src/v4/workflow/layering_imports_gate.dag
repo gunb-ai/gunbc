@@ -36,10 +36,38 @@ data layering_imports_claim_run_row_extdeps_fixture: LayeringImportsClaimRunRow 
   function: "detects_extdeps_to_compiler_import_holds"
 }
 
+data layering_imports_claim_run_row_v3_std_exact: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/v3_std_exact_fixture",
+  entry: "src/v4/test/claim/layering_imports/v3_std_exact_fixture.dag",
+  function: "detects_v3_std_exact_compiler_import_holds"
+}
+
+data layering_imports_claim_run_row_dsl_std_v3_prefix: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/dsl_std_v3_prefix_fixture",
+  entry: "src/v4/test/claim/layering_imports/dsl_std_v3_prefix_fixture.dag",
+  function: "detects_dsl_std_v3_compiler_prefix_import_holds"
+}
+
+data layering_imports_claim_run_row_dsl_extdeps_v4_exact: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/dsl_extdeps_v4_exact_fixture",
+  entry: "src/v4/test/claim/layering_imports/dsl_extdeps_v4_exact_fixture.dag",
+  function: "detects_dsl_extdeps_v4_exact_compiler_import_holds"
+}
+
+data layering_imports_claim_run_row_parse_level_pre_resolve: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/parse_level_pre_resolve_fixture",
+  entry: "src/v4/test/claim/layering_imports/parse_level_pre_resolve_fixture.dag",
+  function: "detects_parse_level_pre_resolve_import_holds"
+}
+
 data layering_imports_claim_run_rows: List<LayeringImportsClaimRunRow> = [
   layering_imports_claim_run_row_clean_tree,
   layering_imports_claim_run_row_std_fixture,
-  layering_imports_claim_run_row_extdeps_fixture
+  layering_imports_claim_run_row_extdeps_fixture,
+  layering_imports_claim_run_row_v3_std_exact,
+  layering_imports_claim_run_row_dsl_std_v3_prefix,
+  layering_imports_claim_run_row_dsl_extdeps_v4_exact,
+  layering_imports_claim_run_row_parse_level_pre_resolve
 ]
 
 fn layering_imports_claim_run_rows_tsv() -> String {
