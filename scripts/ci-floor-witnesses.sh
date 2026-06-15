@@ -98,8 +98,9 @@ case "$mode" in
     ;;
   --red-demo|red-demo)
     witness_red_gate1
+    witness_red_gate3
     witness_red_floor
-    echo "floor RED teeth witnesses OK"
+    echo "floor RED teeth witnesses OK (gate-1 + gate-3 + overall)"
     ;;
   red-gate1)
     witness_red_gate1
