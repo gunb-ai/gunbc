@@ -23,8 +23,10 @@
 #      build: a repeatedly-unreachable sccache server is an infra regression
 #      we want surfaced loudly (ci-spot-rerun.yml will retry the whole job),
 #      not papered over by a silent slow build that hides the problem.
-#   4. A failure that is NOT the transport signature (a real compile error)
-#      exits immediately with the original code: no retry, no masking.
+#   4. A failure that is NOT the transport signature: if stderr matches cargo
+#      EAGAIN thread-spawn pressure under fleet parallel compiles (observed
+#      v4_lens_ci run 27576127936 / #4978), retry ONCE cold with
+#      CARGO_BUILD_JOBS=1 and no RUSTC_WRAPPER. Otherwise fail fast.
 #
 # Usage: bash .github/ci-floor/with-sccache-retry.sh <cmd> [args...]
 #
@@ -36,6 +38,7 @@ set -uo pipefail
 # Only these stderr shapes are treated as transient transport faults. Kept
 # narrow on purpose -- a broader match would retry (and mask) genuine errors.
 SIG='failed to execute compile|send data to or receive data from server|read response header|failed to fill whole buffer|failed to connect to server'
+EAGAIN_SIG='Resource temporarily unavailable|failed to spawn thread'
 
 RETRIES="${SCCACHE_RETRY_ATTEMPTS:-2}"
 
@@ -61,11 +64,17 @@ while [ "$attempt" -le "$RETRIES" ]; do
     exit 0
   fi
   if ! grep -qiE "$SIG" "$log"; then
-    # Real failure -- fail fast with the original code.
+    if grep -qiE "$EAGAIN_SIG" "$log"; then
+      echo "::warning::cargo EAGAIN under fleet compile pressure; one cold retry with CARGO_BUILD_JOBS=1 (no sccache)"
+      unset RUSTC_WRAPPER
+      if CARGO_BUILD_JOBS=1 "$@"; then
+        exit 0
+      fi
+    fi
     exit "$rc"
   fi
   echo "::warning::sccache transport failure (attempt ${attempt}/${RETRIES}, rc=${rc}); restarting server and retrying"
-  sccache --stop-server >/dev/null 2>&1 || true
+  # Fleet crisis (#4991): do NOT stop-server — kills in-flight compiles on shared runners.
   sccache --start-server >/dev/null 2>&1 || true
   attempt=$((attempt + 1))
 done
