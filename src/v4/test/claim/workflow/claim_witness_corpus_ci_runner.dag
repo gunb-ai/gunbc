@@ -1,20 +1,34 @@
 // src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag
-// Scope: compiler-semantics claim-witness corpus CI enrollment (baseline-pinned expectations).
-// Status: host gate scripts/v4-claim-witness-corpus-gate.sh (v4_claim_witness_corpus_{a,b}
-//   parallel shards). CI: --shard a|b --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
-//   rotation); full --perturb-check local-only. Sign runner (2026-06-13): monolith 20-row
-//   spot-perturb measured 1108s (~18.5m) — exceeds 13m gate; two ~10-row shards target
-//   <10m uncontended/shard (×2 ≈ 20m ≤ 20m ceiling per shard; documented-tail clause).
+// Scope: compiler-semantics claim-witness corpus CI enrollment.
+// Host: scripts/v4-claim-witness-corpus-gate.sh invokes the uniform `ci-claim-gate` host
+//   once per shard (--gate-entry this file, --rows-fn the shard's *_rows_tsv, full
+//   --perturb-check) — the same host probe-selector / batch-executor / lens-ci collapsed
+//   onto. The awk/grep roster projection, inline-python per-row perturb, ExpectFail/claim-run
+//   classification, spot-perturb rotation, and the row-count guard are all dissolved.
+//
+// Three ROOT-ALIGNED shards run as parallel CI jobs:
+//     shard_a, shard_b  → --source-root src/v4   (23 + 22 rows)
+//     shard_c           → --source-root dsl       (9 rows)
+//   Shards are root-aligned BY DESIGN: ci-claim-gate's --perturb-check copies only the
+//   PRIMARY --source-root into its temp tree (run_perturb_pass), so a MIXED-root shard would
+//   fail LOUD in the perturb pass (an absent temp path errors — it is not a fail-open miss).
+//   Keeping each shard single-root makes every shard a trivially-correct ci-claim-gate
+//   invocation with NO host change. A future cost-balanced shard that genuinely needs mixed
+//   roots is the JIT trigger to generalize ci-claim-gate's temp tree to multi-root — noted as
+//   a born-mark at run_perturb_pass — not a speculative generalization now, with one consumer.
 //
 // Design-sign notes (alternatives rejected):
 // - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (MODELING.md); one-row
 //   enrollment must stay a single .dag data binding.
-// - Reuse LensCiClaimRunRow (must-pass only): rejected — no field for ExpectFail + bind_anchor;
-//   extending lens_ci_gate.dag would mix lens-analysis receipts with compiler-semantics keystones.
-// - Reuse AffectedSetNodeFrontierClaimRunRow: rejected — same must-pass-only shape; this roster is
-//   a distinct enrollment family with pinned ExpectFail baselines.
-// - ExpectPass | ExpectFail { bind_anchor } coproduct: chosen — fail-closed bind anchor is required
-//   on every expected-red row at authoring time (shell gate also enforces non-empty bind_anchor).
+// - Reuse LensCiClaimRunRow / AffectedSetNodeFrontierClaimRunRow: a distinct enrollment family
+//   (compiler-semantics keystones) is kept separate from lens-analysis / node-frontier receipts;
+//   the row shape is now structurally identical across these gates, and unifying the type is a
+//   separate cross-gate follow-up when a 4th inhabitant justifies it.
+//
+// Sign runner (2026-06-13): monolith 20-row spot-perturb measured 1108s (~18.5m) — exceeded the
+//   13m gate; the prior recovery was 2 spot-perturb shards. This change drops spot-perturb
+//   entirely in favor of full per-shard --perturb-check; 3 smaller single-root shards keep each
+//   comfortably under ceiling (per-shard timing receipts at sign).
 
 module v4.test.claim.workflow.claim_witness_corpus_ci_runner
 
