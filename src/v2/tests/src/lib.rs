@@ -34,6 +34,8 @@ mod enforce_host_infer_native_probe_test;
 #[cfg(test)]
 mod enforce_host_lens_marshal_probe_test;
 #[cfg(test)]
+mod enforce_host_ownership_native_dual_lens_test;
+#[cfg(test)]
 mod enforce_host_marshal_probe_test;
 #[cfg(test)]
 mod fn_as_value_test;
