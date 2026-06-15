@@ -528,6 +528,7 @@ type TargetValueExpressionKind
   | TargetValueExprEffectApply
   | TargetValueExprConditional
   | TargetValueExprBindLet
+  | TargetValueExprLoop
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -548,6 +549,7 @@ type TargetValueTemplateKind
   | ValueEffectApply
   | ValueConditional
   | ValueBindLet
+  | ValueLoop
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -637,6 +639,10 @@ type TargetBindLetShape {
   in_token: Symbol
 }
 
+type TargetLoopShape {
+  loop_token: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
@@ -644,6 +650,7 @@ type TargetValueExpressionProjection {
   effect_apply_form: TargetEffectApplyShape
   conditional_form: TargetConditionalShape
   let_form: TargetBindLetShape
+  loop_form: TargetLoopShape
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
@@ -686,6 +693,9 @@ data target_value_expr_field_in_token: Symbol = target_value_expr_field_in_token
 data target_value_expr_field_bind_key: Symbol = target_value_expr_field_bind_key
 data target_value_expr_field_bind_value: Symbol = target_value_expr_field_bind_value
 data target_value_expr_field_bind_body: Symbol = target_value_expr_field_bind_body
+data target_value_expr_field_loop: Symbol = target_value_expr_field_loop
+data target_value_expr_field_loop_token: Symbol = target_value_expr_field_loop_token
+data target_value_expr_field_loop_body: Symbol = target_value_expr_field_loop_body
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
 data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
@@ -1222,6 +1232,19 @@ fn decode_bind_let_shape_bundle(bundle: Node) -> Outcome<TargetBindLetShape> {
   )
 }
 
+fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_loop_token),
+    f: fn(loop_token) {
+      outcome_accepted(
+        TargetLoopShape {
+          loop_token: loop_token
+        }
+      )
+    }
+  )
+}
+
 fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(
@@ -1429,14 +1452,30 @@ fn decode_value_expression_projection_bundle(
                                                       bundle: bind_let_bundle
                                                     ),
                                                     f: fn(let_form) {
-                                                      outcome_accepted(
-                                                        TargetValueExpressionProjection {
-                                                          binding_ref_form: binding_ref_form,
-                                                          primitive_apply_form: primitive_apply_form,
-                                                          callable_apply_form: callable_apply_form,
-                                                          effect_apply_form: effect_apply_form,
-                                                          conditional_form: conditional_form,
-                                                          let_form: let_form
+                                                      bind_outcome(
+                                                        o: projection_bundle_child(
+                                                          bundle: bundle,
+                                                          name: target_value_expr_field_loop
+                                                        ),
+                                                        f: fn(loop_bundle) {
+                                                          bind_outcome(
+                                                            o: decode_loop_shape_bundle(
+                                                              bundle: loop_bundle
+                                                            ),
+                                                            f: fn(loop_form) {
+                                                              outcome_accepted(
+                                                                TargetValueExpressionProjection {
+                                                                  binding_ref_form: binding_ref_form,
+                                                                  primitive_apply_form: primitive_apply_form,
+                                                                  callable_apply_form: callable_apply_form,
+                                                                  effect_apply_form: effect_apply_form,
+                                                                  conditional_form: conditional_form,
+                                                                  let_form: let_form,
+                                                                  loop_form: loop_form
+                                                                }
+                                                              )
+                                                            }
+                                                          )
                                                         }
                                                       )
                                                     }
@@ -2259,6 +2298,8 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValueBindLet =>
       optional_absent()
+    ValueLoop =>
+      optional_absent()
   }
 }
 
@@ -2963,6 +3004,24 @@ fn target_value_expression_bind_let(
   }
 }
 
+fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprLoop,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_loop_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: target_value_expr_field_loop_body,
+          target: body.node
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
 data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
 data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
 data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
@@ -3418,6 +3477,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_loop_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprLoop,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_primitive_apply_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -3658,6 +3724,74 @@ fn target_value_expression_bind_let_to_concrete_tokens(
   )
 }
 
+fn target_value_expr_loop_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_loop_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_loop_body,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        outcome_accepted(true)
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_loop_child_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: target_value_expr_field_loop_body
+  )
+}
+
+fn target_value_expression_loop_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_loop_child_from_wire(wire: expr.node),
+        f: fn(body) {
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: body,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(body_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: Cons {
+                    head: FixedToken {
+                      token_class: projection.loop_form.loop_token
+                    },
+                    tail: Empty
+                  },
+                  right: body_tokens
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn target_value_expression_symbol_identity_to_concrete_tokens(
   expr: TargetValueExpression
 ) -> Outcome<List<ConcreteSyntaxToken>> {
@@ -3803,6 +3937,12 @@ fn target_value_expression_to_concrete_tokens(
       )
     TargetValueExprBindLet =>
       target_value_expression_bind_let_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprLoop =>
+      target_value_expression_loop_to_concrete_tokens(
         expr: expr,
         projection: projection,
         catalog: catalog
@@ -4133,6 +4273,19 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             )
           ]
         )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_loop,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_loop_token,
+              target: target_model_type_atom_node(
+                identity: projection.loop_form.loop_token
+              )
+            )
+          ]
+        )
       )
     ]
   )
@@ -4205,6 +4358,10 @@ fn target_value_template_apply(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
     ValueBindLet =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueLoop =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
@@ -7791,10 +7948,19 @@ fn target_value_expr_arrow_has_bind_body(arrow: Node) -> Bool {
   }
 }
 
+fn target_value_expr_arrow_has_loop_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      target_value_expr_loop_gate(node: body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
     || target_value_expr_arrow_has_bind_body(arrow: arrow)
+    || target_value_expr_arrow_has_loop_body(arrow: arrow)
 }
 
 // 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
@@ -8065,6 +8231,19 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:value-expression-loop-positional-m0 —
+// consumer:target_project_loop —
+// bind: COMPREP wave-2 M0-Loop (symmetric w/ bind/branch §12.9) —
+// dissolve-on: Q-B1 named pattern edges for Loop (M0-B5);
+// forbidden: silent ordinal coupling past M0 loop body.
+fn target_value_expr_loop_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } =>
+      length(xs: node_positional_child_targets(node: node)) >= 1
+    _ => false
+  }
+}
+
 // 🟡 gated — feature:value-expression-bind-positional-m0 —
 // consumer:target_project_bind_let —
 // bind: design-comprep-m0-bind-mapping (symmetric w/ branch §12.9) —
@@ -8124,6 +8303,46 @@ fn target_project_bind_let(
   }
 }
 
+// 🟡 gated — feature:value-expression-loop-positional-m0 —
+// consumer:target_project_loop —
+// bind: COMPREP wave-2 M0-Loop (symmetric w/ bind/branch §12.9) —
+// dissolve-on: Q-B1 named pattern edges for Loop (M0-B5);
+// forbidden: silent ordinal coupling past M0 loop body.
+fn target_project_loop(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_loop_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: literal_node } =>
+        bind_outcome(
+          o: target_value_expr_project_atom_literal(node: literal_node),
+          f: fn(projected_body) {
+            outcome_accepted(
+              target_value_expression_loop(body: projected_body)
+            )
+          }
+        )
+    }
+  }
+}
+
 fn target_value_expr_project_body_subexpression(
   arrow: Node,
   node: Node,
@@ -8142,6 +8361,13 @@ fn target_value_expr_project_body_subexpression(
       )
     ComputationNode { behavior: Bind } =>
       target_project_bind_let(
+        arrow: arrow,
+        body: node,
+        target: target,
+        handle_transform: handle_transform
+      )
+    ComputationNode { behavior: Loop } =>
+      target_project_loop(
         arrow: arrow,
         body: node,
         target: target,
@@ -8212,6 +8438,13 @@ fn target_project_arrow_body_to_value_expression(
           )
         ComputationNode { behavior: Bind } =>
           target_project_bind_let(
+            arrow: arrow,
+            body: body,
+            target: target,
+            handle_transform: handle_transform
+          )
+        ComputationNode { behavior: Loop } =>
+          target_project_loop(
             arrow: arrow,
             body: body,
             target: target,
