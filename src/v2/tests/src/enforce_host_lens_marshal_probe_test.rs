@@ -1,8 +1,7 @@
 //! X-viability gate (snappy msg_b687c1a7): bypass v4 `infer()` — marshal native
 //! `compile_to_resolved` output directly into v4 `InferredTree` and run
-//! `run_required_lens_gates_on_subtree`. Non-termination is parse-only; infer is
-//! unnecessary when native already carries `InferredNode::Resolved`.
-//! CI: decisive test `#[ignore]` until host adapter closes the Connective shape gap.
+//! `run_required_lens_gates_on_subtree`. Marshaled `Value`s are interned in the
+//! marshal `InterpContext`; lens evaluation must use that same context.
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -112,32 +111,30 @@ fn compile_probe_bundle(
 }
 
 fn memory_spec_root_value(
+    ctx: &InterpContext,
     resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
 ) -> Value {
     let graph = resolved.graph.as_ref().expect("resolved probe graph");
-    let ctx = make_eval_context(graph, resolved.source_indices.clone());
     let item = find_type_item(graph, "MemorySpec");
-    marshal_conj_type_item(&ctx, item).expect("marshal MemorySpec to v4 Node Value")
+    marshal_conj_type_item(ctx, item).expect("marshal MemorySpec to v4 Node Value")
 }
 
 fn run_probe_fn(
-    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
+    ctx: &InterpContext,
     fn_name: &str,
     root: Value,
 ) -> InterpResult<Value> {
-    let graph = resolved.graph.as_ref().expect("probe graph");
-    let ctx = make_eval_context(graph, resolved.source_indices.clone());
     let args = [(Some("root".to_string()), root)];
-    run_in_context_with_args(&ctx, fn_name, &args, false)
+    run_in_context_with_args(ctx, fn_name, &args, false)
 }
 
 fn run_probe_fn_timed(
-    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
+    ctx: &InterpContext,
     fn_name: &str,
     root: Value,
 ) -> Result<Value, String> {
     let start = Instant::now();
-    let result = run_probe_fn(resolved, fn_name, root);
+    let result = run_probe_fn(ctx, fn_name, root);
     let elapsed = start.elapsed();
     if elapsed > LENS_PROBE_TIMEOUT {
         return Err(format!(
@@ -146,6 +143,13 @@ fn run_probe_fn_timed(
         ));
     }
     result.map_err(|e| format!("{e}"))
+}
+
+fn probe_eval_context(
+    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
+) -> InterpContext {
+    let graph = resolved.graph.as_ref().expect("probe graph");
+    make_eval_context(graph, resolved.source_indices.clone())
 }
 
 fn find_type_item<'a>(graph: &'a ResolvedGraph, type_name: &str) -> &'a Rc<Node> {
@@ -180,13 +184,8 @@ fn assert_resolved_ok(resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPi
     );
 }
 
-fn assert_bool_probe(
-    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
-    fn_name: &str,
-    root: Value,
-    expect: bool,
-) {
-    let value = run_probe_fn_timed(resolved, fn_name, root)
+fn assert_bool_probe(ctx: &InterpContext, fn_name: &str, root: Value, expect: bool) {
+    let value = run_probe_fn_timed(ctx, fn_name, root)
         .unwrap_or_else(|e| panic!("probe {fn_name}: {e}"));
     match value {
         Value::Bool(v) if v == expect => {}
@@ -283,9 +282,8 @@ fn assert_v4_edge(ctx: &InterpContext, value: &Value, path: &str) {
 fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
     let resolved = compile_probe_bundle("stage0/memory_spec_reject.dag", BARE_INT_SOURCE);
     assert_resolved_ok(&resolved);
-    let graph = resolved.graph.as_ref().expect("probe graph");
-    let ctx = make_eval_context(graph, resolved.source_indices.clone());
-    let root = memory_spec_root_value(&resolved);
+    let ctx = probe_eval_context(&resolved);
+    let root = memory_spec_root_value(&ctx, &resolved);
     assert_v4_node_tree(&ctx, &root, "MemorySpec");
     let Value::Record { fields, .. } = &root else {
         unreachable!()
@@ -356,14 +354,14 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
 fn run_bare_int_lens_probe(fn_name: &str, expect: bool) {
     let resolved = compile_probe_bundle("stage0/memory_spec_reject.dag", BARE_INT_SOURCE);
     assert_resolved_ok(&resolved);
-    let root = memory_spec_root_value(&resolved);
-    assert_bool_probe(&resolved, fn_name, root, expect);
+    let ctx = probe_eval_context(&resolved);
+    let root = memory_spec_root_value(&ctx, &resolved);
+    assert_bool_probe(&ctx, fn_name, root, expect);
 }
 
 /// Decisive PASS arm: bare-Int MemorySpec → `Rejected` with unit-modeling reason
 /// through host-only marshal (no v4 `infer()`).
 #[test]
-#[ignore = "throwaway X-viability probe: host InferredTree marshal shape gap (no field children on Connective); unblock after adapter fix (msg_b687c1a7)"]
 fn bare_int_marshaled_inferred_tree_lens_rejects_unit_modeling() {
     run_bare_int_lens_probe("probe_lens_rejects_unit_modeling_from_marshaled_root", true);
 }
@@ -373,9 +371,10 @@ fn bare_int_marshaled_inferred_tree_lens_rejects_unit_modeling() {
 fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
     let resolved = compile_probe_bundle("stage0/memory_spec_accept.dag", MODELED_CARRIER_SOURCE);
     assert_resolved_ok(&resolved);
-    let root = memory_spec_root_value(&resolved);
+    let ctx = probe_eval_context(&resolved);
+    let root = memory_spec_root_value(&ctx, &resolved);
     assert_bool_probe(
-        &resolved,
+        &ctx,
         "probe_lens_accepts_from_marshaled_root",
         root,
         true,
