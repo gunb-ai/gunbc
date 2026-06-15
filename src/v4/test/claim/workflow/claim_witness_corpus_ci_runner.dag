@@ -656,3 +656,8 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_rc_cross_paradigm_c1_capacitance_equal,
   corpus_ci_gate_row_rc_cross_paradigm_v1_voltage_equal
 ]
+<<<<<<< HEAD
+=======
+
+data claim_witness_corpus_shard_b_row_count: String = "44"
+>>>>>>> 9c15d78577 (feat(sp-m3): enroll dual-emission witnesses in claim_witness_corpus shard_b)
