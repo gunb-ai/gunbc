@@ -4,7 +4,8 @@
 use std::rc::Rc;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
-use v2_compiler::v2_std_core::{InferredNode, ItemKind};
+use v2_compiler::v2_compiler_infer_items::ItemKind;
+use v2_compiler::v2_std_core::InferredNode;
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -35,16 +36,16 @@ fn memory_spec_item<'a>(
         .values()
         .find(|info| info.kind == ItemKind::TypeItem && info.name == "MemorySpec")
         .expect("MemorySpec in item_registry");
-    let module = graph
+    graph
         .modules
         .iter()
-        .find(|m| m.module.expr_data.to_string().contains(&info.module_name))
-        .or_else(|| graph.modules.first())
-        .expect("module");
-    module
-        .items
-        .iter()
-        .find(|item| item.inferred.is_some())
+        .flat_map(|m| m.items.iter())
+        .find(|item| {
+            graph
+                .item_registry
+                .get(&item.name)
+                .is_some_and(|i| i.kind == ItemKind::TypeItem && i.name == info.name)
+        })
         .expect("type item with inferred")
 }
 
