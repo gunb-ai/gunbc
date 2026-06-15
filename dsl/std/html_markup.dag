@@ -1,18 +1,24 @@
-// std/html_markup.dag — structured HTML markup IR + emit-target serializer.
+// std/html_markup.dag — HtmlNode HTML surface + thin consumer of std.markup.
 //
-// Reintroduces the deleted Fragment / RenderDocument emit path from
-// render.dag (see render.dag §Fragment IR) as an HTML-specific markup IR
-// with a single fold-to-text serializer — not per-app string concatenation.
-//
-// Emit target: HTML only (see std.languages.html_format). A format-agnostic
-// markup serializer belongs in a separate module when a second consumer needs it.
-//
-// Consumers build HtmlNode trees structurally; serialize_html_node folds the
-// tree to wire text with context-correct escaping.
+// gunbhub builds HtmlNode trees structurally; serialize_html_node adapts to
+// std.markup.Fragment and delegates to the ONE convergent serialize_fragment
+// fold (cost-of-change = 1 with React #4934 and other markup consumers).
 
 module std.html_markup
 
-// --- structured HTML element IR -------------------------------------------
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+  EscapeContext,
+  serialize_fragment,
+  escape_text,
+}
+
+// --- HtmlNode HTML surface (consumer-facing IR) -----------------------------
 
 type HtmlAttr {
   name: String
@@ -23,89 +29,43 @@ type HtmlNode
   = ElementNode { tag: String, attrs: List<HtmlAttr>, children: List<HtmlNode> }
   | TextNode { text: String }
 
-// --- escaping (context-correct; not one-size-fits-all) ----------------------
+// --- HtmlNode -> Fragment adapter -------------------------------------------
 
-type MarkupEscapeContext
-  = TextContent
-  | AttributeValue
-  | UrlPath
-
-fn escape_text_content(s: String) -> String {
-  let s1 = replace(s, "&", "&amp;")
-  let s2 = replace(s1, "<", "&lt;")
-  replace(s2, ">", "&gt;")
-}
-
-fn escape_attribute_value(s: String) -> String {
-  let s1 = replace(s, "&", "&amp;")
-  let s2 = replace(s1, "\"", "&quot;")
-  replace(s2, "<", "&lt;")
-}
-
-fn escape_url_path(s: String) -> String {
-  replace(s, "&", "&amp;")
-}
-
-fn escape_markup(s: String, ctx: MarkupEscapeContext) -> String {
-  match ctx {
-    TextContent => escape_text_content(s: s)
-    AttributeValue => escape_attribute_value(s: s)
-    UrlPath => escape_url_path(s: s)
-  }
-}
-
-// R0: only href is URL-bearing; extend when a consumer needs src/action/formaction.
-fn attr_escape_context(name: String) -> MarkupEscapeContext {
+fn html_attr_escape_context(name: String) -> EscapeContext {
   if name == "href" {
-    UrlPath
+    UrlContext
   } else {
-    AttributeValue
+    AttributeContext
   }
 }
 
-// --- fold-to-text serializer (the emit primitive) ---------------------------
-
-fn serialize_html_attr(attr: HtmlAttr) -> String {
-  let escaped = escape_markup(
-    s: attr.value,
-    ctx: attr_escape_context(name: attr.name)
-  )
-  concat(
-    concat(concat(concat(" ", attr.name), "=\""), escaped),
-    "\""
-  )
+fn html_attr_to_fragment(attr: HtmlAttr) -> Attribute {
+  Attribute {
+    name: attr.name,
+    ctx: html_attr_escape_context(name: attr.name),
+    value: attr.value,
+  }
 }
 
-fn serialize_html_attrs(attrs: List<HtmlAttr>) -> String {
-  join(map(attrs, a => serialize_html_attr(attr: a)), "")
-}
-
-fn serialize_html_open_tag(tag: String, attrs: List<HtmlAttr>) -> String {
-  concat(concat(concat("<", tag), serialize_html_attrs(attrs: attrs)), ">")
-}
-
-fn serialize_html_close_tag(tag: String) -> String {
-  concat(concat("</", tag), ">")
-}
-
-fn serialize_html_children(children: List<HtmlNode>) -> String {
-  fold(children,
-    init: "",
-    f: (acc, child) => concat(acc, serialize_html_node(node: child))
-  )
-}
-
-fn serialize_html_node(node: HtmlNode) -> String {
+fn html_node_to_fragment(node: HtmlNode) -> Fragment {
   match node {
     TextNode { text } =>
-      escape_markup(s: text, ctx: TextContent)
+      TextNode { content: text }
     ElementNode { tag, attrs, children } =>
-      concat(
-        concat(
-          serialize_html_open_tag(tag: tag, attrs: attrs),
-          serialize_html_children(children: children)
-        ),
-        serialize_html_close_tag(tag: tag)
-      )
+      Element {
+        tag: tag,
+        attributes: map(attrs, a => html_attr_to_fragment(attr: a)),
+        children: map(children, c => html_node_to_fragment(node: c)),
+      }
   }
+}
+
+// --- thin consumer entry ----------------------------------------------------
+
+fn serialize_html_node(node: HtmlNode) -> String {
+  serialize_fragment(frag: html_node_to_fragment(node: node))
+}
+
+fn escape_text_content(s: String) -> String {
+  escape_text(s: s)
 }

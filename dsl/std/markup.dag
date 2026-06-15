@@ -1,0 +1,136 @@
+// std/markup.dag -- Fragment IR: a format-agnostic structured-markup element
+// tree plus ONE convergent fold-to-text serializer with context-correct escaping.
+//
+// Reintroduces the Fragment model deleted at std/render.dag:284 (it was removed
+// as a zero-consumer dead model). The consumer is now gunbhub markup emit:
+//   * gunbhub HtmlNode  (#4927) reduces to this Fragment IR,
+//   * React ReactElement (#4934) reduces to this SAME Fragment IR,
+// and BOTH are serialized by the SINGLE `serialize_fragment` fold below
+// (cost-of-change = 1: one serializer, not one-per-target).
+//
+// Why a standalone module and not std/render.dag itself: render.dag transitively
+// imports std.unicode, whose `fn f() -> T = expr` surface the v2 interpreter does
+// not parse, so nothing importing render.dag is by-execution-witnessable. This
+// module imports only the v2-clean string/char substrate so the serializer can be
+// proven by execution (see dsl/test/claim/markup_serializer_witness.dag).
+//
+// PURITY: the serializer is a pure fold over the element tree. Markup is built by
+// folding children and concatenating tag/attribute/child text -- never by string
+// templating. Per-leaf escaping uses the `replace` substring primitive.
+
+module std.markup
+
+import std.string_type { String }
+
+// ===================================================================
+// Escaping contexts
+// ===================================================================
+//
+// The dangerous-character set depends on WHERE a run of text lands in the
+// output. Three positions, three disciplines, ONE serializer that dispatches
+// on the context:
+//
+//   TextContext      element text node      -- & < > are structural
+//   AttributeContext double-quoted value    -- additionally " closes the value
+//   UrlContext       href/src-style value   -- structural chars percent-encoded
+//
+type EscapeContext = TextContext | AttributeContext | UrlContext
+
+// ===================================================================
+// Fragment IR
+// ===================================================================
+//
+// Attribute: a name plus a value rendered under `ctx`'s escaping discipline.
+// (href/src carry UrlContext; ordinary attributes carry AttributeContext.)
+type Attribute {
+  name: String
+  ctx: EscapeContext
+  value: String
+}
+
+// Fragment: the convergent markup IR.
+//   Element  an open/close tag with attributes and child fragments
+//   TextNode an escaped text leaf (escaped in TextContext)
+//   RawNode  a pre-trusted leaf emitted verbatim (no escaping)
+type Fragment
+  = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
+  | TextNode { content: String }
+  | RawNode { content: String }
+
+// ===================================================================
+// Context-correct escaping (and its inverse, for the round-trip proof)
+// ===================================================================
+//
+// `&` is escaped FIRST so the entities introduced by later passes are not
+// themselves re-escaped; the inverse decodes `&amp;` LAST for the same reason.
+
+fn escape_text(s: String) -> String {
+  replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+}
+
+fn unescape_text(s: String) -> String {
+  replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&amp;", "&")
+}
+
+fn escape_attribute(s: String) -> String {
+  replace(replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
+}
+
+fn unescape_attribute(s: String) -> String {
+  replace(replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
+}
+
+fn escape_url(s: String) -> String {
+  replace(replace(replace(replace(s, "&", "&amp;"), "\"", "%22"), " ", "%20"), "<", "%3C")
+}
+
+fn unescape_url(s: String) -> String {
+  replace(replace(replace(replace(s, "%22", "\""), "%20", " "), "%3C", "<"), "&amp;", "&")
+}
+
+// ONE dispatch point: context selects the escaping discipline.
+fn escape_in(ctx: EscapeContext, s: String) -> String {
+  match ctx {
+    TextContext => escape_text(s)
+    AttributeContext => escape_attribute(s)
+    UrlContext => escape_url(s)
+  }
+}
+
+// Inverse dispatch -- used only by the round-trip witnesses.
+fn unescape_in(ctx: EscapeContext, s: String) -> String {
+  match ctx {
+    TextContext => unescape_text(s)
+    AttributeContext => unescape_attribute(s)
+    UrlContext => unescape_url(s)
+  }
+}
+
+// ===================================================================
+// The serializer -- ONE fold over the Fragment IR
+// ===================================================================
+
+fn serialize_attribute(a: Attribute) -> String {
+  concat(concat(concat(concat(" ", a.name), "=\""), escape_in(a.ctx, a.value)), "\"")
+}
+
+fn serialize_attributes(attrs: List<Attribute>) -> String {
+  fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute(a)))
+}
+
+// serialize_fragment: format-agnostic element-tree fold-to-text. Recurses
+// through children via `fold`; escapes leaves per context.
+fn serialize_fragment(frag: Fragment) -> String {
+  match frag {
+    TextNode { content: c } => escape_text(c)
+    RawNode { content: c } => c
+    Element { tag: t, attributes: attrs, children: kids } =>
+      concat(
+        concat(
+          concat(concat(concat("<", t), serialize_attributes(attrs)), ">"),
+          fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment(k)))
+        ),
+        concat(concat("</", t), ">")
+      )
+  }
+}

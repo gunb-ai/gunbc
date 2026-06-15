@@ -282,6 +282,5 @@ type GeneratorHeader {
 }
 
 // RenderDocument: deleted. Depended on Fragment (also deleted).
-// HTML markup emit reintroduced in std/html_markup.dag (HtmlNode IR +
-// serialize_html_node fold-to-text). Generic Fragment may return when a
-// second markup consumer needs format-agnostic renderable content.
+// Fragment IR reintroduced in std/markup.dag (HtmlNode #4927 + React #4934 reduce
+// to ONE serialize_fragment fold). HtmlNode surface + adapter: std/html_markup.dag.
