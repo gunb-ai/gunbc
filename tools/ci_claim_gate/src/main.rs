@@ -215,6 +215,15 @@ fn remap_entry_for_temp(source_root: &str, entry: &str) -> PathBuf {
     }
 }
 
+// Born-mark (single-primary-root temp tree): the perturb temp tree mirrors only `primary_root`
+// (source_roots[0]) under `tmp/src`, and `remap_entry_for_temp` only knows how to relocate
+// entries under that one root. Every perturbed row must therefore live under the primary root;
+// a row from another root fails LOUD (absent temp path), it is NOT a fail-open miss. Today all
+// consumers keep each shard's *perturbed* rows single-primary-root (the claim-witness-corpus
+// gate is root-aligned for exactly this reason). GENERALIZE to a multi-root, repo-relative-layout
+// temp tree (copy each source-root preserving its path, remap each entry verbatim) WHEN a
+// cost-balanced shard first genuinely needs perturbed rows spanning multiple roots — that is the
+// JIT trigger (a second real consumer), not a speculative generalization for one.
 fn run_perturb_pass(
     _source_roots: &[String],
     rows: &[GateRow],

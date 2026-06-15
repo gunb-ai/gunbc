@@ -6,16 +6,19 @@
 //   onto. The awk/grep roster projection, inline-python per-row perturb, ExpectFail/claim-run
 //   classification, spot-perturb rotation, and the row-count guard are all dissolved.
 //
-// Three ROOT-ALIGNED shards run as parallel CI jobs:
-//     shard_a, shard_b  → --source-root src/v4   (23 + 22 rows)
-//     shard_c           → --source-root dsl       (9 rows)
-//   Shards are root-aligned BY DESIGN: ci-claim-gate's --perturb-check copies only the
-//   PRIMARY --source-root into its temp tree (run_perturb_pass), so a MIXED-root shard would
-//   fail LOUD in the perturb pass (an absent temp path errors — it is not a fail-open miss).
-//   Keeping each shard single-root makes every shard a trivially-correct ci-claim-gate
-//   invocation with NO host change. A future cost-balanced shard that genuinely needs mixed
-//   roots is the JIT trigger to generalize ci-claim-gate's temp tree to multi-root — noted as
-//   a born-mark at run_perturb_pass — not a speculative generalization now, with one consumer.
+// Three ROOT-ALIGNED shards run as parallel CI jobs (23 + 23 + 9 = 55 rows):
+//     shard_a, shard_b  → primary --source-root src/v4   (23 src/v4 rows each)
+//     shard_c           → primary --source-root dsl       (9 dsl rows; src/v4 added as a
+//                          second, read-only resolve root ONLY for the gate-entry that holds
+//                          the rows-fn — no src/v4 row is perturbed in shard_c).
+//   Shards are root-aligned BY DESIGN: ci-claim-gate's --perturb-check copies only the PRIMARY
+//   --source-root into its temp tree (run_perturb_pass), so every PERTURBED row must live under
+//   the primary root; a row outside it would fail LOUD in the perturb pass (an absent temp path
+//   errors — not a fail-open miss). Keeping each shard's rows single-primary-root makes every
+//   shard a trivially-correct ci-claim-gate invocation with NO host change. A future
+//   cost-balanced shard that genuinely needs perturbed rows across multiple roots is the JIT
+//   trigger to generalize ci-claim-gate's temp tree to multi-root — noted as a born-mark at
+//   run_perturb_pass — not a speculative generalization now, with one consumer.
 //
 // Design-sign notes (alternatives rejected):
 // - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (MODELING.md); one-row
