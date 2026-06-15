@@ -519,7 +519,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "55"
+data claim_witness_corpus_claim_run_row_count: String = "56"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
