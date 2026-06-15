@@ -1,12 +1,13 @@
 // dsl/test/claim/probe_selector_compute_fabric_import_repro.dag
-// 🟡 P-PROBE-CF-IMPORT falsifier — intentionally fails resolve until Option repoint lands.
-// Escalation: zesty-swift-79 / work-item adhoc-20b17ff7-932 (sleek-stag-788 lane).
-// Lives under dsl/ (not src/v4/) so M1 full-tree emit does not ingest an unresolvable module.
-// Gate: scripts/v4-probe-selector-compute-fabric-import-repro.sh (dual-root claim_batch).
+// P-PROBE-CF-IMPORT witness — proves `import std.compute_fabric` resolves a real
+// supply offer (the Option substrate gap dissolved in #4887; the Nat-mul algebra
+// resolution landed alongside this row). Was an ExpectFail pin (adhoc-20b17ff7-932);
+// now enrolled ExpectPass directly in corpus shard b (--source-root dsl). `Bool`
+// is kernel-available under dsl/-root, so no v4.std.logic import is needed (matches
+// corpus_gate_dsl_root_probe.dag). Lives under dsl/ so M1 src/v4 emit skips it.
 
 module test.claim.probe_selector_compute_fabric_import_repro
 
-import v4.std.logic { Bool }
 import std.compute_fabric { supply_srv1_offer }
 
 fn probe_selector_compute_fabric_import_repro_holds() -> Bool {
