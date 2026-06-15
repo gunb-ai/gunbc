@@ -15,7 +15,9 @@ import v4.compiler.emit { emit }
 import v4.extdeps.languages.typescript {
   ts_host_transport_mvp1_descriptor,
   ts_host_transport_mvp1_identity,
-  ts_mvp1_source_text_authority
+  ts_host_transport_program_descriptor,
+  ts_mvp1_source_text_authority,
+  ts_program_source_text_authority
 }
 import v4.extdeps.languages.rust { rust_mvp1_source_text_authority }
 import v4.extdeps.languages.python { python_mvp1_source_text }
@@ -290,6 +292,13 @@ fn run_emit_host(
   if target.authority_source_text == ts_mvp1_source_text_authority() {
     run_host_process(
       descriptor: ts_host_transport_mvp1_descriptor(),
+      target: target,
+      source: source,
+      fixture_inputs: fixture_inputs
+    )
+  } else if target.authority_source_text == ts_program_source_text_authority() {
+    run_host_process(
+      descriptor: ts_host_transport_program_descriptor(),
       target: target,
       source: source,
       fixture_inputs: fixture_inputs

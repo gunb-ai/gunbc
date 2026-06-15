@@ -251,11 +251,24 @@ pub fn runtime_value_parse_signed_i32_le(bytes: &[u8]) -> Result<i32, RuntimeVal
 /// Modeled identity for `ts_host_transport_mvp1_descriptor` (`typescript.dag`).
 pub const TS_HOST_TRANSPORT_MVP1_IDENTITY: &str = "ts_host_transport_mvp1_identity";
 
+/// Modeled identity for `ts_host_transport_program_descriptor` (`typescript.dag`).
+pub const TS_HOST_TRANSPORT_PROGRAM_IDENTITY: &str = "ts_host_transport_program_identity";
+
 const TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX: &str = "\
 const __gunbc_r = add(2, 3);
 const __gunbc_b = Buffer.alloc(4);
 __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
+";
+
+const TS_HOST_TRANSPORT_PROGRAM_HARNESS_SUFFIX: &str = "\
+import * as fs from 'fs';
+const __gunbc_effect_write = (p: string, c: string) => { fs.writeFileSync(p, c); return c; };
+const __gunbc_effect_read = (p: string) => fs.readFileSync(p, 'utf8');
+const ioPath = 'gunbc_program_io_target.txt';
+const ioContent = 'gunbc-program-effect-io-roundtrip';
+const __gunbc_out = program();
+process.stdout.write(String(__gunbc_out));
 ";
 
 // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
@@ -296,6 +309,9 @@ pub fn run_host_process(
     validate_emit_host_transport_inputs(inputs)?;
     match descriptor_identity {
         TS_HOST_TRANSPORT_MVP1_IDENTITY => run_host_process_ts_mvp1(source, inputs, work_dir),
+        TS_HOST_TRANSPORT_PROGRAM_IDENTITY => {
+            run_host_process_ts_program(source, inputs, work_dir)
+        }
         other => Err(HostSetupFailure::SpawnFailed {
             phase: HostPhase::Build,
             source: format!("unsupported host transport descriptor: {other}"),
@@ -315,6 +331,62 @@ fn run_host_process_ts_mvp1(
     let fixture_ts = work_dir.join("fixture.ts");
     let fixture_body = format!("{source}{TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX}");
     fs::write(&fixture_ts, fixture_body).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
+    build_cmd.current_dir(work_dir).args([
+        "-y",
+        "typescript@5.9.2",
+        "tsc",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--outDir",
+        ".",
+        "fixture.ts",
+    ]);
+    let build = run_command_bounded(build_cmd, HOST_BUILD_TIMEOUT, HostPhase::Build)?;
+    let mut build_log = bounded_output_to_log(&build, "tsc");
+    if !matches!(build.status, Some(s) if s.success()) {
+        return Ok(EmitHostRunReceipt {
+            source_text: source.to_string(),
+            exit: host_exit_from_bounded(&build, HostPhase::Build),
+            stdout_bytes: build.stdout,
+            stderr_bytes: build.stderr,
+            build_log,
+        });
+    }
+
+    let fixture_js = work_dir.join("fixture.js");
+    let mut run_cmd = Command::new(resolve_host_tool("host_tool_node")?);
+    run_cmd.current_dir(work_dir).arg(&fixture_js);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
+    build_log
+        .lines
+        .extend(bounded_output_to_log(&run, "node").lines);
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log,
+    })
+}
+
+fn run_host_process_ts_program(
+    source: &str,
+    _inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let fixture_ts = work_dir.join("fixture.ts");
+    let fixture_body = format!("{source}{TS_HOST_TRANSPORT_PROGRAM_HARNESS_SUFFIX}");
+    fs::write(&fixture_ts, &fixture_body).map_err(|e| HostSetupFailure::SourceWriteFailed {
         source: e.to_string(),
     })?;
 
