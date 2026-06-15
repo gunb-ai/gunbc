@@ -1,0 +1,51 @@
+// extdeps/formats/elf/encode.dag — ELF-64 encode sketch (inverse of decode, Slice 0.5 unblock).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+//
+// Status: 🟡 SCAFFOLD — encode witnesses land with freestanding payload emit (Slice-0.5).
+// Cross-lane critical path: shared with gunbhub emit-breadth (encode/serialize side).
+
+module extdeps.formats.elf.encode
+
+import extdeps.formats.elf.primitives {
+  elf64_ehdr_size,
+  elf64_phdr_size,
+}
+import extdeps.formats.elf.segments { Elf64Phdr }
+import extdeps.formats.elf.types {
+  Elf64Ehdr,
+  ElfDecodeOutcome,
+  ElfDecoded,
+  decode_elf64_ehdr,
+}
+import std.types { Bool }
+
+type ElfEncodeOutcome
+  = ElfEncoded { bytes: List<Int> }
+  | ElfEncodeRejected { reason: ElfEncodeReason }
+
+type ElfEncodeReason
+  = EncodeTruncatedInput
+  | EncodeRoundTripMismatch { offset: Int }
+
+// Slice 0.5: single PT_LOAD R+X freestanding ET_EXEC (minimal pixel-writer payload).
+fn encode_elf64_ehdr(hdr: Elf64Ehdr) -> ElfEncodeOutcome {
+  // Scaffold — implementation pairs with decode round-trip witness.
+  ElfEncodeRejected { reason: EncodeTruncatedInput }
+}
+
+fn encode_elf64_phdr(phdr: Elf64Phdr) -> ElfEncodeOutcome {
+  ElfEncodeRejected { reason: EncodeTruncatedInput }
+}
+
+fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
+  match decode_elf64_ehdr(hdr_bytes) {
+    ElfDecoded { value: hdr } =>
+      match encode_elf64_ehdr(hdr) {
+        ElfEncoded { bytes: out } => count(out) == elf64_ehdr_size
+        ElfEncodeRejected { reason: _ } => false
+      }
+    _ => false
+  }
+}

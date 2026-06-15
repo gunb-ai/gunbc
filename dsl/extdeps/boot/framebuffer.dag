@@ -1,0 +1,43 @@
+// extdeps/boot/framebuffer.dag — earliest visible output surfaces for QEMU x86 boot.
+//
+// Anchor: IBM PC VGA text mode buffer at 0xB8000 (hardware fact).
+// Anchor: Linux x86 boot protocol framebuffer boot params (Documentation/arch/x86/boot.rst).
+//
+// Unit discipline (operator directive 2026-06-15):
+//   - bpp: BitWidth (Measure<Information, One>) — bits per pixel
+//   - cols/rows/width/height: Measure<Count, One> — cardinality, non-additive labels
+//   - base/ch/attr/color: bare Int — address / codepoint / attr-byte / color encoding
+
+module extdeps.boot.framebuffer
+
+import std.measure { BitWidth, Measure, Count, One }
+import std.types { Int }
+
+type PixelColumnCount = Measure<Count, One>
+type PixelRowCount = Measure<Count, One>
+
+type FramebufferSurface
+  = VgaTextMode {
+      base: Int,
+      cols: PixelColumnCount,
+      rows: PixelRowCount,
+    }
+  | LinearFramebuffer {
+      base: Int,
+      width: PixelColumnCount,
+      height: PixelRowCount,
+      bpp: BitWidth,
+    }
+
+type FramebufferWrite
+  = WriteChar {
+      surface: FramebufferSurface,
+      row: PixelRowCount,
+      col: PixelColumnCount,
+      ch: Int,
+      attr: Int,
+    }
+  | FillSolid { surface: FramebufferSurface, color: Int }
+
+// Slice-0 default VGA text mode base (IBM PC hardware fact).
+data vga_text_mode_base: Int = 753664
