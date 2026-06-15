@@ -112,11 +112,11 @@ fn enforce_host_ownership_native_dual_lens_discriminator() {
         &[(Some("root".to_string()), root)],
         false,
     )
-    .map(|v| match v {
+    .map_err(|e| e.to_string())
+    .and_then(|v| match v {
         Value::Bool(b) => Ok(b),
         other => Err(format!("expected Bool, got {other:?}")),
-    })
-    .map_err(|e| e.to_string());
+    });
     eprintln!("MARSHAL bridge probe: {marshal_result:?}");
 
     match (&native_result, &marshal_result) {
