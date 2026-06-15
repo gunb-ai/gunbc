@@ -34,9 +34,7 @@ pub enum MarshalLensVerdict {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidateOutcome {
     Pass(MarshalLensVerdict),
-    Fail {
-        reason: String,
-    },
+    Fail { reason: String },
 }
 
 impl ValidateOutcome {
@@ -84,7 +82,9 @@ fn compile_probe_bundle(
     for source in harness_sources.iter().chain(subject_sources.iter()) {
         by_path.insert(source.path.clone(), source.clone());
     }
-    Ok(compile_to_resolved(Rc::new(by_path.into_values().collect())))
+    Ok(compile_to_resolved(Rc::new(
+        by_path.into_values().collect(),
+    )))
 }
 
 fn assert_resolved_ok(
@@ -143,11 +143,7 @@ fn memory_spec_root_value(
     marshal_conj_type_item(ctx, item).map_err(|e| format!("marshal MemorySpec: {e}"))
 }
 
-fn run_probe_fn_timed(
-    ctx: &InterpContext,
-    fn_name: &str,
-    root: Value,
-) -> Result<bool, String> {
+fn run_probe_fn_timed(ctx: &InterpContext, fn_name: &str, root: Value) -> Result<bool, String> {
     let start = Instant::now();
     let args = [(Some("root".to_string()), root)];
     let result: InterpResult<Value> = run_in_context_with_args(ctx, fn_name, &args, false);
@@ -172,15 +168,13 @@ pub fn validate_marshal_lens(
     harness_entry: &str,
     subject_fixture: &str,
 ) -> ValidateOutcome {
-    let resolved = match compile_probe_bundle(workspace, source_roots, harness_entry, subject_fixture)
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return ValidateOutcome::Fail {
-                reason: e,
-            };
-        }
-    };
+    let resolved =
+        match compile_probe_bundle(workspace, source_roots, harness_entry, subject_fixture) {
+            Ok(r) => r,
+            Err(e) => {
+                return ValidateOutcome::Fail { reason: e };
+            }
+        };
     if let Err(e) = assert_resolved_ok(&resolved) {
         return ValidateOutcome::Fail { reason: e };
     }
@@ -219,11 +213,7 @@ pub fn validate_marshal_lens(
 }
 
 /// Entry point for `gunbc validate`. Exits the process with production codes.
-pub fn handle_validate(
-    source_roots: Vec<String>,
-    harness_entry: String,
-    subject_fixture: String,
-) {
+pub fn handle_validate(source_roots: Vec<String>, harness_entry: String, subject_fixture: String) {
     let workspace = std::env::current_dir().unwrap_or_else(|e| {
         eprintln!("error: cannot determine working directory: {e}");
         std::process::exit(2);

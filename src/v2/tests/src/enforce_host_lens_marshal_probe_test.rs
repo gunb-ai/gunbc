@@ -8,7 +8,9 @@
 use std::rc::Rc;
 
 use v2_compiler::coproduct_reflection::marshal_conj_type_item;
-use v2_compiler::enforce_host_validate::{validate_marshal_lens, MarshalLensVerdict, ValidateOutcome};
+use v2_compiler::enforce_host_validate::{
+    validate_marshal_lens, MarshalLensVerdict, ValidateOutcome,
+};
 use v2_compiler::v2_compiler_compile;
 use v2_compiler::v2_interpreter::{InterpContext, Value};
 use v2_compiler::v2_std_core::Node;
