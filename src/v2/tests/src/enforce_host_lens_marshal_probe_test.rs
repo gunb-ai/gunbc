@@ -119,20 +119,12 @@ fn memory_spec_root_value(
     marshal_conj_type_item(ctx, item).expect("marshal MemorySpec to v4 Node Value")
 }
 
-fn run_probe_fn(
-    ctx: &InterpContext,
-    fn_name: &str,
-    root: Value,
-) -> InterpResult<Value> {
+fn run_probe_fn(ctx: &InterpContext, fn_name: &str, root: Value) -> InterpResult<Value> {
     let args = [(Some("root".to_string()), root)];
     run_in_context_with_args(ctx, fn_name, &args, false)
 }
 
-fn run_probe_fn_timed(
-    ctx: &InterpContext,
-    fn_name: &str,
-    root: Value,
-) -> Result<Value, String> {
+fn run_probe_fn_timed(ctx: &InterpContext, fn_name: &str, root: Value) -> Result<Value, String> {
     let start = Instant::now();
     let result = run_probe_fn(ctx, fn_name, root);
     let elapsed = start.elapsed();
@@ -185,8 +177,8 @@ fn assert_resolved_ok(resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPi
 }
 
 fn assert_bool_probe(ctx: &InterpContext, fn_name: &str, root: Value, expect: bool) {
-    let value = run_probe_fn_timed(ctx, fn_name, root)
-        .unwrap_or_else(|e| panic!("probe {fn_name}: {e}"));
+    let value =
+        run_probe_fn_timed(ctx, fn_name, root).unwrap_or_else(|e| panic!("probe {fn_name}: {e}"));
     match value {
         Value::Bool(v) if v == expect => {}
         other => panic!("probe {fn_name}: expected Bool({expect}), got {other:?}"),
@@ -221,11 +213,7 @@ fn assert_v4_node_tree(ctx: &InterpContext, value: &Value, path: &str) {
             value_type_label(ctx, value)
         );
     };
-    assert_eq!(
-        ctx.resolve(*type_name),
-        "Node",
-        "{path}: wrong record type"
-    );
+    assert_eq!(ctx.resolve(*type_name), "Node", "{path}: wrong record type");
     let kind = fields
         .get(&ctx.sym("kind"))
         .unwrap_or_else(|| panic!("{path}: missing kind"));
@@ -267,11 +255,7 @@ fn assert_v4_edge(ctx: &InterpContext, value: &Value, path: &str) {
             value_type_label(ctx, value)
         );
     };
-    assert_eq!(
-        ctx.resolve(*type_name),
-        "Edge",
-        "{path}: wrong record type"
-    );
+    assert_eq!(ctx.resolve(*type_name), "Edge", "{path}: wrong record type");
     let target = fields
         .get(&ctx.sym("target"))
         .unwrap_or_else(|| panic!("{path}: missing target"));
@@ -289,12 +273,14 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
         unreachable!()
     };
     let kind = fields.get(&ctx.sym("kind")).expect("kind");
-    let Value::Variant { fields: kind_fields, .. } = kind else {
+    let Value::Variant {
+        fields: kind_fields,
+        ..
+    } = kind
+    else {
         unreachable!()
     };
-    let connective = kind_fields
-        .get(&ctx.sym("connective"))
-        .expect("connective");
+    let connective = kind_fields.get(&ctx.sym("connective")).expect("connective");
     assert_eq!(
         value_type_label(&ctx, connective),
         "Connective::Conj",
@@ -305,7 +291,11 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
         unreachable!()
     };
     assert_eq!(edges.len(), 1, "MemorySpec has one field edge");
-    let Value::Record { fields: edge_fields, .. } = &edges[0] else {
+    let Value::Record {
+        fields: edge_fields,
+        ..
+    } = &edges[0]
+    else {
         unreachable!()
     };
     let label = edge_fields.get(&ctx.sym("label")).expect("label");
@@ -321,7 +311,11 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
     let name = label_fields.get(&ctx.sym("name")).expect("name");
     assert!(matches!(name, Value::Str(s) if s == "ram_bytes"));
     let target = edge_fields.get(&ctx.sym("target")).expect("target");
-    let Value::Record { fields: target_fields, .. } = target else {
+    let Value::Record {
+        fields: target_fields,
+        ..
+    } = target
+    else {
         unreachable!()
     };
     let target_kind = target_fields.get(&ctx.sym("kind")).expect("target.kind");
@@ -373,10 +367,5 @@ fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);
-    assert_bool_probe(
-        &ctx,
-        "probe_lens_accepts_from_marshaled_root",
-        root,
-        true,
-    );
+    assert_bool_probe(&ctx, "probe_lens_accepts_from_marshaled_root", root, true);
 }
