@@ -235,6 +235,18 @@ fn finer_warmup_passes_pos1(n: Int) -> ParseTableBuildAcc {
   }
 }
 
+fn finer_stmt_step_after_13_warmup_terminates() -> Bool {
+  finer_one_prod_step_after_n_warmup(name: ^dag_production_stmt, n: 13)
+}
+
+fn finer_fn_body_step_after_13_warmup_terminates() -> Bool {
+  finer_one_prod_step_after_n_warmup(name: ^dag_production_fn_body, n: 13)
+}
+
+fn finer_primary_expr_step_after_13_warmup_terminates() -> Bool {
+  finer_one_prod_step_after_n_warmup(name: ^dag_production_primary_expr, n: 13)
+}
+
 fn finer_type_alias_rhs_step_after_13_warmup_terminates() -> Bool {
   finer_one_prod_step_after_n_warmup(name: ^dag_production_type_alias_rhs, n: 13)
 }
