@@ -173,10 +173,10 @@ fn modelica_wave1_lex() -> LexRules {
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
         modelica_lex_token(token_class: ^modelica_token_ident, pattern: modelica_identifier_pattern()),
         modelica_lex_token(token_class: ^modelica_token_value, pattern: modelica_value_pattern()),
-        modelica_lex_token(token_class: ^modelica_token_lparen, pattern: LiteralPattern { lexeme: "(" } }),
-        modelica_lex_token(token_class: ^modelica_token_rparen, pattern: LiteralPattern { lexeme: ")" } }),
-        modelica_lex_token(token_class: ^modelica_token_equals, pattern: LiteralPattern { lexeme: "=" } }),
-        modelica_lex_token(token_class: ^modelica_token_semicolon, pattern: LiteralPattern { lexeme: ";" } })
+        modelica_lex_token(token_class: ^modelica_token_lparen, pattern: LiteralPattern { lexeme: "(" }),
+        modelica_lex_token(token_class: ^modelica_token_rparen, pattern: LiteralPattern { lexeme: ")" }),
+        modelica_lex_token(token_class: ^modelica_token_equals, pattern: LiteralPattern { lexeme: "=" }),
+        modelica_lex_token(token_class: ^modelica_token_semicolon, pattern: LiteralPattern { lexeme: ";" })
       ]
     }
   }
@@ -272,6 +272,7 @@ data modelica_wave1_witness_resistor: PassiveComponent = ResistorInstance {
   connectors: modelica_two_pin_connector_default
 }
 
+// 🟡 predicate dissolution — dissolve-on: std/ char/string equality helpers land (nat_eq + char_eq in std/nat.dag or std/text.dag). Duplicate of spice_wave1_char_eq/string_eq; de-duplicate once std/ has the canonical form.
 fn modelica_wave1_char_eq(a: Char, b: Char) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true

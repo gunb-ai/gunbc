@@ -351,6 +351,7 @@ data spice_wave1_witness_resistor: Component = Resistor {
   value: SpiceValue { lexeme: "1" }
 }
 
+// 🟡 predicate dissolution — dissolve-on: std/ char/string equality helpers land (nat_eq + char_eq in std/nat.dag or std/text.dag). Both spice and modelica carry local copies; de-duplicate once std/ has the canonical form.
 fn spice_wave1_char_eq(a: Char, b: Char) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true
