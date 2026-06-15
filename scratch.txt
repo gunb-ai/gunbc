@@ -1,0 +1,15 @@
+CI-REWORK SCRATCH — modeling smells to work through (temporary; delete before merge)
+
+RUBRIC (tight): the path is the discriminator. Each concept lives at its right
+altitude, in its own clearly-named place. No catch-all files. A high-level concept
+owns a *registration* concept, not concrete instances. Personal/operator inventory
+is a fine SEED for genuine vendor modeling — the smell is misplacement, not existence.
+
+ITEMS
+1. compute_fabric owns the exact computers.
+   std/compute_fabric (high-level concept) bakes in srv1/srv2/Hetzner machines.
+   Fleet inventory also smeared across std/cpu, std/cpu/ampere, std/cpu/types,
+   std/memory/operator_fleet, std/placement_supply.
+   want: vendor hardware -> extdeps/.../ampere/altra/ ; compute_fabric keeps a
+   registration concept ; concrete srv1/srv2 -> operator/deployment layer.
+   (also the proximate gate-1 parse blocker: compute_fabric.dag:541 multi-line `data =`)
