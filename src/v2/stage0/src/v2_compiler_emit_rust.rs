@@ -57,6 +57,7 @@ pub use crate::v2_compiler_infer_env::{authored_name, lookup_type_by_name};
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+pub use crate::v2_compiler_infer_resolve::lookup_unit_variant_phantom_type;
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -4360,6 +4361,13 @@ pub fn type_item_has_rust_nominal_shell_authority(
     }
 }
 
+pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
+    match lookup_unit_variant_phantom_type(env, variant_name) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
 pub fn rhs_base_has_rust_type_authority_in_module(
     mut rhs_name: String,
     mut def_mod_filename: String,
@@ -4373,88 +4381,92 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut module_index: Rc<ModuleIndex>,
 ) -> bool {
     loop {
-        match type_item_by_name_in_module_filename(
-            rhs_name.clone(),
-            def_mod_filename.clone(),
-            typed_modules.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ) {
-            Some(item) => {
-                match module_name_from_filename(
-                    def_mod_filename.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Some(def_module_name) => {
-                        match typed_module_by_name(
-                            def_module_name.clone(),
-                            typed_modules.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        ) {
-                            Some(tm) => {
-                                break type_item_has_rust_nominal_shell_authority(
-                                    item.clone(),
-                                    rhs_name.clone(),
-                                    def_module_name.clone(),
-                                    module_imports(tm.module.clone()),
-                                    module_emit_scope(tm.clone()),
-                                    registry,
-                                    export_sets.clone(),
-                                    typed_modules.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                );
-                            }
-                            None => {
-                                break false;
-                            }
-                        }
-                    }
-                    None => {
-                        break false;
-                    }
-                }
-            }
-            None => {
-                match module_name_from_filename(
-                    def_mod_filename.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Some(mod_name) => match v2_rt::map_get(&export_sets, mod_name.clone()) {
-                        Some(exported) => {
-                            if (v2_rt::map_get(&exported, rhs_name.clone()) == Some(true)) {
-                                match reexport_source_module_name(
-                                    rhs_name.clone(),
-                                    mod_name.clone(),
-                                    typed_modules.clone(),
-                                    export_sets.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                ) {
-                                    Some(src) => {
-                                        let __tco_0 = module_to_filename(src.clone());
-                                        def_mod_filename = __tco_0;
-                                        continue;
-                                    }
-                                    None => {
-                                        break false;
-                                    }
+        if is_phantom_unit_variant_type_arg(scope.type_env.clone(), rhs_name.clone()) {
+            break true;
+        } else {
+            match type_item_by_name_in_module_filename(
+                rhs_name.clone(),
+                def_mod_filename.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                Some(item) => {
+                    match module_name_from_filename(
+                        def_mod_filename.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(def_module_name) => {
+                            match typed_module_by_name(
+                                def_module_name.clone(),
+                                typed_modules.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ) {
+                                Some(tm) => {
+                                    break type_item_has_rust_nominal_shell_authority(
+                                        item.clone(),
+                                        rhs_name.clone(),
+                                        def_module_name.clone(),
+                                        module_imports(tm.module.clone()),
+                                        module_emit_scope(tm.clone()),
+                                        registry,
+                                        export_sets.clone(),
+                                        typed_modules.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    );
                                 }
-                            } else {
-                                break false;
+                                None => {
+                                    break false;
+                                }
                             }
                         }
                         None => {
                             break false;
                         }
-                    },
-                    None => {
-                        break false;
+                    }
+                }
+                None => {
+                    match module_name_from_filename(
+                        def_mod_filename.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(mod_name) => match v2_rt::map_get(&export_sets, mod_name.clone()) {
+                            Some(exported) => {
+                                if (v2_rt::map_get(&exported, rhs_name.clone()) == Some(true)) {
+                                    match reexport_source_module_name(
+                                        rhs_name.clone(),
+                                        mod_name.clone(),
+                                        typed_modules.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    ) {
+                                        Some(src) => {
+                                            let __tco_0 = module_to_filename(src.clone());
+                                            def_mod_filename = __tco_0;
+                                            continue;
+                                        }
+                                        None => {
+                                            break false;
+                                        }
+                                    }
+                                } else {
+                                    break false;
+                                }
+                            }
+                            None => {
+                                break false;
+                            }
+                        },
+                        None => {
+                            break false;
+                        }
                     }
                 }
             }
@@ -4538,30 +4550,37 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                         {
                             true
                         } else {
-                            {
-                                let def_mod = alias_rhs_base_module_filename(
-                                    name.clone(),
-                                    module_name.clone(),
-                                    imports.clone(),
-                                    source_indices.clone(),
-                                    scope.clone(),
-                                    registry.clone(),
-                                    export_sets.clone(),
-                                    typed_modules.clone(),
-                                    module_index.clone(),
-                                );
-                                rhs_base_has_rust_type_authority_in_module(
-                                    name.clone(),
-                                    def_mod,
-                                    module_name.clone(),
-                                    imports.clone(),
-                                    scope.clone(),
-                                    registry.clone(),
-                                    typed_modules.clone(),
-                                    export_sets.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                )
+                            if is_phantom_unit_variant_type_arg(
+                                scope.type_env.clone(),
+                                name.clone(),
+                            ) {
+                                true
+                            } else {
+                                {
+                                    let def_mod = alias_rhs_base_module_filename(
+                                        name.clone(),
+                                        module_name.clone(),
+                                        imports.clone(),
+                                        source_indices.clone(),
+                                        scope.clone(),
+                                        registry.clone(),
+                                        export_sets.clone(),
+                                        typed_modules.clone(),
+                                        module_index.clone(),
+                                    );
+                                    rhs_base_has_rust_type_authority_in_module(
+                                        name.clone(),
+                                        def_mod,
+                                        module_name.clone(),
+                                        imports.clone(),
+                                        scope.clone(),
+                                        registry.clone(),
+                                        typed_modules.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    )
+                                }
                             }
                         }
                     }
