@@ -31,17 +31,27 @@ witness_red_gate1() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   cp -a dsl "$tmp/dsl"
-  printf '\nlet planted_gate1_red_witness: Int = 0\n' >>"$tmp/dsl/gunbc/ci.dag"
-  if "$gunbc" compile --source-root "$tmp/dsl" --output-dir "$tmp/out" --target rust >"$tmp/log" 2>&1; then
+  local plant='let planted_gate1_red_witness: Int = 0'
+  printf '\n%s\n' "$plant" >>"$tmp/dsl/gunbc/ci.dag"
+  echo "PLANTED: ${plant} in non-allowlisted $tmp/dsl/gunbc/ci.dag"
+  set +e
+  "$gunbc" compile --source-root "$tmp/dsl" --output-dir "$tmp/out" --target rust >"$tmp/log" 2>&1
+  local status=$?
+  set -e
+  echo "OBSERVED: gunbc compile exit ${status} (expect non-zero)"
+  if [[ "$status" -eq 0 ]]; then
     echo "error: expected compile failure on planted top-level let" >&2
-    return 1
-  fi
-  if ! rg -q 'planted_gate1_red_witness' "$tmp/log"; then
-    echo "error: planted break did not surface as expected" >&2
     cat "$tmp/log" >&2
     return 1
   fi
-  echo "gate-1 RED witness OK: non-allowlisted parse break detected"
+  if ! rg -q 'planted_gate1_red_witness' "$tmp/log"; then
+    echo "error: planted break did not surface in compile diagnostics" >&2
+    cat "$tmp/log" >&2
+    return 1
+  fi
+  echo "DETECTED RED: compile diagnostic references planted_gate1_red_witness:"
+  rg 'planted_gate1_red_witness|error\[' "$tmp/log" || true
+  echo "gate-1 RED witness OK"
   echo "::endgroup::"
 }
 
@@ -57,12 +67,16 @@ witness_green_gate3() {
 
 witness_red_gate3() {
   echo "::group::witness gate-3 RED (perturb on selection semantics)"
+  echo "PLANTED: ci-claim-gate --perturb-check rewrites each probe_selector witness body to false"
+  echo "OBSERVED: each perturbed row must FAIL claim-run (RED) before step passes"
   "$claim_gate" \
     --source-root src/v4 \
     --gate-entry src/v4/test/claim/workflow/probe_selector_ci_runner.dag \
     --rows-fn probe_selector_ci_runner_rows_tsv \
     --notice-title "gate-3 perturb" \
     --perturb-check
+  echo "DETECTED RED: perturb-check completed — every row went RED under perturb and was caught"
+  echo "gate-3 RED witness OK"
   echo "::endgroup::"
 }
 
@@ -77,12 +91,22 @@ witness_red_floor() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   cp -a dsl "$tmp/dsl"
-  printf '\nlet planted_floor_red_witness: Int = 0\n' >>"$tmp/dsl/gunbc/ci.dag"
-  if "$gunbc" run --source-root "$tmp/dsl" --entry dsl/gunbc/tools/ci_runner.dag --function run_ci_pipeline >"$tmp/log" 2>&1; then
+  local plant='let planted_floor_red_witness: Int = 0'
+  printf '\n%s\n' "$plant" >>"$tmp/dsl/gunbc/ci.dag"
+  echo "PLANTED: ${plant} in $tmp/dsl/gunbc/ci.dag"
+  set +e
+  "$gunbc" run --source-root "$tmp/dsl" --entry dsl/gunbc/tools/ci_runner.dag --function run_ci_pipeline >"$tmp/log" 2>&1
+  local status=$?
+  set -e
+  echo "OBSERVED: run_ci_pipeline exit ${status} (expect non-zero)"
+  if [[ "$status" -eq 0 ]]; then
     echo "error: expected run_ci_pipeline failure on planted ci.dag break" >&2
+    cat "$tmp/log" >&2
     return 1
   fi
-  echo "overall floor RED witness OK: run_ci_pipeline failed on planted break"
+  echo "DETECTED RED: run_ci_pipeline failed on planted break; log tail:"
+  tail -20 "$tmp/log" || true
+  echo "overall floor RED witness OK"
   echo "::endgroup::"
 }
 
