@@ -6,7 +6,7 @@
 // the result.
 //
 // Entry point: run_ci_pipeline()
-// Run via:     cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --function run_ci_pipeline
+// Run via:     cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/gunbc/tools/ci_runner.dag --function run_ci_pipeline
 //
 // v2 `dag run --source-root dsl` only indexes that tree. If a dsl `.dag` imports
 // `v3.std.emit_model`, resolution uses the parseable facade `dsl/v3/std/emit_model.dag`
