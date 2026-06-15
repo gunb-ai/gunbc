@@ -19,7 +19,7 @@
 #   The serial writer polls LSR (0x3FD) until THRE=1, writes 'H' (0x48)
 #   to THR (0x3F8), then halts.
 #
-# Boot sector layout (512 bytes at 0x7C00):
+# Boot sector layout (first 512 bytes of a 1.44MB floppy image, loaded at 0x7C00):
 #   0x00–0x15  16-bit: cli + lgdt + CR0.PE + far-jmp 0x0008:0x7C16
 #   0x16–0x20  32-bit: mov eax,0x10; mov ds/es/ss,ax
 #   0x21–0x33  serial writer code (19 bytes from gunbc)
@@ -29,6 +29,9 @@
 #   0x4C–0x51  GDT descriptor (limit=0x17, base=0x00007C34)
 #   0x52–0x1FD padding
 #   0x1FE–0x1FF  0x55 0xAA
+# Image padded to 1.44MB (1,474,560 B) so SeaBIOS floppy geometry probe succeeds.
+# SeaBIOS may write debug text to COM1 before our sector runs; our 'H' is the
+# LAST byte (code does cli + hlt after OUT, so no further COM1 writes occur).
 
 set -euo pipefail
 
@@ -125,9 +128,14 @@ sector[0x4C:0x52] = bytes([0x17, 0x00, 0x34, 0x7C, 0x00, 0x00])
 sector[0x1FE] = 0x55
 sector[0x1FF] = 0xAA
 
+# Pad to 1.44MB so SeaBIOS floppy controller initialises the drive successfully.
+# A 512-byte raw file triggers "could not read the boot disk" because the
+# BIOS floppy probe uses the image geometry (2880 sectors for 1.44MB).
+floppy = bytearray(1474560)
+floppy[:512] = sector
 with open(out_path, 'wb') as f:
-    f.write(sector)
-print(f"    boot.img written: {len(sector)}B  (code@0x7C21, GDT@0x7C34)")
+    f.write(floppy)
+print(f"    boot.img written: {len(floppy)}B  (code@0x7C21, GDT@0x7C34)")
 PYEOF
 
 # --- 3. Boot in QEMU, capture COM1 ---
@@ -154,15 +162,19 @@ if [[ -s "$SERIAL_LOG" ]]; then
   python3 -c "
 import sys
 data = open('$SERIAL_LOG','rb').read()
+# Show full hex so the operator can see SeaBIOS preamble vs our byte
 hex_view = ' '.join(f'{b:02X}' for b in data)
-print(f'  hex: {hex_view}')
+print(f'  hex ({len(data)}B): {hex_view}')
 print(f'  str: {data!r}')
-found = 0x48 in data
 print()
-if found:
-    print('PASS: 0x48 (H) captured on COM1 — M1 serial liveness probe green')
+# SeaBIOS writes debug text to COM1 before our sector runs (may contain 'H').
+# Our code writes exactly one byte (0x48) then halts with interrupts disabled.
+# The last byte in the log is therefore ours.
+last = data[-1] if data else None
+if last == 0x48:
+    print('PASS: last COM1 byte = 0x48 (H) — M1 serial liveness probe green')
 else:
-    print('FAIL: 0x48 (H) not found in serial output')
+    print(f'FAIL: last COM1 byte = {hex(last) if last is not None else \"(none)\"}, expected 0x48')
     sys.exit(1)
 "
 else
