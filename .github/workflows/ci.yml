@@ -1208,6 +1208,14 @@ jobs:
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
     - name: probe-selector keystone must-pass witnesses (PS-0 host-health)
       run: bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
+    # std.time_affine keystone: the affine instant/duration law must be EXECUTED,
+    # not just declared (INVARIANTS.md E-10). Positive = carrier + witness consumer
+    # rust-emit + cargo check green; NEGATIVE = `instant + instant` rejected
+    # (error[E0369]: cannot add Instant to Instant) -- the load-bearing structural
+    # law. cargo check resolves offline from the warm CARGO_HOME populated by the
+    # `Build v2 compiler (v4 lens CI)` step above (same serde/serde_json/clap deps).
+    - name: time-affine keystone must-pass + discriminating witness (instant+instant rejected)
+      run: bash scripts/time-affine-keystone-gate.sh
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
     # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
