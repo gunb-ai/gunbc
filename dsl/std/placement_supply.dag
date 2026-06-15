@@ -38,5 +38,7 @@ type PlacementSupplyRow {
 // std.compute_fabric). Both factors are `Nat` counts, so the product inhabits
 // the `Nat` carrier of `Hertz` without a signed/fractional generalization.
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
-  hertz(hardware_thread_count_value(row.hardware_threads) * hertz_count(row.clock_hz))
+  let thread_count = hardware_thread_count_value(row.hardware_threads)
+  let clock_count = hertz_count(row.clock_hz)
+  hertz(thread_count * clock_count)
 }
