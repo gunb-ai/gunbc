@@ -113,6 +113,7 @@ import v2.compiler.infer_emit_info {
   variant_belongs_to_enum, variant_summary_key
 }
 import v2.compiler.resolve { get_exported_names }
+import v2.compiler.infer_resolve { lookup_unit_variant_phantom_type }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
@@ -1975,10 +1976,24 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   }
 }
 
+// G1 phantom type-arg tags (Quantity/Scale unit variants in Measure<Q,S>) are valid in
+// alias RHS shells but are not standalone type declarations — short-circuit before the
+// export/reexport authority walk, which otherwise loops when the variant name is on the
+// export surface but has no physical type item (measure.dag MoneyAmount<S> = Measure<Currency,S>).
+fn is_phantom_unit_variant_type_arg(env: TypeEnv, variant_name: String) -> Bool {
+  match lookup_unit_variant_phantom_type(env: env, variant_name: variant_name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 // Parametric alias emission (F3/F4): only real `type Foo<T> = Bar<T>` shapes — not opaque
 // carriers (`type GroupCompletion<M>`) or container-lowering stubs as invalid Rust aliases.
 // Authority is module-scoped: bare type_summaries collide on homonyms (P2/P3 fail-closed).
 fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename: String, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  if is_phantom_unit_variant_type_arg(env: scope.type_env, variant_name: rhs_name) {
+    true
+  } else {
   match type_item_by_name_in_module_filename(rhs_name: rhs_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     Present { value: item } =>
       match module_name_from_filename(mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -2027,6 +2042,7 @@ fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename
         Absent => false
       }
   }
+  }
 }
 
 // Every applied nominal shell in alias RHS must have Rust type authority in its
@@ -2054,6 +2070,8 @@ fn alias_rhs_nominal_shell_has_rust_authority(n: Node, module_name: String, impo
     } else {
       let name = authored_name_at(source_indices: source_indices, node: n)
       if name == "" || is_kernel_type(name: name) {
+        true
+      } else if is_phantom_unit_variant_type_arg(env: scope.type_env, variant_name: name) {
         true
       } else {
         let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)

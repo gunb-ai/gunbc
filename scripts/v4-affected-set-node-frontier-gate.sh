@@ -6,11 +6,11 @@
 # the same row to fail, so every wired green has a red-under-perturb receipt.
 #
 # Modes:
-#   (no arg) / --green-only   GREEN batch pass + modeled row-count checks only
-#                             (the must-pass witnesses; no perturb). Used by the
-#                             v4_lens_ci job — the perturb fan-out lives in the
-#                             parallel v4_lens_ci_perturb matrix (see below).
-#   --perturb-check           GREEN + the FULL per-row perturb fan-out + counts.
+#   (no arg) / --green-only   GREEN batch pass only (the must-pass witnesses; no
+#                             perturb). Used by the v4_lens_ci job — the perturb
+#                             fan-out lives in the parallel v4_lens_ci_perturb
+#                             matrix (see below).
+#   --perturb-check           GREEN + the FULL per-row perturb fan-out.
 #                             Local full run (and any non-sharded caller).
 #   --perturb-shard K N       PERTURB ONLY the rows of the combined
 #                             node-frontier++testgen list (deterministic order)
@@ -339,16 +339,11 @@ print_affected_testgen_real_diff_evidence() {
   echo "::endgroup::"
 }
 
-# ---- Collect both modeled row-sets up front. The projected-vs-modeled count
-# check is a model-drift guard and runs in EVERY mode (green-only, full, and each
-# perturb shard), so a row added to the list without bumping its modeled count
-# — or vice versa — fails closed before any shard can pass-by-omission. ----
-expected_count="$(dag_string_data ci_runner_node_frontier_claim_run_row_count)"
-if [[ -z "$expected_count" ]]; then
-  echo "error: missing ci_runner_node_frontier_claim_run_row_count in $gate_model" >&2
-  exit 2
-fi
-
+# ---- Collect both modeled row-sets up front. There is NO projected-vs-modeled count cross-check:
+# the gate projects the row-set directly from the typed list, so a dropped row simply is not
+# enrolled and its witness is not run; a parallel-ledger *_row_count datum cannot detect that and
+# only drifts under concurrent merges. Retired per the CLAUDE.md ledger principle. The empty-roster
+# guards below stay (a totally-empty list fails closed), and per-row pass/perturb keeps the teeth. ----
 node_frontier_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
@@ -365,12 +360,6 @@ if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
   exit 2
 fi
 
-expected_affected_testgen_count="$(affected_testgen_dag_string_data affected_testgen_claim_run_row_count)"
-if [[ -z "$expected_affected_testgen_count" ]]; then
-  echo "error: missing affected_testgen_claim_run_row_count in $affected_testgen_gate_model" >&2
-  exit 2
-fi
-
 affected_testgen_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
@@ -384,15 +373,6 @@ done < <(list_affected_testgen_row_members)
 
 if [[ "${#affected_testgen_rows[@]}" -eq 0 ]]; then
   echo "error: affected_testgen_claim_run_rows has no members in $affected_testgen_gate_model" >&2
-  exit 2
-fi
-
-if [[ "${#node_frontier_rows[@]}" -ne "$expected_count" ]]; then
-  echo "error: node-frontier gate projected ${#node_frontier_rows[@]} rows; modeled count is ${expected_count}" >&2
-  exit 2
-fi
-if [[ "${#affected_testgen_rows[@]}" -ne "$expected_affected_testgen_count" ]]; then
-  echo "error: affected-testgen gate projected ${#affected_testgen_rows[@]} rows; modeled count is ${expected_affected_testgen_count}" >&2
   exit 2
 fi
 

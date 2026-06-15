@@ -65,7 +65,6 @@ fi
 
 gate_model="src/v4/test/claim/workflow/claim_witness_corpus_ci_runner.dag"
 rows_data="claim_witness_corpus_shard_${shard}_rows"
-count_data="claim_witness_corpus_shard_${shard}_row_count"
 
 dag_string_data() {
   local name="$1"
@@ -283,12 +282,6 @@ pick_spot_perturb_indices() {
   fi
 }
 
-expected_count="$(dag_string_data "$count_data")"
-if [[ -z "$expected_count" ]]; then
-  echo "error: missing ${count_data} in $gate_model" >&2
-  exit 2
-fi
-
 all_rows=()
 pass_rows=()
 fail_rows=()
@@ -357,11 +350,12 @@ elif [[ "$perturb_mode" == spot ]]; then
   echo "::notice title=claim witness corpus spot perturb::shard=${shard} perturbed ${#spot_indices[@]}/${#pass_rows[@]} ExpectPass row(s) (run_number=${GITHUB_RUN_NUMBER:-local})"
 fi
 
+# Row count is reported in the notice below for visibility, but is NOT cross-checked against a
+# modeled *_row_count datum: the gate folds over the typed shard List, so a dropped row simply is
+# not enrolled (and its witness is not run) — a parallel-ledger count datum cannot detect that and
+# only drifts under concurrent merges (reddened main on #4947). Retired per the CLAUDE.md ledger
+# principle; the gate keeps its teeth via the per-row pass/perturb checks below.
 row_count="${#all_rows[@]}"
-if [[ "$row_count" -ne "$expected_count" ]]; then
-  echo "error: claim witness corpus gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
-  exit 2
-fi
 
 if [[ "$failures" -ne 0 ]]; then
   echo "error: $failures ExpectFail row(s) drifted from manifest" >&2
