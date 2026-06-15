@@ -650,6 +650,9 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       let_token: ^ts_token_kw_let,
       assign_token: ^ts_token_eq,
       in_token: ^ts_token_unwired_bind_in
+    },
+    loop_form: TargetLoopShape {
+      loop_token: ^ts_token_unwired_loop
     }
   }
 }
