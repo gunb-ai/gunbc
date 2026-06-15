@@ -82,6 +82,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
+  Value,
   arrow_body_edge,
   fold_node,
   node_rebuild,
@@ -214,7 +215,6 @@ import v4.std.algebra {
   Empty,
   TailAbsent,
   TailFound,
-  count,
   fold_list,
   fold_list_node_head,
   fold_list_node_tail,
@@ -940,22 +940,31 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
+fn translate_node_is_value_literal(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Value } => true
+    _ => false
+  }
+}
+
+fn translate_optional_node_is_value_literal(opt: Optional<Node>) -> Bool {
+  match opt {
+    Present { value: node } => translate_node_is_value_literal(node: node)
+    Absent => false
+  }
+}
+
 // Callee-free 2-arg Transform — mirrors `eval_node_is_effect_io_roundtrip` shape gate (05_eval.dag).
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      if count(node.children) == 2 {
-        match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-          Present { value: child } =>
-            match child.kind {
-              ComputationNode { behavior: Value } => true
-              _ => false
-            }
-          Absent => false
-        }
-      } else {
-        false
-      }
+      length(xs: node.children) == 2
+        && translate_optional_node_is_value_literal(
+          opt: list_at_optional(
+            xs: node_positional_child_targets(node: node),
+            index: 0
+          )
+        )
     _ => false
   }
 }
