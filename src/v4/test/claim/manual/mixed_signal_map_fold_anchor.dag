@@ -18,6 +18,7 @@ import v4.extdeps.languages.verilog {
   logic_level_eq,
 }
 import v4.std.circuit_step { FoldStep, MapStep }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.timeseries_signal {
   CapacitorFold,
