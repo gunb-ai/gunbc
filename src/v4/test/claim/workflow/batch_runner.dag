@@ -171,10 +171,11 @@ fn bre_full_deps_yields_two_batches() -> Bool {
   }
 }
 
-// Degenerate (model side of the fail-closed pair): an empty suite projects zero batches.
-// The HOST side is already covered both ends — claim_executor exits 1 on a 0-batch plan
-// (claim_executor.rs) and ci-claim-gate exits 2 on an empty row set — so a degenerate plan
-// can never become a vacuous exit-0. This witness pins the model half: empty in, zero out.
+// Degenerate, MODEL side: an empty suite projects zero batches (empty in, zero out).
+// This pins the planner; the HOST side (claim_executor must REJECT a zero-batch plan,
+// never vacuously pass on zero claims) is exercised separately by driving
+// `bre_degenerate_empty_plan` through claim_executor in the gate — see that function
+// and scripts/v4-batch-executor-gate.sh. Both halves are run by a real consumer.
 fn bre_empty_suite_yields_no_batches() -> Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: [],
@@ -185,6 +186,16 @@ fn bre_empty_suite_yields_no_batches() -> Bool {
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
+}
+
+// Degenerate, HOST side: a deliberately EMPTY plan (zero batches). The gate runs this
+// through `claim_executor --plan-function bre_degenerate_empty_plan` and REQUIRES a
+// non-zero exit — exercising the orchestration fail-closed guard (a zero-batch plan is
+// never a successful run) through a real `.dag` consumer, with no temp-tree mutation and
+// no shell scaffold. This restores the host-level degenerate receipt the old inline-python
+// "empty the suite nodes and re-run" perturb proved, model-first.
+fn bre_degenerate_empty_plan() -> List<List<ClaimRef>> {
+  []
 }
 
 // ── ci-claim-gate roster transport for the authority witnesses ──

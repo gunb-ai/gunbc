@@ -85,4 +85,15 @@ echo "== perturb/walk (ORCHESTRATION): false gating batch-1 -> fail closed AND h
 "$exe" --source-root src/v4 --plan-entry "$plan_entry" --perturb-check
 echo "walk OK (run-loop halts dependents on a failed gate)"
 
+echo "== perturb/degenerate (ORCHESTRATION): a 0-batch plan must fail closed, not pass on 0 claims =="
+# Drive claim_executor with a deliberately EMPTY plan (bre_degenerate_empty_plan -> [])
+# and require a non-zero exit. Exercises the host fail-closed guard (an empty run is never
+# a successful run) through a real .dag consumer — no temp-tree, no shell scaffold. Replaces
+# the old inline-python "empty the suite nodes and re-run" perturb.
+if "$exe" --source-root src/v4 --plan-entry "$plan_entry" --plan-function bre_degenerate_empty_plan; then
+  echo "FAIL: claim_executor accepted a 0-batch plan (vacuous pass)" >&2
+  exit 1
+fi
+echo "degenerate OK (host fails closed on an empty plan)"
+
 echo "ALL OK"
