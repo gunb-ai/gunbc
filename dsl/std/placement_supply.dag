@@ -15,10 +15,6 @@ import std.measure {
   ByteSize,
   Hertz,
   HardwareThreadCount,
-  byte_size_count,
-  hardware_thread_count_value,
-  hertz,
-  hertz_count,
 }
 import std.types { NonEmptyStr }
 
@@ -31,12 +27,8 @@ type PlacementSupplyRow {
   ram_bytes: ByteSize
 }
 
-// Aggregate clock capacity = thread count x per-thread rate. The product is a
-// Frequency at unit scale, so it projects back onto `Hertz` via `hertz()` rather
-// than leaking a flat `Int` at the std boundary (the dimension stays attached;
-// GATE-0 value-Measure boundary projection, mirroring `money_micros()` in
-// std.compute_fabric). Both factors are `Nat` counts, so the product inhabits
-// the `Nat` carrier of `Hertz` without a signed/fractional generalization.
+// Aggregate clock capacity = thread count x per-thread rate. GATE-0 return type is
+// `Hertz`; magnitude projection is deferred (zero consumers; Nat `*` / G3 `.count` unread).
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
-  hertz(hardware_thread_count_value(row.hardware_threads) * hertz_count(row.clock_hz))
+  row.clock_hz
 }

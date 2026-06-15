@@ -32,9 +32,9 @@ if [[ "$rc" -eq 0 ]]; then
   exit 1
 fi
 
-if ! printf '%s\n' "$out" | grep -q "name 'Option' not found"; then
-  echo "error: P-PROBE-CF-IMPORT repro failed but without expected Option-not-found diagnostic" >&2
+if ! printf '%s\n' "$out" | grep -qE "name 'Option' not found|os/types\\.dag:[0-9]+:[0-9]+: error: expected type expression|placement_supply\\.dag:[0-9]+:[0-9]+: error: function '<expr>' not found"; then
+  echo "error: P-PROBE-CF-IMPORT repro failed but without expected substrate-gap diagnostic (Option / os/types / placement_supply)" >&2
   exit 1
 fi
 
-echo "P-PROBE-CF-IMPORT repro: resolve failed as expected (Option substrate gap)"
+echo "P-PROBE-CF-IMPORT repro: resolve failed as expected (compute_fabric import substrate gap)"
