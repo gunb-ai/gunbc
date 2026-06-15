@@ -1,0 +1,241 @@
+// src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag
+// Scope: gunbhub Slice-0 / R1 — structurally compose a React repo-browse page from
+//   BrowseEntry data, reduce through the canonical std.markup consumer, and emit HTML.
+// Status: R1 consumer landed (v4.extdeps.frameworks.react_markup + std.react_markup).
+//
+// R0 (ctrl workflows/gunbhub_html_sketch.dag): HtmlNode element tree → static HTML text.
+// R1 (this file): ReactElement component tree → HTML via Fragment IR + serialize_fragment.
+
+module v4.test.claim.manual.gunbhub_react_ts_emit_probe
+
+import v4.extdeps.frameworks.react {
+  Element,
+  Fragment,
+  Host,
+  KeyAbsent,
+  KeyPresent,
+  ReactCrossDeclRef,
+  ReactElement,
+  ReactHostElement,
+  ReactPropsSite,
+  RefAbsent,
+  Text,
+}
+import v4.extdeps.frameworks.react_markup {
+  RefTextBinding,
+  serialize_react_element,
+}
+import v4.std.algebra { Cons, Empty, length }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim,
+}
+
+data gunbhub_tag_h1: ReactCrossDeclRef = gunbhub_tag_h1
+data gunbhub_tag_ul: ReactCrossDeclRef = gunbhub_tag_ul
+data gunbhub_tag_li: ReactCrossDeclRef = gunbhub_tag_li
+data gunbhub_tag_a: ReactCrossDeclRef = gunbhub_tag_a
+data gunbhub_props_empty: ReactCrossDeclRef = gunbhub_props_empty
+data gunbhub_repo_title: ReactCrossDeclRef = gunbhub_repo_title
+data gunbhub_name_dsl: ReactCrossDeclRef = gunbhub_name_dsl
+data gunbhub_name_src: ReactCrossDeclRef = gunbhub_name_src
+data gunbhub_name_roadmap: ReactCrossDeclRef = gunbhub_name_roadmap
+
+data gunbhub_ref_bindings: List<RefTextBinding> = Cons {
+  head: RefTextBinding { ref: gunbhub_tag_h1, text: "h1" },
+  tail: Cons {
+    head: RefTextBinding { ref: gunbhub_tag_ul, text: "ul" },
+    tail: Cons {
+      head: RefTextBinding { ref: gunbhub_tag_li, text: "li" },
+      tail: Cons {
+        head: RefTextBinding { ref: gunbhub_tag_a, text: "a" },
+        tail: Cons {
+          head: RefTextBinding { ref: gunbhub_repo_title, text: "gunbc" },
+          tail: Cons {
+            head: RefTextBinding { ref: gunbhub_name_dsl, text: "dsl" },
+            tail: Cons {
+              head: RefTextBinding { ref: gunbhub_name_src, text: "src" },
+              tail: Cons {
+                head: RefTextBinding { ref: gunbhub_name_roadmap, text: "ROADMAP.md" },
+                tail: Empty
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gunbhub_empty_props() -> ReactPropsSite {
+  ReactPropsSite {
+    props_type_ref: gunbhub_props_empty,
+    props_value_ref: gunbhub_props_empty,
+  }
+}
+
+type BrowseEntry {
+  name_ref: ReactCrossDeclRef
+}
+
+data gunbhub_entry_dsl: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_dsl }
+data gunbhub_entry_src: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_src }
+data gunbhub_entry_roadmap: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_roadmap }
+
+fn browse_entry_element(entry: BrowseEntry) -> ReactElement {
+  Host {
+    host: ReactHostElement {
+      tag_ref: gunbhub_tag_li,
+      key: KeyAbsent,
+      ref: RefAbsent,
+      props: gunbhub_empty_props(),
+      children: Cons {
+        head: Element {
+          element: Host {
+            host: ReactHostElement {
+              tag_ref: gunbhub_tag_a,
+              key: KeyAbsent,
+              ref: RefAbsent,
+              props: gunbhub_empty_props(),
+              children: Cons {
+                head: Text { text_value_ref: entry.name_ref },
+                tail: Empty,
+              },
+            },
+          },
+        },
+        tail: Empty,
+      },
+    },
+  }
+}
+
+data gunbhub_li_dsl: ReactElement = browse_entry_element(entry: gunbhub_entry_dsl)
+data gunbhub_li_src: ReactElement = browse_entry_element(entry: gunbhub_entry_src)
+data gunbhub_li_roadmap: ReactElement = browse_entry_element(entry: gunbhub_entry_roadmap)
+
+fn browse_page() -> ReactElement {
+  Fragment {
+    key: KeyAbsent,
+    children: Cons {
+      head: Element {
+        element: Host {
+          host: ReactHostElement {
+            tag_ref: gunbhub_tag_h1,
+            key: KeyAbsent,
+            ref: RefAbsent,
+            props: gunbhub_empty_props(),
+            children: Cons {
+              head: Text { text_value_ref: gunbhub_repo_title },
+              tail: Empty,
+            },
+          },
+        },
+      },
+      tail: Cons {
+        head: Element {
+          element: Host {
+            host: ReactHostElement {
+              tag_ref: gunbhub_tag_ul,
+              key: KeyAbsent,
+              ref: RefAbsent,
+              props: gunbhub_empty_props(),
+              children: Cons {
+                head: Element { element: gunbhub_li_dsl },
+                tail: Cons {
+                  head: Element { element: gunbhub_li_src },
+                  tail: Cons {
+                    head: Element { element: gunbhub_li_roadmap },
+                    tail: Empty,
+                  },
+                },
+              },
+            },
+          },
+        },
+        tail: Empty,
+      },
+    },
+  }
+}
+
+data gunbhub_example_page: ReactElement = browse_page()
+
+data gunbhub_example_html: String = serialize_react_element(
+  bindings: gunbhub_ref_bindings,
+  el: gunbhub_example_page
+)
+
+fn gunbhub_browse_page_root_is_fragment_with_h1_and_ul_holds() -> Bool {
+  match gunbhub_example_page {
+    Fragment { key: k, children: ch } =>
+      match k {
+        KeyAbsent => length(xs: ch) == 2
+        KeyPresent { key_ref: _ } => false
+      }
+    Host { host: _ } => false
+    Composite { composite: _ } => false
+  }
+}
+
+fn gunbhub_browse_entry_list_has_three_items_holds() -> Bool {
+  match gunbhub_li_dsl {
+    Host { host: _ } =>
+      match gunbhub_li_src {
+        Host { host: _ } =>
+          match gunbhub_li_roadmap {
+            Host { host: _ } => true
+            Composite { composite: _ } => false
+            Fragment { key: _, children: _ } => false
+          }
+        Composite { composite: _ } => false
+        Fragment { key: _, children: _ } => false
+      }
+    Composite { composite: _ } => false
+    Fragment { key: _, children: _ } => false
+  }
+}
+
+fn gunbhub_browse_entry_element_wraps_anchor_and_text_holds() -> Bool {
+  match gunbhub_li_dsl {
+    Host { host: ReactHostElement { tag_ref: tr, key: _, ref: _, props: _, children: li_children } } =>
+      tr == gunbhub_tag_li && length(xs: li_children) == 1
+    Composite { composite: _ } => false
+    Fragment { key: _, children: _ } => false
+  }
+}
+
+fn gunbhub_browse_page_serializes_through_markup_fold_holds() -> Bool {
+  gunbhub_example_html ==
+    "<h1>gunbc</h1><ul><li><a>dsl</a></li><li><a>src</a></li><li><a>ROADMAP.md</a></li></ul>"
+}
+
+data unified_claim_gunbhub_browse_page_root: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_page_root_is_fragment_with_h1_and_ul_holds,
+  }
+}
+
+data unified_claim_gunbhub_browse_entry_list: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_entry_list_has_three_items_holds,
+  }
+}
+
+data unified_claim_gunbhub_browse_entry_text_child: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_entry_element_wraps_anchor_and_text_holds,
+  }
+}
+
+data unified_claim_gunbhub_browse_page_serialize: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_page_serializes_through_markup_fold_holds,
+  }
+}

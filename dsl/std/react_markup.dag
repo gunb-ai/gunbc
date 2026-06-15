@@ -1,0 +1,146 @@
+// std/react_markup.dag — React/TSX markup surface + thin consumer of std.markup.
+//
+// gunbhub R1 builds ReactMarkupNode trees structurally; serialize_react_markup
+// adapts to std.markup.Fragment and delegates to the ONE convergent
+// serialize_fragment fold (cost-of-change = 1 with HtmlNode #4927 and peers).
+//
+// XSS: URL-scheme allowlisting is THIS consumer's responsibility (see
+// std/markup.dag SECURITY SCOPE on escape_url). href/src values carrying
+// javascript:/data:/vbscript: schemes are rejected before emit.
+
+module std.react_markup
+
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+  EscapeContext,
+  serialize_fragment,
+}
+
+// --- ReactMarkupNode consumer-facing IR (String tags, like HtmlNode R0) ----
+
+type ReactAttr {
+  name: String
+  value: String
+}
+
+type ReactMarkupNode
+  = ElementNode { tag: String, attrs: List<ReactAttr>, children: List<ReactMarkupNode> }
+  | TextNode { text: String }
+
+// --- XSS: untrusted URL scheme rejection ------------------------------------
+
+type MarkupRejectReason = UntrustedUrlScheme { url: String }
+
+type MarkupEmitResult
+  = EmitOk { html: String }
+  | EmitRejected { reason: MarkupRejectReason }
+
+fn is_trusted_url_scheme(url: String) -> Bool {
+  !starts_with(s: url, prefix: "javascript:")
+    && !starts_with(s: url, prefix: "JavaScript:")
+    && !starts_with(s: url, prefix: "JAVASCRIPT:")
+    && !starts_with(s: url, prefix: "data:")
+    && !starts_with(s: url, prefix: "Data:")
+    && !starts_with(s: url, prefix: "DATA:")
+    && !starts_with(s: url, prefix: "vbscript:")
+    && !starts_with(s: url, prefix: "VBScript:")
+}
+
+fn react_attr_escape_context(name: String) -> EscapeContext {
+  if name == "href" || name == "src" {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn validate_react_attr(attr: ReactAttr) -> Bool {
+  if attr.name == "href" || attr.name == "src" {
+    is_trusted_url_scheme(url: attr.value)
+  } else {
+    true
+  }
+}
+
+fn validate_react_markup_node(node: ReactMarkupNode) -> Bool {
+  match node {
+    TextNode { text: _ } => true
+    ElementNode { tag: _, attrs, children } =>
+      fold(attrs, init: true, f: (acc, a) => acc && validate_react_attr(attr: a))
+        && fold(children, init: true, f: (acc, c) => acc && validate_react_markup_node(node: c))
+  }
+}
+
+fn first_untrusted_url_in_node(node: ReactMarkupNode) -> String {
+  match node {
+    TextNode { text: _ } => ""
+    ElementNode { tag: _, attrs, children } =>
+      let from_attrs = fold(attrs, init: "", f: (acc, a) =>
+        if acc != "" {
+          acc
+        } else if (a.name == "href" || a.name == "src") && !is_trusted_url_scheme(url: a.value) {
+          a.value
+        } else {
+          acc
+        }
+      )
+      if from_attrs != "" {
+        from_attrs
+      } else {
+        fold(children, init: "", f: (acc, c) =>
+          if acc != "" {
+            acc
+          } else {
+            first_untrusted_url_in_node(node: c)
+          }
+        )
+      }
+  }
+}
+
+// --- ReactMarkupNode -> Fragment adapter ------------------------------------
+
+fn react_attr_to_fragment(attr: ReactAttr) -> Attribute {
+  Attribute {
+    name: attr.name,
+    ctx: react_attr_escape_context(name: attr.name),
+    value: attr.value,
+  }
+}
+
+fn react_markup_node_to_fragment(node: ReactMarkupNode) -> Fragment {
+  match node {
+    TextNode { text } =>
+      TextNode { content: text }
+    ElementNode { tag, attrs, children } =>
+      Element {
+        tag: tag,
+        attributes: map(attrs, a => react_attr_to_fragment(attr: a)),
+        children: map(children, c => react_markup_node_to_fragment(node: c)),
+      }
+  }
+}
+
+// --- thin consumer entry (fail-closed on untrusted URL schemes) -------------
+
+fn serialize_react_markup(node: ReactMarkupNode) -> MarkupEmitResult {
+  if validate_react_markup_node(node: node) {
+    EmitOk {
+      html: serialize_fragment(frag: react_markup_node_to_fragment(node: node))
+    }
+  } else {
+    EmitRejected {
+      reason: UntrustedUrlScheme { url: first_untrusted_url_in_node(node: node) }
+    }
+  }
+}
+
+// Unchecked serialize — only for nodes already validated or known-safe fixtures.
+fn serialize_react_markup_unchecked(node: ReactMarkupNode) -> String {
+  serialize_fragment(frag: react_markup_node_to_fragment(node: node))
+}

@@ -1,0 +1,135 @@
+// src/v4/extdeps/frameworks/react_markup.dag
+// Scope: gunbhub R1 — ReactElement → std.markup.Fragment consumer bridge.
+// Status: R1 host/fragment/text only; empty props; ref table resolves CrossDeclRef → String.
+//
+// Composite elements and non-empty props sites are out of scope for R1 (browse-page
+// probe uses Host + Text + empty ReactPropsSite only). Serialization for React
+// Fragment arms concatenates child HTML without a wrapper element.
+
+module v4.extdeps.frameworks.react_markup
+
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  serialize_fragment,
+}
+import std.react_markup {
+  MarkupEmitResult,
+  EmitOk,
+  EmitRejected,
+  is_trusted_url_scheme,
+}
+import v4.extdeps.frameworks.react {
+  Composite,
+  Element,
+  Fragment,
+  Host,
+  KeyAbsent,
+  KeyPresent,
+  ReactCompositeElement,
+  ReactCreateElementChild,
+  ReactCrossDeclRef,
+  ReactElement,
+  ReactHostElement,
+  ReactPropsSite,
+  RefAbsent,
+  RefPresent,
+  Text,
+}
+import v4.std.algebra { Cons, Empty, fold }
+
+type RefTextBinding {
+  ref: ReactCrossDeclRef
+  text: String
+}
+
+fn resolve_ref(bindings: List<RefTextBinding>, r: ReactCrossDeclRef) -> String {
+  fold(bindings, init: "", f: (acc, b) =>
+    if acc != "" {
+      acc
+    } else if b.ref == r {
+      b.text
+    } else {
+      acc
+    }
+  )
+}
+
+fn react_child_to_fragment(
+  bindings: List<RefTextBinding>,
+  child: ReactCreateElementChild
+) -> Fragment {
+  match child {
+    Element { element: el } => react_element_to_fragment(bindings: bindings, el: el)
+    Text { text_value_ref: r } =>
+      TextNode { content: resolve_ref(bindings: bindings, r: r) }
+  }
+}
+
+fn react_host_to_fragment(
+  bindings: List<RefTextBinding>,
+  host: ReactHostElement
+) -> Fragment {
+  Element {
+    tag: resolve_ref(bindings: bindings, r: host.tag_ref),
+    attributes: [],
+    children: map(host.children, c => react_child_to_fragment(bindings: bindings, child: c)),
+  }
+}
+
+fn react_element_to_fragment(
+  bindings: List<RefTextBinding>,
+  el: ReactElement
+) -> Fragment {
+  match el {
+    Host { host: h } => react_host_to_fragment(bindings: bindings, host: h)
+    Composite { composite: _ } =>
+      TextNode { content: "" }
+    Fragment { key: _, children: ch } =>
+      TextNode { content: "" }
+  }
+}
+
+fn serialize_react_fragment_children(
+  bindings: List<RefTextBinding>,
+  children: List<ReactCreateElementChild>
+) -> String {
+  fold(children, init: "", f: (acc, c) =>
+    concat(acc, serialize_react_create_child(bindings: bindings, child: c))
+  )
+}
+
+fn serialize_react_create_child(
+  bindings: List<RefTextBinding>,
+  child: ReactCreateElementChild
+) -> String {
+  match child {
+    Element { element: el } => serialize_react_element(bindings: bindings, el: el)
+    Text { text_value_ref: r } =>
+      serialize_fragment(
+        frag: TextNode { content: resolve_ref(bindings: bindings, r: r) }
+      )
+  }
+}
+
+fn serialize_react_element(
+  bindings: List<RefTextBinding>,
+  el: ReactElement
+) -> String {
+  match el {
+    Host { host: h } =>
+      serialize_fragment(frag: react_host_to_fragment(bindings: bindings, host: h))
+    Fragment { key: _, children: ch } =>
+      serialize_react_fragment_children(bindings: bindings, children: ch)
+    Composite { composite: _ } => ""
+  }
+}
+
+// Fail-closed wrapper — R1 has no href attrs on Host props; reserved for extension.
+fn serialize_react_element_safe(
+  bindings: List<RefTextBinding>,
+  el: ReactElement
+) -> MarkupEmitResult {
+  EmitOk { html: serialize_react_element(bindings: bindings, el: el) }
+}
