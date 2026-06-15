@@ -22,6 +22,7 @@ import extdeps.container.oci.image_config {
   accept_image_configuration,
   image_config_entrypoint,
   image_config_exposed_port,
+  image_config_layer_count,
 }
 import extdeps.container.oci.linux {
   LinuxMemoryResources,
@@ -45,6 +46,7 @@ import extdeps.container.oci.manifest {
   ManifestRejected,
   accept_image_manifest,
   manifest_config_size,
+  manifest_layer_count,
 }
 import extdeps.container.oci.media_types {
   media_type_oci_image_config_v1,
@@ -72,9 +74,8 @@ data ctrl_session_layer0_digest: String = "sha256:402614bd39aaec1e4bdcf25aa67f88
 
 data ctrl_session_layer0_size: Int = 28122307
 
-data ctrl_session_manifest_layer_count: Int = 33
-
-data ctrl_session_rootfs_diff_count: Int = 33
+// Slice-0 fixture encodes manifest layer[0] + matching rootfs diff_ids[0] only
+// (full ctrl-session export has 33 layers; not all inlined in this witness).
 
 data ctrl_session_first_diff_id: String = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
 
@@ -272,8 +273,10 @@ fn witness_linux_rejects_duplicate_namespace() -> Bool {
   }
 }
 
-fn witness_exported_layer_counts() -> Bool {
-  ctrl_session_manifest_layer_count == 33 && ctrl_session_rootfs_diff_count == 33
+fn witness_layer_manifest_rootfs_consistent() -> Bool {
+  let manifest_layers = manifest_layer_count(ctrl_session_manifest)
+  let rootfs_layers = image_config_layer_count(ctrl_session_image_config)
+  manifest_layers == rootfs_layers && manifest_layers == 1
 }
 
 fn main() -> Bool {
@@ -286,5 +289,5 @@ fn main() -> Bool {
     && witness_linux_namespaces_count()
     && witness_linux_memory_limit()
     && witness_linux_rejects_duplicate_namespace()
-    && witness_exported_layer_counts()
+    && witness_layer_manifest_rootfs_consistent()
 }
