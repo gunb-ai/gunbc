@@ -29,7 +29,21 @@
 module v4.extdeps.formats.spice
 
 
-import v4.std.diagnostic { Outcome }
+import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  WholeFile,
+  diagnostics_singleton
+}
+import v4.std.logic { Bool }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
