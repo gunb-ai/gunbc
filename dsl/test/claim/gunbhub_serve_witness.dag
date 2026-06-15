@@ -19,7 +19,7 @@ import gunbc.gunbhub_serve {
   gunbhub_browse_page,
   gunbhub_hostile_page,
   gunbhub_browse_route,
-  gunbhub_server_emission_target,
+  gunbhub_node_route_bindings,
   serve_gunbhub_request,
   serve_gunbhub_page_source,
 }
@@ -94,12 +94,11 @@ fn witness_hostile_page_not_served_via_request_path() -> Bool {
   witness_hostile_page_rejected_before_response()
 }
 
-// Route metadata binds to extdeps.http.server NodeHttpCreateServer*.
-fn witness_emission_target_has_browse_route_binding() -> Bool {
-  let target = gunbhub_server_emission_target()
+// Consumer declares route→handler binding (host attaches bindings at deploy).
+fn witness_browse_route_binding_declared() -> Bool {
   let browse = gunbhub_browse_route()
   fold(
-    xs: target.effects.serve.route_bindings,
+    xs: gunbhub_node_route_bindings(),
     init: false,
     f: (acc, binding) =>
       if acc {
@@ -119,6 +118,6 @@ fn gunbhub_serve_keystone_holds() -> Bool {
     && witness_wrong_method_not_allowed()
     && witness_hostile_page_rejected_before_response()
     && witness_hostile_page_not_served_via_request_path()
-    && witness_emission_target_has_browse_route_binding()
+    && witness_browse_route_binding_declared()
     && gunbhub_html_render_keystone_holds()
 }

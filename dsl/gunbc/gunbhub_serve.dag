@@ -2,8 +2,9 @@
 //
 // Binds an incoming HTTP request to a serialized HTML page through the
 // already-merged canonical std.markup consumers (std.react_markup /
-// std.html_markup). Route metadata projects to extdeps.http.server
-// NodeHttpCreateServer* emission targets.
+// std.html_markup). Route declarations and route→handler bindings use
+// extdeps.http.server types; listen/deploy (createServer, port) is the
+// shared host's policy (zesty L2) — not modeled here.
 //
 // Placement: gunbc-owned product surface (ctrl README §Conventions).
 // HTTP wire facts stay in extdeps.http.server; page composition and
@@ -37,10 +38,6 @@ import extdeps.http.server {
   TextRequestBody,
   NodeHttpServerRouteBinding,
   NodeHttpRequestListener,
-  NodeHttpCreateServerServe,
-  NodeHttpCreateServerEffectChain,
-  NodeHttpCreateServerEmissionTarget,
-  HttpServerListenConfig,
 }
 
 // --- Request / response carriers -------------------------------------------
@@ -245,7 +242,7 @@ fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
   }
 }
 
-// --- extdeps.http.server emission target projection ------------------------
+// --- route → handler binding (consumer-owned; host attaches at deploy) -----
 
 fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
   map(
@@ -258,19 +255,4 @@ fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
         },
       }
   )
-}
-
-fn gunbhub_server_emission_target() -> NodeHttpCreateServerEmissionTarget {
-  NodeHttpCreateServerEmissionTarget {
-    service_name: "gunbhub",
-    effects: NodeHttpCreateServerEffectChain {
-      serve: NodeHttpCreateServerServe {
-        route_bindings: gunbhub_node_route_bindings(),
-      },
-      listen: HttpServerListenConfig {
-        host: "127.0.0.1",
-        port: 8080,
-      },
-    },
-  }
 }
