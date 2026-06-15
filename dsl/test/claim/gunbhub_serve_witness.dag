@@ -138,7 +138,7 @@ fn witness_browse_empty_path_also_matches() -> Bool {
 
 fn witness_unknown_path_not_found() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/missing" }
+    req: GunbhubServeRequest { method: GET, path: "/missing/nested" }
   ) {
     RouteNotFound => true
     _ => false

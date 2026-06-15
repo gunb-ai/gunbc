@@ -166,13 +166,9 @@ fn gunbhub_browse_path_template() -> PathTemplate {
   }
 }
 
-// BEST-GUESS encoding (sync with quick-crane-803): OpenAPI-style /{repo-path}.
+// BEST-GUESS encoding (sync with quick-crane-803): single-segment /{repo-path}.
 fn gunbhub_repo_path_template() -> PathTemplate {
-  match parse_path_template(raw: "/{repo-path}") {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [] }
-  }
+  PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
 }
 
 fn normalize_request_path(path: String) -> String {
