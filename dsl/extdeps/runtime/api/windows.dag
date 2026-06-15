@@ -63,12 +63,10 @@ data windows_ntdll_exports: List<ApiEntry> = [
 ]
 
 data windows_nt_kernel32_boundary: LibraryApiBoundary = {
-  library: "kernel32",
   exports: windows_nt_kernel32_exports,
 }
 
 data windows_ntdll_boundary: LibraryApiBoundary = {
-  library: "ntdll",
   exports: windows_ntdll_exports,
 }
 
@@ -89,7 +87,6 @@ data windows_11_user_mode_exports: List<ApiEntry> = [
 ]
 
 data windows_11_user_mode_boundary: LibraryApiBoundary = {
-  library: "win32",
   exports: windows_11_user_mode_exports,
 }
 
@@ -98,7 +95,7 @@ data windows_11_library_api_surface: StableInvocationSurface = LibraryApiBoundar
   boundary: windows_11_user_mode_boundary,
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --entry … --function … --claim-run`.
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 fn witness_kernel32_create_file_w_exported() -> Bool {
   kernel32_create_file_w.symbol == "CreateFileW"
@@ -114,20 +111,6 @@ fn witness_ntdll_nt_read_file_exported() -> Bool {
 
 fn witness_ntdll_nt_read_file_module() -> Bool {
   ntdll_nt_read_file.module == "ntdll"
-}
-
-fn witness_windows_surface_is_library_api_boundary() -> Bool {
-  match windows_11_library_api_surface {
-    LibraryApiBoundarySurface { boundary: _ } => true
-    _ => false
-  }
-}
-
-fn witness_windows_boundary_library_is_win32() -> Bool {
-  match windows_11_library_api_surface {
-    LibraryApiBoundarySurface { boundary: b } => b.library == "win32"
-    _ => false
-  }
 }
 
 fn witness_windows_boundary_exports_match_user_mode() -> Bool {

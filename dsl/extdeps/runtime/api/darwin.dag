@@ -34,7 +34,6 @@ data macos_libsystem_exports: List<ApiEntry> = [
 ]
 
 data macos_libsystem_boundary: LibraryApiBoundary = {
-  library: "libSystem",
   exports: macos_libsystem_exports,
 }
 
@@ -42,7 +41,7 @@ data macos_15_library_api_surface: StableInvocationSurface = LibraryApiBoundaryS
   boundary: macos_libsystem_boundary,
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
+// Witnesses: typed+reviewed via `gunbc run --source-root dsl --entry … --function … --claim-run`.
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 fn witness_libsystem_read_exported() -> Bool {
   libsystem_read.symbol == "read"
@@ -52,16 +51,9 @@ fn witness_libsystem_read_module() -> Bool {
   libsystem_read.module == "libSystem"
 }
 
-fn witness_macos_surface_is_library_api_boundary() -> Bool {
+fn witness_macos_libsystem_exports_include_read() -> Bool {
   match macos_15_library_api_surface {
-    LibraryApiBoundarySurface { boundary: _ } => true
-    _ => false
-  }
-}
-
-fn witness_macos_boundary_library_is_libsystem() -> Bool {
-  match macos_15_library_api_surface {
-    LibraryApiBoundarySurface { boundary: b } => b.library == "libSystem"
+    LibraryApiBoundarySurface { boundary: b } => b.exports == macos_libsystem_exports
     _ => false
   }
 }
