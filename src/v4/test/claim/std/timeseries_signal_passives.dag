@@ -12,8 +12,6 @@ import v4.std.timeseries_signal {
   CapacitorPassive,
   GroundReference,
   InductorPassive,
-  NamedAffineVoltage,
-  PassiveElementTopology,
   PotentialDifference,
   ResistorPassive,
   absolute_potential_from_named_preserves_reference,
@@ -23,7 +21,8 @@ import v4.std.timeseries_signal {
   passive_topology_from_component,
   potential_difference_of_magnitude,
   potential_reference_eq,
-  potential_reference_of_named
+  potential_reference_of_named,
+  timeseries_witness_spice_approx_zero
 }
 import v4.extdeps.formats.spice {
   Capacitor,
@@ -32,9 +31,7 @@ import v4.extdeps.formats.spice {
   Named,
   NamedNode,
   Resistor,
-  SpiceApproxVoltage,
-  SpiceValue,
-  SpiceVoltUnit
+  SpiceValue
 }
 import v4.std.verification {
   BoolWitness,
@@ -112,10 +109,7 @@ fn passive_topology_preserves_component_name_holds() -> Bool {
 fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
-    approx: SpiceApproxVoltage {
-      magnitude_lexeme: "0",
-      unit: SpiceVoltUnit
-    }
+    approx: timeseries_witness_spice_approx_zero
   )
   potential_reference_eq(
     left: potential_reference_of_named(named: named),
@@ -126,10 +120,7 @@ fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
 fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
-    approx: SpiceApproxVoltage {
-      magnitude_lexeme: "0",
-      unit: SpiceVoltUnit
-    }
+    approx: timeseries_witness_spice_approx_zero
   )
   absolute_potential_from_named_preserves_reference(
     named: named,

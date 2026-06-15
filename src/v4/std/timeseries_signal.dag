@@ -19,7 +19,8 @@ import v4.extdeps.formats.spice {
   NodeRef,
   Resistor,
   SpiceApproxVoltage,
-  SpiceValue
+  SpiceValue,
+  SpiceVoltUnit
 }
 
 // --- Affine voltage torsor (two distinct types) -----------------------------
@@ -73,6 +74,11 @@ type Capacitance {
 
 type Inductance {
   henries: Float
+}
+
+data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVoltage {
+  magnitude_lexeme: "0",
+  unit: SpiceVoltUnit {}
 }
 
 // --- spice.dag structural consumption --------------------------------------
