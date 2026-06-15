@@ -214,6 +214,7 @@ import v4.std.algebra {
   Empty,
   TailAbsent,
   TailFound,
+  count,
   fold_list,
   fold_list_node_head,
   fold_list_node_tail,
