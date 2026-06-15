@@ -38,15 +38,25 @@ data href_amp: HtmlNode = ElementNode {
   children: [ TextNode { text: "link" } ],
 }
 
+// REQ-A: url-within-attribute composition — hostile href must not break out of
+// the double-quoted attr (quote percent-encoded, not left literal).
+data href_hostile: HtmlNode = ElementNode {
+  tag: "a",
+  attrs: [ HtmlAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
+  children: [],
+}
+
 data tiny_html: String = serialize_html_node(node: tiny)
 data attr_html: String = serialize_html_node(node: with_attr)
 data href_amp_html: String = serialize_html_node(node: href_amp)
+data href_hostile_html: String = serialize_html_node(node: href_hostile)
 data escaped: String = escape_text_content(s: "<b>")
 
 func main() -> ProcessExit {
   if tiny_html == "<p>ok</p>"
     && attr_html == "<a href=\"/tree/dsl\">dsl</a>"
     && href_amp_html == "<a href=\"/x?a=1&amp;b=2\">link</a>"
+    && href_hostile_html == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
     && escaped == "&lt;b&gt;" {
     ExitSuccess
   } else {
