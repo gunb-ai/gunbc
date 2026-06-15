@@ -1,7 +1,7 @@
 // std/cache_identity.dag — Cache store and artifact-kind identity carriers.
 //
 // P2 single authority for named cache interfaces and artifact-kind tags shared
-// across std.cache_interface and std.compute_fabric (acyclic; no cross-import).
+// across std.cache_interface and product.compute_fabric (acyclic; no cross-import).
 
 module std.cache_identity
 
