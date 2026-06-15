@@ -46,6 +46,13 @@ data corpus_ci_gate_row_mvp1_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunR
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_english_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "english emit ingest round trip",
+  entry: "src/v4/test/claim/manual/english_emit_add.dag",
+  function: "english_emit_add_emit_ingest_round_trip_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest grammar relation round trip",
   entry: "src/v4/test/claim/manual/emit_ingest_grammar_relation_round_trip.dag",
@@ -78,6 +85,13 @@ data corpus_ci_gate_row_branch_if_then_else_round_trip_keystone: ClaimWitnessCor
   label: "branch if then else emit ingest round trip",
   entry: "src/v4/test/claim/manual/branch_if_then_else_round_trip.dag",
   function: "branch_if_then_else_round_trip_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "branch if then else emit keystone",
+  entry: "src/v4/test/claim/manual/branch_if_then_else_emit.dag",
+  function: "branch_if_then_else_emit_keystone_holds",
   expected: ExpectPass
 }
 
@@ -440,11 +454,13 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_english_emit_ingest_round_trip,
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
   corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
   corpus_ci_gate_row_comprep_bind_round_trip_keystone,
@@ -493,16 +509,18 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "53"
+data claim_witness_corpus_claim_run_row_count: String = "54"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
+  corpus_ci_gate_row_english_emit_ingest_round_trip,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
   corpus_ci_gate_row_comprep_bind_round_trip_keystone,
@@ -518,7 +536,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "18"
+data claim_witness_corpus_shard_a_row_count: String = "20"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
