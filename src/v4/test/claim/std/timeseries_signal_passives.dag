@@ -4,9 +4,7 @@
 module v4.test.claim.std.timeseries_signal_passives
 
 import v4.std.collection { Absent, Present }
-import v4.std.float { Float, Finite }
 import v4.std.logic { Bool }
-import v4.std.nat { Zero }
 import v4.std.timeseries_signal {
   BranchCurrent,
   CapacitorPassive,
@@ -15,11 +13,11 @@ import v4.std.timeseries_signal {
   PotentialDifference,
   ResistorPassive,
   absolute_potential_from_named_preserves_reference,
-  branch_current_of_magnitude,
+  branch_current_of_microamperes,
   named_affine_voltage,
   passive_spec_from_component,
   passive_topology_from_component,
-  potential_difference_of_magnitude,
+  potential_difference_of_microvolts,
   potential_reference_eq,
   potential_reference_of_named,
   timeseries_witness_spice_approx_zero
@@ -44,14 +42,6 @@ import v4.std.verification {
   Tier1,
   Unit,
   manual_claim_anchor
-}
-
-data witness_float_zero: Float = Float {
-  body: Finite {
-    sign: true,
-    biased_exponent: Zero,
-    trailing_significand: Zero
-  }
 }
 
 fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
@@ -124,7 +114,7 @@ fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   )
   absolute_potential_from_named_preserves_reference(
     named: named,
-    magnitude: witness_float_zero
+    microvolts: 0
   )
 }
 
@@ -170,24 +160,24 @@ data claim_absolute_potential_preserves_reference: TestClaim = BoolWitnessClaim 
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_potential_difference_of_magnitude_structural: TestClaim = StructuralEqualsClaim {
-  label: "std/timeseries_signal: potential_difference_of_magnitude is structural identity",
+data claim_potential_difference_of_microvolts_structural: TestClaim = StructuralEqualsClaim {
+  label: "std/timeseries_signal: potential_difference_of_microvolts is structural identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: PotentialDifference { magnitude: witness_float_zero },
-  rhs: potential_difference_of_magnitude(magnitude: witness_float_zero),
+  lhs: PotentialDifference { microvolts: 0 },
+  rhs: potential_difference_of_microvolts(microvolts: 0),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_branch_current_of_magnitude_structural: TestClaim = StructuralEqualsClaim {
-  label: "std/timeseries_signal: branch_current_of_magnitude is structural identity",
+data claim_branch_current_of_microamperes_structural: TestClaim = StructuralEqualsClaim {
+  label: "std/timeseries_signal: branch_current_of_microamperes is structural identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: BranchCurrent { magnitude: witness_float_zero },
-  rhs: branch_current_of_magnitude(magnitude: witness_float_zero),
+  lhs: BranchCurrent { microamperes: 0 },
+  rhs: branch_current_of_microamperes(microamperes: 0),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_timeseries_signal_module_compiles: TestClaim = CompilesClaim {
-  label: "std/timeseries_signal: AbsolutePotential torsor + spice projection compiles",
+  label: "std/timeseries_signal: passive map/fold + torsor carriers compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: GroundReference,
   expected_value: GroundReference,
