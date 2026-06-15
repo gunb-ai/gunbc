@@ -420,80 +420,31 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   function: "spice_resistor_projects_resistor_passive_topology_holds"
 }
 
-data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
-  corpus_ci_gate_row_mvp1_emit_matches_serialize,
-  corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
-  corpus_ci_gate_row_english_emit_ingest_round_trip,
-  corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
-  corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
-  corpus_ci_gate_row_comprep_eval_keystone,
-  corpus_ci_gate_row_comprep_branch_eval_keystone,
-  corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
-  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
-  corpus_ci_gate_row_comprep_bind_eval_keystone,
-  corpus_ci_gate_row_comprep_bind_emit_keystone,
-  corpus_ci_gate_row_comprep_bind_round_trip_keystone,
-  corpus_ci_gate_row_comprep_loop_eval_keystone,
-  corpus_ci_gate_row_comprep_loop_emit_keystone,
-  corpus_ci_gate_row_comprep_loop_round_trip_keystone,
-  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
-  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
-  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog,
-  corpus_ci_gate_row_program_partition_body_emit_keystone,
-  corpus_ci_gate_row_program_partition_whole_program_parity,
-  corpus_ci_gate_row_program_partition_section_adapter_fail_closed,
-  corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free,
-  corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold,
-  corpus_ci_gate_row_witness_sg2_arrow,
-  corpus_ci_gate_row_witness_sg2_projection_falsification,
-  corpus_ci_gate_row_witness_sg2_fold_row_delimiter,
-  corpus_ci_gate_row_effect_io_pure_file,
-  corpus_ci_gate_row_effect_io_pure_http,
-  corpus_ci_gate_row_effect_io_pure_storage,
-  corpus_ci_gate_row_effect_io_host_read_fail_closed,
-  corpus_ci_gate_row_effect_io_host_http_backend,
-  corpus_ci_gate_row_ts_effect_io_emit,
-  corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
-  corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves,
-  corpus_ci_gate_row_markup_serializer_keystone,
-  corpus_ci_gate_row_html_markup_xss_keystone,
-  corpus_ci_gate_row_react_markup_keystone,
-  corpus_ci_gate_row_gunbhub_react_browse_keystone,
-  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
-  corpus_ci_gate_row_timeseries_resistor_map,
-  corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map,
-  corpus_ci_gate_row_timeseries_signed_magnitude_capacitor_fold,
-  corpus_ci_gate_row_timeseries_capacitor_fold,
-  corpus_ci_gate_row_timeseries_inductor_fold,
-  corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
-  corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
-]
-
-data claim_witness_corpus_claim_run_row_count: String = "54"
-
-// Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
-// co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
+// Sharded enrollment — three ROOT-ALIGNED parallel CI jobs (see header). Each shard is the
+// authority for its own rows; the host (ci-claim-gate) runs exactly the rows the shard's
+// `*_rows_tsv` fold emits. The fold over a typed List cannot drop a member, so per shard the
+// emitted row count == the list length BY CONSTRUCTION — the former `*_row_count` count-guard
+// datums were a parallel ledger (and had already drifted on main: #4947 added a shard-a row
+// without bumping the guard) and are retired here, proven by the by-execution fold-no-drop
+// receipt at sign. Roster identity (enumerated at sign): shard_a (23, src/v4) ∪ shard_b
+// (23, src/v4) ∪ shard_c (9, dsl) == 55 enrolled rows, pairwise disjoint.
+//
+// shard_a / shard_b: --source-root src/v4. shard_c: --source-root dsl. Shards are
+// root-aligned by design (ci-claim-gate --perturb-check copies only the primary source-root;
+// a mixed-root shard fails loud — see header). Balanced on rows AND distinct-entry count
+// (the cold-resolve cost driver): shard_a 13 entries, shard_b 12 entries, shard_c 7 entries.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
   corpus_ci_gate_row_english_emit_ingest_round_trip,
+  corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
+  corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_branch_if_then_else_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
-  corpus_ci_gate_row_comprep_bind_round_trip_keystone,
-  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
   corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
   corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
   corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
@@ -501,23 +452,21 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_program_partition_body_emit_keystone,
   corpus_ci_gate_row_program_partition_whole_program_parity,
   corpus_ci_gate_row_program_partition_section_adapter_fail_closed,
+  corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free,
+  corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold,
+  corpus_ci_gate_row_witness_sg2_arrow,
   corpus_ci_gate_row_witness_sg2_projection_falsification,
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "19"
-
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
-  corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
-  corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
-  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
-  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
+  corpus_ci_gate_row_comprep_bind_round_trip_keystone,
   corpus_ci_gate_row_comprep_loop_eval_keystone,
   corpus_ci_gate_row_comprep_loop_emit_keystone,
   corpus_ci_gate_row_comprep_loop_round_trip_keystone,
-  corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free,
-  corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold,
-  corpus_ci_gate_row_witness_sg2_arrow,
+  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
+  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
+  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
   corpus_ci_gate_row_effect_io_pure_file,
   corpus_ci_gate_row_effect_io_pure_http,
   corpus_ci_gate_row_effect_io_pure_storage,
@@ -526,15 +475,6 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
-  corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves,
-  corpus_ci_gate_row_markup_serializer_keystone,
-  corpus_ci_gate_row_html_markup_xss_keystone,
-  corpus_ci_gate_row_react_markup_keystone,
-  corpus_ci_gate_row_gunbhub_react_browse_keystone,
-  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
   corpus_ci_gate_row_timeseries_resistor_map,
   corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map,
   corpus_ci_gate_row_timeseries_signed_magnitude_capacitor_fold,
@@ -545,4 +485,62 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_c_rows: List<ClaimWitnessCorpusClaimRunRow> = [
+  corpus_ci_gate_row_dsl_root_probe,
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_markup_serializer_keystone,
+  corpus_ci_gate_row_html_markup_xss_keystone,
+  corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_gunbhub_react_browse_keystone,
+  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
+  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
+]
+
+// Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`, consumed by
+// `ci-claim-gate` (--rows-fn) exactly as the probe-selector / batch-executor gates do. The fold
+// is total over the typed List — every member emits exactly one line, none dropped.
+fn claim_witness_corpus_shard_a_rows_tsv() -> String {
+  fold_list_right(
+    xs: claim_witness_corpus_shard_a_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
+
+fn claim_witness_corpus_shard_b_rows_tsv() -> String {
+  fold_list_right(
+    xs: claim_witness_corpus_shard_b_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
+
+fn claim_witness_corpus_shard_c_rows_tsv() -> String {
+  fold_list_right(
+    xs: claim_witness_corpus_shard_c_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
