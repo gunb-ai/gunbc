@@ -1187,8 +1187,8 @@ mod parse_stage4_prep {
             "dsl/std/memory/types.dag",
         );
         parse_file(
-            include_str!("../../../../dsl/std/memory/sk_hynix.dag"),
-            "dsl/std/memory/sk_hynix.dag",
+            include_str!("../../../../dsl/extdeps/memory/sk_hynix.dag"),
+            "dsl/extdeps/memory/sk_hynix.dag",
         );
     }
 
