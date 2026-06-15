@@ -315,6 +315,17 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
+// Fragment-IR markup serializer (dsl/std/markup.dag) — class-2 emit-correctness.
+// One keystone row ANDs by-execution-per-escaping-context + full-tree serialize +
+// CoC=1 one-fold-serves-both + emit->parse round-trip + perturb-discrimination.
+// dsl/-rooted (--source-root dsl), shard b alongside the dsl probes.
+data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "markup fragment-ir serializer keystone",
+  entry: "dsl/test/claim/markup_serializer_witness.dag",
+  function: "markup_serializer_keystone_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -353,10 +364,11 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_markup_serializer_keystone
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "38"
+data claim_witness_corpus_claim_run_row_count: String = "39"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -403,7 +415,8 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_markup_serializer_keystone
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "20"
+data claim_witness_corpus_shard_b_row_count: String = "21"
