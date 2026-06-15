@@ -29,6 +29,8 @@
 // Binary entrypoint: reports results directly on stdout/stderr.
 #![allow(clippy::disallowed_macros)]
 
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
 
