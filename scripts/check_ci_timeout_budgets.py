@@ -75,6 +75,8 @@ CEILINGS = {
         "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
         "v4_claim_witness_corpus_b": 20,
         "timeout_budgets": 5,
+        "ci_lens_lane_class": 5,
+        "ci_fleet_shard": 2,
         "ci": 5,
     },
     "ci-spot-rerun.yml": {
