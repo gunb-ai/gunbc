@@ -143,7 +143,21 @@ run_scanner_perturb_case() {
 #       scan (IMPORT_RE over raw lines) — the phase axis.
 # Hence the lens gate subsumes the python gate over its full enumerable domain;
 # this is the coverage-domain-equivalence witness, not an example sample.
+run_coverage_domain_equivalence_witness() {
+  "$gunbc_bin" run \
+    --source-root src/v4 \
+    --entry "src/v4/test/claim/layering_imports/coverage_domain_equivalence.dag" \
+    --function coverage_domain_equivalence_argument_holds \
+    --claim-run
+}
+
 run_scanner_perturb_receipts() {
+  echo "::group::coverage-domain-equivalence witness (python source: scripts/check_v4_layering_imports.py)"
+  if ! run_coverage_domain_equivalence_witness; then
+    echo "::error::coverage-domain-equivalence argument witness failed"
+    exit 1
+  fi
+  echo "::endgroup::"
   run_scanner_perturb_case \
     "src/v4/std × v4.compiler.* prefix" \
     "src/v4/std/_perturb_scanner_std_v4_prefix.dag" \
