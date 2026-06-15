@@ -107,3 +107,18 @@ type NodeHttpCreateServerEmissionTarget {
   service_name: String
   effects: NodeHttpCreateServerEffectChain
 }
+
+// Host contract (gunbhub-M2 consumer → quick-crane host): pre-rendered static
+// routes. Bodies are verbatim serialize output; host MUST NOT re-encode/escape.
+// Miss → host 404; consumer supplies no body for misses.
+type ServedStaticRoute {
+  method: HttpMethod
+  path_pattern: PathTemplate
+  body: String
+  content_type: String
+  status_on_hit: HttpStatus
+}
+
+type ServedStaticRouteTable {
+  routes: List<ServedStaticRoute>
+}

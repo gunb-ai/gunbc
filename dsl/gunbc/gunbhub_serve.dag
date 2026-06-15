@@ -1,0 +1,405 @@
+// gunbc/gunbhub_serve.dag — gunbhub M2 served render surface.
+//
+// Consumer-owned ServedStaticRouteTable for the shared http-serve host
+// (quick-crane L2). Bodies are serialize_fragment output strings, composed
+// and XSS-checked at table-build time (not per-request). Host binds,
+// serves GET, returns status_on_hit+body or 404 — gunbhub supplies only the table.
+//
+// Placement: gunbc-owned product surface (ctrl README §Conventions).
+// HTTP wire facts stay in extdeps.http.server; page composition and
+// request→response binding live here.
+
+module gunbc.gunbhub_serve
+
+import std.types { HttpMethod, HttpStatus, GET }
+import std.http_path {
+  PathTemplate,
+  PathTemplateParseResult,
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+  parse_path_template,
+}
+import std.react_markup {
+  ElementNode,
+  ReactTextNode,
+  ReactAttr,
+  ReactMarkupNode,
+  EmitOk,
+  EmitRejected,
+  UntrustedUrlScheme,
+  serialize_react_markup,
+}
+import extdeps.http.server {
+  HttpServerRoute,
+  HttpStatusResponse,
+  NoRequestBody,
+  TextRequestBody,
+  NodeHttpServerRouteBinding,
+  NodeHttpRequestListener,
+  ServedStaticRoute,
+  ServedStaticRouteTable,
+}
+
+// --- Request / response carriers (dispatch witness) ------------------------
+
+type GunbhubServeRequest {
+  method: HttpMethod
+  path: String
+}
+
+type GunbhubHttpResponse {
+  status: HttpStatus
+  body: String
+}
+
+// 🟢 TERMINAL — closed serve outcome for the M2 literal-route surface.
+// Extension trigger (M3): forge-backed NotFound when object lookup fails.
+type GunbhubServeResult
+  = Served { response: GunbhubHttpResponse }
+  | RenderRejectedBeforeServe { reason: String }
+  | RouteNotFound
+  | MethodNotAllowed
+
+// 🟢 TERMINAL — React consumer page source (M2 browse route).
+type GunbhubPageSource = ReactPage { node: ReactMarkupNode }
+
+// 🟢 TERMINAL — closed render outcome for per-request page-source serve path.
+type GunbhubRenderResult
+  = RenderedHtml { html: String }
+  | RenderRejected { reason: String }
+
+// --- Browse page (R1 structural compose; M3 replaces hardcoded entries) ----
+
+fn gunbhub_browse_entry(name: String) -> ReactMarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [],
+        children: [ ReactTextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ ReactTextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "ul",
+        attrs: [],
+        children: [
+          gunbhub_browse_entry(name: "dsl"),
+          gunbhub_browse_entry(name: "src"),
+          gunbhub_browse_entry(name: "ROADMAP.md"),
+        ],
+      },
+    ],
+  }
+}
+
+// Hostile fixture — javascript: href must be rejected before any response body.
+fn gunbhub_hostile_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ ReactTextNode { text: "x" } ],
+  }
+}
+
+// README doc view — M1 placeholder: react-composed body until std.markdown
+// consumer merges; swap body builder when M1 lands (table shape unchanged).
+fn gunbhub_readme_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "article",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ ReactTextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "p",
+        attrs: [],
+        children: [
+          ReactTextNode {
+            text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// 🟢 TERMINAL — closed compose outcome for static-table body serialization.
+type GunbhubComposeResult
+  = ComposedOk { html: String }
+  | ComposeRejected { reason: String }
+
+fn gunbhub_compose_body(node: ReactMarkupNode) -> GunbhubComposeResult {
+  match serialize_react_markup(node: node) {
+    EmitOk { html: h } => ComposedOk { html: h }
+    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+      ComposeRejected { reason: concat("react markup rejected: ", u) }
+  }
+}
+
+fn gunbhub_html_content_type() -> String {
+  "text/html; charset=utf-8"
+}
+
+fn gunbhub_browse_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [] }
+  }
+}
+
+// BEST-GUESS encoding (sync with quick-crane-803): single-segment /{repo-path}.
+fn gunbhub_repo_path_template() -> PathTemplate {
+  PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
+}
+
+fn normalize_request_path(path: String) -> String {
+  if path == "" {
+    "/"
+  } else {
+    path
+  }
+}
+
+fn request_path_segments(path: String) -> List<String> {
+  let path_only = match split(s: normalize_request_path(path: path), delimiter: "?") |> first {
+    Present { value: p } => p
+    Absent => normalize_request_path(path: path)
+  }
+  if path_only == "/" {
+    []
+  } else {
+    filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+  }
+}
+
+type PathMatchState {
+  seg_idx: Int
+  ok: Bool
+}
+
+fn path_matches_template(template: PathTemplate, path: String) -> Bool {
+  let segs = request_path_segments(path: path)
+  let st = fold(
+    xs: template.tokens,
+    init: PathMatchState { seg_idx: 0, ok: true },
+    f: (acc, tok) =>
+      if !acc.ok {
+        acc
+      } else {
+        match tok {
+          ParamToken { name: _ } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: _ } =>
+                PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+          LiteralToken { text: lit } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: seg } =>
+                if seg == lit {
+                  PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+                } else {
+                  PathMatchState { seg_idx: acc.seg_idx, ok: false }
+                }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+        }
+      }
+  )
+  st.ok && st.seg_idx == count(xs: segs)
+}
+
+// --- Render through canonical consumers ------------------------------------
+
+fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
+  match source {
+    ReactPage { node } =>
+      match serialize_react_markup(node: node) {
+        EmitOk { html: h } => RenderedHtml { html: h }
+        EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+          RenderRejected { reason: concat("react markup rejected: ", u) }
+      }
+  }
+}
+
+fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
+  match render_gunbhub_page(source: source) {
+    RenderedHtml { html: h } =>
+      Served {
+        response: GunbhubHttpResponse {
+          status: 200,
+          body: h,
+        }
+      }
+    RenderRejected { reason: r } => RenderRejectedBeforeServe { reason: r }
+  }
+}
+
+// --- Route table + host static serve table -----------------------------------
+
+type GunbhubRouteRow {
+  route: HttpServerRoute
+  page: GunbhubPageSource
+}
+
+fn gunbhub_browse_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "browseRoot",
+    method: GET,
+    path_template: gunbhub_browse_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
+fn gunbhub_repo_path_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "repoPathDoc",
+    method: GET,
+    path_template: gunbhub_repo_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
+fn gunbhub_route_table() -> List<GunbhubRouteRow> {
+  [
+    GunbhubRouteRow {
+      route: gunbhub_browse_route(),
+      page: ReactPage { node: gunbhub_browse_page() },
+    },
+    GunbhubRouteRow {
+      route: gunbhub_repo_path_route(),
+      page: ReactPage { node: gunbhub_readme_page() },
+    },
+  ]
+}
+
+// ServedStaticRouteTable the shared host consumes. Bodies serialized at compose time.
+// ComposeRejected rows are OMITTED (fail-closed: host 404s, not empty 200).
+fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
+  let routes = fold(
+    xs: gunbhub_route_table(),
+    init: [],
+    f: (acc, row) =>
+      match gunbhub_compose_body(
+        node: match row.page {
+          ReactPage { node: n } => n
+        }
+      ) {
+        ComposedOk { html: h } =>
+          concat(
+            acc,
+            [
+              ServedStaticRoute {
+                method: row.route.method,
+                path_pattern: row.route.path_template,
+                body: h,
+                content_type: gunbhub_html_content_type(),
+                status_on_hit: 200,
+              },
+            ]
+          )
+        ComposeRejected { reason: _ } => acc
+      }
+  )
+  ServedStaticRouteTable { routes: routes }
+}
+
+fn served_row_matches_request(row: ServedStaticRoute, req: GunbhubServeRequest) -> Bool {
+  row.method == req.method
+    && path_matches_template(template: row.path_pattern, path: req.path)
+}
+
+fn path_matches_any_served_pattern(path: String, table: ServedStaticRouteTable) -> Bool {
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        path_matches_template(template: row.path_pattern, path: path)
+      }
+  )
+}
+
+type StaticRouteMatchState {
+  found: Bool
+  body: String
+  status: HttpStatus
+}
+
+fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
+  let table = gunbhub_served_static_route_table()
+  let st = fold(
+    xs: table.routes,
+    init: StaticRouteMatchState { found: false, body: "", status: 404 },
+    f: (acc, row) =>
+      if acc.found {
+        acc
+      } else if served_row_matches_request(row: row, req: req) {
+        StaticRouteMatchState {
+          found: true,
+          body: row.body,
+          status: row.status_on_hit,
+        }
+      } else {
+        acc
+      }
+  )
+  if st.found {
+    Served {
+      response: GunbhubHttpResponse {
+        status: st.status,
+        body: st.body,
+      }
+    }
+  } else if path_matches_any_served_pattern(path: req.path, table: table) {
+    MethodNotAllowed
+  } else {
+    RouteNotFound
+  }
+}
+
+// --- route → handler binding (consumer-owned; host attaches at deploy) -----
+
+fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
+  map(
+    xs: gunbhub_route_table(),
+    f: row =>
+      NodeHttpServerRouteBinding {
+        route: row.route,
+        listener: NodeHttpRequestListener {
+          handler_name: concat("gunbhub_handle_", row.route.operation_name),
+        },
+      }
+  )
+}
