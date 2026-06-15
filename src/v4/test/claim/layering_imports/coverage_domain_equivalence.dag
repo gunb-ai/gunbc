@@ -1,13 +1,17 @@
 // src/v4/test/claim/layering_imports/coverage_domain_equivalence.dag
-// Scope: coverage-domain-equivalence witness — zesty sign=CUTOVER subsumption proof.
-// Authority: scripts/check_v4_layering_imports.py rule set (SOLE proof once signed).
-// Execution: scripts/v4-layering-imports-gate.sh --perturb-check runs each row below
-//            as plant → REAL layering_imports_scan → scanner witness → clean_tree RED.
+// Scope: coverage-domain-equivalence witness (zesty sign=CUTOVER). This .dag proves the
+//        COVERING half by-execution — coverage_domain_equivalence_argument_holds() asserts the
+//        perturb roster spans EACH python layer-root and EACH forbidden form (drift-resistant:
+//        a coverage-breaking roster edit goes RED, not merely count-shrink).
+// Authority: scripts/check_v4_layering_imports.py rule set. Subsumption = covering-proof (this
+//        file) + DETECTION-proof = the executable (i) gate-perturb (plant → REAL scan → RED) run
+//        by scripts/v4-layering-imports-gate.sh --perturb-check, GATING in CI. Neither half alone
+//        is the sole proof; both together discharge the python gate's domain.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v4.test.claim.layering_imports.coverage_domain_equivalence
 
-import v4.std.algebra { length }
+import v4.std.algebra { any, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { String }
@@ -114,7 +118,8 @@ data layering_imports_scanner_perturb_receipt_rows: List<LayeringImportsScannerP
   perturb_row_parse_level_pre_resolve
 ]
 
-// Coverage-domain equivalence argument (zesty sign=CUTOVER — witness is SOLE subsumption proof):
+// Coverage-domain equivalence argument (zesty sign=CUTOVER). This file proves the COVERING half
+// by-execution; the DETECTION half is the executable (i) gate-perturb (plant → REAL scan → RED).
 // These 4 target-forms ARE exactly FORBIDDEN_EXACT ∪ FORBIDDEN_PREFIXES; these 5 roots ARE
 // exactly LAYER_ROOTS; *.dag is the only scanned type; the leading-import is the only matched
 // form. The (root × form) cross-product is therefore the complete domain. The lens covers it
@@ -126,8 +131,36 @@ data layering_imports_scanner_perturb_receipt_rows: List<LayeringImportsScannerP
 // ⇒ all 5×4 classes; (d) the parse_level row plants a forbidden import alongside an unrelated
 // resolve error and is still flagged (python pre-resolve TEXT scan; IMPORT_RE over raw lines).
 
+// Some perturb receipt row carries `root` as its layer_root (covering, not counting).
+fn rows_cover_root(root: String) -> Bool {
+  any(
+    xs: layering_imports_scanner_perturb_receipt_rows,
+    predicate: fn(row) { row.layer_root == root }
+  )
+}
+
+// Some perturb receipt row carries `form` as its forbidden_form (covering, not counting).
+fn rows_cover_form(form: String) -> Bool {
+  any(
+    xs: layering_imports_scanner_perturb_receipt_rows,
+    predicate: fn(row) { row.forbidden_form == form }
+  )
+}
+
+// COVERING: for EACH python layer-root some row carries it, and for EACH forbidden form some row
+// carries it. A coverage-breaking roster edit (drop/duplicate-away a root or form) leaves a cell
+// uncovered → this goes RED. The cardinality conjuncts are a belt-and-suspenders roster-pin.
 fn coverage_domain_equivalence_argument_holds() -> Bool {
-  length(xs: python_layer_roots) == 5
+  rows_cover_root(root: python_layer_root_src_v4_std)
+    && rows_cover_root(root: python_layer_root_src_v3_std)
+    && rows_cover_root(root: python_layer_root_dsl_std)
+    && rows_cover_root(root: python_layer_root_src_v4_extdeps)
+    && rows_cover_root(root: python_layer_root_dsl_extdeps)
+    && rows_cover_form(form: python_form_v3_compiler_exact)
+    && rows_cover_form(form: python_form_v3_compiler_prefix)
+    && rows_cover_form(form: python_form_v4_compiler_exact)
+    && rows_cover_form(form: python_form_v4_compiler_prefix)
+    && length(xs: python_layer_roots) == 5
     && length(xs: python_forbidden_forms) == 4
     && length(xs: layering_imports_scanner_perturb_receipt_rows) == 6
 }
