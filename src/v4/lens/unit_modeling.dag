@@ -27,9 +27,16 @@
 //   - DETECTION: bare `Int` (`^dag_binding_type_int`, the one confirmed resolved
 //     kernel-scalar binding). `Float` (GATE-1 keystone) + `Nat` are disclosed
 //     blind-spots — see `type_is_flat_scalar` (Float routed to snappy).
-//   - EXEMPTION recognition is exact-Symbol (no substring primitive in-substrate);
-//     compound names (matrix_index) are a disclosed limitation that PHASE-2
-//     brand-types dissolve (type-based exemption). See `name_is_exempt`.
+//   - EXEMPTION recognition is exact-Symbol — and this is the CORRECT fail-closed
+//     primitive, NOT a limitation. A substring/suffix test would be UNSOUND for a
+//     soundness gate: it manufactures FALSE-NEGATIVES (the dangerous direction) —
+//     substring-`index` would wrongly EXEMPT `reindex_count`, substring-`id`
+//     would exempt `fluid_pressure`, silently slipping a real quantity through.
+//     Exact-Symbol instead errs toward FALSE-POSITIVE on a compound coordinate
+//     name (`page_index` flagged) — the SAFE direction, consistent with flag-all.
+//     Compound-named coordinates clear in PHASE-2 by acquiring the Index/Version
+//     BRAND-TYPE (exempt by TYPE, never by name-match), so no substring is ever
+//     needed. See `name_is_exempt`.
 //   - Diff-scope grandfathering (in the harness) bounds flag-all to CHANGED
 //     regions, so reviewer load ∝ new code.
 
@@ -177,15 +184,19 @@ fn field_name_has_known_carrier(name: Symbol) -> Bool {
 // novel unit name is flagged by default, so the exemption set never grows per
 // new field (bold-crane / operator / CLAUDE.md, non-negotiable).
 //
-// 🟡 DISCLOSED LIMITATION (no silent cap) — exact-Symbol match only; the v4 lens
-// substrate has NO substring/suffix primitive. This recognizes BARE markers
-// (version / index / offset); COMPOUND forms (matrix_index, schema_version,
-// byte_offset) are NOT recognized and will false-positive-flag. The robust
-// dissolution is PHASE-2 brand-types (Index / Version / Ordinal in dsl/std) →
-// exemption becomes TYPE-based (matrix_index: Index is no longer a bare scalar),
-// dissolving name-recognition entirely. Until then this exact set is the interim
-// bridge; advisory + diff-scoped bounds the blast radius. Forbidden: growing it
-// into a per-field ledger of specific blessed names. (Routed to smart-hawk.)
+// Exact-Symbol match is the CORRECT fail-closed primitive — deliberately, not for
+// want of a substring op. A substring/suffix test would be UNSOUND here: it would
+// EXEMPT any quantity whose name merely CONTAINS a marker (`reindex_count`,
+// `version_count`, `fluid_pressure`), a FALSE-NEGATIVE — the exact failure this
+// inverted gate exists to kill. Exact-Symbol instead errs toward FALSE-POSITIVE on
+// a COMPOUND coordinate name (`matrix_index`, `byte_offset`, `schema_version`
+// flagged) — the SAFE direction, consistent with flag-all. Those compound names
+// clear in PHASE-2 by acquiring the Index / Version / Ordinal BRAND-TYPE in
+// dsl/std → exemption becomes TYPE-based (`matrix_index: Index` is no longer a
+// bare scalar), and name-recognition dissolves entirely. The compound-name
+// false-positive ergonomics are the SIGNAL that prioritizes phase-2 brand-types
+// (a snappy fork), not a reason to weaken the predicate. Forbidden: growing this
+// into a per-field ledger of specific blessed names. (Confirmed: smart-hawk.)
 data exemption_marker_rows: List<Symbol> = [
   // LABELS — identity / categorical tags (version 2 + version 3 is nonsense).
   ^version, ^opcode, ^id, ^kind, ^tag, ^discriminant, ^status, ^code, ^enum,

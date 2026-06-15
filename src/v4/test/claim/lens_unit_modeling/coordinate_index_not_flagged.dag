@@ -5,9 +5,10 @@
 //        exempt under the inverted predicate. Proves the categorical exemption
 //        (one of the two closed non-additive kinds) does not over-flag a
 //        legitimate bare Int.
-// Note: exact-Symbol exemption recognizes the BARE marker `index`; COMPOUND forms
-//        (matrix_index) are a disclosed limitation that phase-2 brand-types
-//        dissolve — see name_is_exempt in the lens.
+// Note: exact-Symbol exemption recognizes the BARE marker `index` — the correct
+//        fail-closed primitive (substring would unsoundly exempt reindex_count).
+//        COMPOUND forms (matrix_index) safely false-positive-flag and clear in
+//        phase-2 by acquiring the Index brand-type — see name_is_exempt.
 // Status: scaffold — compile-only until the build-infra greens and the v4 claim
 //         harness executes it.
 
