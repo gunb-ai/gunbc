@@ -369,3 +369,8 @@ data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
 ]
 
 
+// RETAINED, no longer cross-checked: the testgen gate's projected-vs-modeled count comparison
+// was retired (parallel-ledger drift; CLAUDE.md ledger principle). Unread by
+// scripts/v4-affected-set-node-frontier-gate.sh; kept only for the v2 emit-parity v4-slice
+// closure (deleting it diverges emit-from-resolved vs compile-sources). Dissolves at the glob cutover.
+data affected_testgen_claim_run_row_count: String = "6"

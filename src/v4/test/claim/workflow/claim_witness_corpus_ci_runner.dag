@@ -509,6 +509,12 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
+// RETAINED, no longer cross-checked: the gate's projected-vs-modeled count comparison was
+// retired (parallel-ledger drift reddened main on #4947 — CLAUDE.md ledger principle). This datum
+// is now unread by scripts/v4-claim-witness-corpus-gate.sh; it is kept only because the v2 emit-
+// parity v4-slice closure still reaches it (deleting it diverges emit-from-resolved vs compile-
+// sources). Dissolves in the glob-discovery cutover, which makes it genuinely unreachable.
+data claim_witness_corpus_claim_run_row_count: String = "54"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -535,6 +541,9 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
+// RETAINED, no longer cross-checked (see claim_witness_corpus_claim_run_row_count above);
+// unread by the gate, kept for the v2 emit-parity v4-slice closure. Dissolves at the glob cutover.
+data claim_witness_corpus_shard_a_row_count: String = "20"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
@@ -574,3 +583,6 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
+// RETAINED, no longer cross-checked (see claim_witness_corpus_claim_run_row_count above);
+// unread by the gate, kept for the v2 emit-parity v4-slice closure. Dissolves at the glob cutover.
+data claim_witness_corpus_shard_b_row_count: String = "35"
