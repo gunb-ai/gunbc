@@ -95,11 +95,13 @@ if [[ "$verbose" == "1" ]]; then
   "$ngspice_bin" -b "$netlist_file"
   rc=$?
 else
-  ng_out="$("$ngspice_bin" -b "$netlist_file" 2>&1)" || true
-  rc=${PIPESTATUS[0]:-$?}
+  set +e
+  "$ngspice_bin" -b "$netlist_file" >"$tmpdir/ngspice.out" 2>&1
+  rc=$?
+  set -e
   if [[ $rc -ne 0 ]]; then
     echo "ngspice output:" >&2
-    echo "$ng_out" >&2
+    tail -40 "$tmpdir/ngspice.out" >&2
   fi
 fi
 
