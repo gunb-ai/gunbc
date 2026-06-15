@@ -1,0 +1,14 @@
+// src/v4/std/circuit_step.dag
+//
+// Scope: shared map/fold/solve primitive classification for mixed-signal circuit
+//        step operators (analog passives in timeseries_signal; digital in verilog).
+// Anchor: SP-M3 mixed-signal substrate — MapStep=stateless, FoldStep=stateful over dt/tick.
+// Status: S1 canonical — SolveStep uninhabited until S2.
+
+module v4.std.circuit_step
+
+// 🟢 TERMINAL at S1 — declares map/fold/solve decomposition; SolveStep uninhabited until S2.
+type CircuitPrimitiveKind
+  = MapStep
+  | FoldStep
+  | SolveStep
