@@ -4,7 +4,7 @@
 
 module v4.test.claim.workflow.probe_selector_ci_runner
 
-import v4.std.algebra { length }
+import v4.std.algebra { fold_list_right, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.probe_selector {
@@ -85,4 +85,22 @@ fn probe_selector_ci_runner_one_kernel_holds() -> Bool {
 
 fn probe_selector_ci_runner_srv2_spine_holds() -> Bool {
   probe_selector_srv2_walkthrough_spine_holds()
+}
+
+// Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
+// Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
+// hand-maintained awk/grep roster projection in scripts/v4-probe-selector-keystone-gate.sh.
+fn probe_selector_ci_runner_rows_tsv() -> String {
+  fold_list_right(
+    xs: probe_selector_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
 }
