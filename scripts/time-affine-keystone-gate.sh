@@ -46,8 +46,12 @@ echo "== NEGATIVE: instant + instant must be rejected =="
 if "$CARGO" check --manifest-path "$OUT/neg/Cargo.toml" >"$OUT/neg-check.log" 2>&1; then
   fail "instant + instant COMPILED — the affine law has regressed (Instant gained Add)"
 fi
-grep -q "cannot add" "$OUT/neg-check.log" \
+# Match the diagnostic CODE (error[E0369]) plus its message, not the bare
+# "cannot add" substring: E0369 is the structural "no Add impl" rejection we
+# require, so keying on the code can't be satisfied by an unrelated future
+# diagnostic that merely happens to contain the words "cannot add".
+grep -q 'error\[E0369\]: cannot add' "$OUT/neg-check.log" \
   || { echo "--- neg-check.log tail ---"; tail -20 "$OUT/neg-check.log"; fail "negative gate failed for the wrong reason (expected E0369 'cannot add')"; }
-echo "  OK: instant + instant rejected ($(grep -m1 'cannot add' "$OUT/neg-check.log" | sed 's/^ *//'))"
+echo "  OK: instant + instant rejected ($(grep -m1 'error\[E0369\]' "$OUT/neg-check.log" | sed 's/^ *//'))"
 
 echo "GATE PASS"
