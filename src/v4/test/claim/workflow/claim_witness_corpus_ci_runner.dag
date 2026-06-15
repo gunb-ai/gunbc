@@ -330,6 +330,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
   corpus_ci_gate_row_comprep_bind_round_trip_keystone,
@@ -363,7 +364,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_probe_selector_cf_import_resolves
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "38"
+data claim_witness_corpus_claim_run_row_count: String = "39"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -373,6 +374,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_comprep_eval_keystone,
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
+  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
   corpus_ci_gate_row_comprep_bind_round_trip_keystone,
@@ -388,7 +390,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "18"
+data claim_witness_corpus_shard_a_row_count: String = "19"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
