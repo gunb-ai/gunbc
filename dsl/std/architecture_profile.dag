@@ -8,20 +8,16 @@
 module std.architecture_profile
 
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
+import std.cpu.types { CpuArchitecture }
 import std.measure { BitWidth, ByteSize }
 import std.os.invocation { StableInvocationSurface }
-
-// 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
-// Option import. `import std.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
-// fails: std.cpu.types imports named Option from std.types (unexported on v2; snappy-stag-903).
-// Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
-type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+import std.os.types { OperatingSystemProduct }
 
 // 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
 type Endianness = LittleEndian | BigEndian
 
 type ArchitectureProfile {
-  architecture: TargetArchitecture
+  architecture: CpuArchitecture
   // 🟡 feature:L-8-fixed-width-words — bind os-exec-contract-layer L-8 — dissolve-on: enforced
   // fixed-width word carriers in std.bit replace Measure<Information, One> width fields.
   word_width: BitWidth
@@ -34,9 +30,9 @@ type ArchitectureProfile {
   stack_layout: StackLayout
 }
 
-// DeploymentTarget composes profile + invocation surface (zesty ruling §5).
-// operating_system attach is 🟡-gated on std.os.types v2 catalog flip (Option + single-variant enum).
+// DeploymentTarget composes profile + OS product + invocation surface (zesty ruling §5).
 type DeploymentTarget {
   profile: ArchitectureProfile
+  operating_system: OperatingSystemProduct
   invocation: StableInvocationSurface
 }

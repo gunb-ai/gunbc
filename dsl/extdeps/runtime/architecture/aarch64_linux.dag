@@ -1,6 +1,6 @@
 // extdeps/runtime/architecture/aarch64_linux.dag — aarch64 Linux architecture profile (cited facts).
 //
-// Scope: Slice-1 inhabitant #2 of std.architecture_profile.ArchitectureProfile — TargetArchitecture::Aarch64
+// Scope: Slice-1 inhabitant #2 of std.architecture_profile.ArchitectureProfile — CpuArchitecture::Aarch64
 // with cited machine facts, aapcs64 syscall convention, and downward stack.
 //
 // Anchor: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst (§5.4.2 stack; §4.1 alignment)
@@ -23,6 +23,7 @@ import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
 import std.abi { ArchitecturalRegister, StackLayout }
 import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
 import std.os.invocation { SyscallAbiSurface }
+import std.os.types { NobleNumbat2404Lts, UbuntuOs }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
 
@@ -52,6 +53,7 @@ data aarch64_linux_architecture_profile: ArchitectureProfile = {
 
 data aarch64_linux_deployment_target: DeploymentTarget = {
   profile: aarch64_linux_architecture_profile,
+  operating_system: UbuntuOs { distro: NobleNumbat2404Lts },
   invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
 }
 
@@ -75,6 +77,13 @@ fn witness_convention_syscall_number_is_x8() -> Bool {
 
 fn witness_stack_grows_down() -> Bool {
   aarch64_linux_architecture_profile.stack_layout.grows_down == true
+}
+
+fn witness_deployment_operating_system_is_ubuntu_24_04() -> Bool {
+  match aarch64_linux_deployment_target.operating_system {
+    UbuntuOs { distro: NobleNumbat2404Lts } => true
+    _ => false
+  }
 }
 
 fn witness_deployment_invocation_matches_linux_abi() -> Bool {
