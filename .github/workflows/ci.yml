@@ -59,6 +59,40 @@ jobs:
         sudo -n true 2>/dev/null && fail "has passwordless sudo"
         { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
         echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
+  # Docs/markdown-only diffs cannot affect .dag lens witnesses — classify before dispatching
+  # the v4_lens_* lane (fleet crisis 2026-06-15). Fail-closed on unknown events.
+  ci_lens_lane_class:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    outputs:
+      lens_lane_required: ${{ steps.class.outputs.lens_lane_required }}
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Classify lens lane requirement (docs-only skip)
+      id: class
+      run: bash scripts/ci-lens-lane-required.sh
+  # Fleet compile admission shard — cross-PR spread only (run_id mod K; identical within one run).
+  # Per-job suffix on compile concurrency groups (below) prevents within-run cancellation:
+  # GHA default queue allows one pending job per group; N parallel jobs sharing one group
+  # cancel each other (observed 69321a4: ci_floor + corpus legs cancelled at spawn).
+  ci_fleet_shard:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 2
+    outputs:
+      shard: ${{ steps.calc.outputs.shard }}
+    steps:
+    - name: Compute fleet compile shard (run_id mod K)
+      id: calc
+      run: |
+        cap=16
+        shard=$(( GITHUB_RUN_ID % cap ))
+        echo "shard=${shard}" >> "$GITHUB_OUTPUT"
+        echo "::notice::fleet compile shard ${shard}/${cap} (authority: operator_fleet_ci_compile_dispatch_cap)"
   fmt:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
@@ -89,7 +123,6 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -259,7 +292,6 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -454,7 +486,6 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -553,6 +584,10 @@ jobs:
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
   # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
+    needs: [ci_fleet_shard]
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -583,7 +618,6 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -718,6 +752,10 @@ jobs:
   # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
   # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
   ci_floor_parity:
+    needs: [ci_fleet_shard]
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -748,7 +786,6 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -894,6 +931,10 @@ jobs:
   # PR -- branch protection references `ci_floor_emit` by name (unchanged).
   # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
+    needs: [ci_fleet_shard]
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -924,7 +965,6 @@ jobs:
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
         # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1042,6 +1082,11 @@ jobs:
   # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
+    needs: [ci_lens_lane_class, ci_fleet_shard]
+    if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
     # job's UNCONTENDED wall structurally outgrew 20m. Per-step baseline: the
@@ -1072,7 +1117,6 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1204,6 +1248,11 @@ jobs:
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
+    needs: [ci_lens_lane_class, ci_fleet_shard]
+    if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
     # as v4_lens_gate above (uncontended wall ~16m x2 = 32, rounded to 35;
@@ -1216,7 +1265,6 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1363,6 +1411,11 @@ jobs:
   # Enforced via the `ci` aggregator. dissolve-on: PR3 (uniform ci_claim_gate
   # single-process perturb) re-absorbs this split.
   v4_lens_ci_perturb:
+    needs: [ci_lens_lane_class, ci_fleet_shard]
+    if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}-${{ matrix.shard }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # Per-shard budget rule (documented uncontended wall x2): with N=4 the
     # heaviest shard owns 4 of 15 rows; ~108s cold resolve/row + per-row src/v4
@@ -1381,7 +1434,6 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1495,6 +1547,10 @@ jobs:
   # CI: --shard a|b --spot-perturb-check; full --perturb-check local-only (both shards).
   # dissolve-on-arrival: #4783 multi-entry claim_batch shrinks Phase A wall.
   v4_claim_witness_corpus_a:
+    needs: [ci_fleet_shard]
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
@@ -1503,7 +1559,6 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1604,6 +1659,10 @@ jobs:
     - name: claim-witness corpus enrollment gate (shard a)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
   v4_claim_witness_corpus_b:
+    needs: [ci_fleet_shard]
+    concurrency:
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
+      cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
@@ -1612,7 +1671,6 @@ jobs:
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -1733,15 +1791,15 @@ jobs:
           echo "::error::ci_floor_emit job did not succeed (result=${{ needs.ci_floor_emit.result }}); ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.v4_lens_gate.result }}" != "success" ]]; then
+        if [[ "${{ needs.v4_lens_gate.result }}" != "success" && "${{ needs.v4_lens_gate.result }}" != "skipped" ]]; then
           echo "::error::v4_lens_gate job did not succeed (result=${{ needs.v4_lens_gate.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.v4_lens_ci.result }}" != "success" ]]; then
+        if [[ "${{ needs.v4_lens_ci.result }}" != "success" && "${{ needs.v4_lens_ci.result }}" != "skipped" ]]; then
           echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.v4_lens_ci_perturb.result }}" != "success" ]]; then
+        if [[ "${{ needs.v4_lens_ci_perturb.result }}" != "success" && "${{ needs.v4_lens_ci_perturb.result }}" != "skipped" ]]; then
           echo "::error::v4_lens_ci_perturb matrix did not succeed (result=${{ needs.v4_lens_ci_perturb.result }}); a perturb shard was skipped, cancelled, or failed -- red-under-mutation coverage incomplete, ci aggregator fails closed."
           exit 1
         fi
