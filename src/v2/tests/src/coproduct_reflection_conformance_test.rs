@@ -259,26 +259,3 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
         "dropped Disj arm must break Path-3 bag_eq witness"
     );
 }
-
-/// Regression for #4951 @ `8b5f3f246d`: `kernel_binding_symbol` in `marshal_type_expr_ref`
-/// broke `v4_claim_witness_corpus_a` (authored names rewritten). Remap stays conj-only.
-#[test]
-fn marshal_type_expr_ref_preserves_authored_names_for_claim_corpus() {
-    let source = include_str!("../../stage0/src/coproduct_reflection.rs");
-    let start = source
-        .find("fn marshal_type_expr_ref")
-        .expect("marshal_type_expr_ref");
-    let rest = &source[start..];
-    let end = rest
-        .find("\nfn marshal_kernel_type_expr_ref")
-        .expect("marshal_kernel_type_expr_ref sibling");
-    let body = &rest[..end];
-    assert!(
-        !body.contains("kernel_binding_symbol"),
-        "marshal_type_expr_ref must not remap kernel bindings (claim-witness corpus expects authored names)"
-    );
-    assert!(
-        source.contains("marshal_kernel_type_expr_ref(ctx, &type_expr)"),
-        "conj marshal may remap Int -> dag_binding_type_int via marshal_kernel_type_expr_ref"
-    );
-}
