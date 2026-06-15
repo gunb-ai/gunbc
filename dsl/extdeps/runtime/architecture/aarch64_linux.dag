@@ -22,6 +22,7 @@ import extdeps.runtime.abi.aapcs64 {
 import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
 import std.abi { ArchitecturalRegister, StackLayout }
 import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
 
@@ -51,7 +52,7 @@ data aarch64_linux_architecture_profile: ArchitectureProfile = {
 
 data aarch64_linux_deployment_target: DeploymentTarget = {
   profile: aarch64_linux_architecture_profile,
-  invocation: linux_aarch64_syscall_abi,
+  invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
 }
 
 // Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
@@ -77,5 +78,8 @@ fn witness_stack_grows_down() -> Bool {
 }
 
 fn witness_deployment_invocation_matches_linux_abi() -> Bool {
-  aarch64_linux_deployment_target.invocation == linux_aarch64_syscall_abi
+  match aarch64_linux_deployment_target.invocation {
+    SyscallAbiSurface { abi: a } => a == linux_aarch64_syscall_abi
+    _ => false
+  }
 }
