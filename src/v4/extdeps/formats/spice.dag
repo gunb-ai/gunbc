@@ -548,7 +548,7 @@ fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
     ""
   } else if spice_body_has_tran_directive(body: netlist.body) {
     spice_text_concat(
-      left: spice_text_concat(left: base, right: "\n.control\nrun\nprint v(n2)\n.endc"),
+      left: spice_text_concat(left: base, right: "\n.control\nrun\nprint v(n2)\nquit\n.endc"),
       right: "\n.end"
     )
   } else {

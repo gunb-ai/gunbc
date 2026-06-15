@@ -79,6 +79,7 @@ C1 n2 0 1e-6
 .control
 run
 print v(n2)
+quit
 .endc
 .end
 NETLIST
