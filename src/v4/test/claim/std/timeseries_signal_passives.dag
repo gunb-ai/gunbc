@@ -1,5 +1,6 @@
 // src/v4/test/claim/std/timeseries_signal_passives.dag
 // Scope: canonical S1 witnesses — spice passive projection + torsor carriers.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 module v4.test.claim.std.timeseries_signal_passives
 
@@ -42,6 +43,7 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
+  UnifiedTestClaim,
   Unit,
   manual_claim_anchor
 }
@@ -128,46 +130,58 @@ fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   )
 }
 
-data claim_spice_resistor_passive_spec: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Resistor projects ResistorPassive topology",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_resistor_projects_resistor_passive_topology_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `spice_resistor_projects_resistor_passive_topology_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_spice_resistor_passive_spec: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: spice_resistor_projects_resistor_passive_topology_holds
+  }
 }
 
-data claim_spice_capacitor_passive_arm: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Capacitor projects CapacitorPassive arm",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_capacitor_projects_capacitor_passive_arm_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `spice_capacitor_projects_capacitor_passive_arm_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_spice_capacitor_passive_arm: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: spice_capacitor_projects_capacitor_passive_arm_holds
+  }
 }
 
-data claim_spice_inductor_passive_arm: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Inductor projects InductorPassive arm",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_inductor_projects_inductor_passive_arm_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `spice_inductor_projects_inductor_passive_arm_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_spice_inductor_passive_arm: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: spice_inductor_projects_inductor_passive_arm_holds
+  }
 }
 
-data claim_passive_topology_preserves_name: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: passive_topology_from_component preserves name",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: passive_topology_preserves_component_name_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `passive_topology_preserves_component_name_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_passive_topology_preserves_name: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: passive_topology_preserves_component_name_holds
+  }
 }
 
-data claim_named_affine_voltage_preserves_reference: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: named_affine_voltage preserves GroundReference",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: named_affine_voltage_preserves_ground_reference_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `named_affine_voltage_preserves_ground_reference_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_named_affine_voltage_preserves_reference: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: named_affine_voltage_preserves_ground_reference_holds
+  }
 }
 
-data claim_absolute_potential_preserves_reference: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: absolute_potential_from_named preserves reference",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: absolute_potential_from_named_preserves_reference_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `absolute_potential_from_named_preserves_reference_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_absolute_potential_preserves_reference: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+    function: absolute_potential_from_named_preserves_reference_holds
+  }
 }
 
 data claim_potential_difference_of_magnitude_structural: TestClaim = StructuralEqualsClaim {
