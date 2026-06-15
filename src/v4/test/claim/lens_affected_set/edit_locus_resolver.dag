@@ -14,11 +14,12 @@ import v4.lens.edit_locus {
   affected_set_reading_from_git_diff_provenance,
   resolve_edit_locus
 }
+import v4.extdeps.languages.dag { dag_mvp1_source_text }
 import v4.compiler.source_authority {
   DagSource,
   DagSourceReadWitness,
   source_ir_artifact_provenance,
-  source_ir_node_artifact_provenance
+  source_ir_node_artifact_provenance_mvp1
 }
 import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
@@ -52,7 +53,8 @@ data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_s
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
-data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + y }"
+data edit_locus_source_producer_mvp1_fixture_source: DagSource = dag_mvp1_source_text
+data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
 
 data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -62,6 +64,12 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
+  artifact: edit_locus_source_producer_fixture_artifact,
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+}
+
+data edit_locus_source_producer_mvp1_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: edit_locus_source_producer_mvp1_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
   compilation_unit: edit_locus_source_producer_fixture_compilation_unit
 }
@@ -164,6 +172,11 @@ fn edit_locus_occurrence_textual_file_eq(
   }
 }
 
+// 🟡 gated — feature:source-authority-span-lane — bind
+// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
+// (span_index sealed until span-consuming lane) — dissolve-on-arrival: re-enroll as
+// UnifiedTestClaim once parse_module witness-eval terminates; forbidden: E-10 registration
+// while span_index consumers cannot execute green.
 fn edit_locus_source_provenance_producer_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -190,8 +203,8 @@ fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
 }
 
 fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
-  match source_ir_node_artifact_provenance(
-    source_read: edit_locus_source_producer_fixture_source_read
+  match source_ir_node_artifact_provenance_mvp1(
+    source_read: edit_locus_source_producer_mvp1_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       let producer_graph = claim_inferred_tree(
@@ -241,6 +254,10 @@ fn edit_locus_root_from_source_locus_holds(
   }
 }
 
+// 🟡 gated — feature:source-authority-span-lane — bind
+// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
+// (span_index sealed until span-consuming lane) — dissolve-on-arrival: re-enroll as
+// UnifiedTestClaim once parse_module witness-eval terminates.
 fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -257,7 +274,7 @@ fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
 }
 
 fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
-  match source_ir_node_artifact_provenance(
+  match source_ir_node_artifact_provenance_mvp1(
     source_read: edit_locus_source_producer_malformed_source_read
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -269,8 +286,6 @@ data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolut
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
-data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
-data edit_locus_source_provenance_parse_root_span_claim_passes: Bool = edit_locus_source_provenance_parse_root_span_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 
@@ -292,15 +307,6 @@ data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_fail_closed_holds
-  }
-}
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `edit_locus_source_provenance_producer_holds` so glob discovery finds the witness without the central roster.
-data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
-    function: edit_locus_source_provenance_producer_holds
   }
 }
 

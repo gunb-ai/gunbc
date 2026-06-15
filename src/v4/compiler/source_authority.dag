@@ -9,17 +9,30 @@ module v4.compiler.source_authority
 
 
 import v4.compiler.normalize { normalize, NormalizedTree }
-import v4.compiler.parse { parse, parse_module }
+import v4.compiler.parse {
+  ParseArtifact,
+  grammar_validate_for_parse,
+  parse,
+  parse_module,
+  parse_production_tree,
+  parse_stage_locus_port
+}
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag {
   DagLanguageModel,
+  dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
+import v4.std.compilers.lexing { TokenStream }
+import v4.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
+import v4.std.provenance { span_index_empty }
+import v4.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  NonEmptyDiagnostics,
   Outcome,
   Rejected,
   Unavailable,
@@ -59,6 +72,17 @@ type DagSourceReadWitness {
   // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
   // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
+}
+
+// Whole source-root ingest closure — the same set `--source-root src/v4` walks.
+// M9 home: sibling to discovery_enumeration.dag (one enumeration authority).
+type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
+
+// OOM-guard scalar receipt — mirrors OwnedDataDiscoveryReceipt shape.
+type SourceRootProvenanceCoverageReceipt {
+  ingest_read_count: Int
+  produced_row_count: Int
+  coverage_complete: Bool
 }
 
 // PROV wave-2: parse tree + off-tree SpanIndex for executing provenance consumers (edit_locus).
@@ -200,6 +224,48 @@ fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
 }
 
 
+fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^dag_production_mvp1_fn_add,
+    productions: [dag_grammar_production_mvp1_fn_add()],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+
+// 🟡 gated — feature:source-authority-witness-eval-parse-module — bind
+// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
+// (span_index sealed on SourceIrArtifactProvenance) + wave-1 parse-table witness-eval
+// termination — dissolve-on-arrival: node_artifact_provenance_fold_step uses parse_module once
+// witness-eval terminates; forbidden: routing mvp1 empty span_index through
+// source_ir_artifact_provenance_from_model.
+fn source_authority_parse_source_file_tokens(
+  tokens: TokenStream
+) -> Outcome<ParseArtifact> {
+  let root = source_authority_mvp1_fn_parse_root()
+  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
+    Accepted { value: validated, diagnostics: _ } =>
+      match parse_production_tree(
+        tokens: tokens.tokens,
+        validated: validated,
+        production_name: ^dag_production_mvp1_fn_add
+      ) {
+        Accepted { value: tree, diagnostics: d } =>
+          outcome_accepted(
+            value: ParseArtifact {
+              tree: tree,
+              span_index: span_index_empty()
+            }
+          )
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: DagLanguageModel
@@ -267,6 +333,110 @@ fn source_ir_node_artifact_provenance(
     source_read: source_read,
     lm: dag_language_model_wave1_modeled()
   )
+}
+
+
+// Node-only per-read producer for whole-ingest fold (mvp1 fn-surface; no span_index).
+fn source_ir_node_artifact_provenance_mvp1_from_model(
+  source_read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: source_authority_parse_source_file_tokens(tokens: token_stream),
+            f: fn(artifact) {
+              outcome_accepted(
+                value: NodeArtifactProvenance {
+                  node: artifact.tree,
+                  artifact: source_read.artifact
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+  }
+}
+
+
+fn source_ir_node_artifact_provenance_mvp1(
+  source_read: DagSourceReadWitness
+) -> Outcome<NodeArtifactProvenance> {
+  source_ir_node_artifact_provenance_mvp1_from_model(
+    source_read: source_read,
+    lm: dag_language_model_wave1_modeled()
+  )
+}
+
+
+type NodeArtifactProvenanceFoldState
+  = NodeArtifactProvenanceFoldOk {
+      provenance: FreeMonoid<NodeArtifactProvenance>
+    }
+  | NodeArtifactProvenanceFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+
+
+fn node_artifact_provenance_fold_step(
+  state: NodeArtifactProvenanceFoldState,
+  read: DagSourceReadWitness
+) -> NodeArtifactProvenanceFoldState {
+  match state {
+    NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      NodeArtifactProvenanceFoldFailed { diagnostics: d }
+    NodeArtifactProvenanceFoldOk { provenance: acc } =>
+      match source_ir_node_artifact_provenance_mvp1(source_read: read) {
+        Accepted { value: row, diagnostics: _ } =>
+          NodeArtifactProvenanceFoldOk {
+            provenance: list_snoc_item(xs: acc, item: row)
+          }
+        Rejected { diagnostics: d } =>
+          NodeArtifactProvenanceFoldFailed { diagnostics: d }
+      }
+  }
+}
+
+
+// Whole-ingest fold: per-read mvp1 node provenance (file-grain v1), monoid-concatenated;
+// first `Rejected` read short-circuits (fail-closed widen downstream).
+fn node_artifact_provenance_from_source_root(
+  ingest: SourceRootIngest
+) -> Outcome<FreeMonoid<NodeArtifactProvenance>> {
+  match fold_list(
+    xs: ingest,
+    empty: NodeArtifactProvenanceFoldOk { provenance: Empty },
+    cons: fn(state, read) {
+      node_artifact_provenance_fold_step(state: state, read: read)
+    }
+  ) {
+    NodeArtifactProvenanceFoldOk { provenance: p } =>
+      outcome_accepted(value: p)
+    NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
+fn source_root_provenance_coverage_receipt(
+  ingest: SourceRootIngest,
+  produced: FreeMonoid<NodeArtifactProvenance>
+) -> SourceRootProvenanceCoverageReceipt {
+  SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: length(xs: ingest),
+    produced_row_count: length(xs: produced),
+    coverage_complete: length(xs: ingest) == length(xs: produced)
+  }
 }
 
 
