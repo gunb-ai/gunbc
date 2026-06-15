@@ -3,10 +3,12 @@
 //        COVERING half by-execution — coverage_domain_equivalence_argument_holds() asserts the
 //        perturb roster spans EACH python layer-root and EACH forbidden form (drift-resistant:
 //        a coverage-breaking roster edit goes RED, not merely count-shrink).
-// Authority: scripts/check_v4_layering_imports.py rule set. Subsumption = covering-proof (this
-//        file) + DETECTION-proof = the executable (i) gate-perturb (plant → REAL scan → RED) run
-//        by scripts/v4-layering-imports-gate.sh --perturb-check, GATING in CI. Neither half alone
-//        is the sole proof; both together discharge the python gate's domain.
+// Authority: scripts/check_v4_layering_imports.py rule set @ daf95e49 (merge-base; the python gate
+//        is DELETED in this PR — this is a one-time CUTOVER receipt against that gate's domain as it
+//        stood at daf95e49, git-recoverable). Subsumption = covering-proof (this file) +
+//        DETECTION-proof = the executable (i) gate-perturb (plant → REAL scan → RED) run by
+//        scripts/v4-layering-imports-gate.sh --perturb-check, GATING in CI. Neither half alone is
+//        the sole proof; both together discharge the (deleted) python gate's domain.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v4.test.claim.layering_imports.coverage_domain_equivalence
@@ -16,7 +18,8 @@ import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 
-// --- Python source rule enumeration (check_v4_layering_imports.py) ---
+// --- Python source rule enumeration (check_v4_layering_imports.py @ daf95e49; DELETED in this PR;
+//     line numbers below are at daf95e49, git-recoverable) ---
 // LAYER_ROOTS (:31) = 5 roots: src/v4/std, src/v3/std, dsl/std, src/v4/extdeps, dsl/extdeps
 // file type = *.dag only (rglob :87)
 // import form = leading `import <dotted.path>` (IMPORT_RE ^\s*import\s+([\w.]+) :26)
@@ -24,7 +27,7 @@ import v4.std.text { String }
 //       ∪ FORBIDDEN_PREFIXES {v3.compiler., v4.compiler.} (:27), tested :75-78
 // => COMPLETE violation domain = {5 roots} × {4 target-forms} over leading-import, *.dag only.
 
-data python_rule_source: String = "scripts/check_v4_layering_imports.py"
+data python_rule_source: String = "scripts/check_v4_layering_imports.py @ daf95e49 (deleted in this PR)"
 
 data python_layer_root_src_v4_std: String = "src/v4/std"
 data python_layer_root_src_v3_std: String = "src/v3/std"

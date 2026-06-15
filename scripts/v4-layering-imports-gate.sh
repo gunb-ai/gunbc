@@ -116,7 +116,9 @@ run_scanner_perturb_case() {
   echo "::endgroup::"
 }
 
-# Coverage-domain completeness (subsumes scripts/check_v4_layering_imports.py):
+# Coverage-domain completeness (subsumes scripts/check_v4_layering_imports.py @ daf95e49, the
+# merge-base; the python gate is DELETED in this PR — line numbers below are at daf95e49,
+# git-recoverable):
 # The python rules are LAYER_ROOTS = {src/v4/std, src/v3/std, dsl/std, src/v4/extdeps,
 # dsl/extdeps} (:31), *.dag only (:87), leading `import <dotted>` (IMPORT_RE :26),
 # target ∈ FORBIDDEN_EXACT {v3.compiler, v4.compiler} ∪ FORBIDDEN_PREFIXES {v3.compiler.,
@@ -137,7 +139,7 @@ run_coverage_domain_equivalence_witness() {
 }
 
 run_scanner_perturb_receipts() {
-  echo "::group::coverage-domain-equivalence witness (python source: scripts/check_v4_layering_imports.py)"
+  echo "::group::coverage-domain-equivalence witness (python source: scripts/check_v4_layering_imports.py @ daf95e49, deleted in this PR)"
   if ! run_coverage_domain_equivalence_witness; then
     echo "::error::coverage-domain-equivalence argument witness failed"
     exit 1
