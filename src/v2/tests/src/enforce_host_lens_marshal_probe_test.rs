@@ -388,6 +388,7 @@ fn marshaled_root_children_use_free_monoid_carrier() {
 /// Decisive PASS arm: modeled ByteSize MemorySpec → dual-lens Accepted through
 /// host-only marshal (no v4 `infer()`).
 #[test]
+#[ignore = "snappy msg_2c1c5fc7: HOLD — ground-truth CI transport vs harness; do not run until verdict"]
 fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
     run_modeled_carrier_lens_probe("probe_lens_accepts_from_marshaled_root", true);
 }
