@@ -43,7 +43,7 @@ cd "$REPO_ROOT"
 echo "[1/3] gunbc run → emit_serial_writer_elf64"
 # gunbc exits 2 for non-ProcessExit return types; bytes still printed to stdout.
 ELF_STDOUT=$(gunbc run --source-root dsl \
-  --entry extdeps.boot.serial_emit.emit_serial_writer_elf64 2>/dev/null) || true
+  --entry dsl/extdeps/boot/serial_emit.dag --function emit_serial_writer_elf64 2>/dev/null) || true
 
 # --- 2. Build 512-byte boot sector (Python) ---
 echo "[2/3] Building boot sector"
@@ -134,14 +134,19 @@ PYEOF
 echo "[3/3] QEMU: booting x86 (floppy), COM1 → serial.log"
 SERIAL_LOG="$WORK/serial.log"
 
-timeout 4 qemu-system-i386 \
+# Run QEMU (macOS lacks GNU timeout; use background + sleep + kill)
+qemu-system-i386 \
   -drive file="$WORK/boot.img",format=raw,if=floppy \
   -serial file:"$SERIAL_LOG" \
   -machine accel=tcg \
   -nographic \
   -no-reboot \
   -m 16M \
-  2>/dev/null || true
+  2>/dev/null &
+QEMU_PID=$!
+sleep 4
+kill "$QEMU_PID" 2>/dev/null || true
+wait "$QEMU_PID" 2>/dev/null || true
 
 echo ""
 echo "=== Serial transcript ==="
