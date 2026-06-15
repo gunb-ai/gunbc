@@ -6,10 +6,10 @@
 // proves. The closed GateSource coproduct makes it possible to reason
 // about gate kind without parsing command strings.
 //
-// Floor membership (operator-locked): three blocking gates —
-// dsl compile-clean, fmt, v4_lens_gate. Demoted gates still run+log
-// but do not fail the pipeline. Deleted jobs (doc_refs, affected_timings,
-// timeout_budgets) are absent from this model.
+// Floor membership (operator-locked v2): four blocking gates —
+// dsl compile-clean (full tree minus enumerated allowlist), fmt,
+// affected-tests (fail-safe superset selector battery), dag parity.
+// Demote spine dissolved — former demoted jobs are tests gate-3 runs.
 //
 // Consumers:
 //   dsl/gunbc/tools/ci_runner.dag — runtime execution via run_ci_pipeline()
@@ -33,16 +33,8 @@ data dsl_root: SourceRoot = { path: "dsl" }
 type GateSource
   = DslCompileCleanGate { root: SourceRoot }
   | FmtGate
-  | LensWitnessGate
+  | AffectedTestsGate
   | DagParityGate
-  | NodeFrontierGate
-  | LensPerturbGate
-  | CorpusEnrollmentGate { shard: CorpusShard }
-  | LayeringImportsGate
-  | FreshnessGate
-  | FullTreeEmitGate
-
-type CorpusShard = ShardA | ShardB
 
 // ── Command carrier ─────────────────────────────────────────────────
 
@@ -50,14 +42,8 @@ type CorpusShard = ShardA | ShardB
 type CICommand
   = DslCompileCleanCommand { root: SourceRoot }
   | FmtCommand
-  | LensWitnessCommand
+  | AffectedTestsCommand
   | DagParityCommand
-  | NodeFrontierCommand
-  | LensPerturbCommand
-  | CorpusEnrollmentCommand { shard: CorpusShard }
-  | LayeringImportsCommand
-  | FreshnessVerifyCommand
-  | FullTreeEmitCommand
 
 type CIGate {
   id: String
@@ -84,11 +70,11 @@ type CIWorkflowDag {
 
 // ── Gates ───────────────────────────────────────────────────────────
 
-// BLOCKING FLOOR (operator-locked): three gates.
+// BLOCKING FLOOR (operator-locked v2): four gates.
 
 data dsl_compile_clean_gate: CIGate = {
   id: "dsl-compile-clean",
-  name: "DSL compile-clean",
+  name: "DSL full-tree parse-clean",
   command: DslCompileCleanCommand { root: dsl_root },
   blocking: true,
   source: DslCompileCleanGate { root: dsl_root }
@@ -102,80 +88,20 @@ data fmt_gate: CIGate = {
   source: FmtGate
 }
 
-data v4_lens_gate: CIGate = {
-  id: "v4-lens-gate",
-  name: "v4 lens witnesses",
-  command: LensWitnessCommand,
+data affected_tests_gate: CIGate = {
+  id: "affected-tests",
+  name: "affected TestClaim selection + run",
+  command: AffectedTestsCommand,
   blocking: true,
-  source: LensWitnessGate
+  source: AffectedTestsGate
 }
-
-// DEMOTED — still run+log, blocking:false.
 
 data ci_floor_parity_gate: CIGate = {
   id: "ci-floor-parity",
   name: "DAG parity + census ratchet",
   command: DagParityCommand,
-  blocking: false,
+  blocking: true,
   source: DagParityGate
-}
-
-data v4_lens_ci_gate: CIGate = {
-  id: "v4-lens-ci",
-  name: "node-frontier GREEN witnesses",
-  command: NodeFrontierCommand,
-  blocking: false,
-  source: NodeFrontierGate
-}
-
-data v4_lens_ci_perturb_gate: CIGate = {
-  id: "v4-lens-ci-perturb",
-  name: "node-frontier PERTURB shards",
-  command: LensPerturbCommand,
-  blocking: false,
-  source: LensPerturbGate
-}
-
-data v4_claim_witness_corpus_a_gate: CIGate = {
-  id: "v4-claim-witness-corpus-a",
-  name: "claim-witness corpus shard a",
-  command: CorpusEnrollmentCommand { shard: ShardA },
-  blocking: false,
-  source: CorpusEnrollmentGate { shard: ShardA }
-}
-
-data v4_claim_witness_corpus_b_gate: CIGate = {
-  id: "v4-claim-witness-corpus-b",
-  name: "claim-witness corpus shard b",
-  command: CorpusEnrollmentCommand { shard: ShardB },
-  blocking: false,
-  source: CorpusEnrollmentGate { shard: ShardB }
-}
-
-data layering_imports_gate: CIGate = {
-  id: "layering-imports",
-  name: "cross-layer import gate",
-  command: LayeringImportsCommand,
-  blocking: false,
-  source: LayeringImportsGate
-}
-
-// VERIFY-THEN-DELETE candidates — demoted pending subsumption proof.
-
-data ci_floor_freshness_gate: CIGate = {
-  id: "ci-floor-freshness",
-  name: "stage0 freshness",
-  command: FreshnessVerifyCommand,
-  blocking: false,
-  source: FreshnessGate
-}
-
-data ci_floor_emit_gate: CIGate = {
-  id: "ci-floor-emit",
-  name: "M1 rust+dag full-tree emit",
-  command: FullTreeEmitCommand,
-  blocking: false,
-  source: FullTreeEmitGate
 }
 
 // ── Pipeline assembly ───────────────────────────────────────────────
@@ -185,15 +111,8 @@ data ci_pipeline: CIPipeline = {
   gates: [
     dsl_compile_clean_gate,
     fmt_gate,
-    v4_lens_gate,
-    ci_floor_parity_gate,
-    v4_lens_ci_gate,
-    v4_lens_ci_perturb_gate,
-    v4_claim_witness_corpus_a_gate,
-    v4_claim_witness_corpus_b_gate,
-    layering_imports_gate,
-    ci_floor_freshness_gate,
-    ci_floor_emit_gate
+    affected_tests_gate,
+    ci_floor_parity_gate
   ]
 }
 
@@ -201,6 +120,7 @@ data ci_workflow_dag: CIWorkflowDag = {
   pipeline: ci_pipeline,
   edges: [
     { from: dsl_compile_clean_gate, to: fmt_gate },
-    { from: fmt_gate, to: v4_lens_gate }
+    { from: fmt_gate, to: affected_tests_gate },
+    { from: affected_tests_gate, to: ci_floor_parity_gate }
   ]
 }
