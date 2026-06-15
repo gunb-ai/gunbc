@@ -430,6 +430,21 @@ fn spice_emit_component(component: Component) -> Optional<String> {
   }
 }
 
+fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> Optional<String> {
+  match spice_emit_node_ref(node: binding.node) {
+    Present { value: node_spelling } =>
+      Present {
+        value: spice_text_concat4(
+          a: "v(",
+          b: node_spelling,
+          c: ")=",
+          d: binding.value.lexeme
+        )
+      }
+    Absent => Absent
+  }
+}
+
 fn spice_emit_directive(directive: Directive) -> Optional<String> {
   match directive {
     Op => Present { value: ".op" }
@@ -441,8 +456,37 @@ fn spice_emit_directive(directive: Directive) -> Optional<String> {
           right: tstop.lexeme
         )
       }
+    InitialCondition { assignments } =>
+      match spice_emit_node_voltage_binding(binding: assignments.first) {
+        Present { value: binding_text } =>
+          Present {
+            value: spice_text_concat(left: ".ic ", right: binding_text)
+          }
+        Absent => Absent
+      }
     _ => Absent
   }
+}
+
+fn spice_deck_statement_is_tran_directive(stmt: DeckStatement) -> Bool {
+  match stmt {
+    DeckDirective { directive: Tran { tstep, tstop } } => true
+    _ => false
+  }
+}
+
+fn spice_body_has_tran_directive(body: List<DeckStatement>) -> Bool {
+  fold_list(
+    xs: body,
+    empty: false,
+    cons: fn(acc, stmt) {
+      if acc {
+        true
+      } else {
+        spice_deck_statement_is_tran_directive(stmt: stmt)
+      }
+    }
+  )
 }
 
 fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
@@ -496,10 +540,17 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
 }
 
 // ngspice-ready emit: appends mandatory `.end` terminator required by all SPICE3 parsers.
+// Transient decks also carry the ngspice-39 batch `.control run` trailer so `ngspice -b`
+// executes the analysis without a separate interactive wrapper.
 fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
   let base = spice_emit(netlist: netlist)
   if base == "" {
     ""
+  } else if spice_body_has_tran_directive(body: netlist.body) {
+    spice_text_concat(
+      left: spice_text_concat(left: base, right: "\n.control\nrun\nprint v(n2)\n.endc"),
+      right: "\n.end"
+    )
   } else {
     spice_text_concat(left: base, right: "\n.end")
   }

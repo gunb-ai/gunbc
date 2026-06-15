@@ -58,8 +58,9 @@ echo "oracle: step 1 — verifying emit correctness via gunbc --claim-run ..."
 if ! "$gunbc_bin" run \
     --source-root "$root/src/v4" \
     --entry "$claim_entry" \
+    --function spice_rc_ngspice_op_holds \
     --claim-run 2>&1; then
-  echo "oracle: FAIL — emit claim returned false (spice_emit_ngspice output mismatch)." >&2
+  echo "oracle: FAIL — spice_rc_ngspice_op_holds returned false (emit/sim deck mismatch)." >&2
   exit 1
 fi
 echo "oracle: step 1 PASS — spice_emit_ngspice output matches spice_rc_tran_ngspice_expected."
@@ -68,13 +69,17 @@ echo "oracle: step 1 PASS — spice_emit_ngspice output matches spice_rc_tran_ng
 # The literal below matches spice_rc_tran_ngspice_expected in spice_rc_ngspice_oracle.dag.
 # Step 1 passing proves they are equal to spice_emit_ngspice(rc_tran_deck); this is not
 # a parallel authority but a consequence of step 1.
-# Line order: title, V1, R1, C1, .tran, .end (fold_list over spice_rc_tran_deck body).
 netlist="$(cat <<'NETLIST'
 * rc tran witness
 V1 n1 0 DC 5
 R1 n1 n2 1000
 C1 n2 0 1e-6
+.ic v(n2)=0
 .tran 1us 10ms
+.control
+run
+print v(n2)
+.endc
 .end
 NETLIST
 )"
