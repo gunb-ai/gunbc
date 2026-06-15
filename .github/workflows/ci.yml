@@ -226,9 +226,11 @@ jobs:
     - name: Doc-chain diagram is current (regenerated == embedded)
       run: python3 scripts/check_doc_refs.py --check-graph
   # Cross-layer import gate — INVARIANTS P2 dependency direction (std/ and extdeps/
-  # must not import v3.compiler / v4.compiler). Host enumerates import facts;
-  # v4.lens.layering_imports owns violation semantics; ci-claim-gate runs witnesses
-  # (fixture rows prove detection; --perturb-check flips each witness to false).
+  # must not import v3.compiler / v4.compiler). Host enumerates import facts via
+  # layering_imports_scan; v4.lens.layering_imports owns violation semantics.
+  # scripts/v4-layering-imports-gate.sh green pass: live-tree scan + clean_tree witness.
+  # --perturb-check: host scanner-execution perturb (plant in temp root -> real scan ->
+  # manifest -> witness RED on detection, clean_tree green on removal) per root×form.
   layering_imports:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
