@@ -272,6 +272,10 @@ fn finer_expr_prod_step_after_19_warmup_terminates() -> Bool {
   finer_one_prod_step_after_19_warmup(name: ^dag_production_expr)
 }
 
+fn finer_production_count_is_34() -> Bool {
+  length(xs: finer_dag_grammar_root().productions) == 34
+}
+
 fn finer_production_count_report() -> Bool {
   length(xs: finer_dag_grammar_root().productions) > 0
 }
