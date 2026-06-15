@@ -1174,7 +1174,7 @@ mod parse_stage4_prep {
         // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.memory` /
-        // operator fleet DIMM catalog until T-PB-B hand-Rust test floor reaches zero.
+        // SK Hynix DIMM catalog until T-PB-B hand-Rust test floor reaches zero.
         // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
         // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
         // this adds one `#[test]` fn only, same pattern as `handwritten_parser_accepts_cpu_dag`.
@@ -1189,10 +1189,6 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/memory/sk_hynix.dag"),
             "dsl/std/memory/sk_hynix.dag",
-        );
-        parse_file(
-            include_str!("../../../../dsl/std/memory/operator_fleet.dag"),
-            "dsl/std/memory/operator_fleet.dag",
         );
     }
 
