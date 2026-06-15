@@ -80,7 +80,8 @@ type TimeSeriesSample<T> {
   value: T
 }
 
-type TimeSeriesSignal<T> = FreeMonoid<TimeSeriesSample<T>>
+// TimeSeriesSignal<T> intentionally not aliased to FreeMonoid<TimeSeriesSample<T>> —
+// v2 bootstrap cannot instantiate FreeMonoid generic type aliases (see qualified_name.dag).
 
 data timeseries_unit_dt: TimeStepDelta = TimeStepDelta {
   seconds: Float {
@@ -96,42 +97,32 @@ type CurrentSignalSample {
   current: AffineCurrent
 }
 
-type CurrentSignalStream = TimeSeriesSignal<AffineCurrent>
-
 type VoltageSignalSample {
   voltage: AffineVoltage
 }
-
-type VoltageSignalStream = TimeSeriesSignal<AffineVoltage>
 
 // Int scaffolding samples for map/fold algebra witnesses (generic closure deferred).
 type SignalSample {
   value: Int
 }
 
-type SignalStream = TimeSeriesSignal<Int>
+// NOTE: no `type X = FreeMonoid<T>` aliases — v2 bootstrap cannot instantiate
+// FreeMonoid generic type aliases (qualified_name.dag bootstrap-limitation receipt).
 
 // --- Stateless map step (Resistor = map) -----------------------------------
 //
 // Sibling to SourceFold in v4.std.text: per-sample transform, no accumulator.
 
-type TimeSeriesMapStep<I, O> {
-  apply: fn(TimeSeriesSample<I>) -> TimeSeriesSample<O>
-}
-
 fn map_int_sample_double(sample: SignalSample) -> SignalSample {
   SignalSample { value: sample.value * 2 }
 }
 
-fn map_time_series_int(
-  signal: SignalStream,
-  step: TimeSeriesMapStep<Int, Int>
-) -> SignalStream {
+fn map_time_series_int(signal: FreeMonoid<SignalSample>) -> FreeMonoid<SignalSample> {
   fold_list_right(
     xs: signal,
     empty: Empty,
     snoc: fn(acc, sample) {
-      Cons { head: step.apply(sample), tail: acc }
+      Cons { head: map_int_sample_double(sample), tail: acc }
     }
   )
 }
@@ -140,7 +131,7 @@ fn map_time_series_int(
 
 type IntFoldScanAcc {
   state: Int
-  outputs: SignalStream
+  outputs: FreeMonoid<SignalSample>
 }
 
 fn fold_running_sum_step(
@@ -157,7 +148,7 @@ fn fold_running_sum_step(
   }
 }
 
-fn fold_running_sum_int(signal: SignalStream) -> SignalStream {
+fn fold_running_sum_int(signal: FreeMonoid<SignalSample>) -> FreeMonoid<SignalSample> {
   let scanned = fold_list(
     xs: signal,
     empty: IntFoldScanAcc { state: 0, outputs: Empty },
@@ -210,10 +201,10 @@ fn resistor_map_apply(
 
 // v = R · i  (stateless map, frequency-flat)
 fn map_resistor_current_to_voltage(
-  signal: CurrentSignalStream,
+  signal: FreeMonoid<CurrentSignalSample>,
   resistance: Resistance,
   field: PassiveFieldOps
-) -> VoltageSignalStream {
+) -> FreeMonoid<VoltageSignalSample> {
   let ctx = ResistorMapContext { resistance: resistance, field: field }
   fold_list_right(
     xs: signal,
@@ -226,7 +217,7 @@ fn map_resistor_current_to_voltage(
 
 type CapacitorFoldAcc {
   voltage: AffineVoltage
-  outputs: VoltageSignalStream
+  outputs: FreeMonoid<VoltageSignalSample>
 }
 
 fn capacitor_fold_step(
@@ -253,12 +244,12 @@ fn capacitor_fold_step(
 
 // i = C · dv/dt  ⇒  v[n] = v[n-1] + (i[n] · dt) / C
 fn fold_capacitor_current_to_voltage(
-  signal: CurrentSignalStream,
+  signal: FreeMonoid<CurrentSignalSample>,
   capacitance: Capacitance,
   initial_voltage: AffineVoltage,
   dt: TimeStepDelta,
   field: PassiveFieldOps
-) -> VoltageSignalStream {
+) -> FreeMonoid<VoltageSignalSample> {
   let scanned = fold_list(
     xs: signal,
     empty: CapacitorFoldAcc { voltage: initial_voltage, outputs: Empty },
@@ -277,7 +268,7 @@ fn fold_capacitor_current_to_voltage(
 
 type InductorFoldAcc {
   current: AffineCurrent
-  outputs: CurrentSignalStream
+  outputs: FreeMonoid<CurrentSignalSample>
 }
 
 fn inductor_fold_step(
@@ -303,12 +294,12 @@ fn inductor_fold_step(
 
 // v = L · di/dt  ⇒  i[n] = i[n-1] + (v[n] · dt) / L
 fn fold_inductor_voltage_to_current(
-  signal: VoltageSignalStream,
+  signal: FreeMonoid<VoltageSignalSample>,
   inductance: Inductance,
   initial_current: AffineCurrent,
   dt: TimeStepDelta,
   field: PassiveFieldOps
-) -> CurrentSignalStream {
+) -> FreeMonoid<CurrentSignalSample> {
   let scanned = fold_list(
     xs: signal,
     empty: InductorFoldAcc { current: initial_current, outputs: Empty },

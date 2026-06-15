@@ -9,10 +9,7 @@ import v4.std.collection { Absent, Present }
 import v4.std.logic { Bool }
 import v4.std.timeseries_signal {
   SignalSample,
-  SignalStream,
-  TimeSeriesMapStep,
   fold_running_sum_int,
-  map_int_sample_double,
   map_time_series_int,
   passive_spec_from_component
 }
@@ -41,10 +38,7 @@ fn map_preserves_length_holds() -> Bool {
     SignalSample { value: 2 },
     SignalSample { value: 3 }
   ]
-  let output = map_time_series_int(
-    signal: input,
-    step: TimeSeriesMapStep { apply: map_int_sample_double }
-  )
+  let output = map_time_series_int(signal: input)
   length(xs: input) == length(xs: output)
 }
 
