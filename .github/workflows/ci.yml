@@ -131,3 +131,5 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Run modeled CI pipeline (one-binary floor)
       run: cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/gunbc/tools/ci_runner.dag --function run_ci_pipeline
+    - name: Floor witness RED teeth (hermetic by-execution)
+      run: bash scripts/ci-floor-witnesses.sh --red-demo
