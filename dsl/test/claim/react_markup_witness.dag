@@ -22,6 +22,7 @@ import std.react_markup {
   serialize_react_markup,
   serialize_react_markup_unchecked,
   react_markup_node_to_fragment,
+  is_allowed_url_scheme,
   is_trusted_url_scheme,
   validate_react_markup_node,
 }
@@ -70,12 +71,34 @@ fn hostile_data_href() -> ReactMarkupNode {
 
 fn witness_javascript_scheme_rejects() -> Bool {
   !validate_react_markup_node(node: hostile_javascript_href())
-    && !is_trusted_url_scheme(url: "javascript:alert(1)")
+    && !is_allowed_url_scheme(url: "javascript:alert(1)")
 }
 
 fn witness_data_scheme_rejects() -> Bool {
   !validate_react_markup_node(node: hostile_data_href())
-    && !is_trusted_url_scheme(url: "data:text/html,x")
+    && !is_allowed_url_scheme(url: "data:text/html,x")
+}
+
+// Discriminating: reject is NOT char-escape-only — unchecked emit passes the
+// dangerous scheme through escape_url intact (std/markup.dag SECURITY SCOPE).
+fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
+  match serialize_react_markup(node: hostile_javascript_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_react_markup_unchecked(node: hostile_javascript_href())
+      unchecked == "<a href=\"javascript:alert(1)\">click</a>"
+    }
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_data_reject_discriminates_from_char_escape() -> Bool {
+  match serialize_react_markup(node: hostile_data_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_react_markup_unchecked(node: hostile_data_href())
+      starts_with(s: unchecked, prefix: "<a href=\"data:")
+    }
+    EmitOk { html: _ } => false
+  }
 }
 
 fn witness_serialize_rejects_javascript_href() -> Bool {
@@ -91,6 +114,34 @@ fn witness_serialize_rejects_data_href() -> Bool {
     EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
       starts_with(s: u, prefix: "data:")
     EmitOk { html: _ } => false
+  }
+}
+
+// -- allowlist arms: http / https / mailto / relative -------------------------
+
+fn witness_http_scheme_allowed() -> Bool {
+  is_allowed_url_scheme(url: "http://example.com/path")
+    && is_allowed_url_scheme(url: "https://example.com/path")
+}
+
+fn witness_mailto_scheme_allowed() -> Bool {
+  is_allowed_url_scheme(url: "mailto:user@example.com")
+}
+
+fn witness_ftp_scheme_rejected_by_allowlist() -> Bool {
+  !is_allowed_url_scheme(url: "ftp://example.com/file")
+}
+
+fn witness_http_href_serializes() -> Bool {
+  match serialize_react_markup(
+    node: ElementNode {
+      tag: "a",
+      attrs: [ ReactAttr { name: "href", value: "https://gunbc.dev" } ],
+      children: [ ReactTextNode { text: "home" } ],
+    }
+  ) {
+    EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
+    EmitRejected { reason: _ } => false
   }
 }
 
@@ -134,8 +185,14 @@ fn react_markup_keystone_holds() -> Bool {
     && witness_react_fragment_matches_markup_fold()
     && witness_javascript_scheme_rejects()
     && witness_data_scheme_rejects()
+    && witness_javascript_reject_discriminates_from_char_escape()
+    && witness_data_reject_discriminates_from_char_escape()
     && witness_serialize_rejects_javascript_href()
     && witness_serialize_rejects_data_href()
+    && witness_http_scheme_allowed()
+    && witness_mailto_scheme_allowed()
+    && witness_ftp_scheme_rejected_by_allowlist()
+    && witness_http_href_serializes()
     && witness_trusted_href_serializes()
     && witness_req_a_hostile_href_still_emits_with_escaping()
 }
