@@ -1,0 +1,45 @@
+// src/v4/test/claim/lens_unit_modeling/real_source_bare_int_rejected_ingest_stage0.dag
+// Scope: STAGE-0 de-risk FAIL arm — self-contained Source TEXT with bare `ram_bytes: Int`
+//        through compile_ingest_staging (not fixture CoreNodes).
+// Status: additive witness only — no load-bearing pipeline edits.
+
+module v4.test.claim.lens_unit_modeling.real_source_bare_int_rejected_ingest_stage0
+
+import v4.compiler.compile { Source, compile_ingest_staging }
+import v4.compiler.target_carriers { TargetSource }
+import v4.extdeps.languages.rust {
+  rust_mvp1_binding_spellings,
+  rust_mvp1_target_model_node,
+  rust_wave1_lex
+}
+import v4.std.compilers.target_model { TargetModel }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+
+data stage0_authority_source_text: TargetSource = "stage0_real_source_bare_int_rejected_authority"
+
+data stage0_compile_target: TargetModel = TargetModel {
+  bundle: rust_mvp1_target_model_node(),
+  lex: rust_wave1_lex(),
+  binding_spellings: rust_mvp1_binding_spellings(),
+  authority_source_text: stage0_authority_source_text
+}
+
+data stage0_reject_bare_int_source: Source = "module stage0.real_source.unit_modeling.reject\n\ntype MemorySpec {\n  ram_bytes: Int\n}\n"
+
+fn anchor_stage0_reject_bare_int_compile() -> Outcome<TargetSource> {
+  compile_ingest_staging(
+    source: stage0_reject_bare_int_source,
+    target: stage0_compile_target
+  )
+}
+
+data stage0_reject_bare_int_compile_receipt: Outcome<TargetSource> = anchor_stage0_reject_bare_int_compile()
+
+fn real_source_bare_int_ram_bytes_rejected_via_ingest_staging_holds() -> Bool {
+  match stage0_reject_bare_int_compile_receipt {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
