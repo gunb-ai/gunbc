@@ -106,23 +106,43 @@ fn validate_href(url: String) -> HrefValidation {
   }
 }
 
-fn href_is_safe(url: String) -> Bool {
-  match validate_href(url: url) {
-    SafeHref { url: _ } => true
-    RejectedHref { reason: _ } => false
-  }
-}
-
 fn attr_is_url_attr(name: String) -> Bool {
   name == "href" || name == "src"
 }
 
-fn html_node_has_unsafe_url_attr(node: HtmlNode) -> Bool {
+// Walk the tree; return the first RejectedHref reason without collapsing
+// HrefValidation to a standalone Bool predicate (Practice 10).
+fn find_first_rejected_url(node: HtmlNode) -> RejectedUrlScheme? {
   match node {
-    TextNode { text: _ } => false
-    ElementNode { tag: _, attrs, children } =>
-      any(attrs, a => attr_is_url_attr(name: a.name) && !href_is_safe(url: a.value))
-        || any(children, c => html_node_has_unsafe_url_attr(node: c))
+    TextNode { text: _ } => Absent
+    ElementNode { tag: _, attrs, children } => {
+      let from_attr = fold(attrs,
+        init: Absent,
+        f: (acc, a) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            if attr_is_url_attr(name: a.name) {
+              match validate_href(url: a.value) {
+                SafeHref { url: _ } => Absent
+                RejectedHref { reason: r } => Present { value: r }
+              }
+            } else {
+              Absent
+            }
+        }
+      )
+      match from_attr {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          fold(children,
+            init: Absent,
+            f: (acc, c) => match acc {
+              Present { value: r } => Present { value: r }
+              Absent => find_first_rejected_url(node: c)
+            }
+          )
+      }
+    }
   }
 }
 
@@ -168,10 +188,11 @@ fn serialize_html_node(node: HtmlNode) -> String {
 }
 
 fn try_serialize_html_node(node: HtmlNode) -> HtmlSerializeResult {
-  if html_node_has_unsafe_url_attr(node: node) {
-    Rejected { reason: "URL scheme not allowlisted for href/src" }
-  } else {
-    Serialized { html: serialize_html_node(node: node) }
+  match find_first_rejected_url(node: node) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for href/src" }
+    Absent =>
+      Serialized { html: serialize_html_node(node: node) }
   }
 }
 
