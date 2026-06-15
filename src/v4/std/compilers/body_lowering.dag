@@ -1,0 +1,98 @@
+// src/v4/std/compilers/body_lowering.dag
+// Scope: surface fn-body expression → Behavior lowering (the structured-normalize emit of the
+// normalize-to-dispatch dissolution, node://adhoc-87678e9b-420). Sibling to sugar.dag: where
+// sugar.dag relabels a surface atom's connective, this reshapes a surface body expression into
+// its Behavior sub-DAG, so body_producer downstream is a thin validate+attach over the result
+// instead of index-reading fixed flat-token positions.
+// M9 concept-DAG home: std/compilers/ (compiler-pipeline transformation models); the produced
+// carriers (ComputationNode{Transform}, Positional edges) and the Symbol type are owned by
+// node.dag — this module introduces NO new node/symbol notion, only the transformation.
+// Status: T-8 modeled — binary-infix row landed (add: a + b → Transform[+, a, b]); if/loop/let
+// rows (→ Branch/Loop/Bind) extend this table as the keyword forms migrate (zesty (a3) ruling:
+// control-flow keywords lower direct-to-variant, only genuine calls carry the unresolved callee).
+// Operator/operand name atoms stay UNRESOLVED here (pre-resolve); resolve binds them.
+
+module v4.std.compilers.body_lowering
+
+import v4.std.collection { Absent, List, Present, list_at_optional }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node {
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+
+data body_lowering_reason_unsupported_form: Symbol = body_lowering_reason_unsupported_form
+
+fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A binary infix expression `left operator right` lowers to a call: the operator is the callee
+// (child[0], per the node_query call-carrier), operands are the positional args. This is exactly
+// the dispatch surface's expected Transform shape — the emit and the dispatch agree by construction.
+// Operator-agnostic: any binary operator atom flows through unchanged (its identity stays
+// unresolved here; resolve binds it).
+fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: operator },
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ]
+  )
+}
+
+// Lower the body region's atom sequence (the tokens between the brace delimiters, already
+// isolated) into a Behavior. MVP1 surface bodies are a single expression; the binary-infix form
+// is `[left, operator, right]`. A residual/unsupported shape is the malformed-body case.
+// (Brace-region isolation from the full flat parse sequence is the normalize-fold wiring step;
+// this function owns the form→Behavior reshape over the isolated atoms.)
+fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
+  match list_at_optional(xs: atoms, index: 0) {
+    Present { value: left } =>
+      match list_at_optional(xs: atoms, index: 1) {
+        Present { value: operator } =>
+          match list_at_optional(xs: atoms, index: 2) {
+            Present { value: right } =>
+              if count(atoms) == 3 {
+                outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
+              } else {
+                outcome_rejected(
+                  d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+                )
+              }
+            Absent =>
+              outcome_rejected(
+                d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+      )
+  }
+}
