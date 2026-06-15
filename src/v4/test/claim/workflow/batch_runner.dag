@@ -11,9 +11,10 @@
 
 module v4.test.claim.workflow.batch_runner
 
-import v4.std.algebra { list_snoc_item }
+import v4.std.algebra { fold_list_right, length, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency { DataDependsOn, DependencyView }
+import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.text { String }
 import v4.workflow.executor {
