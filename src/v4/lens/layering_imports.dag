@@ -52,10 +52,7 @@ fn is_forbidden_compiler_import(module: String) -> Bool {
 }
 
 fn is_layering_violation(fact: LayerImportFact) -> Bool {
-  match fact.layer {
-    LayerStd => is_forbidden_compiler_import(module: fact.import_module)
-    LayerExtdeps => is_forbidden_compiler_import(module: fact.import_module)
-  }
+  is_forbidden_compiler_import(module: fact.import_module)
 }
 
 data empty_layering_import_violations: List<LayeringImportViolation> = []
