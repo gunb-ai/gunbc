@@ -1,0 +1,130 @@
+// src/v4/extdeps/formats/modelica.dag
+//
+// Scope: Modelica model — direction-agnostic, **acausal**. An analog circuit
+//        described as named component instances plus an equation section of
+//        `connect(a, b)` statements. Unlike a SPICE netlist (positional nodes
+//        fix a traversal order), a Modelica model declares components with
+//        named pins and an unordered connection graph; the tool derives the
+//        Kirchhoff equations (KCL on flow `i`, KVL on potential `v`) from the
+//        connect-set. There is NO control flow — components plus an acausal
+//        connection graph.
+// Anchor: "Modelica Language Specification Version 3.4" (Modelica Association,
+//         2017) — the canonical versioned spec the worker models against. The
+//         component classes are `Modelica.Electrical.Analog.Basic.{Resistor,
+//         Capacitor,Ground}` from the Modelica Standard Library (pin a concrete
+//         MSL release, e.g. MSL 3.2.3); their two-terminal interface is
+//         `Modelica.Electrical.Analog.Interfaces.OnePort` (a PositivePin `p`
+//         and a NegativePin `n`). NOT Wikipedia —
+//         https://en.wikipedia.org/wiki/Modelica is accessible context only.
+// Stress (T-4.10 — the acausal paradigm-challenger half of the SPICE probe):
+//   Modelica is **Shape B** (a data format, per L-1) — it is NOT a
+//   `LanguageModel` and never touches the compiler-language (Shape A) ingest
+//   boundary. It is the acausal counterpart to v4.extdeps.formats.spice. The
+//   decisive twin-emit test: the SAME composed `.dag` circuit emits to BOTH a
+//   ngspice netlist (causal, runnable oracle) AND this Modelica model
+//   (acausal, paradigm-challenger). If the Shape B format data-model can carry
+//   a causal netlist but cannot carry an acausal connect-graph without
+//   contortion, that asymmetry is a substrate-design signal to surface NOW
+//   (STOP-and-escalate), not after it is load-bearing.
+// Clear win: ONE `.dag` circuit declaration → a Modelica model whose connect
+//   equations simulate under an acausal solver (omni-emission reaches a second,
+//   structurally-different analog paradigm from the same source of truth).
+// Status: modeled 2026-06-15 (quick-fox-493) — acausal R/C/Ground data-model +
+//   `modelica_emit_rc_passive` stub establishing the ModelicaEmit shape. The
+//   exact physical-quantity carrier (Modelica `SI.Resistance`/`SI.Capacitance`
+//   are typed Reals with units) reuses the same approximate-lexeme gap spice
+//   carries; T-3 `Dimension` substrate dissolution is deferred. The I/O
+//   contract lives in the module body for downstream workers. Splitting this
+//   file requires explicit operator ratification (substrate extension =
+//   stop signal). No compiler imports (extdeps layering: std-only).
+
+
+module v4.extdeps.formats.modelica
+
+
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Symbol }
+
+
+// 🟡 needs-more-work — feature:modelica-exact-quantity-gap — dissolve-on: std/
+//   exact-real / Dimension substrate (T-3). A Modelica parameter modification
+//   (`R=1000`, `C=1e-6`) is a typed-Real-with-unit (`SI.Resistance` etc.); the
+//   lexeme carrier defers the exact physical quantity, mirroring spice's
+//   SpiceValue. · ledger: T-4.10
+type ModelicaValue {
+  lexeme: String
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+//   Modelica.Electrical.Analog.Interfaces.OnePort exposes exactly two pins:
+//   a PositivePin `p` and a NegativePin `n`. Two-terminal passives are closed
+//   over this set. (Ground exposes only `p`; see ModelicaGround.)
+type PinRole
+  = PinPositive
+  | PinNegative
+
+
+// A reference to one named pin of one component instance — the operand of a
+// `connect(...)` equation. The acausal connection graph is List<ConnectEquation>
+// over these references; pin direction is NOT fixed by the reference (acausal).
+type ComponentPin {
+  instance: Symbol
+  role: PinRole
+}
+
+
+// 🟡 coproduct dissolution — feature:modelica-analog-basic-exhaustive-coverage
+//   — dissolve-on-arrival: all Modelica.Electrical.Analog.Basic two-terminal
+//   passives (Inductor, Conductor, VariableResistor, ...) are modeled
+//   structurally. Currently the passive R/C set required by the twin-emit
+//   probe, plus Ground (the acausal reference-potential component a well-posed
+//   model requires).
+type PassiveComponent
+  = ModelicaResistor { name: Symbol, resistance: ModelicaValue }
+  | ModelicaCapacitor { name: Symbol, capacitance: ModelicaValue }
+  | ModelicaGround { name: Symbol }
+
+
+// An acausal connection: `connect(lhs, rhs);`. Order-insensitive — the tool
+// derives KCL/KVL from the full connect-set, not from operand order.
+type ConnectEquation {
+  lhs: ComponentPin
+  rhs: ComponentPin
+}
+
+
+type ModelicaModel {
+  name: Symbol
+  components: List<PassiveComponent>
+  equations: List<ConnectEquation>
+}
+
+
+type ModelicaParseResult = Outcome<ModelicaModel>
+
+type ModelicaParse = fn(String) -> ModelicaParseResult
+
+type ModelicaEmit = fn(ModelicaModel) -> String
+
+type ModelicaIoContract {
+  parse: ModelicaParse
+  emit: ModelicaEmit
+}
+
+
+// 🟡 needs-more-work — feature:modelica-emit-rc-passive — dissolve-on: emit
+//   derives the `model` / component-declaration / `equation` / `connect` /
+//   `end` surface from the ModelicaModel connection graph (Symbol→identifier
+//   rendering + component-modification syntax). This stub returns the
+//   empty-model skeleton so the ModelicaEmit shape is executable now; the real
+//   RC emission is the keystone the SPICE/Modelica twin-emit test exercises
+//   (the acausal half of the decisive falsification). Marked per INVARIANTS:
+//   a stub is unverified until a consumer runs the real emit by execution.
+//   · ledger: T-4.10
+fn modelica_emit_rc_passive(_model: ModelicaModel) -> String {
+  concat(
+    "model RcPassive\n",
+    concat("equation\n", "end RcPassive;\n")
+  )
+}
