@@ -1,12 +1,8 @@
 // src/v4/std/timeseries_signal.dag
 //
-// Scope: CANONICAL S1 — analog passive stream substrate + R/L/C map/fold step operators.
-// Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
-// spice.dag passive projection; Resistor=map (v=R·i), Capacitor/Inductor=fold over dt.
-// Anchor: SPICE3 passive element topology via v4.extdeps.formats.spice Component.
-// M9 receipt: v4.std.algebra {fold_list}, v4.std.integer {int_add,int_mul,int_div};
-//             Step* Int microscalar kernel until v4.std.float arithmetic lands.
-// Status: S1 canonical (witty-swift-823 / #4895 lineage).
+// Scope: TimeSeriesSignal carrier + R/L/C passive map/fold step operators (S1).
+// Anchor: v4.extdeps.formats.spice Component passive topology.
+// Status: S1 closeout — disposition tags + corpus enrollment (post-#4914 merge).
 
 module v4.std.timeseries_signal
 
@@ -62,26 +58,6 @@ type NamedAffineVoltage {
   approx: SpiceApproxVoltage
 }
 
-// --- Passive element parameters (interim local dimension types) ------------
-//
-// 🟡 INTERIM — dissolve-on: (a) snappy-stag Quantity-extension governance
-// coordination (gentle-lynx-177) lands a ratified Quantity arm for passive
-// elements; (b) Measure.count : Nat carrier reconciles with v4 Float magnitudes
-// here (Nat-vs-Float representational gap — do NOT touch measure.dag in this PR).
-// Forbidden: ossifying these bare Float wrappers as a parallel quantity ledger.
-
-type Resistance {
-  ohms: Float
-}
-
-type Capacitance {
-  farads: Float
-}
-
-type Inductance {
-  henries: Float
-}
-
 data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVoltage {
   magnitude_lexeme: "0",
   unit: SpiceVoltUnit {}
@@ -89,7 +65,7 @@ data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVolta
 
 // --- spice.dag structural consumption --------------------------------------
 //
-// Practice 11: one parameterized topology carrier; R/L/C arms differ only by tag.
+// One parameterized topology carrier; R/L/C arms differ only by tag.
 
 type PassiveElementTopology {
   name: Symbol
@@ -269,6 +245,7 @@ fn time_series_append(
 
 // --- MAP: Resistor (stateless v = R·i) --------------------------------------
 
+// 🟡 needs-more-work — feature:timeseries-passive-quantity-rating — consumer:snappy-stag — dissolve-on: value-Measure Quantity arms for R/L/C ratings land.
 type ResistorRating {
   microohms: Int
 }
@@ -291,6 +268,7 @@ fn resistor_map_voltage(
 
 // --- FOLD: Capacitor (i = C · dv/dt) ----------------------------------------
 
+// 🟡 needs-more-work — feature:timeseries-passive-quantity-rating — consumer:snappy-stag — dissolve-on: value-Measure Quantity arms for R/L/C ratings land.
 type CapacitorRating {
   microfarads: Int
 }
@@ -332,6 +310,7 @@ fn capacitor_fold_step(
   }
 }
 
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: traverse_outcome lands when Q4 gate opens; forbidden: re-inlining the Accepted/Rejected carrier ladder after Q4 resolves.
 fn fold_capacitor_transient(
   element: CapacitorFold,
   initial: CapacitorState,
@@ -358,6 +337,7 @@ fn fold_capacitor_transient(
 
 // --- FOLD: Inductor (v = L · di/dt) -----------------------------------------
 
+// 🟡 needs-more-work — feature:timeseries-passive-quantity-rating — consumer:snappy-stag — dissolve-on: value-Measure Quantity arms for R/L/C ratings land.
 type InductorRating {
   microhenries: Int
 }

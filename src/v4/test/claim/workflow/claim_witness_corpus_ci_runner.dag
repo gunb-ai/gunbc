@@ -280,6 +280,48 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 resistor map v=R*i",
+  entry: "src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
+  function: "timeseries_anchor_resistor_map_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_timeseries_capacitor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 capacitor fold dv=i*dt/C",
+  entry: "src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
+  function: "timeseries_anchor_capacitor_fold_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_timeseries_inductor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 inductor fold di=V*dt/L",
+  entry: "src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
+  function: "timeseries_anchor_inductor_fold_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_timeseries_capacitor_fold_chronological: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 capacitor fold_list chronological integration",
+  entry: "src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
+  function: "timeseries_anchor_capacitor_fold_chronological_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 capacitor int_div fail-closed on zero rating",
+  entry: "src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
+  function: "timeseries_anchor_capacitor_zero_rating_rejects",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_timeseries_spice_resistor_passive: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "timeseries S1 spice Resistor projects ResistorPassive",
+  entry: "src/v4/test/claim/std/timeseries_signal_passives.dag",
+  function: "spice_resistor_projects_resistor_passive_topology_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -313,10 +355,16 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_timeseries_resistor_map,
+  corpus_ci_gate_row_timeseries_capacitor_fold,
+  corpus_ci_gate_row_timeseries_inductor_fold,
+  corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
+  corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
+  corpus_ci_gate_row_timeseries_spice_resistor_passive
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "33"
+data claim_witness_corpus_claim_run_row_count: String = "39"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -358,7 +406,13 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves
+  corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_timeseries_resistor_map,
+  corpus_ci_gate_row_timeseries_capacitor_fold,
+  corpus_ci_gate_row_timeseries_inductor_fold,
+  corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
+  corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
+  corpus_ci_gate_row_timeseries_spice_resistor_passive
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "18"
+data claim_witness_corpus_shard_b_row_count: String = "24"
