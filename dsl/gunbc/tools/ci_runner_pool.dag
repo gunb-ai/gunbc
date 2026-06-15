@@ -15,18 +15,27 @@ import std.compute_fabric {
   ci_runner_pool_from_offer
 }
 
-// Fail-closed witness: modeled pool facts are recoverable from the inhabited offers.
+// Fail-closed witness: pool facts projected from offers match canonical supply rows
+// (which also author the offer.constraints caps — no parallel literal table).
 fn ci_runner_pool_offer_projection_holds() -> Bool {
   match ci_runner_pool_from_offer(offer: supply_srv1_offer) {
-    Some { value: pool1 } =>
+    Present { value: pool1 } =>
       match ci_runner_pool_from_offer(offer: supply_srv2_offer) {
-        Some { value: pool2 } =>
-          pool1.runner_count == 20
-          && pool1.jobserver_token_cap == 25
-          && pool2.runner_count == 30
-          && pool2.jobserver_token_cap == 36
-        none => false
+        Present { value: pool2 } =>
+          pool1.host == supply_srv1_ci_runner_pool.host
+          && pool1.runner_count == supply_srv1_ci_runner_pool.runner_count
+          && pool1.jobserver_token_cap == supply_srv1_ci_runner_pool.jobserver_token_cap
+          && pool1.architecture == supply_srv1_ci_runner_pool.architecture
+          && pool1.core_count == supply_srv1_ci_runner_pool.core_count
+          && pool1.jobserver_fifo == supply_srv1_ci_runner_pool.jobserver_fifo
+          && pool2.host == supply_srv2_ci_runner_pool.host
+          && pool2.runner_count == supply_srv2_ci_runner_pool.runner_count
+          && pool2.jobserver_token_cap == supply_srv2_ci_runner_pool.jobserver_token_cap
+          && pool2.architecture == supply_srv2_ci_runner_pool.architecture
+          && pool2.core_count == supply_srv2_ci_runner_pool.core_count
+          && pool2.jobserver_fifo == supply_srv2_ci_runner_pool.jobserver_fifo
+        Absent => false
       }
-    none => false
+    Absent => false
   }
 }

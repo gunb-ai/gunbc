@@ -568,12 +568,18 @@ data supply_srv2_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
   jobserver_token_cap: 36,
 }
 
-fn ci_runner_pool_from_offer(offer: ComputeOffer) -> CiRunnerPoolFacts? {
-  match offer.supply.physical.identity {
-    "srv1" => Some { value: supply_srv1_ci_runner_pool }
-    "srv2" => Some { value: supply_srv2_ci_runner_pool }
-    _ => none
+fn ci_runner_pool_for_host(host: HostIdentity) -> CiRunnerPoolFacts? {
+  if host == supply_srv1_host_identity {
+    Present { value: supply_srv1_ci_runner_pool }
+  } else if host == supply_srv2_host_identity {
+    Present { value: supply_srv2_ci_runner_pool }
+  } else {
+    Absent
   }
+}
+
+fn ci_runner_pool_from_offer(offer: ComputeOffer) -> CiRunnerPoolFacts? {
+  ci_runner_pool_for_host(host: offer.supply.physical.identity)
 }
 
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
