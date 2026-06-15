@@ -267,12 +267,12 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
   expected: ExpectPass
 }
 
-// 🟡 P-PROBE-CF-IMPORT — ExpectFail pin + resolve repro (adhoc-20b17ff7-932).
-data corpus_ci_gate_row_probe_selector_cf_import_falsifier: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "probe-selector compute_fabric import falsifier",
-  entry: "src/v4/test/claim/workflow/probe_selector_compute_fabric_import_falsifier.dag",
-  function: "probe_selector_compute_fabric_import_falsifier_holds",
-  expected: ExpectFail { bind_anchor: "adhoc-20b17ff7-932" }
+// 🟢 P-PROBE-CF-IMPORT — dissolved (adhoc-20b17ff7-932): dual-root resolve now green.
+data corpus_ci_gate_row_probe_selector_cf_import: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "probe-selector compute_fabric import resolve",
+  entry: "dsl/test/claim/probe_selector_compute_fabric_import_repro.dag",
+  function: "probe_selector_compute_fabric_import_repro_holds",
+  expected: ExpectPass
 }
 
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -308,7 +308,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_falsifier
+  corpus_ci_gate_row_probe_selector_cf_import
 ]
 
 data claim_witness_corpus_claim_run_row_count: String = "33"
@@ -353,7 +353,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_falsifier
+  corpus_ci_gate_row_probe_selector_cf_import
 ]
 
 data claim_witness_corpus_shard_b_row_count: String = "18"
