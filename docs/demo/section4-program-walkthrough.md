@@ -1,8 +1,14 @@
-# gunbc demo: §4 first runnable program (TypeScript-first)
+# gunbc demo: §4 runtime proof (TypeScript-first) — M1a scaffold
 
-This walkthrough shows the §4 north-star artifact — `src/v4/program.dag`, the first
-runnable v4 program with I/O — through TypeScript emission and execution first, then
-through the in-language interpreter and run loop. Every command below was run in this
+**THIS IS A RUNTIME-PROOF SCAFFOLD (M1a), NOT THE §4 NORTH-STAR DEMO.** The
+`program_runs_holds` witness proves eval + effect-IO handlers + `runtime_run` on a
+**hand-wired Node assembly** — the program body is **not** produced-from-source by COMPREP.
+The north-star demo is **M1b**: `program.dag` authored as source, body produced by COMPREP
+from that source, then runs on CLI (and later TS/browser). Do **not** read M1a green as the
+section4 demo working or the thesis demo reached.
+
+This walkthrough documents M1a: the §4 runtime spine exercised through TypeScript emission
+first, then in-language interpreter + run loop. Every command below was run in this
 repository and shows actual output.
 
 ---
@@ -111,15 +117,16 @@ This witness is enrolled in the v4 claim-witness CI corpus as `§4 program runs 
 
 ---
 
-## 5. What this covers today
+## 5. What this covers today (M1a only)
 
-| Layer | Witness | Mode |
-|-------|---------|------|
-| TS effect emit | `ts_effect_io_emit_holds` | emit text equality |
-| TS real IO | `typescript_effect_io_receipt` | node execution |
-| §4 interpreter + run loop | `program_runs_holds` | claim-run eval |
+| Layer | Witness | Mode | M1a / M1b |
+|-------|---------|------|-----------|
+| TS effect emit | `ts_effect_io_emit_holds` | emit text equality | M1a (emit path smoke) |
+| TS real IO | `typescript_effect_io_receipt` | node execution | M1a (emit path smoke) |
+| §4 interpreter + run loop | `program_runs_holds` | claim-run eval | **M1a scaffold only** |
 
-Full multi-target emit of `program.dag` (Rust/Python/Go bodies, not just effect-call
-fragments) is §3 emit-breadth work and is intentionally out of scope for the §4-thin lane.
-The TypeScript effect-IO slice shown here is the TS-first north-star proof that emitted
-target text can perform real host IO without bespoke per-effect compiler glue.
+**M1b (north star) is not claimed here.** Full multi-target emit of `program.dag`
+(Rust/Python/Go bodies, not just effect-call fragments) is §3 emit-breadth work.
+Browser demo (M2) is blocked on L1-M1. The TypeScript effect-IO slice in sections 2–3
+proves emitted target text can perform real host IO without bespoke per-effect compiler
+glue — that is emit-path evidence, not the COMPREP-produced program demo.

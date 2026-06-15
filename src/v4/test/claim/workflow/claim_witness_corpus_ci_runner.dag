@@ -306,10 +306,11 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
-// §4 thin lane keystone — first runnable v4 program (Branch+IO+runtime_run); local
-// `gunbc run --source-root src/v4 --entry src/v4/program.dag --function program_runs_holds --claim-run`.
+// §4 M1a RUNTIME-PROOF SCAFFOLD — NOT the north-star demo (M1b). Body is hand-wired
+// Node assembly, not COMPREP-produced-from-source. Proves Branch+IO+runtime_run spine.
+// Local: `gunbc run --source-root src/v4 --entry src/v4/program.dag --function program_runs_holds --claim-run`.
 data corpus_ci_gate_row_program_runs: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "§4 program runs keystone",
+  label: "§4 program runs keystone (M1a runtime scaffold)",
   entry: "src/v4/program.dag",
   function: "program_runs_holds",
   expected: ExpectPass

@@ -1,5 +1,7 @@
 // src/v4/program.dag
-// Scope: §4 first runnable v4 program — pick_if Branch body composed with effect_io handlers.
+// Scope: §4 M1a RUNTIME-PROOF SCAFFOLD — NOT the north-star demo (M1b).
+//   Hand-wired Node assembly (pick_if Branch + effect_io handlers + runtime_run).
+//   North star (M1b): same program.dag authored as source, body produced by COMPREP.
 // Status: runnable entry + Bool witness for `dag run --entry src/v4/program.dag --claim-run`.
 //   Spine: pick_if Branch then-arm yields ReadResource→WriteResource (handlers bound at run start).
 //   Run loop: runtime_run schedules kw_true → effect_io_roundtrip (wave-1 sequential, §4c).
