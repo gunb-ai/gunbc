@@ -1,15 +1,9 @@
 // gunbc/ci.dag — CI gate declarations with structural gate kind.
 //
-// Every gate command derives from gunbc.compiler facts. Commands are
-// still string-typed at the transport boundary but each gate carries a
-// structural GateSource variant that names what the gate actually
-// proves. The closed GateSource coproduct makes it possible to reason
-// about gate kind without parsing command strings.
-//
-// Floor membership (operator-locked v2): four blocking gates —
+// Floor membership (operator bankruptcy, final): exactly 3 blocking gates —
 // dsl compile-clean (full tree minus enumerated allowlist), fmt,
-// affected-tests (fail-safe superset selector battery), dag parity.
-// Demote spine dissolved — former demoted jobs are tests gate-3 runs.
+// affected-tests (fail-safe over-inclusive selector). No demote spine;
+// corpus/lens/layering are tests gate-3 runs when affected.
 //
 // Consumers:
 //   dsl/gunbc/tools/ci_runner.dag — runtime execution via run_ci_pipeline()
@@ -29,21 +23,15 @@ data dsl_root: SourceRoot = { path: "dsl" }
 
 // ── Gate kind ───────────────────────────────────────────────────────
 
-// Closed coproduct — every variant names a category of CI proof.
 type GateSource
   = DslCompileCleanGate { root: SourceRoot }
   | FmtGate
   | AffectedTestsGate
-  | DagParityGate
 
-// ── Command carrier ─────────────────────────────────────────────────
-
-// Structural command intent — rendered to shell in gunbc.tools.ci_runner.
 type CICommand
   = DslCompileCleanCommand { root: SourceRoot }
   | FmtCommand
   | AffectedTestsCommand
-  | DagParityCommand
 
 type CIGate {
   id: String
@@ -70,8 +58,6 @@ type CIWorkflowDag {
 
 // ── Gates ───────────────────────────────────────────────────────────
 
-// BLOCKING FLOOR (operator-locked v2): four gates.
-
 data dsl_compile_clean_gate: CIGate = {
   id: "dsl-compile-clean",
   name: "DSL full-tree parse-clean",
@@ -96,14 +82,6 @@ data affected_tests_gate: CIGate = {
   source: AffectedTestsGate
 }
 
-data ci_floor_parity_gate: CIGate = {
-  id: "ci-floor-parity",
-  name: "DAG parity + census ratchet",
-  command: DagParityCommand,
-  blocking: true,
-  source: DagParityGate
-}
-
 // ── Pipeline assembly ───────────────────────────────────────────────
 
 data ci_pipeline: CIPipeline = {
@@ -111,8 +89,7 @@ data ci_pipeline: CIPipeline = {
   gates: [
     dsl_compile_clean_gate,
     fmt_gate,
-    affected_tests_gate,
-    ci_floor_parity_gate
+    affected_tests_gate
   ]
 }
 
@@ -120,7 +97,6 @@ data ci_workflow_dag: CIWorkflowDag = {
   pipeline: ci_pipeline,
   edges: [
     { from: dsl_compile_clean_gate, to: fmt_gate },
-    { from: fmt_gate, to: affected_tests_gate },
-    { from: affected_tests_gate, to: ci_floor_parity_gate }
+    { from: fmt_gate, to: affected_tests_gate }
   ]
 }

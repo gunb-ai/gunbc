@@ -72,13 +72,6 @@ fn render_ci_command(cmd: CICommand) -> String {
       ensure_discover_owned_data_binary(), "; ",
       "bash scripts/v4-affected-tests-gate.sh"
     )
-    DagParityCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      "cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet && ",
-      "cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet && ",
-      "cargo test -p v2-compiler-tests --release resolve_typed_cache_equivalence_test::typed_module_cache_matches_cold_oracle_in_every_order -- --exact --quiet && ",
-      "cargo test -p v2-compiler-tests --release resolve_cross_process_cache_test -- --quiet"
-    )
   }
 }
 

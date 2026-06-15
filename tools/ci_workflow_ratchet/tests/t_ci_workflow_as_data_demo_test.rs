@@ -500,7 +500,7 @@ fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
     &gate57_ci_artifacts().dag
 }
 
-/// Floor prerequisite chain: `dsl-compile-clean` → `fmt` → `affected-tests` → `ci-floor-parity`.
+/// Floor prerequisite chain: `dsl-compile-clean` → `fmt` → `affected-tests`.
 fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
     let edges: Vec<_> = input
         .edges
@@ -512,7 +512,6 @@ fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
         vec![
             ("dsl-compile-clean", "fmt"),
             ("fmt", "affected-tests"),
-            ("affected-tests", "ci-floor-parity"),
         ],
         "blocking floor must be a linear prerequisite chain"
     );
@@ -554,7 +553,6 @@ fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue
         "DslCompileCleanCommand",
         "FmtCommand",
         "AffectedTestsCommand",
-        "DagParityCommand",
     ] {
         if *constructor == disj_variant_constructor_id(dag, sum_name, label) {
             return label;
@@ -685,7 +683,6 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
             "dsl-compile-clean",
             "fmt",
             "affected-tests",
-            "ci-floor-parity",
         ],
         "CI workflow DAG must carry one node per structural gate"
     );
@@ -695,7 +692,6 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
         vec![
             ("dsl-compile-clean", "fmt"),
             ("fmt", "affected-tests"),
-            ("affected-tests", "ci-floor-parity"),
         ],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
     );
@@ -726,7 +722,6 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
         commands,
         vec![
             ("affected-tests", "AffectedTestsCommand"),
-            ("ci-floor-parity", "DagParityCommand"),
             ("dsl-compile-clean", "DslCompileCleanCommand"),
             ("fmt", "FmtCommand"),
         ],
@@ -753,12 +748,10 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
                 "dsl-compile-clean",
                 "fmt",
                 "affected-tests",
-                "ci-floor-parity",
             ],
             vec![
                 ("dsl-compile-clean", "fmt"),
                 ("fmt", "affected-tests"),
-                ("affected-tests", "ci-floor-parity"),
             ],
         ),
         "dsl/gunbc/ci.dag must remain the single CI DAG topology authority"
@@ -884,14 +877,13 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         .expect("affected-set selection must succeed on gunbc-ci topology");
     assert_eq!(
         affected.len(),
-        4,
+        3,
         "TouchAll must schedule the full gunbc-ci gate roster"
     );
     for id in [
         "dsl-compile-clean",
         "fmt",
         "affected-tests",
-        "ci-floor-parity",
     ] {
         assert!(
             affected.iter().any(|g| g == id),
