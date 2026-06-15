@@ -11,6 +11,9 @@ module v4.extdeps.languages.verilog
 
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
+import v4.std.logic { Bool }
+import v4.std.circuit_step { CircuitPrimitiveKind, FoldStep, MapStep }
+import v4.std.collection { List }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -793,6 +796,130 @@ type VerilogCost {
   gate_cost: Nat
   area_cost: Nat
 }
+
+
+// --- Digital map/fold step operators (SP-M3 shared substrate) ----------------
+//
+// Combinational continuous-assign semantics = MapStep (stateless per tick).
+// Posedge sequential always-block semantics = FoldStep (register state over ticks).
+// Structural body_lexeme carriers remain parse-scaffold; step operators model
+// executable digital physics for mixed-signal composition with timeseries_signal.
+
+// 🟢 coproduct dissolution — SP-M3 digital logic level.
+type LogicLevel
+  = LogicLow
+  | LogicHigh
+
+
+type LogicInput {
+  level: LogicLevel
+}
+
+
+type LogicOutput {
+  level: LogicLevel
+}
+
+
+type DigitalSample {
+  tick: Nat
+  level: LogicLevel
+}
+
+
+type DigitalSignal = List<DigitalSample>
+
+
+type RegisterState {
+  q: LogicLevel
+}
+
+
+// --- MAP: two-input AND (combinational / continuous-assign class) ------------
+
+type AndCombinationalMap {
+  kind: MapStep
+}
+
+
+fn logic_and(left: LogicLevel, right: LogicLevel) -> LogicLevel {
+  match left {
+    LogicLow => LogicLow
+    LogicHigh => match right {
+      LogicLow => LogicLow
+      LogicHigh => LogicHigh
+    }
+  }
+}
+
+
+fn and_combinational_map_step(
+  element: AndCombinationalMap,
+  left: LogicInput,
+  right: LogicInput,
+) -> LogicOutput {
+  LogicOutput {
+    level: logic_and(left: left.level, right: right.level)
+  }
+}
+
+
+// --- FOLD: D flip-flop (posedge always-block class; q <= d) ------------------
+
+type DFlipFlopFold {
+  kind: FoldStep
+}
+
+
+fn d_flipflop_fold_step(
+  element: DFlipFlopFold,
+  state: RegisterState,
+  d: LogicInput,
+) -> RegisterState {
+  RegisterState {
+    q: d.level
+  }
+}
+
+
+fn logic_level_eq(left: LogicLevel, right: LogicLevel) -> Bool {
+  match left {
+    LogicLow => match right {
+      LogicLow => true
+      LogicHigh => false
+    }
+    LogicHigh => match right {
+      LogicLow => false
+      LogicHigh => true
+    }
+  }
+}
+
+
+fn circuit_primitive_kind_eq(
+  left: CircuitPrimitiveKind,
+  right: CircuitPrimitiveKind,
+) -> Bool {
+  match left {
+    MapStep => match right {
+      MapStep => true
+      FoldStep => false
+      SolveStep => false
+    }
+    FoldStep => match right {
+      MapStep => false
+      FoldStep => true
+      SolveStep => false
+    }
+    SolveStep => match right {
+      MapStep => false
+      FoldStep => false
+      SolveStep => true
+    }
+  }
+}
+
+
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }

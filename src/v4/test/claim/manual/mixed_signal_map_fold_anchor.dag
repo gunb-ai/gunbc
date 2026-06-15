@@ -1,0 +1,179 @@
+// src/v4/test/claim/manual/mixed_signal_map_fold_anchor.dag
+// Scope: SP-M3 compile + behavior anchor — analog R/L/C and digital AND/DFF share
+//        CircuitPrimitiveKind map/fold substrate (circuit_step + timeseries_signal + verilog).
+// Status: compile-only IN-B anchor; mixed-signal composition witness.
+
+module v4.test.claim.manual.mixed_signal_map_fold_anchor
+
+import v4.extdeps.languages.verilog {
+  AndCombinationalMap,
+  DFlipFlopFold,
+  LogicHigh,
+  LogicInput,
+  LogicLow,
+  RegisterState,
+  and_combinational_map_step,
+  circuit_primitive_kind_eq,
+  d_flipflop_fold_step,
+  logic_level_eq,
+}
+import v4.std.circuit_step { FoldStep, MapStep }
+import v4.std.logic { Bool }
+import v4.std.timeseries_signal {
+  CapacitorFold,
+  CapacitorRating,
+  CapacitorState,
+  ResistorMap,
+  ResistorRating,
+  StepCurrent,
+  StepPotentialDifference,
+  TimeStep,
+  capacitance_micro,
+  capacitor_fold_step,
+  charge_micro,
+  current,
+  duration_micro,
+  resistance_micro,
+  resistor_map_voltage,
+  voltage,
+  voltage_count,
+}
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+}
+
+data mixed_signal_anchor_resistor: ResistorMap = ResistorMap {
+  kind: MapStep
+  rating: ResistorRating { microohms: resistance_micro(1000) }
+}
+
+data mixed_signal_anchor_and_gate: AndCombinationalMap = AndCombinationalMap {
+  kind: MapStep
+}
+
+data mixed_signal_anchor_dff: DFlipFlopFold = DFlipFlopFold {
+  kind: FoldStep
+}
+
+data mixed_signal_anchor_capacitor: CapacitorFold = CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating { microfarads: capacitance_micro(2) }
+}
+
+data mixed_signal_anchor_cap_initial: CapacitorState = CapacitorState {
+  voltage: StepPotentialDifference { microvolts: voltage(0) }
+  charge_microcoulombs: charge_micro(0)
+}
+
+data mixed_signal_anchor_dt: TimeStep = TimeStep {
+  dt_microseconds: duration_micro(1000)
+}
+
+fn mixed_signal_shared_map_step_kind_holds() -> Bool {
+  circuit_primitive_kind_eq(
+    left: mixed_signal_anchor_resistor.kind,
+    right: mixed_signal_anchor_and_gate.kind,
+  )
+}
+
+fn mixed_signal_shared_fold_step_kind_holds() -> Bool {
+  circuit_primitive_kind_eq(
+    left: mixed_signal_anchor_capacitor.kind,
+    right: mixed_signal_anchor_dff.kind,
+  )
+}
+
+fn mixed_signal_analog_resistor_map_holds() -> Bool {
+  let mapped = resistor_map_voltage(
+    element: mixed_signal_anchor_resistor,
+    current: StepCurrent { microamperes: current(2) },
+  )
+  voltage_count(mapped.difference.microvolts) == 2000
+}
+
+fn mixed_signal_digital_and_map_holds() -> Bool {
+  let out = and_combinational_map_step(
+    element: mixed_signal_anchor_and_gate,
+    left: LogicInput { level: LogicHigh },
+    right: LogicInput { level: LogicLow },
+  )
+  logic_level_eq(left: out.level, right: LogicLow)
+}
+
+fn mixed_signal_digital_dff_fold_holds() -> Bool {
+  let stepped = d_flipflop_fold_step(
+    element: mixed_signal_anchor_dff,
+    state: RegisterState { q: LogicLow },
+    d: LogicInput { level: LogicHigh },
+  )
+  logic_level_eq(left: stepped.q, right: LogicHigh)
+}
+
+fn mixed_signal_analog_capacitor_fold_holds() -> Bool {
+  match capacitor_fold_step(
+    element: mixed_signal_anchor_capacitor,
+    state: mixed_signal_anchor_cap_initial,
+    current: StepCurrent { microamperes: current(2) },
+    dt: mixed_signal_anchor_dt,
+  ) {
+    Accepted { value: stepped, diagnostics: _ } =>
+      voltage_count(stepped.voltage.microvolts) == 1000
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_mixed_signal_shared_map_kind: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: analog+digital MapStep share circuit_step kind",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_shared_map_step_kind_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_shared_fold_kind: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: analog+digital FoldStep share circuit_step kind",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_shared_fold_step_kind_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_analog_resistor_map: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: analog resistor map v=R·i on shared substrate",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_analog_resistor_map_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_digital_and_map: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: digital AND combinational map step",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_digital_and_map_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_digital_dff_fold: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: digital DFF posedge fold step",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_digital_dff_fold_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_analog_capacitor_fold: TestClaim = BoolWitnessClaim {
+  label: "manual/mixed_signal_map_fold_anchor: analog capacitor fold on shared substrate",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  witness: BoolWitness { holds: mixed_signal_analog_capacitor_fold_holds() },
+  anchor: manual_claim_anchor
+}
+
+data claim_mixed_signal_map_fold_compiles: TestClaim = CompilesClaim {
+  label: "manual/mixed_signal_map_fold_anchor: SP-M3 mixed-signal map/fold compiles",
+  classification: TestClassification { tier: Tier1, unit: Unit },
+  anchor: ManualAnchorAbsent {}
+}

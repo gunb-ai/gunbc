@@ -11,6 +11,7 @@
 module v4.std.timeseries_signal
 
 import v4.std.algebra { Cons, Empty, fold_list, fold_list_right }
+import v4.std.circuit_step { CircuitPrimitiveKind, FoldStep, MapStep }
 import v4.std.collection { List, Optional, Absent, Present }
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v4.std.integer { Int, int_add, int_div, int_mul }
@@ -296,12 +297,6 @@ fn branch_current_of_magnitude(magnitude: Current) -> BranchCurrent {
 // flux then derives i = Φ/L. Products computed on `.count`; Measure types tag dims.
 
 data timeseries_passive_fold_step_locus: Symbol = ^timeseries_passive_fold_step
-
-// 🟢 TERMINAL at S1 — declares map/fold/solve decomposition; SolveStep uninhabited until S2.
-type CircuitPrimitiveKind
-  = MapStep
-  | FoldStep
-  | SolveStep
 
 type TimeStep {
   dt_microseconds: DurationMicro
