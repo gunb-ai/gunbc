@@ -80,6 +80,14 @@ fn unescape_attribute(s: String) -> String {
   replace(replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
 }
 
+// SECURITY-SCOPE CONTRACT — escape_url performs CHARACTER-ESCAPING ONLY. It
+// percent-encodes structural characters (& " space <) so a URL value cannot
+// break out of a double-quoted attribute. It does NOT validate or allowlist URL
+// SCHEMES: a `javascript:` or `data:` URL passes through unchanged (it contains
+// no characters this function escapes). Neutralizing dangerous schemes is the
+// CONSUMER's responsibility — a consumer MUST scheme-allowlist untrusted URLs
+// (e.g. permit only http/https/mailto/relative) BEFORE calling escape_url.
+// escape_url is the in-attribute composition primitive, not a URL sanitizer.
 fn escape_url(s: String) -> String {
   replace(replace(replace(replace(s, "&", "&amp;"), "\"", "%22"), " ", "%20"), "<", "%3C")
 }
