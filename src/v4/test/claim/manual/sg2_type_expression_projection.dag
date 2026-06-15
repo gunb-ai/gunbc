@@ -497,6 +497,20 @@ fn witness_sg2_arrow_holds() -> Bool {
     && sg2_arrow_malformed_projection_rejects()
 }
 
+// Tripwire-as-negation: the corpus enrolls expected-to-fail rows as a POSITIVE
+// assertion that the inverse holds (expect-true, RED when the underlying flips).
+// `witness_sg2_arrow_holds` is red today (the ParseTree→TargetModel ingest bridge,
+// #4801, has not landed), so its negation is green and the corpus runs it green.
+// When #4801 lands and the underlying flips true, this negation flips false → the
+// corpus gate goes RED, exactly the stale-manifest alarm the former ExpectFail row
+// (bind_anchor #4801) gave — but now by EXECUTING the real underlying witness in a
+// by-execution lens rather than a harness-interpreted polarity flag. At that point
+// retire this negation and enroll `witness_sg2_arrow_holds` directly as an
+// expect-true row in the same PR.
+fn witness_sg2_arrow_expectfail_holds() -> Bool {
+  !witness_sg2_arrow_holds()
+}
+
 fn witness_sg2_projection_falsification_holds() -> Bool {
   !sg2_serialize_accepts(emitted: sg2_fail_node())
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())
