@@ -1,132 +1,22 @@
-// std/time_affine.dag -- Affine time COORDINATES over the elapsed-time group.
-//
-// WHY THIS EXISTS (facts-first; named consumer = ctrl#1612 / gunbc#4883
-// ProbeSelector host-health burn-in `TemporalAggregator`):
-//   A health / burn-in aggregator distinguishes time INSTANTS (`now`,
-//   `first_failed_at`) from a DURATION threshold (`min_down`). Instants are
-//   affine COORDINATES on a time axis: you cannot ADD two instants, you
-//   SUBTRACT them to obtain a duration. The drain predicate is
-//   `(now - first_failed_at) >= min_down` -- instant - instant -> duration,
-//   then a duration-vs-duration comparison. Modeling all three as a flat
-//   `Int` (the #4883 form-3 unit violation: `now_ms`/`first_failed_at_ms`/
-//   `min_down_ms: Int`) conflates a coordinate with a magnitude and discards
-//   the affine discipline -- it lets `now + first_failed_at` type-check, which
-//   is meaningless.
-//
-// STRUCTURE (bold-crane modeling ruling, 2026-06-15): `Instant` is a torsor
-//   (an affine space) over the abelian group of elapsed time. The elapsed-time
-//   group is std.measure `Measure<Time, Milli>` -- additive: durations add,
-//   identity = zero elapsed, inverse = the time-reversed offset. `Instant` is
-//   the torsor's point set; the action is `instant + duration -> instant`; the
-//   difference is `instant - instant -> duration`. `instant + instant` is NOT
-//   an operation.
-//
-// GENERALIZATION (DEFERRED to the carrier authority = snappy): this is the
-//   SAME affine/torsor shape as SPICE's `AbsolutePotential` (point) over
-//   `PotentialDifference` (group) -- gentle-lynx #4895 / #4913. When SPICE
-//   becomes the SECOND inhabitant, snappy lifts ONE general
-//   `Torsor<Point, Group>` (point-over-additive-group) carrier and re-expresses
-//   BOTH time and potential on it. Per facts-first / construction-over-ratchets
-//   this file ships ONLY the concrete inhabited TIME instantiation now -- it
-//   does NOT stand up a standalone uninhabited abstract group surface (the
-//   uninhabited-generality anti-pattern). gentle-lynx's SPICE torsor MUST
-//   CONVERGE onto the lifted carrier rather than mint a second time-affine
-//   type.
-//
-// NOT in scope here (tracked dissolution, not defer-and-forget):
-//   - Executable affine arithmetic -- the `difference` / `translate` bodies
-//     and the `>=` comparison -- is value-level over the phantom `Measure`
-//     carrier. It lands when value-typed `Measure` inhabitants arrive (snappy
-//     #4885 / the v2 value-read flip), the SAME deferral measure.dag applies
-//     to its own value-level ops. THIS file is the TYPE-level affine structure;
-//     the lowering is the dissolution, not a missing body to hand-roll.
-//
-// SUBSTRATE FINDING (still-wren, 2026-06-15, pinned gunbc 81829fc2):
-//   `Milliseconds` is modeled as an OPAQUE carrier below, NOT yet aliased to
-//   `Measure<Time, Milli>`, for a hard substrate reason: in the pinned tree
-//   `Measure<Q, S>` is NOT consumable. (1) dsl/std/measure.dag is 🟡 SCAFFOLD
-//   and its enum-VARIANT type-params do not resolve -- `gunbc compile` reports
-//   `unresolved type 'One' / 'Time' / 'Memory'` on measure.dag's OWN `ByteSize`
-//   / `Hertz`, so every consumer that pulls measure.dag into the closure fails
-//   (rust AND dag targets). (2) v4 (src/v4/std) has NO measure.dag at all --
-//   which is exactly why #4883's `TemporalAggregator` used bare `Int`. So a
-//   literal `type Milliseconds = Measure<Time, Milli>` does NOT compile against
-//   the pin today. The affine instant/duration STRUCTURE is the modeling
-//   content bold-crane ruled on, and it stands independently of the duration's
-//   group spelling. DISSOLVE-ON: when `Measure<Q, S>` becomes consumable
-//   (snappy value-Measure / #4885 / the flip-SHA), re-point `Milliseconds` to
-//   `Measure<Time, Milli>` (one-line change; all call sites keep type-checking).
+// std/time_affine.dag -- affine time coordinates over an elapsed-time vector.
+// Scope: Instant (affine coordinate), Milliseconds (vector), TimeAffine (ops), DrainWindow (#4883 consumer).
 
 module std.time_affine
 
-// --- Milliseconds: the additive time-magnitude group element ------------------
-//
-// PRACTICE 4 CHECKPOINT: 🟡 P-TIME-ELAPSED-CARRIER -- opaque elapsed-time
-//   DURATION at millisecond scale; the abelian group over which `Instant` is
-//   affine. Opaque pending Measure-consumability (see SUBSTRATE FINDING in the
-//   header). Dissolve-on: re-point to `Measure<Time, Milli>` when snappy's
-//   value-Measure lands.
-//
-// M9 NOTE: std.compute_fabric already aliases `Duration = Measure<Time, One>`
-// (seconds) -- scale is a `Measure` PARAMETER, not a distinct concept, so on
-// the dissolution this becomes `Measure<Time, Milli>` rather than a re-minted
-// `Duration`. measure.dag's forward-flagged scale-agnostic `Duration<S>`
-// (>= 2 consumers) would subsume both; until then this is the named
-// millisecond consumer the #4883 fields demand.
-//
-// Opaque nominal carrier (empty record = no runtime payload, the phantom
-// discipline) so it cargo-checks today; a bodyless `type Milliseconds` would
-// emit a recursive Rust alias. Re-points to `Measure<Time, Milli>` on the
-// dissolution.
+// 🟡 P-TIME-ELAPSED-CARRIER opaque ms vector; dissolve-on: re-point to Measure<Time,Milli> when consumable.
 type Milliseconds {}
 
-// --- Instant: an affine time coordinate ------------------------------------
-//
-// PRACTICE 4 CHECKPOINT: 🟡 P-TIME-AFFINE -- phantom affine-coordinate carrier.
-//   Dissolve-on: (a) snappy lifts the general point-over-additive-group torsor
-//   carrier once SPICE is the 2nd inhabitant, at which point `Instant` becomes
-//   `Torsor<Instant, Milliseconds>` (or the ratified spelling); AND (b) value-
-//   typed `Measure` inhabitants land so the affine arithmetic becomes
-//   executable.
-//
-// Phantom carrier -- no runtime payload at this layer, the same discipline as
-// `Measure<Q, S>`. Semantics: a coordinate on the millisecond time axis.
-// Affine over `Milliseconds`:
-//   - difference(later, earlier) : Instant - Instant -> Milliseconds  (torsor subtraction)
-//   - translate(base, delta)     : Instant + Milliseconds -> Instant  (group action)
-//   - there is NO `Instant + Instant` -- adding two coordinates is undefined.
-//
-// Opaque nominal carrier (empty record = no runtime payload, the phantom
-// discipline) so it cargo-checks today; a bodyless `type Instant` emits a
-// recursive Rust alias. The point-set gains structure (and the affine ops
-// gain bodies) on the dissolution.
+// 🟡 P-TIME-AFFINE affine coordinate (no Add: instant+instant is type-rejected); dissolve-on: snappy torsor lift.
 type Instant {}
 
-// --- TimeAffine: the concrete (time-specific) torsor operations ------------
-//
-// PRACTICE 4 CHECKPOINT: 🟡 P-TIME-AFFINE-OPS -- concrete op dictionary for
-//   `Instant` over `Milliseconds`. CONCRETE, not a generic `Torsor<P, G>`: per the
-//   facts-first steer we ship the inhabited time instantiation and leave the
-//   generic lift to snappy at ratification. The fn-typed fields express the
-//   affine algebra at the TYPE level; executable bodies are the deferred
-//   value-Measure lowering (see header). Dissolve-on: the generic torsor lift.
+// 🟡 P-TIME-AFFINE-OPS concrete torsor ops difference(I,I)->Ms / translate(I,Ms)->I; dissolve-on: generic torsor lift.
 type TimeAffine {
   difference: fn(Instant, Instant) -> Milliseconds
   translate:  fn(Instant, Milliseconds) -> Instant
 }
 
-// --- DrainWindow: the inhabited named-consumer witness ---------------------
-//
-// PRACTICE 4 CHECKPOINT: 🟡 P-TIME-AFFINE-CONSUMER -- the #4883 host-health
-//   burn-in drain window re-typed off the affine carrier. The form-3 `Int`
-//   fields become `Instant` (coordinate) + `Milliseconds` (duration), which
-//   eliminates the unit violation. This is the inhabitance that JUSTIFIES the
-//   carrier (facts-first) and the compile-witness that `Instant` / `Milliseconds`
-//   slot into a struct. Single authority for the full aggregator remains
-//   probe_selector's `TemporalAggregator`; it adopts this shape at the dsl/std
-//   relocation. Dissolve-on: the relocated `TemporalAggregator` consumes
-//   `Instant` / `Milliseconds` directly, retiring this witness.
+// 🟡 P-TIME-AFFINE-CONSUMER #4883 burn-in window (coordinate + vector); dissolve-on: relocated TemporalAggregator.
 type DrainWindow {
-  first_failed_at: Instant      // was first_failed_at_ms: Int  (affine coordinate)
-  min_down: Milliseconds           // was min_down_ms: Int          (additive duration)
+  first_failed_at: Instant
+  min_down: Milliseconds
 }
