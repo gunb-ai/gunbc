@@ -2,27 +2,30 @@
 
 module std.os.types
 
-import std.types { NonEmptyStr, Option }
+import std.types { NonEmptyStr }
 
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 
-// P-CF-OS: distro/version relaxed to Option. Operator-fleet distro/version binding
-// (srv1/srv2) is operator-private — lives in gunb-ai/ctrl, not gunbc std/. Hetzner OS
-// is bound at provision time, so stays None on the offer surface.
+// P-CF-OS: distro/version relaxed to optional (kernel T?, M9). Operator-fleet
+// distro/version binding (srv1/srv2) is operator-private — lives in gunb-ai/ctrl,
+// not gunbc std/. Hetzner OS is bound at provision time, so stays None on the offer surface.
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: Option<NonEmptyStr>
-  version: Option<NonEmptyStr>
+  distro_or_product: NonEmptyStr?
+  version: NonEmptyStr?
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
 
 // Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
-type UbuntuDistribution = NobleNumbat2404Lts
-type WindowsDistribution = Windows1124H2Build26100
-type MacosDistribution = Sequoia15
+// Leading pipe marks a single-variant nullary sum (a deliberate novel-tag
+// introduction), distinct from a bare alias `= T` which references an existing
+// type and fails closed (UnresolvedType) when the RHS is not a declared type.
+type UbuntuDistribution = | NobleNumbat2404Lts
+type WindowsDistribution = | Windows1124H2Build26100
+type MacosDistribution = | Sequoia15
 
 type OperatingSystemProduct
   = UbuntuOs { distro: UbuntuDistribution }
@@ -39,7 +42,7 @@ type UbuntuDistributionCatalogRow {
   kernel_version: NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   security_maintenance_until: NonEmptyStr
 }
 
@@ -49,16 +52,16 @@ type WindowsDistributionCatalogRow {
   os_build: NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   end_of_servicing: NonEmptyStr
 }
 
 type MacosDistributionCatalogRow {
   distribution: MacosDistribution
   release_label: NonEmptyStr
-  darwin_version: Option<NonEmptyStr>
+  darwin_version: NonEmptyStr?
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: Option<NonEmptyStr>
+  libc_version: NonEmptyStr?
   annual_release_label: NonEmptyStr
 }
