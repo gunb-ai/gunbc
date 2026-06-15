@@ -1,20 +1,4 @@
 // std/object_store.dag — Content-addressed object store: blob/tree/commit + refs.
-//
-// Foundation for forge plumbing (gunbhub S1). Models the three DAG object kinds
-// and name→object ref bindings. Read-only — no effectful store operations here
-// (write paths and service operations belong in gunbhub S2+).
-//
-// Content-identity rule: all object hashes are ContentHash from std.types —
-// the same carrier used in std.cache_identity / std.cache_interface for the
-// Realization pattern (ctrl ROADMAP §"Cross-cutting requirement — the
-// Realization pattern"). No hand-rolled hash type; compose the existing
-// content-identity primitive.
-//
-// Object-kind axis: ObjectKind is the single discriminant; StoreObject is the
-// payload-carrying coproduct over the same trichotomy. Hash is NOT embedded in
-// content types (Blob/Tree/Commit) — it lives in ObjectRef (the typed pointer).
-// ObjectLookupResult.ObjectFound carries both so callers always have the
-// authoritative hash. The bridge to ArtifactKindId is deferred — see header.
 
 module std.object_store
 
@@ -31,12 +15,6 @@ type ObjectKind
   | CommitKind
 
 // --- Blob --------------------------------------------------------------------
-//
-// A blob is a raw byte sequence. Hash is NOT embedded here — it lives in the
-// ObjectRef that addresses this Blob (storage layer concern). Embedding hash
-// alongside content would make hash/content desync representable, violating
-// INVARIANTS.md ("illegal states unrepresentable").
-// size allows metadata queries without fetching content bytes.
 
 type Blob {
   size: ByteSize
@@ -44,28 +22,19 @@ type Blob {
 }
 
 // --- Tree --------------------------------------------------------------------
-//
-// A tree maps entry names to object hashes. Each entry carries the kind of
-// its target so consumers can traverse the object graph without re-reading
-// every object header.
 
-type TreeEntry {
-  name: NonEmptyStr
-  kind: ObjectKind
-  hash: ContentHash
-}
+// 🟢 TERMINAL — the three content-addressed object kinds a tree entry can
+// reference; closed by the same trichotomy as ObjectKind.
+type TreeEntry
+  = BlobEntry { name: NonEmptyStr, hash: ContentHash }
+  | SubtreeEntry { name: NonEmptyStr, hash: ContentHash }
+  | CommitEntry { name: NonEmptyStr, hash: ContentHash }
 
-// Tree hash is NOT embedded — it lives in the ObjectRef (storage layer).
-// entries are sorted by name (lexicographic); consumers MUST preserve order.
 type Tree {
   entries: List<TreeEntry>
 }
 
 // --- Commit ------------------------------------------------------------------
-//
-// CommitAuthor records who wrote the change (author) and who applied it
-// (committer). Both fields are kept for SLSA provenance and attribution
-// in automated workflows (e.g. merge queues, CI bots).
 
 type CommitAuthor {
   name: String
@@ -73,11 +42,6 @@ type CommitAuthor {
   timestamp: Timestamp
 }
 
-// A commit is a snapshot: root tree hash + provenance + parent chain.
-//   parent_hashes is empty for a root commit, has one entry for an ordinary
-//   commit, and has two or more entries for a merge commit.
-// tree_hash and parent_hashes are references TO other objects (not a self-hash).
-// The commit's own hash lives in the ObjectRef that addresses this Commit.
 type Commit {
   tree_hash: ContentHash
   parent_hashes: List<ContentHash>
@@ -87,9 +51,6 @@ type Commit {
 }
 
 // --- Object union ------------------------------------------------------------
-//
-// StoreObject: the three content-addressed object kinds as a closed coproduct.
-// Consumers match on this to dispatch over the stored value.
 
 // 🟢 TERMINAL — same trichotomy as ObjectKind, payload-carrying; mirrors the
 // three object kinds exactly and inherits the same closed-set justification.
@@ -98,35 +59,17 @@ type StoreObject
   | ObjectTree { tree: Tree }
   | ObjectCommit { commit: Commit }
 
-// ObjectRef: typed pointer into the object graph (identity = content hash).
-// Kind is NOT carried here — when a StoreObject is loaded, its structural
-// variant already determines kind via store_object_kind; carrying kind in
-// ObjectRef would make ref.kind / object-variant desync representable.
-// The bridge to ArtifactIdentity / ArtifactKindId is deferred — see header.
 type ObjectRef {
   hash: ContentHash
 }
 
 // 🟢 TERMINAL — found/not-found are the two lookup outcomes (M6 one result
 // pattern); no additional arms are expected for a key-addressable store.
-// ObjectFound carries both the typed pointer (ref) and the content payload
-// (object) together — callers have the authoritative hash via ref.hash without
-// it being embedded inside the content type.
 type ObjectLookupResult
   = ObjectFound { ref: ObjectRef, object: StoreObject }
   | ObjectNotFound
 
 // --- Refs: name → object bindings -------------------------------------------
-//
-// A ref binds a human-readable name to an object hash (direct ref) or to
-// another ref name (symbolic ref). Examples:
-//   DirectTarget:   refs/heads/main → commit hash
-//   SymbolicTarget: HEAD → refs/heads/main
-//
-// RefTarget is the single discriminant for the ref kind — carrying a separate
-// RefKind tag would create an illegal-state (e.g. kind=DirectRef,
-// target=SymbolicTarget). S1 models the types; reading and mutating refs is
-// an effectful forge service operation (gunbhub S2+).
 
 // 🟢 TERMINAL — direct and symbolic are the two reference target kinds; this
 // dichotomy is closed by the ref model (no third target kind is expected).
@@ -134,16 +77,11 @@ type RefTarget
   = DirectTarget { hash: ContentHash }
   | SymbolicTarget { ref_name: NonEmptyStr }
 
-// NamedRef: a name → target binding.
-// "named" distinguishes the forge ref record from any language `ref` keyword.
 type NamedRef {
   name: NonEmptyStr
   target: RefTarget
 }
 
-// RefResolutionResult: outcome of following a ref chain to a commit hash.
-// SymbolicCycle signals that ref resolution encountered a cycle before
-// reaching a DirectRef (fail-closed: surface the error, never loop forever).
 // 🟢 TERMINAL — resolved/not-found/symbolic-cycle are the three outcomes of
 // ref-chain traversal; no additional arms are expected.
 type RefResolutionResult
@@ -151,12 +89,9 @@ type RefResolutionResult
   | RefNotFound
   | SymbolicCycle
 
-// --- Structural projections (read-only, no effects) --------------------------
-//
-// These functions project facts already present in a StoreObject.
-// Hash is NOT projected here — it lives in the ObjectRef from the store.
-// Effectful store I/O (read, write, list) belongs in the forge service layer.
+// --- Structural projections --------------------------------------------------
 
+// 🟢 TERMINAL — structural fold: StoreObject variant → ObjectKind.
 fn store_object_kind(object: StoreObject) -> ObjectKind {
   match object {
     ObjectBlob { blob: _ } => BlobKind
