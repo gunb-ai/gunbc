@@ -1487,13 +1487,13 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: affected-set lens PERTURB shard (red-under-mutation receipts)
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard "${{ strategy.job-index }}" "${{ strategy.job-total }}"
-  # Compiler-semantics claim-witness corpus enrollment — two parallel shards (~10 rows
-  # each, deterministic first-half/second-half partition in substrate .dag).
-  # Sign runner (2026-06-13): monolith Phase A ~880s (~14.7m) + spot-perturb → 1108s
-  # (~18.5m) — exceeds 13m gate. Per-shard: Phase A ~7.4m + spot ~1m ≈ 8.4m uncontended;
-  # budget rule: 8.4m ×2 = 16.8m → 20m ceiling/shard (×2.6 tail ≈ 22m < 35m monolith).
-  # CI: --shard a|b --spot-perturb-check; full --perturb-check local-only (both shards).
-  # dissolve-on-arrival: #4783 multi-entry claim_batch shrinks Phase A wall.
+  # Compiler-semantics claim-witness corpus enrollment — THREE root-aligned parallel shards
+  # via the uniform ci-claim-gate host (host-collapse of the prior shell scaffold). a/b are
+  # src/v4-rooted (23 rows each), c is dsl-rooted (9 rows). Each runs FULL --perturb-check
+  # (spot-perturb DROPPED — three smaller shards keep each comfortably under the 13m ceiling,
+  # so every row is perturb-covered every run with no rotation/partial coverage). Enforced via
+  # the `ci` aggregator. See scripts/v4-claim-witness-corpus-gate.sh and the runner .dag header
+  # (claim_witness_corpus_ci_runner.dag) for the root-alignment rationale.
   v4_claim_witness_corpus_a:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -1588,21 +1588,20 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + claim_batch binaries (claim witness corpus shard a)
-      id: v4-v2-bin
+    - name: Cache ci-claim-gate binary (claim witness corpus shard a)
+      id: v4-cg-bin
       uses: actions/cache@v5
       with:
         path: |
-          target/release/gunbc
-          target/release/claim_batch
-        key: gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-claim-witness-bin-a-${{ runner.os }}-${{ runner.arch }}-
-    - name: Build v2 compiler (claim witness corpus shard a)
-      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard a)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
     - name: claim-witness corpus enrollment gate (shard a)
-      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --perturb-check
   v4_claim_witness_corpus_b:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -1697,21 +1696,20 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + claim_batch binaries (claim witness corpus shard b)
-      id: v4-v2-bin
+    - name: Cache ci-claim-gate binary (claim witness corpus shard b)
+      id: v4-cg-bin
       uses: actions/cache@v5
       with:
         path: |
-          target/release/gunbc
-          target/release/claim_batch
-        key: gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-claim-witness-bin-b-${{ runner.os }}-${{ runner.arch }}-
-    - name: Build v2 compiler (claim witness corpus shard b)
-      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard b)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
     - name: claim-witness corpus enrollment gate (shard b)
-      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --perturb-check
   ci:
     if: always()
     needs: [ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_lens_ci_perturb, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, infra_isolation, doc_refs, layering_imports, timeout_budgets]
