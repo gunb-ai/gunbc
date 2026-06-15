@@ -1,0 +1,201 @@
+// std/html_markup.dag — HtmlNode HTML surface + thin consumer of std.markup.
+//
+// gunbhub builds HtmlNode trees structurally; try_serialize_html_node adapts to
+// std.markup.Fragment and delegates to the ONE convergent serialize_fragment
+// fold (cost-of-change = 1 with React #4934 and other markup consumers).
+//
+// XSS: std.markup escape_url is character-escaping only — javascript:/data:
+// schemes pass through intact. USER-CONTROLLED href/src values are
+// scheme-allowlisted (http/https/mailto/relative) fail-closed BEFORE escape_url.
+
+module std.html_markup
+
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+  EscapeContext,
+  serialize_fragment,
+  escape_text,
+}
+
+// --- HtmlNode HTML surface (consumer-facing IR) -----------------------------
+
+type HtmlAttr {
+  name: String
+  value: String
+}
+
+type HtmlNode
+  = ElementNode { tag: String, attrs: List<HtmlAttr>, children: List<HtmlNode> }
+  | TextNode { text: String }
+
+// --- href/src scheme allowlist (consumer XSS gate) --------------------------
+//
+// Positive allowlist only: http, https, mailto, relative (/ # . no-scheme).
+// Protocol-relative (//host) and all other schemes fail-closed.
+
+type RejectedUrlScheme
+  = DangerousScheme { scheme: DangerousUrlScheme }
+  | SchemeNotAllowlisted
+
+type DangerousUrlScheme
+  = JavascriptScheme
+  | DataScheme
+  | VbscriptScheme
+
+type HrefValidation
+  = SafeHref { url: String }
+  | RejectedHref { reason: RejectedUrlScheme }
+
+fn href_scheme_is_javascript(s: String) -> Bool {
+  starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:")
+}
+
+fn href_scheme_is_data(s: String) -> Bool {
+  starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:")
+}
+
+fn href_scheme_is_vbscript(s: String) -> Bool {
+  starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:")
+}
+
+fn href_is_http(s: String) -> Bool {
+  starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://")
+    || starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://")
+}
+
+fn href_is_mailto(s: String) -> Bool {
+  starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:")
+}
+
+fn href_is_relative(s: String) -> Bool {
+  starts_with(s, prefix: "/")
+    || starts_with(s, prefix: "#")
+    || starts_with(s, prefix: "./")
+    || starts_with(s, prefix: "../")
+    || !(s |> contains(":"))
+}
+
+fn href_is_allowlisted(url: String) -> Bool {
+  let s = trim(url)
+  if starts_with(s, prefix: "//") {
+    false
+  } else if href_is_http(s: s) || href_is_mailto(s: s) || href_is_relative(s: s) {
+    true
+  } else {
+    false
+  }
+}
+
+fn validate_href(url: String) -> HrefValidation {
+  let normalized = trim(url)
+  if href_is_allowlisted(url: url) {
+    SafeHref { url: url }
+  } else if href_scheme_is_javascript(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
+  } else if href_scheme_is_data(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
+  } else if href_scheme_is_vbscript(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
+  } else {
+    RejectedHref { reason: SchemeNotAllowlisted }
+  }
+}
+
+fn attr_is_url_attr(name: String) -> Bool {
+  name == "href" || name == "src"
+}
+
+// Walk the tree; return the first RejectedHref reason without collapsing
+// HrefValidation to a standalone Bool predicate (Practice 10).
+fn find_first_rejected_url(node: HtmlNode) -> RejectedUrlScheme? {
+  match node {
+    TextNode { text: _ } => Absent
+    ElementNode { tag: _, attrs, children } => {
+      let from_attr = fold(attrs,
+        init: Absent,
+        f: (acc, a) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            if attr_is_url_attr(name: a.name) {
+              match validate_href(url: a.value) {
+                SafeHref { url: _ } => Absent
+                RejectedHref { reason: r } => Present { value: r }
+              }
+            } else {
+              Absent
+            }
+        }
+      )
+      match from_attr {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          fold(children,
+            init: Absent,
+            f: (acc, c) => match acc {
+              Present { value: r } => Present { value: r }
+              Absent => find_first_rejected_url(node: c)
+            }
+          )
+      }
+    }
+  }
+}
+
+type HtmlSerializeResult
+  = Serialized { html: String }
+  | Rejected { reason: String }
+
+// --- HtmlNode -> Fragment adapter -------------------------------------------
+
+fn html_attr_escape_context(name: String) -> EscapeContext {
+  if attr_is_url_attr(name: name) {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn html_attr_to_fragment(attr: HtmlAttr) -> Attribute {
+  Attribute {
+    name: attr.name,
+    ctx: html_attr_escape_context(name: attr.name),
+    value: attr.value,
+  }
+}
+
+fn html_node_to_fragment(node: HtmlNode) -> Fragment {
+  match node {
+    TextNode { text } =>
+      TextNode { content: text }
+    ElementNode { tag, attrs, children } =>
+      Element {
+        tag: tag,
+        attributes: map(attrs, a => html_attr_to_fragment(attr: a)),
+        children: map(children, c => html_node_to_fragment(node: c)),
+      }
+  }
+}
+
+// --- thin consumer entry ----------------------------------------------------
+
+fn serialize_html_node(node: HtmlNode) -> String {
+  serialize_fragment(frag: html_node_to_fragment(node: node))
+}
+
+fn try_serialize_html_node(node: HtmlNode) -> HtmlSerializeResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for href/src" }
+    Absent =>
+      Serialized { html: serialize_html_node(node: node) }
+  }
+}
+
+fn escape_text_content(s: String) -> String {
+  escape_text(s: s)
+}

@@ -36,6 +36,8 @@ mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
+mod html_markup_smoke_test;
+#[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
 mod int_pow_bounded_test;
