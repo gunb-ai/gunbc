@@ -6,7 +6,8 @@
 //! one-binary CI runner consumes `gunbc.tools.ci_runner_pool` via v2 eval instead of these
 //! constants.
 //!
-//! Parity witness: `dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag`.
+//! Authority witness (dsl supply projection): `dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag`.
+//! Enrolled in claim-witness corpus shard b; does not assert these Rust transport constants.
 
 /// Host-side mirror of `std.compute_fabric::RunnerPoolFacts` for srv1/srv2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

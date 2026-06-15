@@ -329,6 +329,15 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
+// CF-M1 — CI runner pool supply projection witness (dsl/-rooted, shard b).
+// Exercises offer→pool recovery, constraint wiring, and hetzner fail-closed rejection.
+data corpus_ci_gate_row_ci_runner_pool_compute_fabric_projection: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "ci runner pool compute_fabric supply projection",
+  entry: "dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag",
+  function: "ci_runner_pool_compute_fabric_projection_holds",
+  expected: ExpectPass
+}
+
 // Fragment-IR markup serializer (dsl/std/markup.dag) — class-2 emit-correctness.
 // One keystone row ANDs by-execution-per-escaping-context + full-tree serialize +
 // CoC=1 one-fold-serves-both + emit->parse round-trip + perturb-discrimination.
@@ -492,6 +501,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_ci_runner_pool_compute_fabric_projection,
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
@@ -509,7 +519,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "54"
+data claim_witness_corpus_claim_run_row_count: String = "55"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -559,6 +569,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
+  corpus_ci_gate_row_ci_runner_pool_compute_fabric_projection,
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
@@ -576,4 +587,4 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_b_row_count: String = "36"
