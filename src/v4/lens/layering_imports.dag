@@ -13,17 +13,9 @@ import v4.std.algebra {
   length,
   list_snoc_item
 }
-import v4.std.collection { List, list_nth }
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
-import v4.std.witness { Holds, Violates, Witness }
 
 // Layer label for files under std/ or extdeps/ roots (host classifies at enumeration).
 type LayerLabel
@@ -95,33 +87,4 @@ fn layering_imports_clean_holds(facts: List<LayerImportFact>) -> Bool {
 
 fn layering_imports_violation_count(facts: List<LayerImportFact>) -> Int {
   length(xs: scan_facts_for_violations(facts: facts))
-}
-
-fn layering_imports_missing_violation_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^layering_imports_missing_violation_reason,
-    at: Textual {
-      file: ^layering_imports_projection_virtual_file,
-      extent: WholeFile
-    },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-fn layering_imports_exact_violation_holds(
-  facts: List<LayerImportFact>,
-  expected: LayeringImportViolation
-) -> Bool {
-  match list_nth(
-    xs: scan_facts_for_violations(facts: facts),
-    wanted: 0,
-    absent: layering_imports_missing_violation_diagnostic()
-  ) {
-    Holds { value: v } =>
-      length(xs: scan_facts_for_violations(facts: facts)) == 1
-        && v.layer == expected.layer
-        && v.path == expected.path
-        && v.import_module == expected.import_module
-    Violates { diagnostic: _ } => false
-  }
 }

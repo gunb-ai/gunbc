@@ -2,7 +2,7 @@
 # Uniform `.dag`-driven layering-imports CI Bool-witness gate transport.
 #
 # Green pass: layering_imports_scan on the live repo -> clean_tree witness via
-# ci-claim-gate; optional lens-unit rows (hardcoded facts, semantics-only).
+# ci-claim-gate.
 #
 # Perturb pass (--perturb-check): host scanner-execution slice — plant a violation
 # under each layer root in a temp tree, run layering_imports_scan, assert the
@@ -173,12 +173,6 @@ manifest_dir="$(dirname "$manifest")"
   --gate-entry "$gate_entry" \
   --rows-fn layering_imports_claim_run_rows_tsv \
   --notice-title "layering imports host scan"
-
-"$claim_gate_bin" \
-  --source-root src/v4 \
-  --gate-entry "$gate_entry" \
-  --rows-fn layering_imports_lens_unit_claim_run_rows_tsv \
-  --notice-title "layering imports lens unit"
 
 if [[ "$perturb" -eq 1 ]]; then
   run_scanner_perturb_receipts

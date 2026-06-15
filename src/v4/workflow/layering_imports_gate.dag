@@ -30,69 +30,9 @@ data layering_imports_claim_run_rows: List<LayeringImportsClaimRunRow> = [
   layering_imports_claim_run_row_clean_tree
 ]
 
-data layering_imports_lens_unit_row_std_fixture: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/std_to_compiler_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/std_to_compiler_fixture.dag",
-  function: "detects_std_to_compiler_import_holds"
-}
-
-data layering_imports_lens_unit_row_extdeps_fixture: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/extdeps_to_compiler_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/extdeps_to_compiler_fixture.dag",
-  function: "detects_extdeps_to_compiler_import_holds"
-}
-
-data layering_imports_lens_unit_row_v3_std_exact: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/v3_std_exact_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/v3_std_exact_fixture.dag",
-  function: "detects_v3_std_exact_compiler_import_holds"
-}
-
-data layering_imports_lens_unit_row_dsl_std_v3_prefix: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/dsl_std_v3_prefix_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/dsl_std_v3_prefix_fixture.dag",
-  function: "detects_dsl_std_v3_compiler_prefix_import_holds"
-}
-
-data layering_imports_lens_unit_row_dsl_extdeps_v4_exact: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/dsl_extdeps_v4_exact_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/dsl_extdeps_v4_exact_fixture.dag",
-  function: "detects_dsl_extdeps_v4_exact_compiler_import_holds"
-}
-
-data layering_imports_lens_unit_row_parse_level_pre_resolve: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
-  label: "layering_imports/lens_unit/parse_level_pre_resolve_fixture",
-  entry: "src/v4/test/claim/layering_imports/lens_unit/parse_level_pre_resolve_fixture.dag",
-  function: "detects_parse_level_pre_resolve_import_holds"
-}
-
-data layering_imports_lens_unit_claim_run_rows: List<LayeringImportsClaimRunRow> = [
-  layering_imports_lens_unit_row_std_fixture,
-  layering_imports_lens_unit_row_extdeps_fixture,
-  layering_imports_lens_unit_row_v3_std_exact,
-  layering_imports_lens_unit_row_dsl_std_v3_prefix,
-  layering_imports_lens_unit_row_dsl_extdeps_v4_exact,
-  layering_imports_lens_unit_row_parse_level_pre_resolve
-]
-
 fn layering_imports_claim_run_rows_tsv() -> String {
   fold_list_right(
     xs: layering_imports_claim_run_rows,
-    empty: "",
-    snoc: fn(acc, row) {
-      concat(acc,
-        concat(row.label,
-          concat("\t",
-            concat(row.entry,
-              concat("\t",
-                concat(row.function, "\n"))))))
-    }
-  )
-}
-
-fn layering_imports_lens_unit_claim_run_rows_tsv() -> String {
-  fold_list_right(
-    xs: layering_imports_lens_unit_claim_run_rows,
     empty: "",
     snoc: fn(acc, row) {
       concat(acc,

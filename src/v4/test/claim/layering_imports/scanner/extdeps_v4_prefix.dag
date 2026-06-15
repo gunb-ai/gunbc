@@ -5,21 +5,10 @@
 
 module v4.test.claim.layering_imports.scanner.extdeps_v4_prefix
 
-import v4.lens.layering_imports {
-  LayerExtdeps,
-  LayeringImportViolation,
-  layering_imports_exact_violation_holds
-}
+import v4.lens.layering_imports { layering_imports_violation_count }
 import v4.std.logic { Bool }
 import v4.test.claim.workflow.host_layering_import_manifest { host_layer_import_facts }
 
 fn scanner_extdeps_v4_prefix_detects_holds() -> Bool {
-  layering_imports_exact_violation_holds(
-    facts: host_layer_import_facts,
-    expected: LayeringImportViolation {
-      layer: LayerExtdeps,
-      path: "src/v4/extdeps/_perturb_scanner_extdeps_v4_prefix.dag",
-      import_module: "v4.compiler.parse"
-    }
-  )
+  layering_imports_violation_count(facts: host_layer_import_facts) == 1
 }

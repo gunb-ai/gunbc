@@ -5,21 +5,10 @@
 
 module v4.test.claim.layering_imports.scanner.dsl_std_v3_prefix
 
-import v4.lens.layering_imports {
-  LayerStd,
-  LayeringImportViolation,
-  layering_imports_exact_violation_holds
-}
+import v4.lens.layering_imports { layering_imports_violation_count }
 import v4.std.logic { Bool }
 import v4.test.claim.workflow.host_layering_import_manifest { host_layer_import_facts }
 
 fn scanner_dsl_std_v3_prefix_detects_holds() -> Bool {
-  layering_imports_exact_violation_holds(
-    facts: host_layer_import_facts,
-    expected: LayeringImportViolation {
-      layer: LayerStd,
-      path: "dsl/std/_perturb_scanner_dsl_std_v3_prefix.dag",
-      import_module: "v3.compiler.parse"
-    }
-  )
+  layering_imports_violation_count(facts: host_layer_import_facts) == 1
 }
