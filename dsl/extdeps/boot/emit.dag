@@ -1,0 +1,151 @@
+// extdeps/boot/emit.dag — freestanding ELF-64 ET_EXEC emit (Slice-0.5).
+//
+// Scope: single PT_LOAD R+X freestanding payload via landed encode.dag inverse.
+// Anchor: gABI ch4/ch5 (Ehdr + Phdr); Linux x86-64 ET_EXEC load base 0x400000.
+// Payload: minimal VGA text-mode pixel writer (movabs + movw + hlt).
+
+module extdeps.boot.emit
+
+import extdeps.boot.framebuffer { vga_text_mode_base }
+import extdeps.boot.freestanding_payload {
+  EmittedPayload,
+  FreestandingPayloadRef,
+  PrebuiltPayload,
+}
+import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr }
+import extdeps.formats.elf.primitives {
+  ElfClass64,
+  ElfData2Lsb,
+  EtExec,
+  EmX86_64,
+  PtLoad,
+  elf64_phdr_size,
+  elf64_ehdr_size,
+  elf_mag0,
+  elf_mag1,
+  elf_mag2,
+  elf_mag3,
+  pf_r,
+  pf_x,
+}
+import extdeps.formats.elf.segments { Elf64Phdr }
+import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent }
+import std.exec_format { EntryPoint }
+
+// Slice-0.5 content label — structural digest defers to hash primitive when dsl bootstrap exports it.
+data pixel_writer_payload_digest_label: String = "freestanding-elf64-slice-0.5"
+
+// Linux x86-64 static ET_EXEC default load address.
+data freestanding_load_vaddr: Int = 4194304
+
+data freestanding_phoff: Int = 64
+
+data freestanding_code_file_offset: Int = 120
+
+data freestanding_page_align: Int = 4096
+
+// x86-64: movabs rax, vga_text_mode_base; movw $0x0f48, (%rax); hlt
+data pixel_writer_code_bytes: List<Int> = [
+  72, 184, 0, 128, 11, 0, 0, 0, 0, 0,
+  102, 199, 0, 72, 15,
+  244,
+]
+
+fn freestanding_elf_ident() -> ElfIdent {
+  ElfIdent {
+    mag0: elf_mag0,
+    mag1: elf_mag1,
+    mag2: elf_mag2,
+    mag3: elf_mag3,
+    class: ElfClass64,
+    data: ElfData2Lsb,
+    version: 1,
+    osabi: 0,
+    abiversion: 0,
+  }
+}
+
+fn freestanding_elf64_ehdr(code_bytes: List<Int>) -> Elf64Ehdr {
+  Elf64Ehdr {
+    ident: freestanding_elf_ident(),
+    file_type: EtExec,
+    machine: EmX86_64,
+    version: 1,
+    entry: freestanding_load_vaddr,
+    phoff: freestanding_phoff,
+    shoff: 0,
+    flags: 0,
+    ehsize: elf64_ehdr_size,
+    phentsize: elf64_phdr_size,
+    phnum: 1,
+    shentsize: elf64_ehdr_size,
+    shnum: 0,
+    shstrndx: 0,
+  }
+}
+
+fn freestanding_pt_load_phdr(code_bytes: List<Int>) -> Elf64Phdr {
+  Elf64Phdr {
+    segment_type: PtLoad,
+    flags: pf_r + pf_x,
+    offset: freestanding_code_file_offset,
+    vaddr: freestanding_load_vaddr,
+    paddr: freestanding_load_vaddr,
+    filesz: count(code_bytes),
+    memsz: count(code_bytes),
+    align: freestanding_page_align,
+  }
+}
+
+fn emit_freestanding_elf64(code_bytes: List<Int>) -> List<Int> {
+  append(
+    append(
+      encode_elf64_ehdr(freestanding_elf64_ehdr(code_bytes)),
+      items: encode_elf64_phdr(freestanding_pt_load_phdr(code_bytes)),
+    ),
+    items: code_bytes,
+  )
+}
+
+fn freestanding_payload_digest(_bytes: List<Int>, _entry: Int) -> String {
+  pixel_writer_payload_digest_label
+}
+
+fn emit_pixel_writer_payload() -> FreestandingPayloadRef {
+  let code = pixel_writer_code_bytes
+  let bytes = emit_freestanding_elf64(code)
+  let entry = freestanding_load_vaddr
+  EmittedPayload {
+    digest: freestanding_payload_digest(bytes, entry),
+    entry: EntryPoint { virtual_address: entry },
+  }
+}
+
+fn witness_vga_base_matches_framebuffer_fact() -> Bool {
+  vga_text_mode_base == 753664
+}
+
+fn witness_pixel_writer_code_uses_vga_base() -> Bool {
+  byte_at_in_bounds(pixel_writer_code_bytes, 2) == 0
+    && byte_at_in_bounds(pixel_writer_code_bytes, 3) == 128
+    && byte_at_in_bounds(pixel_writer_code_bytes, 4) == 11
+}
+
+fn byte_at_in_bounds(bytes: List<Int>, offset: Int) -> Int {
+  match bytes |> get(offset) {
+    null => 0
+    other => other
+  }
+}
+
+fn witness_emitted_file_size() -> Bool {
+  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  count(bytes) == freestanding_code_file_offset + count(pixel_writer_code_bytes)
+}
+
+fn witness_emitted_digest_non_empty() -> Bool {
+  match emit_pixel_writer_payload() {
+    EmittedPayload { digest: d, entry: _ } => d != ""
+    PrebuiltPayload { digest: _, entry: _, hollow: _ } => false
+  }
+}

@@ -1,0 +1,47 @@
+// extdeps/boot/linux_x86_boot.dag — Linux x86 direct-kernel boot image (Slice-0).
+//
+// Anchor: Documentation/arch/x86/boot.rst (Linux kernel boot protocol).
+// M9 attach: x86_64_linux ArchitectureProfile + ELF EntryPoint.
+
+module extdeps.boot.linux_x86_boot
+
+import extdeps.boot.freestanding_payload {
+  EmittedPayload,
+  FreestandingPayloadRef,
+  PrebuiltPayload,
+}
+
+type LinuxX86BootImage {
+  kernel_digest: String,
+  cmdline: List<String>,
+  init: FreestandingPayloadRef,
+}
+
+type BootImageOutcome
+  = BootImageAccepted { value: LinuxX86BootImage }
+  | BootImageRejected { reason: BootImageRejectReason }
+
+type BootImageRejectReason
+  = EmptyKernelDigest
+  | EmptyInitPayload
+
+fn accept_linux_x86_boot_image(img: LinuxX86BootImage) -> BootImageOutcome {
+  if img.kernel_digest == "" {
+    BootImageRejected { reason: EmptyKernelDigest }
+  } else {
+    match img.init {
+      PrebuiltPayload { digest: d, entry: _, hollow: _ } =>
+        if d == "" {
+          BootImageRejected { reason: EmptyInitPayload }
+        } else {
+          BootImageAccepted { value: img }
+        }
+      EmittedPayload { digest: d, entry: _ } =>
+        if d == "" {
+          BootImageRejected { reason: EmptyInitPayload }
+        } else {
+          BootImageAccepted { value: img }
+        }
+    }
+  }
+}
