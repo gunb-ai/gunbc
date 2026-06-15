@@ -109,9 +109,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -120,18 +120,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -189,9 +194,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -200,18 +205,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -253,9 +263,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -264,18 +274,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -316,9 +331,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -327,18 +342,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -429,9 +449,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -440,18 +460,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -553,9 +578,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -564,18 +589,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -713,9 +743,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -724,18 +754,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -884,9 +919,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -895,18 +930,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -1027,9 +1067,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -1038,18 +1078,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -1166,9 +1211,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -1177,18 +1222,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -1319,9 +1369,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -1330,18 +1380,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -1436,9 +1491,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -1447,18 +1502,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
@@ -1540,9 +1600,9 @@ jobs:
           local repo="$1"
           [ -d "${repo}/.git" ] || return 0
           echo "::group::Scrub dangling remote refs: ${repo}"
-          while IFS= read -r ref; do
+          while IFS= read -r sha ref; do
             [ -n "$ref" ] || continue
-            if ! git -C "$repo" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
               echo "::warning::deleting dangling ref ${ref}"
               if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
                 echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
@@ -1551,18 +1611,23 @@ jobs:
                 return 0
               fi
             fi
-          done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null || true)
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
           # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
           # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
-          # actions/checkout fresh-clones. Precise: fires ONLY when for-each-ref errors or a ref
-          # tip is genuinely missing -- a healthy or empty checkout is never removed.
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
           corrupt=0
           if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
             corrupt=1
-          elif git -C "$repo" for-each-ref --format='%(objectname)' 2>/dev/null \
-               | git -C "$repo" cat-file --batch-check 2>/dev/null | grep -q ' missing$'; then
-            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
           fi
           if [ "$corrupt" -eq 1 ]; then
             echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
