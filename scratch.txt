@@ -2,15 +2,16 @@ CI-REWORK SCRATCH — modeling smells (temporary; delete before merge)
 
 RUBRIC: path is the discriminator; right altitude, own clear place; no catch-alls; a high concept owns a registration concept, not instances; personal inventory seeds genuine vendor models, it does not live in std/ concepts.
 
-LAYERS: extdeps = external vendors (Ampere, Hetzner, ...). std = concepts. compute_fabric = high concept; imports vendor models only if genuinely needed (probably too early now).
+LAYERS: extdeps = external vendors (Ampere, Hetzner). std = concepts. operator's ACTUAL instantiation (srv1/srv2 real machines) = private repo (ctrl/), out of gunbc. compute_fabric = high concept; imports vendor models only if genuinely needed (probably too early now).
 
-ITEMS (verified vs branch HEAD)
-1. std/compute_fabric.dag:460-635 — sheds concrete srv1/srv2+Hetzner instances; stay a pure concept (keep only the general CpuFacts shape), do not import vendor models yet.
-2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; belongs in an operator/deployment layer, not std/memory.
-3. std/cpu/ampere.dag — Ampere is an external dependency; move to extdeps (e.g. extdeps/cpu/ampere/ or extdeps/hardware/ampere/altra/). Blast radius = only this 4-file cluster.
-4. std/cpu/types.dag:13 — AmpereCpuModel enum is narrowed to the two owned SKUs; a concept type should not equal a purchase order. Ampere specifics follow item 3 into extdeps.
-5. std/cpu.dag — cpu_model_catalog maps only the owned models; follows once 3+4 move; std/cpu keeps the general CPU concept only.
+ITEMS (verified vs branch HEAD;  [x]=done  [~]=partial  [ ]=todo)
+[~] 1. std/compute_fabric.dag — shed concrete instances, stay pure concept. DONE: dead operator-fleet CI-throttle constants removed (also cleared gate-1 :541). LEFT: srv1/srv2+Hetzner offers + 3 grounded witnesses -> re-ground on generic SharedHostHome/Vm fixtures.
+[ ] 2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; gunbc-side of item 6 (leaves to ctrl/).
+[ ] 3. std/cpu/ampere.dag — Ampere vendor facts -> extdeps (extdeps/cpu/ampere/ or extdeps/hardware/ampere/altra/). Blast radius = this 4-file cluster.
+[ ] 4. std/cpu/types.dag:13 — AmpereCpuModel enum narrowed to the two owned SKUs; follows item 3 into extdeps.
+[ ] 5. std/cpu.dag — cpu_model_catalog maps only the owned models; std/cpu keeps the general CPU concept only.
+[ ] 6. operator-fleet actual config (srv1/srv2 = my real instantiation of extdeps) -> private repo (ctrl/), out of gunbc entirely. gunbc just sheds them (items 1,2).
 
 NOTES
 - verified clean (no change): std/placement_supply.dag (concept-only).
-- live CI blocker: compute_fabric.dag:541 multi-line `data =` fails gate-1 parse (decide: one-line now vs fix as part of item 1).
+- gate-1 blocker RESOLVED by item-1 partial (was compute_fabric.dag:541).
