@@ -30,7 +30,3 @@ fn accept_descriptor(d: OciDescriptor) -> DescriptorOutcome {
     DescriptorAccepted { value: d }
   }
 }
-
-fn descriptor_has_digest(d: OciDescriptor, expected: String) -> Bool {
-  d.digest == expected
-}

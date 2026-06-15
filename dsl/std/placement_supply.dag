@@ -38,6 +38,8 @@ type PlacementSupplyRow {
 // std.compute_fabric). Both factors are `Nat` counts, so the product inhabits
 // the `Nat` carrier of `Hertz` without a signed/fractional generalization.
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
+  // Let-bind thread_count and clock_count separately: v2 parser rejects the
+  // nested projection call in a single expression (GATE-0 workaround).
   let thread_count = hardware_thread_count_value(row.hardware_threads)
   let clock_count = hertz_count(row.clock_hz)
   hertz(thread_count * clock_count)

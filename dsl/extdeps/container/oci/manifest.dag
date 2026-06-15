@@ -9,6 +9,7 @@ import extdeps.container.oci.descriptor {
   OciDescriptor,
   DescriptorAccepted,
   DescriptorRejected,
+  DescriptorRejectReason,
   accept_descriptor,
 }
 import extdeps.container.oci.media_types {
@@ -29,7 +30,8 @@ type ManifestRejectReason
   = WrongSchemaVersion { got: Int, expected: Int }
   | WrongMediaType { got: String, expected: String }
   | ConfigDescriptorRejected { detail: String }
-  | LayerDescriptorRejected { index: Int, detail: String }
+  | LayerDescriptorRejected { index: Int, reason: DescriptorRejectReason }
+  | LayerMissing { index: Int }
   | EmptyLayers
 
 type ManifestOutcome
@@ -57,7 +59,7 @@ fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
         } else if count(m.layers) == 0 {
           ManifestRejected { reason: EmptyLayers }
         } else {
-          accept_image_manifest_layers(m, layers_ok: true, index: 0)
+          accept_image_manifest_layers(m, index: 0)
         }
     }
   }
@@ -70,25 +72,23 @@ fn layer_at(layers: List<OciDescriptor>, index: Int) -> OciDescriptor? {
   }
 }
 
-fn accept_image_manifest_layers(m: ImageManifest, layers_ok: Bool, index: Int) -> ManifestOutcome {
-  if layers_ok == false {
-    ManifestRejected {
-      reason: LayerDescriptorRejected { index: index, detail: "layer" },
-    }
-  } else if index >= count(m.layers) {
+fn accept_image_manifest_layers(m: ImageManifest, index: Int) -> ManifestOutcome {
+  if index >= count(m.layers) {
     ManifestAccepted { value: m }
   } else {
     match layer_at(m.layers, index) {
       null =>
         ManifestRejected {
-          reason: LayerDescriptorRejected { index: index, detail: "missing" },
+          reason: LayerMissing { index: index },
         }
       layer =>
         match accept_descriptor(layer) {
-          DescriptorRejected { reason: _ } =>
-            accept_image_manifest_layers(m, layers_ok: false, index: index)
+          DescriptorRejected { reason } =>
+            ManifestRejected {
+              reason: LayerDescriptorRejected { index: index, reason: reason },
+            }
           DescriptorAccepted { value: _ } =>
-            accept_image_manifest_layers(m, layers_ok: true, index: index + 1)
+            accept_image_manifest_layers(m, index: index + 1)
         }
     }
   }
