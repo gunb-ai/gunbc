@@ -84,8 +84,9 @@ fn accept_linux_platform(p: LinuxPlatform) -> LinuxPlatformOutcome {
     null => LinuxPlatformAccepted { value: p }
     namespaces =>
       match duplicate_namespace_label(namespaces, index: 0, seen: []) {
-        null => LinuxPlatformAccepted { value: p }
-        label => LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: label } }
+        Present { value: label } =>
+          LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: label } }
+        Absent => LinuxPlatformAccepted { value: p }
       }
   }
 }
@@ -103,14 +104,14 @@ fn duplicate_namespace_label(
   seen: List<String>,
 ) -> String? {
   if index >= count(namespaces) {
-    null
+    Absent
   } else {
     match namespace_at(namespaces, index) {
-      null => null
+      null => Absent
       ns =>
         let label = linux_namespace_type_label(ns.namespace_type)
         if contains(seen, label) {
-          label
+          Present { value: label }
         } else {
           duplicate_namespace_label(
             namespaces,
