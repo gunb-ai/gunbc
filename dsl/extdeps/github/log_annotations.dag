@@ -26,6 +26,16 @@ data annotation_set_output_prefix: String = "::set-output name="
 data annotation_add_mask_prefix: String = "::add-mask::"
 data annotation_stop_commands_prefix: String = "::stop-commands::"
 
+fn shell_single_quote(s: String) -> String {
+  // POSIX sh: wrap in single quotes; internal ' → '\'' (end quote, escaped quote, resume).
+  concat("'", replace(s, "'", "'\\''"), "'")
+}
+
+// Safe `printf '%s\n' …` for sh -c: one line, no word-split on spaces.
+fn emit_line_shell(line: String) -> String {
+  concat("printf '%s\\n' ", shell_single_quote(s: line))
+}
+
 fn render_log_annotation(annotation: LogAnnotation) -> String {
   match annotation {
     AnnotationError { message: m, file: _, line: _, col: _ } =>
@@ -39,7 +49,7 @@ fn render_log_annotation(annotation: LogAnnotation) -> String {
     AnnotationEndGroup =>
       annotation_endgroup
     SetOutput { name: n, value: v } =>
-      concat(annotation_set_output_prefix, n, "}", v)
+      concat(annotation_set_output_prefix, n, "::", v)
     AddMask { value: v } =>
       concat(annotation_add_mask_prefix, v)
     StopCommands { token: t } =>

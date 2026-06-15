@@ -20,7 +20,7 @@ import extdeps.shell
 import extdeps.github.log_annotations {
   LogAnnotation,
   AnnotationError, AnnotationNotice, AnnotationGroup, AnnotationEndGroup,
-  render_log_annotation
+  render_log_annotation, emit_line_shell
 }
 
 // ── Result types ────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ fn with_sccache_env(script: String) -> String {
 fn dsl_compile_clean_shell(root: SourceRoot) -> String {
   with_sccache_env(
     concat(
-      ensure_gunbc_binary(), "; ",
+      ensure_gunbc_binary(), " && ",
       "bash scripts/v2-dsl-full-tree-parse-gate.sh"
     )
   )
@@ -113,10 +113,10 @@ fn dsl_compile_clean_shell(root: SourceRoot) -> String {
 fn affected_tests_shell() -> String {
   with_sccache_env(
     concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_ci_claim_gate_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      ensure_discover_owned_data_binary(), "; ",
+      ensure_gunbc_binary(), " && ",
+      ensure_ci_claim_gate_binary(), " && ",
+      ensure_claim_batch_binary(), " && ",
+      ensure_discover_owned_data_binary(), " && ",
       run_logged_script(
         inner: "bash scripts/v4-affected-tests-gate.sh",
         log_label: "gate3"
@@ -137,7 +137,7 @@ fn render_ci_command(cmd: CICommand) -> String {
 
 func emit_log_annotation(annotation: LogAnnotation) -> Unit {
   let line = render_log_annotation(annotation)
-  let _ = shell.Exec.Run(script: concat("printf '%s\\n' ", line))
+  let _ = shell.Exec.Run(script: emit_line_shell(line: line))
 }
 
 // ── Gate execution ──────────────────────────────────────────────────
@@ -168,7 +168,7 @@ func run_gate(gate: CIGate) -> GateOutcome {
       }
     )
     if detail != "" {
-      let _ = shell.Exec.Run(script: concat("printf '%s\\n' ", detail))
+      let _ = shell.Exec.Run(script: emit_line_shell(line: detail))
     }
     let _ = emit_log_annotation(AnnotationEndGroup)
     { name: gate.name, passed: false, blocking: gate.blocking, output: detail }
