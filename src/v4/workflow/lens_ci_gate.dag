@@ -127,6 +127,35 @@ data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow =
   function: "coproduct_reflection_conformance_holds"
 }
 
+// unit-modeling lens (B1) — discriminating pass+fail witnesses. The flag/pass
+// pair (same `ram_bytes` field, bare Int vs ByteSize carrier) proves the lens
+// keys on the resolved type, not the name; the two exempt rows prove it does not
+// over-flag (electrical is GATE-2-pending with no carrier; a coordinate is not a
+// count). All ExpectPass (the `*_holds` Bool asserts the gate verdict).
+data lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/flat_scalar_unit_leaf_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag",
+  function: "flat_scalar_unit_leaf_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_modeled_field_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/modeled_unit_field_passes",
+  entry: "src/v4/test/claim/lens_unit_modeling/modeled_unit_field_passes.dag",
+  function: "modeled_unit_field_passes_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_electrical_pending: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/electrical_pending_not_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/electrical_pending_not_flagged.dag",
+  function: "electrical_pending_not_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_structural_int: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/structural_int_not_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/structural_int_not_flagged.dag",
+  function: "structural_int_not_flagged_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
@@ -143,7 +172,11 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_coproduct_reflection_behavior_nullary_inhabitants,
   lens_ci_claim_run_row_coproduct_reflection_connective_nullary_failclosed,
   lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets,
-  lens_ci_claim_run_row_coproduct_reflection_conformance
+  lens_ci_claim_run_row_coproduct_reflection_conformance,
+  lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged,
+  lens_ci_claim_run_row_unit_modeling_modeled_field_passes,
+  lens_ci_claim_run_row_unit_modeling_electrical_pending,
+  lens_ci_claim_run_row_unit_modeling_structural_int
 ]
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
