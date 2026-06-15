@@ -5,17 +5,28 @@
 // spice.dag passive projection; Resistor=map (v=R·i), Capacitor/Inductor=fold over dt.
 // Anchor: SPICE3 passive element topology via v4.extdeps.formats.spice Component.
 // M9 receipt: v4.std.algebra {fold_list}, v4.std.integer {int_add,int_mul,int_div};
-//             Step* Int microscalar kernel until v4.std.float arithmetic lands.
-// Status: S1 canonical (witty-swift-823 / #4895 lineage).
+//             v4.std.measure {Measure, Quantity, Scale} — domain aliases below.
+// Status: S1 canonical + Measure remodel (tidy-heron-718 / post-#4929 GATE1).
 
 module v4.std.timeseries_signal
 
 import v4.std.algebra { Cons, Empty, fold_list, fold_list_right }
 import v4.std.collection { List, Optional, Absent, Present }
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
-import v4.std.float { Float }
 import v4.std.integer { Int, int_add, int_div, int_mul }
 import v4.std.logic { Bool }
+import v4.std.measure {
+  Measure,
+  Capacitance,
+  ElectricCharge,
+  ElectricCurrent,
+  ElectricPotential,
+  Inductance,
+  MagneticFlux,
+  Micro,
+  Resistance,
+  Time,
+}
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 import v4.extdeps.formats.spice {
@@ -29,11 +40,92 @@ import v4.extdeps.formats.spice {
   SpiceVoltUnit
 }
 
+// --- SPICE domain aliases (compute_fabric pattern; M9-attach to #4929 Quantity members) ---
+//
+// 🟡 born-mark — feature:spice-dimensional-product-algebra — typed Ohm*Ampere->Volt and
+// Scale-exponent compose (µΩ·µA is pico-volts, not micro-volts) is a separate consumer
+// lane; S1 computes products on `.count` with Measure types as dimensional tags only.
+
+type Voltage = Measure<ElectricPotential, Micro, Int>
+type Current = Measure<ElectricCurrent, Micro, Int>
+type ResistanceMicro = Measure<Resistance, Micro, Int>
+type CapacitanceMicro = Measure<Capacitance, Micro, Int>
+type InductanceMicro = Measure<Inductance, Micro, Int>
+type ChargeMicro = Measure<ElectricCharge, Micro, Int>
+type FluxMicro = Measure<MagneticFlux, Micro, Int>
+// 🟡 INTERIM — dissolve-on: GATE5 shared time-affine Duration type (still-wren/smart-hawk).
+type DurationMicro = Measure<Time, Micro, Int>
+
+fn voltage(n: Int) -> Voltage {
+  Voltage { count: n }
+}
+
+fn voltage_count(v: Voltage) -> Int {
+  v.count
+}
+
+fn current(n: Int) -> Current {
+  Current { count: n }
+}
+
+fn current_count(c: Current) -> Int {
+  c.count
+}
+
+fn resistance_micro(n: Int) -> ResistanceMicro {
+  ResistanceMicro { count: n }
+}
+
+fn resistance_micro_count(r: ResistanceMicro) -> Int {
+  r.count
+}
+
+fn capacitance_micro(n: Int) -> CapacitanceMicro {
+  CapacitanceMicro { count: n }
+}
+
+fn capacitance_micro_count(c: CapacitanceMicro) -> Int {
+  c.count
+}
+
+fn inductance_micro(n: Int) -> InductanceMicro {
+  InductanceMicro { count: n }
+}
+
+fn inductance_micro_count(l: InductanceMicro) -> Int {
+  l.count
+}
+
+fn charge_micro(n: Int) -> ChargeMicro {
+  ChargeMicro { count: n }
+}
+
+fn charge_micro_count(q: ChargeMicro) -> Int {
+  q.count
+}
+
+fn flux_micro(n: Int) -> FluxMicro {
+  FluxMicro { count: n }
+}
+
+fn flux_micro_count(phi: FluxMicro) -> Int {
+  phi.count
+}
+
+fn duration_micro(n: Int) -> DurationMicro {
+  DurationMicro { count: n }
+}
+
+fn duration_micro_count(t: DurationMicro) -> Int {
+  t.count
+}
+
 // --- Affine voltage torsor (two distinct types) -----------------------------
 //
 // AbsolutePotential is meaningful only against an explicit reference node.
 // PotentialDifference is gauge-free. Adding two absolutes is ill-typed by
-// construction (no binary add across AbsolutePotential).
+// construction (no binary add across AbsolutePotential). Magnitudes are signed
+// Int via Voltage/Current — unified with step-operator representation (no Float).
 
 // 🟢 coproduct dissolution — reference node for gauge-dependent potential samples.
 type PotentialReference
@@ -43,43 +135,23 @@ type PotentialReference
 // 🟢 grounded — gauge-dependent absolute potential sample.
 type AbsolutePotential {
   reference: PotentialReference
-  magnitude: Float
+  magnitude: Voltage
 }
 
 // 🟢 grounded — gauge-free potential difference (torsor vector).
 type PotentialDifference {
-  magnitude: Float
+  magnitude: Voltage
 }
 
 // 🟢 grounded — branch current sample at this slice.
 type BranchCurrent {
-  magnitude: Float
+  magnitude: Current
 }
 
 // 🟢 grounded — spice approximate carrier bridge to AbsolutePotential reference.
 type NamedAffineVoltage {
   reference: PotentialReference
   approx: SpiceApproxVoltage
-}
-
-// --- Passive element parameters (interim local dimension types) ------------
-//
-// 🟡 INTERIM — dissolve-on: (a) snappy-stag Quantity-extension governance
-// coordination (gentle-lynx-177) lands a ratified Quantity arm for passive
-// elements; (b) Measure.count : Nat carrier reconciles with v4 Float magnitudes
-// here (Nat-vs-Float representational gap — do NOT touch measure.dag in this PR).
-// Forbidden: ossifying these bare Float wrappers as a parallel quantity ledger.
-
-type Resistance {
-  ohms: Float
-}
-
-type Capacitance {
-  farads: Float
-}
-
-type Inductance {
-  henries: Float
 }
 
 data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVoltage {
@@ -187,7 +259,7 @@ fn named_affine_voltage(
 
 fn absolute_potential_from_named(
   named: NamedAffineVoltage,
-  magnitude: Float
+  magnitude: Voltage
 ) -> AbsolutePotential {
   AbsolutePotential {
     reference: named.reference,
@@ -197,7 +269,7 @@ fn absolute_potential_from_named(
 
 fn absolute_potential_from_named_preserves_reference(
   named: NamedAffineVoltage,
-  magnitude: Float
+  magnitude: Voltage
 ) -> Bool {
   let absolute = absolute_potential_from_named(named: named, magnitude: magnitude)
   potential_reference_eq(
@@ -206,24 +278,22 @@ fn absolute_potential_from_named_preserves_reference(
   )
 }
 
-fn potential_difference_of_magnitude(magnitude: Float) -> PotentialDifference {
+fn potential_difference_of_magnitude(magnitude: Voltage) -> PotentialDifference {
   PotentialDifference {
     magnitude: magnitude
   }
 }
 
-fn branch_current_of_magnitude(magnitude: Float) -> BranchCurrent {
+fn branch_current_of_magnitude(magnitude: Current) -> BranchCurrent {
   BranchCurrent {
     magnitude: magnitude
   }
 }
 
-// --- Map/fold step operators (Int microscalar kernel) ----------------------
+// --- Map/fold step operators (Form-B fold + Measure-attached magnitudes) -----
 //
-// Float carriers above are spice-bridge/substrate (interim). Step operators use
-// fixed-point Int micro-units for emit-safe arithmetic — same pattern as the
-// closed S1 circuit.dag slice, without duplicating a parallel std module.
-// 🟡 INTERIM — dissolve-on: v4.std.float add/mul/div + value-Measure reconciliation.
+// Form-B: capacitor accumulates charge then derives v = Q/C; inductor accumulates
+// flux then derives i = Φ/L. Products computed on `.count`; Measure types tag dims.
 
 data timeseries_passive_fold_step_locus: Symbol = ^timeseries_passive_fold_step
 
@@ -234,15 +304,15 @@ type CircuitPrimitiveKind
   | SolveStep
 
 type TimeStep {
-  dt_microseconds: Int
+  dt_microseconds: DurationMicro
 }
 
 type StepCurrent {
-  microamperes: Int
+  microamperes: Current
 }
 
 type StepPotentialDifference {
-  microvolts: Int
+  microvolts: Voltage
 }
 
 type StepBranchVoltage {
@@ -251,7 +321,7 @@ type StepBranchVoltage {
 
 type TimeSeriesSample {
   tick: Nat
-  microvolts: Int
+  microvolts: Voltage
 }
 
 type TimeSeriesSignal = List<TimeSeriesSample>
@@ -270,7 +340,7 @@ fn time_series_append(
 // --- MAP: Resistor (stateless v = R·i) --------------------------------------
 
 type ResistorRating {
-  microohms: Int
+  microohms: ResistanceMicro
 }
 
 type ResistorMap {
@@ -284,20 +354,25 @@ fn resistor_map_voltage(
 ) -> StepBranchVoltage {
   StepBranchVoltage {
     difference: StepPotentialDifference {
-      microvolts: int_mul(a: element.rating.microohms, b: current.microamperes)
+      microvolts: voltage(
+        int_mul(
+          a: resistance_micro_count(element.rating.microohms),
+          b: current_count(current.microamperes),
+        )
+      )
     }
   }
 }
 
-// --- FOLD: Capacitor (i = C · dv/dt) ----------------------------------------
+// --- FOLD: Capacitor (Form-B: Q += i·dt; v = Q/C) --------------------------
 
 type CapacitorRating {
-  microfarads: Int
+  microfarads: CapacitanceMicro
 }
 
 type CapacitorState {
   voltage: StepPotentialDifference
-  charge_microcoulombs: Int
+  charge_microcoulombs: ChargeMicro
 }
 
 type CapacitorFold {
@@ -311,20 +386,26 @@ fn capacitor_fold_step(
   current: StepCurrent,
   dt: TimeStep,
 ) -> Outcome<CapacitorState> {
-  let charge_delta = int_mul(a: current.microamperes, b: dt.dt_microseconds)
-  let new_charge = int_add(a: state.charge_microcoulombs, b: charge_delta)
+  let charge_delta = int_mul(
+    a: current_count(current.microamperes),
+    b: duration_micro_count(dt.dt_microseconds),
+  )
+  let new_charge = int_add(
+    a: charge_micro_count(state.charge_microcoulombs),
+    b: charge_delta,
+  )
   match int_div(
-    a: charge_delta,
-    b: element.rating.microfarads,
+    a: new_charge,
+    b: capacitance_micro_count(element.rating.microfarads),
     at: port_locus(port: timeseries_passive_fold_step_locus),
   ) {
-    Accepted { value: dv, diagnostics: _ } =>
+    Accepted { value: v, diagnostics: _ } =>
       Accepted {
         value: CapacitorState {
           voltage: StepPotentialDifference {
-            microvolts: int_add(a: state.voltage.microvolts, b: dv)
+            microvolts: voltage(v)
           }
-          charge_microcoulombs: new_charge
+          charge_microcoulombs: charge_micro(new_charge)
         }
         diagnostics: None
       }
@@ -356,15 +437,15 @@ fn fold_capacitor_transient(
   )
 }
 
-// --- FOLD: Inductor (v = L · di/dt) -----------------------------------------
+// --- FOLD: Inductor (Form-B: Φ += v·dt; i = Φ/L) ---------------------------
 
 type InductorRating {
-  microhenries: Int
+  microhenries: InductanceMicro
 }
 
 type InductorState {
   current: StepCurrent
-  flux_microwebers: Int
+  flux_microwebers: FluxMicro
 }
 
 type InductorFold {
@@ -378,20 +459,26 @@ fn inductor_fold_step(
   voltage: StepBranchVoltage,
   dt: TimeStep,
 ) -> Outcome<InductorState> {
-  let flux_delta = int_mul(a: voltage.difference.microvolts, b: dt.dt_microseconds)
-  let new_flux = int_add(a: state.flux_microwebers, b: flux_delta)
+  let flux_delta = int_mul(
+    a: voltage_count(voltage.difference.microvolts),
+    b: duration_micro_count(dt.dt_microseconds),
+  )
+  let new_flux = int_add(
+    a: flux_micro_count(state.flux_microwebers),
+    b: flux_delta,
+  )
   match int_div(
-    a: flux_delta,
-    b: element.rating.microhenries,
+    a: new_flux,
+    b: inductance_micro_count(element.rating.microhenries),
     at: port_locus(port: timeseries_passive_fold_step_locus),
   ) {
-    Accepted { value: di, diagnostics: _ } =>
+    Accepted { value: i, diagnostics: _ } =>
       Accepted {
         value: InductorState {
           current: StepCurrent {
-            microamperes: int_add(a: state.current.microamperes, b: di)
+            microamperes: current(i)
           }
-          flux_microwebers: new_flux
+          flux_microwebers: flux_micro(new_flux)
         }
         diagnostics: None
       }
