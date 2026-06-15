@@ -362,12 +362,15 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
   spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
 }
 
-// Wave-1 ident spellings for grammar-probe + RC witness symbols (^r1 -> "R1", etc.).
+// Wave-1 ident spellings: RC witness symbols (^r1 -> "R1", ^v1 -> "V1", etc.)
+// plus node names and grammar-probe idents.
 fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
   if ident == ^r1 {
     optional_present(value: "R1")
   } else if ident == ^c1 {
     optional_present(value: "C1")
+  } else if ident == ^v1 {
+    optional_present(value: "V1")
   } else if ident == ^n1 {
     optional_present(value: "n1")
   } else if ident == ^n2 {
@@ -421,13 +424,46 @@ fn spice_emit_component(component: Component) -> Optional<String> {
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
     Inductor { name, n_plus, n_minus, value } =>
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    VoltageSource { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
     _ => Absent
+  }
+}
+
+fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> Optional<String> {
+  match spice_emit_node_ref(node: binding.node) {
+    Present { value: node_spelling } =>
+      Present {
+        value: spice_text_concat4(
+          a: "v(",
+          b: node_spelling,
+          c: ")=",
+          d: binding.value.lexeme
+        )
+      }
+    Absent => Absent
   }
 }
 
 fn spice_emit_directive(directive: Directive) -> Optional<String> {
   match directive {
     Op => Present { value: ".op" }
+    Tran { tstep, tstop } =>
+      Present {
+        value: spice_text_concat3(
+          left: ".tran ",
+          mid: spice_text_concat(left: tstep.lexeme, right: " "),
+          right: tstop.lexeme
+        )
+      }
+    InitialCondition { assignments } =>
+      match spice_emit_node_voltage_binding(binding: assignments.first) {
+        Present { value: binding_text } =>
+          Present {
+            value: spice_text_concat(left: ".ic ", right: binding_text)
+          }
+        Absent => Absent
+      }
     _ => Absent
   }
 }
@@ -479,6 +515,40 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
         )
       }
     Absent => ""
+  }
+}
+
+// ngspice-ready emit: appends mandatory `.end` terminator required by all SPICE3 parsers.
+// Transient decks also carry the ngspice-39 batch `.control run` trailer so `ngspice -b`
+// executes the analysis without a separate interactive wrapper.
+// Tran detection is inlined as a direct coproduct branch (no detached *_is_* predicate).
+fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
+  let base = spice_emit(netlist: netlist)
+  if base == "" {
+    ""
+  } else {
+    let has_tran = fold_list(
+      xs: netlist.body,
+      empty: false,
+      cons: fn(acc, stmt) {
+        if acc {
+          true
+        } else {
+          match stmt {
+            DeckDirective { directive: Tran { tstep: _, tstop: _ } } => true
+            _ => false
+          }
+        }
+      }
+    )
+    if has_tran {
+      spice_text_concat(
+        left: spice_text_concat(left: base, right: "\n.control\nrun\nquit\n.endc"),
+        right: "\n.end"
+      )
+    } else {
+      spice_text_concat(left: base, right: "\n.end")
+    }
   }
 }
 
