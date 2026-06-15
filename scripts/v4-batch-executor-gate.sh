@@ -29,6 +29,13 @@
 #       run fail closed AND halt the walk before batch 2. Tests ONLY the run-loop
 #       walk-halt; the batch structure/ordering it walks is the .dag's (asserted by
 #       the model witnesses above). Replaces the old inline-python gating perturb.
+#
+#     [degenerate host] = CI-ORCHESTRATION fail-closed, exercised through a real
+#       consumer: claim_executor is driven with a deliberately empty plan
+#       (bre_degenerate_empty_plan -> []) and must exit non-zero — an empty run is
+#       never a successful run. Replaces the old inline-python "empty the suite and
+#       re-run the host" perturb; the model side (empty in -> zero out) is the
+#       bre_empty_suite_yields_no_batches witness above.
 
 set -euo pipefail
 
