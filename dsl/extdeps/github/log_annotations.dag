@@ -1,0 +1,48 @@
+// extdeps/github/log_annotations.dag — GitHub Actions stdout log commands.
+//
+// Split from actions.dag so CI runners can import annotation rendering without
+// the full workflow syntax model (which transitively imports cron).
+//
+// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
+
+module extdeps.github.log_annotations
+
+type LogAnnotation
+  = AnnotationError { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationWarning { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationNotice { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationGroup { title: String }
+  | AnnotationEndGroup
+  | SetOutput { name: String, value: String }
+  | AddMask { value: String }
+  | StopCommands { token: String }
+
+data annotation_error_prefix: String = "::error "
+data annotation_warning_prefix: String = "::warning "
+data annotation_notice_prefix: String = "::notice "
+data annotation_group_prefix: String = "::group::"
+data annotation_endgroup: String = "::endgroup::"
+data annotation_set_output_prefix: String = "::set-output name="
+data annotation_add_mask_prefix: String = "::add-mask::"
+data annotation_stop_commands_prefix: String = "::stop-commands::"
+
+fn render_log_annotation(annotation: LogAnnotation) -> String {
+  match annotation {
+    AnnotationError { message: m, file: _, line: _, col: _ } =>
+      concat("::error::", m)
+    AnnotationWarning { message: m, file: _, line: _, col: _ } =>
+      concat("::warning::", m)
+    AnnotationNotice { message: m, file: _, line: _, col: _ } =>
+      concat("::notice::", m)
+    AnnotationGroup { title: t } =>
+      concat(annotation_group_prefix, t)
+    AnnotationEndGroup =>
+      annotation_endgroup
+    SetOutput { name: n, value: v } =>
+      concat(annotation_set_output_prefix, n, "}", v)
+    AddMask { value: v } =>
+      concat(annotation_add_mask_prefix, v)
+    StopCommands { token: t } =>
+      concat(annotation_stop_commands_prefix, t)
+  }
+}

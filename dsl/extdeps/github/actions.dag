@@ -18,6 +18,17 @@
 module extdeps.github.actions
 
 import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.github.log_annotations {
+  LogAnnotation,
+  AnnotationError, AnnotationWarning, AnnotationNotice,
+  AnnotationGroup, AnnotationEndGroup,
+  SetOutput, AddMask, StopCommands,
+  annotation_error_prefix, annotation_warning_prefix, annotation_notice_prefix,
+  annotation_group_prefix, annotation_endgroup,
+  annotation_set_output_prefix, annotation_add_mask_prefix,
+  annotation_stop_commands_prefix,
+  render_log_annotation
+}
 import std.types { NonEmptyStr, SecretName, Unit }
 
 type GitHubActionsRuntime {
@@ -263,50 +274,7 @@ type ActionRef {
 
 // -- Logging annotations ----------------------------------------------
 // Workflow commands that the runner interprets from stdout.
-// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
-
-type LogAnnotation
-  = AnnotationError { message: String, file: String?, line: Int?, col: Int? }
-  | AnnotationWarning { message: String, file: String?, line: Int?, col: Int? }
-  | AnnotationNotice { message: String, file: String?, line: Int?, col: Int? }
-  | AnnotationGroup { title: String }
-  | AnnotationEndGroup
-  | SetOutput { name: String, value: String }
-  | AddMask { value: String }
-  | StopCommands { token: String }
-
-// Log annotation wire format: these are stdout line protocols.
-data annotation_error_prefix: String = "::error "
-data annotation_warning_prefix: String = "::warning "
-data annotation_notice_prefix: String = "::notice "
-data annotation_group_prefix: String = "::group::"
-data annotation_endgroup: String = "::endgroup::"
-data annotation_set_output_prefix: String = "::set-output name="
-data annotation_add_mask_prefix: String = "::add-mask::"
-data annotation_stop_commands_prefix: String = "::stop-commands::"
-
-// Render a modeled annotation to the GitHub Actions stdout wire format.
-// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
-fn render_log_annotation(annotation: LogAnnotation) -> String {
-  match annotation {
-    AnnotationError { message: m, file: _, line: _, col: _ } =>
-      concat("::error::", m)
-    AnnotationWarning { message: m, file: _, line: _, col: _ } =>
-      concat("::warning::", m)
-    AnnotationNotice { message: m, file: _, line: _, col: _ } =>
-      concat("::notice::", m)
-    AnnotationGroup { title: t } =>
-      concat(annotation_group_prefix, t)
-    AnnotationEndGroup =>
-      annotation_endgroup
-    SetOutput { name: n, value: v } =>
-      concat(annotation_set_output_prefix, n, "}", v)
-    AddMask { value: v } =>
-      concat(annotation_add_mask_prefix, v)
-    StopCommands { token: t } =>
-      concat(annotation_stop_commands_prefix, t)
-  }
-}
+// Authority: extdeps/github/log_annotations.dag (imported above).
 
 // -- Artifacts --------------------------------------------------------
 // Upload/download operations for build artifacts.

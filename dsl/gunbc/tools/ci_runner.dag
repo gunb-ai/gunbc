@@ -6,20 +6,22 @@
 // the result.
 //
 // Entry point: run_ci_pipeline()
-// Run via:     dag run --source-root dsl --function run_ci_pipeline
+// Run via:     cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --function run_ci_pipeline
 //
 // v2 `dag run --source-root dsl` only indexes that tree. If a dsl `.dag` imports
 // `v3.std.emit_model`, resolution uses the parseable facade `dsl/v3/std/emit_model.dag`
 // (canonical substrate: `src/v3/std/emit_model.dag`).
-//
-// Target YAML shim (replaces 8 steps with 1):
-//   - run: cargo run -p v3-compiler --release -- run --source-root dsl --function run_ci_pipeline
 
 module gunbc.tools.ci_runner
 
-import gunbc.ci { ci_pipeline, CIGate, CIPipeline }
+import gunbc.ci { ci_pipeline, CIGate, render_ci_command }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import extdeps.shell
+import extdeps.github.log_annotations {
+  LogAnnotation,
+  AnnotationError, AnnotationNotice, AnnotationGroup, AnnotationEndGroup,
+  render_log_annotation
+}
 
 // ── Result types ────────────────────────────────────────────────────
 
@@ -34,22 +36,46 @@ type PipelineResult
   = PipelinePass { passed: Int, total: Int }
   | PipelineFail { passed: Int, failed: Int, total: Int, blocking_failures: List<String> }
 
+// ── Log annotation emission ─────────────────────────────────────────
+
+func emit_log_annotation(annotation: LogAnnotation) -> Unit {
+  let line = render_log_annotation(annotation)
+  let _ = shell.Exec.Run(script: concat("printf '%s\\n' ", line))
+}
+
 // ── Gate execution ──────────────────────────────────────────────────
 
 func run_gate(gate: CIGate) -> GateOutcome {
-  let result = shell.Exec.Run(script: gate.command)
+  let _ = emit_log_annotation(AnnotationGroup { title: gate.name })
+  let script = render_ci_command(gate.command)
+  let result = shell.Exec.Run(script: script)
   if result.success {
-    let _ = shell.Exec.Run(script: concat("echo '[PASS] ", gate.name, "'"))
+    let _ = emit_log_annotation(
+      AnnotationNotice {
+        message: concat("[PASS] ", gate.name),
+        file: none,
+        line: none,
+        col: none
+      }
+    )
+    let _ = emit_log_annotation(AnnotationEndGroup)
     { name: gate.name, passed: true, blocking: gate.blocking, output: result.stdout }
   } else {
-    let _ = shell.Exec.Run(script: concat("echo '[FAIL] ", gate.name, "'"))
+    let _ = emit_log_annotation(
+      AnnotationError {
+        message: concat("[FAIL] ", gate.name),
+        file: none,
+        line: none,
+        col: none
+      }
+    )
+    let _ = emit_log_annotation(AnnotationEndGroup)
     { name: gate.name, passed: false, blocking: gate.blocking, output: result.stderr }
   }
 }
 
 // ── Pipeline execution ──────────────────────────────────────────────
 
-// Internal: walks gates, returns rich result with pass/fail counts.
 func compute_pipeline_result() -> PipelineResult {
   let outcomes = ci_pipeline.gates |> map(g => run_gate(gate: g))
 
@@ -69,8 +95,6 @@ func compute_pipeline_result() -> PipelineResult {
   }
 }
 
-// Convert PipelineResult to ProcessExit for the host runtime.
-// Structural contract: only ExitFailure causes process exit 1.
 fn pipeline_to_exit(result: PipelineResult) -> ProcessExit {
   match result {
     PipelinePass { passed: _, total: _ } => ExitSuccess
@@ -82,8 +106,12 @@ fn pipeline_to_exit(result: PipelineResult) -> ProcessExit {
   }
 }
 
-// Entry point: run the pipeline and return ProcessExit so the host
-// can set the process exit code structurally (no substring matching).
 func run_ci_pipeline() -> ProcessExit {
   pipeline_to_exit(result: compute_pipeline_result())
+}
+
+// Parse/typecheck witness for the CI floor closure under --source-root dsl.
+// Used by the blocking dsl-compile-clean gate (--claim-run: true → exit 0).
+func ci_floor_parse_check() -> Bool {
+  true
 }
