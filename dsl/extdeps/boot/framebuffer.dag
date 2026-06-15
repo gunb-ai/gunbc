@@ -3,9 +3,9 @@
 // Anchor: IBM PC VGA text mode buffer at 0xB8000 (hardware fact).
 // Anchor: Linux x86 boot protocol framebuffer boot params (Documentation/arch/x86/boot.rst).
 //
-// Unit discipline (operator directive 2026-06-15):
-//   - bpp: BitWidth (Measure<Information, One>) — bits per pixel
-//   - cols/rows/width/height: Measure<Count, One> — cardinality, non-additive labels
+// Unit discipline (IC-MODE overnight 2026-06-15):
+//   - bpp: BitWidth (Measure<Information, One>) — existing bit_width carrier (#4889)
+//   - cols/rows/width/height: Measure<Count, One> — first facts-first cardinality inhabitant
 //   - base/ch/attr/color: bare Int — address / codepoint / attr-byte / color encoding
 
 module extdeps.boot.framebuffer
@@ -13,27 +13,24 @@ module extdeps.boot.framebuffer
 import std.measure { BitWidth, Measure, Count, One }
 import std.types { Int }
 
-type PixelColumnCount = Measure<Count, One>
-type PixelRowCount = Measure<Count, One>
-
 type FramebufferSurface
   = VgaTextMode {
       base: Int,
-      cols: PixelColumnCount,
-      rows: PixelRowCount,
+      cols: Measure<Count, One>,
+      rows: Measure<Count, One>,
     }
   | LinearFramebuffer {
       base: Int,
-      width: PixelColumnCount,
-      height: PixelRowCount,
+      width: Measure<Count, One>,
+      height: Measure<Count, One>,
       bpp: BitWidth,
     }
 
 type FramebufferWrite
   = WriteChar {
       surface: FramebufferSurface,
-      row: PixelRowCount,
-      col: PixelColumnCount,
+      row: Measure<Count, One>,
+      col: Measure<Count, One>,
       ch: Int,
       attr: Int,
     }
