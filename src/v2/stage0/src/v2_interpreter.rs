@@ -4463,23 +4463,15 @@ pub fn eval_profile_reset() {
     CHILD_NANOS.set(0);
 }
 
-/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
-/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
-/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
-/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
-/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
-/// raises a type error rather than fabricating an empty/partial list.
-pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+/// Flatten a FreeMonoid value into a Vec with an explicit symbol context (host
+/// marshaling / reflection walkers that run outside `with_active_ctx`).
+pub(crate) fn free_monoid_to_vec_with_ctx(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
-    let monoid_syms = active_ctx().map(|ctx| {
-        (
-            ctx.sym("Empty"),
-            ctx.sym("Cons"),
-            ctx.sym("head"),
-            ctx.sym("tail"),
-        )
-    });
+    let empty_sym = ctx.sym("Empty");
+    let cons_sym = ctx.sym("Cons");
+    let head_sym = ctx.sym("head");
+    let tail_sym = ctx.sym("tail");
     loop {
         match &cur {
             Value::List(items) => {
@@ -4487,9 +4479,6 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 record_flatten(out.len());
                 return Some(out);
             }
-            // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag): a String IS
-            // its codepoint sequence. Explode to Value::Int codepoints so list ops and `==` treat
-            // it as a FreeMonoid<Char> (matches the Value::Str Empty/Cons pattern bridge above).
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
                 record_flatten(out.len());
@@ -4500,7 +4489,6 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 fields,
                 ..
             } => {
-                let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
                 if *variant_name == empty_sym {
                     record_flatten(out.len());
                     return Some(out);
@@ -4520,6 +4508,16 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             _ => return None,
         }
     }
+}
+
+/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
+/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
+/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
+/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
+/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
+/// raises a type error rather than fabricating an empty/partial list.
+pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    active_ctx().and_then(|ctx| free_monoid_to_vec_with_ctx(ctx, val))
 }
 
 /// Bridge a list-denoting value (native List, FreeMonoid Variant chain, or

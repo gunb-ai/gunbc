@@ -517,7 +517,7 @@ pub fn arm_payload_pairs_from_marshaled_node(
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
-    let edges = crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
+    let edges = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
         InterpError::TypeError {
             msg: "children not a list".to_string(),
         }
@@ -603,7 +603,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             variant_name: conn, ..
         } if ctx.resolve(*conn) == "Conj" => {
             let edge_items =
-                crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
+                crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
                     InterpError::TypeError {
                         msg: "children not list".to_string(),
                     }
@@ -673,7 +673,7 @@ pub fn arm_labels_from_marshaled_node(
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
-    let edges = crate::v2_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
+    let edges = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
         InterpError::TypeError {
             msg: "children not a list".to_string(),
         }
@@ -726,7 +726,7 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
         .ok_or_else(|| InterpError::TypeError {
             msg: "resolve_type_node: Node missing children".to_string(),
         })?;
-    let Some(items) = crate::v2_interpreter::free_monoid_to_vec(children) else {
+    let Some(items) = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children) else {
         return Err(InterpError::TypeError {
             msg: "resolve_type_node: children not a list".to_string(),
         });
