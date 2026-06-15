@@ -649,7 +649,16 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_rc_spice_r1_is_resistor,
+  corpus_ci_gate_row_rc_spice_c1_is_capacitor,
+  corpus_ci_gate_row_rc_spice_v1_is_voltage_source,
+  corpus_ci_gate_row_rc_modelica_r1_is_resistor,
+  corpus_ci_gate_row_rc_modelica_c1_is_capacitor,
+  corpus_ci_gate_row_rc_modelica_v1_is_voltage_source,
+  corpus_ci_gate_row_rc_cross_paradigm_r1_resistance_equal,
+  corpus_ci_gate_row_rc_cross_paradigm_c1_capacitance_equal,
+  corpus_ci_gate_row_rc_cross_paradigm_v1_voltage_equal
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_b_row_count: String = "44"
