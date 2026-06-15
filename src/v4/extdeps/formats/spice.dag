@@ -344,7 +344,7 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
 
 data spice_wave1_resistor_fixture_text: String = "R1 n1 n2 1"
 
-data spice_wave1_witness_resistor: Resistor = Resistor {
+data spice_wave1_witness_resistor: Component = Resistor {
   name: ^r1,
   n_plus: Named { node: NamedNode { name: ^n1 } },
   n_minus: Named { node: NamedNode { name: ^n2 } },
@@ -388,26 +388,30 @@ fn spice_wave1_node_ref_spelling(node: NodeRef) -> String {
   }
 }
 
-fn spice_emit_resistor_line(resistor: Resistor) -> String {
-  list_append(
-    left: list_append(
-      left: list_append(
+fn spice_emit_resistor_line(resistor: Component) -> String {
+  match resistor {
+    Resistor { name: name, n_plus: n_plus, n_minus: n_minus, value: value } =>
+      list_append(
         left: list_append(
           left: list_append(
             left: list_append(
-              left: spice_wave1_symbol_spelling(sym: resistor.name),
+              left: list_append(
+                left: list_append(
+                  left: spice_wave1_symbol_spelling(sym: name),
+                  right: " "
+                ),
+                right: spice_wave1_node_ref_spelling(node: n_plus)
+              ),
               right: " "
             ),
-            right: spice_wave1_node_ref_spelling(node: resistor.n_plus)
+            right: spice_wave1_node_ref_spelling(node: n_minus)
           ),
           right: " "
         ),
-        right: spice_wave1_node_ref_spelling(node: resistor.n_minus)
-      ),
-      right: " "
-    ),
-    right: resistor.value.lexeme
-  )
+        right: value.lexeme
+      )
+    _ => ""
+  }
 }
 
 fn spice_wave1_emit_matches_fixture_holds() -> Bool {
