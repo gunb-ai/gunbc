@@ -16,6 +16,8 @@ import v4.extdeps.formats.spice {
   InitialCondition,
   Named,
   NamedNode,
+  NodeVoltageBinding,
+  NodeVoltageBindings,
   Resistor,
   SpiceNetlist,
   SpiceValue,
@@ -58,8 +60,8 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
         tail: Cons {
           head: DeckDirective {
             directive: InitialCondition {
-              assignments: {
-                first: {
+              assignments: NodeVoltageBindings {
+                first: NodeVoltageBinding {
                   node: Named { node: NamedNode { name: ^n2 } },
                   value: SpiceValue { lexeme: "0" }
                 },

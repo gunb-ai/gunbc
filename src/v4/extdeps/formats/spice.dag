@@ -426,7 +426,12 @@ fn spice_emit_component(component: Component) -> Optional<String> {
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
     VoltageSource { name, n_plus, n_minus, value } =>
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
-    _ => Absent
+    CurrentSource { .. } => Absent
+    Diode { .. } => Absent
+    Bjt { .. } => Absent
+    Mosfet { .. } => Absent
+    MutualInductance { .. } => Absent
+    SubcircuitCall { .. } => Absent
   }
 }
 
@@ -464,7 +469,11 @@ fn spice_emit_directive(directive: Directive) -> Optional<String> {
           }
         Absent => Absent
       }
-    _ => Absent
+    Dc { .. } => Absent
+    Ac { .. } => Absent
+    NodeSet { .. } => Absent
+    Options { .. } => Absent
+    Include { .. } => Absent
   }
 }
 
@@ -472,7 +481,8 @@ fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
   match stmt {
     DeckComponent { component } => spice_emit_component(component: component)
     DeckDirective { directive } => spice_emit_directive(directive: directive)
-    _ => Absent
+    DeckModelCard { .. } => Absent
+    DeckSubcircuit { .. } => Absent
   }
 }
 
