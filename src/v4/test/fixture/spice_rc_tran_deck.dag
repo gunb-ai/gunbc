@@ -1,0 +1,87 @@
+// src/v4/test/fixture/spice_rc_tran_deck.dag
+// Scope: complete RC transient circuit — V source + R + C + .tran — the minimal ngspice-
+//        runnable composed circuit. Anchor: spice.dag wave-1 emit; ngspice-44 batch mode.
+// Oracle: spice_rc_tran_deck_ngspice_golden is the single-authority netlist (P2); shell
+//         oracle and claims both read it. Verified by scripts/v4-spice-ngspice-rc-oracle.sh.
+
+module v4.test.fixture.spice_rc_tran_deck
+
+import v4.std.algebra { Cons, Empty }
+import v4.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  DeckStatement,
+  Ground,
+  InitialCondition,
+  Named,
+  NamedNode,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  Tran,
+  VoltageSource,
+  spice_emit_ngspice
+}
+
+// Composed RC transient circuit: V1 (5 V DC) drives R1 (1 kΩ) into C1 (1 µF) to ground.
+// RC time constant τ = 1 kΩ × 1 µF = 1 ms; .tran 1us 10ms covers ~10 τ.
+data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
+  title: "* rc tran witness",
+  body: Cons {
+    head: DeckComponent {
+      component: VoltageSource {
+        name: ^v1,
+        n_plus: Named { node: NamedNode { name: ^n1 } },
+        n_minus: Ground,
+        value: SpiceValue { lexeme: "DC 5" }
+      }
+    },
+    tail: Cons {
+      head: DeckComponent {
+        component: Resistor {
+          name: ^r1,
+          n_plus: Named { node: NamedNode { name: ^n1 } },
+          n_minus: Named { node: NamedNode { name: ^n2 } },
+          value: SpiceValue { lexeme: "1000" }
+        }
+      },
+      tail: Cons {
+        head: DeckComponent {
+          component: Capacitor {
+            name: ^c1,
+            n_plus: Named { node: NamedNode { name: ^n2 } },
+            n_minus: Ground,
+            value: SpiceValue { lexeme: "1e-6" }
+          }
+        },
+        tail: Cons {
+          head: DeckDirective {
+            directive: InitialCondition {
+              assignments: {
+                first: {
+                  node: Named { node: NamedNode { name: ^n2 } },
+                  value: SpiceValue { lexeme: "0" }
+                },
+                rest: []
+              }
+            }
+          },
+          tail: Cons {
+            head: DeckDirective {
+              directive: Tran {
+                tstep: SpiceValue { lexeme: "1us" },
+                tstop: SpiceValue { lexeme: "10ms" }
+              }
+            },
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+// Single-authority golden netlist for the RC tran circuit (P2): shell oracle reads
+// this literal; witnesses prove spice_emit_ngspice(deck) matches it.
+data spice_rc_tran_deck_ngspice_golden: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nquit\n.endc\n.end"
