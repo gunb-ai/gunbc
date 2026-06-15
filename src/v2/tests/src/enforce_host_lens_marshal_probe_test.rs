@@ -11,7 +11,7 @@ use v2_compiler::cli_run::make_eval_context;
 use v2_compiler::coproduct_reflection::marshal_conj_type_item;
 use v2_compiler::v2_compiler_compile::compile_to_resolved;
 use v2_compiler::v2_compiler_infer_items::{ItemKind, ResolvedGraph};
-use v2_compiler::v2_interpreter::{run_in_context_with_args, InterpResult, Value};
+use v2_compiler::v2_interpreter::{run_in_context_with_args, InterpContext, InterpResult, Value};
 use v2_compiler::v2_std_core::Node;
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
@@ -192,6 +192,165 @@ fn assert_bool_probe(
         Value::Bool(v) if v == expect => {}
         other => panic!("probe {fn_name}: expected Bool({expect}), got {other:?}"),
     }
+}
+
+fn value_type_label(ctx: &InterpContext, value: &Value) -> String {
+    match value {
+        Value::Record { type_name, .. } => ctx.resolve(*type_name),
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } => format!(
+            "{}::{}",
+            ctx.resolve(*type_name),
+            ctx.resolve(*variant_name)
+        ),
+        Value::List(_) => "List".to_string(),
+        Value::Str(_) => "String".to_string(),
+        Value::Bool(_) => "Bool".to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Walk marshaled host `Value`s and assert the v4 `Node`/`Edge` skeleton the lens
+/// roster expects (TypeNode kind + `List<Edge>` children, each target a `Node`).
+fn assert_v4_node_tree(ctx: &InterpContext, value: &Value, path: &str) {
+    let Value::Record { type_name, fields } = value else {
+        panic!(
+            "{path}: expected Node record, got {}",
+            value_type_label(ctx, value)
+        );
+    };
+    assert_eq!(
+        ctx.resolve(*type_name),
+        "Node",
+        "{path}: wrong record type"
+    );
+    let kind = fields
+        .get(&ctx.sym("kind"))
+        .unwrap_or_else(|| panic!("{path}: missing kind"));
+    let Value::Variant {
+        type_name: kind_type,
+        variant_name: kind_variant,
+        ..
+    } = kind
+    else {
+        panic!(
+            "{path}.kind: expected NodeKind variant, got {}",
+            value_type_label(ctx, kind)
+        );
+    };
+    assert_eq!(ctx.resolve(*kind_type), "NodeKind", "{path}.kind.type");
+    assert_eq!(
+        ctx.resolve(*kind_variant),
+        "TypeNode",
+        "{path}.kind.variant"
+    );
+    let children = fields
+        .get(&ctx.sym("children"))
+        .unwrap_or_else(|| panic!("{path}: missing children"));
+    let Value::List(edges) = children else {
+        panic!(
+            "{path}.children: expected list, got {}",
+            value_type_label(ctx, children)
+        );
+    };
+    for (index, edge) in edges.iter().enumerate() {
+        assert_v4_edge(ctx, edge, &format!("{path}.children[{index}]"));
+    }
+}
+
+fn assert_v4_edge(ctx: &InterpContext, value: &Value, path: &str) {
+    let Value::Record { type_name, fields } = value else {
+        panic!(
+            "{path}: expected Edge record, got {}",
+            value_type_label(ctx, value)
+        );
+    };
+    assert_eq!(
+        ctx.resolve(*type_name),
+        "Edge",
+        "{path}: wrong record type"
+    );
+    let target = fields
+        .get(&ctx.sym("target"))
+        .unwrap_or_else(|| panic!("{path}: missing target"));
+    assert_v4_node_tree(ctx, target, &format!("{path}.target"));
+}
+
+#[test]
+fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
+    let resolved = compile_probe_bundle("stage0/memory_spec_reject.dag", BARE_INT_SOURCE);
+    assert_resolved_ok(&resolved);
+    let graph = resolved.graph.as_ref().expect("probe graph");
+    let ctx = make_eval_context(graph, resolved.source_indices.clone());
+    let root = memory_spec_root_value(&resolved);
+    assert_v4_node_tree(&ctx, &root, "MemorySpec");
+    let Value::Record { fields, .. } = &root else {
+        unreachable!()
+    };
+    let kind = fields.get(&ctx.sym("kind")).expect("kind");
+    let Value::Variant { fields: kind_fields, .. } = kind else {
+        unreachable!()
+    };
+    let connective = kind_fields
+        .get(&ctx.sym("connective"))
+        .expect("connective");
+    assert_eq!(
+        value_type_label(&ctx, connective),
+        "Connective::Conj",
+        "root carrier connective"
+    );
+    let children = fields.get(&ctx.sym("children")).expect("children");
+    let Value::List(edges) = children else {
+        unreachable!()
+    };
+    assert_eq!(edges.len(), 1, "MemorySpec has one field edge");
+    let Value::Record { fields: edge_fields, .. } = &edges[0] else {
+        unreachable!()
+    };
+    let label = edge_fields.get(&ctx.sym("label")).expect("label");
+    let Value::Variant {
+        variant_name,
+        fields: label_fields,
+        ..
+    } = label
+    else {
+        unreachable!()
+    };
+    assert_eq!(ctx.resolve(*variant_name), "Named");
+    let name = label_fields.get(&ctx.sym("name")).expect("name");
+    assert!(matches!(name, Value::Str(s) if s == "ram_bytes"));
+    let target = edge_fields.get(&ctx.sym("target")).expect("target");
+    let Value::Record { fields: target_fields, .. } = target else {
+        unreachable!()
+    };
+    let target_kind = target_fields.get(&ctx.sym("kind")).expect("target.kind");
+    let Value::Variant {
+        fields: target_kind_fields,
+        ..
+    } = target_kind
+    else {
+        unreachable!()
+    };
+    let atom = target_kind_fields
+        .get(&ctx.sym("connective"))
+        .expect("target.kind.connective");
+    let Value::Variant {
+        variant_name: atom_variant,
+        fields: atom_fields,
+        ..
+    } = atom
+    else {
+        unreachable!()
+    };
+    assert_eq!(ctx.resolve(*atom_variant), "Atom");
+    let identity = atom_fields.get(&ctx.sym("identity")).expect("identity");
+    assert!(
+        matches!(identity, Value::Str(s) if s == "dag_binding_type_int"),
+        "Int leaf should marshal to kernel binding symbol, got {identity:?}"
+    );
 }
 
 fn run_bare_int_lens_probe(fn_name: &str, expect: bool) {
