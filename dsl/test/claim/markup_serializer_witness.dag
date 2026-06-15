@@ -102,6 +102,13 @@ fn witness_round_trip_url() -> Bool {
   unescape_url(s: escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
+// Round-trip must hold for inputs that already contain a literal `%NN` — escape_url
+// encodes `%` first (-> %25) so the inverse is symmetric over arbitrary URL bodies,
+// not just %-free ones. (A naive escaper that skips % would round-trip "%3C" -> "<".)
+fn witness_round_trip_url_literal_percent() -> Bool {
+  unescape_url(s: escape_url(s: "a %3C %22 %25 <b>")) == "a %3C %22 %25 <b>"
+}
+
 // -- REQ-A: URL-within-attribute composition ------------------------
 // An href value emitted inside a double-quoted attribute must neutralize the
 // closing quote (and & and <), so a URL cannot break out of the attribute. The
@@ -149,6 +156,7 @@ fn markup_serializer_keystone_holds() -> Bool {
     witness_round_trip_text() &&
     witness_round_trip_attribute() &&
     witness_round_trip_url() &&
+    witness_round_trip_url_literal_percent() &&
     witness_url_within_attribute_composition() &&
     witness_perturb_break_escape_goes_red()
 }
