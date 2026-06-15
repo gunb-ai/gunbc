@@ -130,4 +130,4 @@ jobs:
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Run modeled CI pipeline (one-binary floor)
-      run: cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --function run_ci_pipeline
+      run: cargo run -p v2-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/gunbc/tools/ci_runner.dag --function run_ci_pipeline
