@@ -28,7 +28,6 @@ import gunbc.gunbhub_serve {
   gunbhub_node_route_bindings,
   gunbhub_static_serve_table,
   gunbhub_compose_body,
-  gunbhub_compose_serialized_body,
   serve_gunbhub_request,
   serve_gunbhub_page_source,
 }
@@ -36,16 +35,25 @@ import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
 import std.react_markup {
   EmitOk,
   EmitRejected,
+  ReactMarkupNode,
   serialize_react_markup,
 }
 import std.types { GET, POST }
 
+// Witness-only: extract ComposedOk html; pages under test are known compose-safe.
+fn witness_compose_ok_html(node: ReactMarkupNode) -> String {
+  match gunbhub_compose_body(node: node) {
+    ComposedOk { html: h } => h
+    ComposeRejected { reason: _ } => ""
+  }
+}
+
 fn expected_browse_html() -> String {
-  gunbhub_compose_serialized_body(node: gunbhub_browse_page())
+  witness_compose_ok_html(node: gunbhub_browse_page())
 }
 
 fn expected_readme_html() -> String {
-  gunbhub_compose_serialized_body(node: gunbhub_readme_page())
+  witness_compose_ok_html(node: gunbhub_readme_page())
 }
 
 // Static host table: GET / and GET /README.md with compose-time bodies.

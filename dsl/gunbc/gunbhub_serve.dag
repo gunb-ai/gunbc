@@ -165,57 +165,6 @@ fn gunbhub_compose_body(node: ReactMarkupNode) -> GunbhubComposeResult {
   }
 }
 
-// Convenience for known-safe routed pages (witness proves ComposedOk).
-fn gunbhub_compose_serialized_body(node: ReactMarkupNode) -> String {
-  match gunbhub_compose_body(node: node) {
-    ComposedOk { html: h } => h
-    ComposeRejected { reason: _ } => ""
-  }
-}
-
-// --- Path matching (literal templates; M3 extends for path params) ---------
-
-fn request_path_segments(path: String) -> List<String> {
-  let path_only = match split(s: path, delimiter: "?") |> first {
-    Present { value: p } => p
-    Absent => path
-  }
-  filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
-}
-
-type PathMatchState {
-  seg_idx: Int
-  ok: Bool
-}
-
-fn literal_path_matches_template(template: PathTemplate, path: String) -> Bool {
-  let segs = request_path_segments(path: path)
-  let st = fold(
-    xs: template.tokens,
-    init: PathMatchState { seg_idx: 0, ok: true },
-    f: (acc, tok) =>
-      if !acc.ok {
-        acc
-      } else {
-        match tok {
-          ParamToken => PathMatchState { seg_idx: acc.seg_idx, ok: false }
-          LiteralToken { text: lit } =>
-            match segs |> skip(acc.seg_idx) |> first {
-              Present { value: seg } =>
-                if seg == lit {
-                  PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
-                } else {
-                  PathMatchState { seg_idx: acc.seg_idx, ok: false }
-                }
-              Absent =>
-                PathMatchState { seg_idx: acc.seg_idx, ok: false }
-            }
-        }
-      }
-  )
-  st.ok && st.seg_idx == count(xs: segs)
-}
-
 fn gunbhub_browse_path_template() -> PathTemplate {
   match parse_path_template(raw: "/") {
     ParsedPathTemplate { template: t } => t
@@ -361,15 +310,6 @@ fn path_matches_any_static_row(path: String, table: GunbhubStaticServeTable) -> 
         row.path == normalized
       }
   )
-}
-
-fn request_matches_route(req: GunbhubServeRequest, route: HttpServerRoute) -> Bool {
-  req.method == route.method
-    && literal_path_matches_template(template: route.path_template, path: req.path)
-}
-
-fn path_matches_any_route(path: String, route: HttpServerRoute) -> Bool {
-  literal_path_matches_template(template: route.path_template, path: path)
 }
 
 type StaticRouteMatchState {
