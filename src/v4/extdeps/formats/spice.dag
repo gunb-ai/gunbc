@@ -426,12 +426,12 @@ fn spice_emit_component(component: Component) -> Optional<String> {
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
     VoltageSource { name, n_plus, n_minus, value } =>
       spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
-    CurrentSource { .. } => Absent
-    Diode { .. } => Absent
-    Bjt { .. } => Absent
-    Mosfet { .. } => Absent
-    MutualInductance { .. } => Absent
-    SubcircuitCall { .. } => Absent
+    CurrentSource { name: _, n_plus: _, n_minus: _, value: _ } => Absent
+    Diode { name: _, anode: _, cathode: _, model: _ } => Absent
+    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => Absent
+    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => Absent
+    MutualInductance { name: _, l1: _, l2: _, coupling: _ } => Absent
+    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => Absent
   }
 }
 
@@ -469,11 +469,11 @@ fn spice_emit_directive(directive: Directive) -> Optional<String> {
           }
         Absent => Absent
       }
-    Dc { .. } => Absent
-    Ac { .. } => Absent
-    NodeSet { .. } => Absent
-    Options { .. } => Absent
-    Include { .. } => Absent
+    Dc { source: _, vstart: _, vstop: _, vincr: _ } => Absent
+    Ac { sweep: _, n: _, fstart: _, fstop: _ } => Absent
+    NodeSet { assignments: _ } => Absent
+    Options { modifiers: _ } => Absent
+    Include { card: _ } => Absent
   }
 }
 
@@ -481,8 +481,8 @@ fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
   match stmt {
     DeckComponent { component } => spice_emit_component(component: component)
     DeckDirective { directive } => spice_emit_directive(directive: directive)
-    DeckModelCard { .. } => Absent
-    DeckSubcircuit { .. } => Absent
+    DeckModelCard { model: _ } => Absent
+    DeckSubcircuit { definition: _ } => Absent
   }
 }
 
