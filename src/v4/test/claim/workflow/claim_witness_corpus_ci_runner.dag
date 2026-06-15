@@ -451,6 +451,24 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+// Self-host Stage A (design-self-host-fixed-point.md §5): executed structural-equality of
+// emitted fixture stages through self_host.stage_emission_equality — a matching candidate
+// Holds, a divergent candidate Violates (the discriminating red). Emit-independent; the
+// whole-compiler stage1/stage2 fixed point (stage C) stays gated on the emit ladder + T-22.
+data corpus_ci_gate_row_self_host_stage_emission_equality_holds: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-host stage emission equality holds on equal",
+  entry: "src/v4/test/claim/self_host/stage_emission_equality_fixture.dag",
+  function: "stage_emission_equality_holds_on_equal",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_self_host_stage_emission_equality_violates: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-host stage emission equality violates on perturbed",
+  entry: "src/v4/test/claim/self_host/stage_emission_equality_fixture.dag",
+  function: "stage_emission_equality_violates_on_perturbed",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -506,10 +524,10 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_self_host_stage_emission_equality_holds,
+  corpus_ci_gate_row_self_host_stage_emission_equality_violates
 ]
-
-data claim_witness_corpus_claim_run_row_count: String = "54"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -535,8 +553,6 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_projection_falsification,
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
-
-data claim_witness_corpus_shard_a_row_count: String = "20"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
@@ -573,7 +589,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_self_host_stage_emission_equality_holds,
+  corpus_ci_gate_row_self_host_stage_emission_equality_violates
 ]
-
-data claim_witness_corpus_shard_b_row_count: String = "35"
