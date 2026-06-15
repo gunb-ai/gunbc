@@ -57,12 +57,50 @@ fn ensure_discover_owned_data_binary() -> String {
 fn run_logged_script(inner: String, log_label: String) -> String {
   // Avoid ${VAR:-default} in DSL strings — v2 parser treats `:` as syntax.
   // Honest-bar: redirect must not fail-open — capture inner ec before tail, then exit $ec
-  // (naive cmd>log; tail loses the failure signal). Keep in sync with run_logged_script_mirror
-  // in scripts/ci-floor-witnesses.sh for --red-demo gate-3.
+  // (naive cmd>log; tail loses the failure signal). Floor witnesses invoke
+  // witness_gate3_logged_script_* entry points so --red-demo bites this emitted shell.
   concat(
     "[ -n \"$RUNNER_TEMP\" ] || RUNNER_TEMP=/tmp; ",
     "LOG=$RUNNER_TEMP/gunbc-", log_label, ".log; ",
     inner, " >\"$LOG\" 2>&1; ec=$?; tail -n 120 \"$LOG\"; exit $ec"
+  )
+}
+
+fn gate3_probe_selector_perturb_inner() -> String {
+  concat(
+    ensure_ci_claim_gate_binary(), " && ",
+    "target/release/ci-claim-gate",
+    " --source-root src/v4",
+    " --gate-entry src/v4/test/claim/workflow/probe_selector_ci_runner.dag",
+    " --rows-fn probe_selector_ci_runner_rows_tsv",
+    " --notice-title \"gate-3 perturb\"",
+    " --perturb-check"
+  )
+}
+
+func run_logged_script_entry(inner: String, log_label: String) -> ProcessExit {
+  let script = run_logged_script(inner: inner, log_label: log_label)
+  let result = shell.Exec.Run(script: script)
+  if result.success {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("run_logged_script(", log_label, ") exited ", to_string(value: result.exit_code))
+    }
+  }
+}
+
+// Floor witness entry points: run inner through the same emitted run_logged_script
+// wrapper gate-3 uses (no bash mirror — teeth bite the real ci_runner shell).
+func witness_gate3_logged_script_exit_guard() -> ProcessExit {
+  run_logged_script_entry(inner: "false", log_label: "gate3-exit-guard")
+}
+
+func witness_gate3_logged_script_perturb() -> ProcessExit {
+  run_logged_script_entry(
+    inner: gate3_probe_selector_perturb_inner(),
+    log_label: "gate3"
   )
 }
 
