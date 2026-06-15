@@ -59,12 +59,11 @@ CEILINGS = {
         # Per-row PERTURB fan-out split out of v4_lens_ci into a capped parallel
         # matrix (4 legs, max-parallel default 4 — the "perturb-phase split into a
         # parallel job" dissolve-on named in the v4_lens_ci comment above). Budget
-        # rule (uncontended wall x2): heaviest shard owns 8 of 30 rows (24
-        # node-frontier + 6 testgen); run 27568895199 shards 1+2 killed at 20m
-        # after M1.c +1 witness — uncontended wall ~20m; interim 30m (x2 would
-        # be 40; rounded down pending perturb-phase split dissolve). Re-derive
-        # from on-wave per-shard receipt; ratchet against raises.
-        "v4_lens_ci_perturb": 30,
+        # rule (uncontended wall x2): the heaviest shard owns 4 of 15 rows; ~108s
+        # cold resolve/row + per-row src/v4 copy + checkout/setup/cache-restore
+        # ~= 8m uncontended; x2 -> 16, rounded to 20 (matches the corpus shards).
+        # Re-derive from the first on-wave per-shard receipt; ratchet against raises.
+        "v4_lens_ci_perturb": 20,
         # Non-gating latency timing ledger: checkout + rust + the shell-free .dag github.Actions
         # fetch (collect-affected-set-timings, which embeds v2-compiler and writes the timed receipt
         # directly). Budget rule (documented uncontended wall x2): v2-compiler is sccache-warm from

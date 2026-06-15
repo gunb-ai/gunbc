@@ -1397,7 +1397,7 @@ jobs:
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   # §11.7.1 Class A safety floor (parallel matrix lane) -- the per-row PERTURB
-  # fan-out split out of v4_lens_ci. The 30 red-under-mutation receipts (24
+  # fan-out split out of v4_lens_ci. The 15 red-under-mutation receipts (9
   # node-frontier + 6 affected-testgen) each require an independent cold full-tree
   # resolve, which serialized into the v4_lens_ci wall. Profiler E measured
   # DRAM-bandwidth contention at 2.2-3x and UNCHANGED post-DIMM, so concurrency is
@@ -1405,7 +1405,7 @@ jobs:
   # V4_LENS_CI_PERTURB_MAX_PARALLEL repo variable): 3-4 concurrent captures most of
   # the wall-clock win without saturating bandwidth for every other concurrent job.
   # Shard count N = matrix leg count = strategy.job-total; this leg is K =
-  # strategy.job-index. The script perturbs the combined-30 rows where i % N == K,
+  # strategy.job-index. The script perturbs the combined-15 rows where i % N == K,
   # asserts its slice is non-empty and fully run, and the `ci` aggregator requires
   # EVERY leg to succeed -- a skipped/cancelled shard fails the gate closed (no
   # pass-by-omission). GREEN witnesses + the executor dogfood STAY in v4_lens_ci.
@@ -1419,12 +1419,11 @@ jobs:
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # Per-shard budget rule (documented uncontended wall x2): with N=4 the
-    # heaviest shard owns 8 of 30 rows (24 node-frontier + 6 testgen); ~108s
-    # cold resolve/row + per-row src/v4 copy + checkout/setup/cache-restore
-    # ~= 20m uncontended (run 27568895199 shards 1+2 killed at 20m after M1.c
-    # +1 witness); x2 -> 40, interim rounded to 30 pending perturb-phase split /
-    # claim_batch parse-cache dissolve. Re-derive from on-wave per-shard receipt.
-    timeout-minutes: 30
+    # heaviest shard owns 4 of 15 rows; ~108s cold resolve/row + per-row src/v4
+    # copy + checkout/setup/cache-restore ~= 8m uncontended; x2 -> 16, rounded to
+    # 20m (matches the corpus shards). Re-derive once an on-wave per-shard wall
+    # receipt exists; do NOT raise without one.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       max-parallel: ${{ vars.V4_LENS_CI_PERTURB_MAX_PARALLEL || 4 }}
