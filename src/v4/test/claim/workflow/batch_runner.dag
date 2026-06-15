@@ -233,8 +233,6 @@ data bre_authority_rows: List<BatchExecutorAuthorityRow> = [
   bre_authority_row_empty_suite
 ]
 
-data bre_authority_row_count: String = "3"
-
 fn bre_authority_rows_tsv() -> String {
   fold_list_right(
     xs: bre_authority_rows,
