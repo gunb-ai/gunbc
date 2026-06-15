@@ -54,16 +54,19 @@ CEILINGS = {
         # split into a parallel job and/or #4783 multi-entry claim_batch
         # parse-cache adoption land -- both shrink the uncontended wall back
         # under the 20m shape; re-derive the ceiling under the budget rule.
-        "v4_lens_gate": 35,
+        # INTERIM 45m (2026-06-15): on-wave receipt — run 27576845763 job
+        # 81527786910 @ 9d81a4b53a: wall 2124s (~35.4m), killed mid C9
+        # witness_substrate_equivalence after prior steps green. Budget rule:
+        # ~36m observed + contention headroom -> 45. Dissolve-on: #4783
+        # parse-cache adoption or C9 single-walk.
+        "v4_lens_gate": 45,
         "v4_lens_ci": 35,
-        # Per-row PERTURB fan-out split out of v4_lens_ci into a capped parallel
-        # matrix (4 legs, max-parallel default 4 — the "perturb-phase split into a
-        # parallel job" dissolve-on named in the v4_lens_ci comment above). Budget
-        # rule (uncontended wall x2): the heaviest shard owns 4 of 15 rows; ~108s
-        # cold resolve/row + per-row src/v4 copy + checkout/setup/cache-restore
-        # ~= 8m uncontended; x2 -> 16, rounded to 20 (matches the corpus shards).
-        # Re-derive from the first on-wave per-shard receipt; ratchet against raises.
-        "v4_lens_ci_perturb": 20,
+        # INTERIM 25m (2026-06-15): on-wave receipt — shard 1/4 perturb wall
+        # 1170s for 7/29 rows (run 27566527331 job 81493380332 @ 38e45a4050);
+        # all witnesses green, job killed at 20m24s (setup overhead on top of
+        # ~19.5m perturb). Budget rule: ~21m uncontended + contention headroom
+        # -> 25. Dissolve-on: row rebalance or #4783 parse-cache adoption.
+        "v4_lens_ci_perturb": 25,
         # Non-gating latency timing ledger: checkout + rust + the shell-free .dag github.Actions
         # fetch (collect-affected-set-timings, which embeds v2-compiler and writes the timed receipt
         # directly). Budget rule (documented uncontended wall x2): v2-compiler is sccache-warm from
