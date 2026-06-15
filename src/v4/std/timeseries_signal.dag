@@ -1,0 +1,213 @@
+// src/v4/std/timeseries_signal.dag
+//
+// Scope: CANONICAL S1 — analog passive stream substrate (ctrl#1615 / gentle-lynx-177).
+// Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
+// spice.dag passive projection; map/fold step operators land in follow-on slices.
+// Anchor: SPICE3 passive element topology via v4.extdeps.formats.spice Component.
+// Status: S1 canonical PR #4895 (valiant-ram-713).
+
+module v4.std.timeseries_signal
+
+import v4.std.collection { Optional, Absent, Present }
+import v4.std.float { Float }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+import v4.extdeps.formats.spice {
+  Component,
+  Capacitor,
+  Inductor,
+  NodeRef,
+  Resistor,
+  SpiceApproxVoltage,
+  SpiceValue,
+  SpiceVoltUnit
+}
+
+// --- Affine voltage torsor (two distinct types) -----------------------------
+//
+// AbsolutePotential is meaningful only against an explicit reference node.
+// PotentialDifference is gauge-free. Adding two absolutes is ill-typed by
+// construction (no binary add across AbsolutePotential).
+
+// 🟢 coproduct dissolution — reference node for gauge-dependent potential samples.
+type PotentialReference
+  = GroundReference
+  | NodeReference { name: Symbol }
+
+// 🟢 grounded — gauge-dependent absolute potential sample.
+type AbsolutePotential {
+  reference: PotentialReference
+  magnitude: Float
+}
+
+// 🟢 grounded — gauge-free potential difference (torsor vector).
+type PotentialDifference {
+  magnitude: Float
+}
+
+// 🟢 grounded — branch current sample at this slice.
+type BranchCurrent {
+  magnitude: Float
+}
+
+// 🟢 grounded — spice approximate carrier bridge to AbsolutePotential reference.
+type NamedAffineVoltage {
+  reference: PotentialReference
+  approx: SpiceApproxVoltage
+}
+
+// --- Passive element parameters (interim local dimension types) ------------
+//
+// 🟡 INTERIM — dissolve-on: (a) snappy-stag Quantity-extension governance
+// coordination (gentle-lynx-177) lands a ratified Quantity arm for passive
+// elements; (b) Measure.count : Nat carrier reconciles with v4 Float magnitudes
+// here (Nat-vs-Float representational gap — do NOT touch measure.dag in this PR).
+// Forbidden: ossifying these bare Float wrappers as a parallel quantity ledger.
+
+type Resistance {
+  ohms: Float
+}
+
+type Capacitance {
+  farads: Float
+}
+
+type Inductance {
+  henries: Float
+}
+
+data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVoltage {
+  magnitude_lexeme: "0",
+  unit: SpiceVoltUnit {}
+}
+
+// --- spice.dag structural consumption --------------------------------------
+//
+// Practice 11: one parameterized topology carrier; R/L/C arms differ only by tag.
+
+type PassiveElementTopology {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+type PassiveComponentSpec
+  = ResistorPassive { topology: PassiveElementTopology }
+  | CapacitorPassive { topology: PassiveElementTopology }
+  | InductorPassive { topology: PassiveElementTopology }
+
+fn passive_topology_from_component(component: Component) -> Optional<PassiveElementTopology> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
+      }
+    }
+    Capacitor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
+      }
+    }
+    Inductor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
+      }
+    }
+    _ => Absent
+  }
+}
+
+fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+  match passive_topology_from_component(component: component) {
+    Present { value: topology } => match component {
+      Resistor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: ResistorPassive { topology: topology }
+      }
+      Capacitor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: CapacitorPassive { topology: topology }
+      }
+      Inductor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: InductorPassive { topology: topology }
+      }
+      _ => Absent
+    }
+    Absent => Absent
+  }
+}
+
+fn potential_reference_eq(
+  left: PotentialReference,
+  right: PotentialReference
+) -> Bool {
+  match left {
+    GroundReference => match right {
+      GroundReference => true
+      NodeReference { name: _ } => false
+    }
+    NodeReference { name: left_name } => match right {
+      GroundReference => false
+      NodeReference { name: right_name } => left_name == right_name
+    }
+  }
+}
+
+fn potential_reference_of_absolute(potential: AbsolutePotential) -> PotentialReference {
+  potential.reference
+}
+
+fn potential_reference_of_named(named: NamedAffineVoltage) -> PotentialReference {
+  named.reference
+}
+
+fn named_affine_voltage(
+  reference: PotentialReference,
+  approx: SpiceApproxVoltage
+) -> NamedAffineVoltage {
+  NamedAffineVoltage {
+    reference: reference,
+    approx: approx
+  }
+}
+
+fn absolute_potential_from_named(
+  named: NamedAffineVoltage,
+  magnitude: Float
+) -> AbsolutePotential {
+  AbsolutePotential {
+    reference: named.reference,
+    magnitude: magnitude
+  }
+}
+
+fn absolute_potential_from_named_preserves_reference(
+  named: NamedAffineVoltage,
+  magnitude: Float
+) -> Bool {
+  let absolute = absolute_potential_from_named(named: named, magnitude: magnitude)
+  potential_reference_eq(
+    left: potential_reference_of_named(named: named),
+    right: potential_reference_of_absolute(potential: absolute)
+  )
+}
+
+fn potential_difference_of_magnitude(magnitude: Float) -> PotentialDifference {
+  PotentialDifference {
+    magnitude: magnitude
+  }
+}
+
+fn branch_current_of_magnitude(magnitude: Float) -> BranchCurrent {
+  BranchCurrent {
+    magnitude: magnitude
+  }
+}

@@ -68,7 +68,7 @@ type SpiceValue {
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type SpiceVoltUnit
+type SpiceVoltUnit {}
 
 // 🟡 needs-more-work — feature:spice-approx-voltage-consumer — dissolve-on: NodeVoltageBinding consumer projects through SpiceApproxVoltage (T-4 wave-2) · ledger: T-4
 type SpiceApproxVoltage {
