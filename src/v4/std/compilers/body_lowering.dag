@@ -25,13 +25,18 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.node {
+  Bind,
+  Branch,
   ComputationNode,
   Edge,
+  Loop,
+  Named,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  loop_bound_edge,
   node_synthetic
 }
 
@@ -57,6 +62,47 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
       Edge { label: Positional, target: operator },
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
+    ]
+  )
+}
+
+// Control-flow keyword forms lower DIRECT to their Behavior variant (zesty (a3) ruling — their
+// home IS the coproduct; they are NOT calls and carry no callee slot). These are the emit's
+// language-agnostic production primitives over already-lowered sub-parts; the surface keyword
+// recognition + sub-part extraction (brace-region isolation) is the deferred normalize-fold wiring.
+// Each is proven byte-identical to its MVP1 table body in test/claim/manual/body_lowering_variants.dag.
+
+// if c then t else e → Branch[c, t, e].
+fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: condition },
+      Edge { label: Positional, target: then_arm },
+      Edge { label: Positional, target: else_arm }
+    ]
+  )
+}
+
+// loop value (bounded by measure) → Loop[value, bound@loop_bound_edge].
+fn lower_loop(value: Node, bound: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: value },
+      Edge { label: Named { name: loop_bound_edge }, target: bound }
+    ]
+  )
+}
+
+// let key = value in body → Bind[key, value, body].
+fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: key_binding },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body_binding }
     ]
   )
 }
