@@ -132,6 +132,14 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
 // Behavior against the per-variant edge contract (well_formed → behavior_edges_conform) and
 // marries it to the signature Arrow. The per-form reconstruction and atom→symbol bridging
 // dissolve UP into normalize; body_producer no longer index-reads fixed token positions.
+// STATUS (operator wind-down 2026-06-15): ADDITIVE + DORMANT. This surface is NOT yet wired into
+// the pipeline and the four produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved tables are NOT
+// deleted — full (B) dissolution is DEFERRED. What IS proven: the byte-identical subsumption
+// licensing set (test/claim/manual/structured_body_dispatch.dag = add;
+// structured_body_subsumption_set.dag = pick/loop/bind) shows this surface reconstructs each
+// table's exact target Arrow — those four witnesses LICENSE the future deletion + rewire as a safe
+// mechanical step for whoever resumes. Do not read this as "tables replaced"; read it as "deletion
+// pre-licensed, awaiting the pipeline rewire."
 fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   if well_formed(n: body) {
     outcome_accepted(value: body)
