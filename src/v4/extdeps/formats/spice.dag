@@ -39,14 +39,15 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
+  bind_outcome,
   outcome_accepted,
   outcome_rejected,
   port_locus
 }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.logic { Bool }
-import v4.std.nat { Equal, nat_compare }
-import v4.std.text { Char, String }
+import v4.std.nat { nat_gte, nat_lte }
+import v4.std.text { String }
 import v4.std.witness { Holds, Violates }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -362,15 +363,12 @@ data spice_wave1_witness_resistor: Component = Resistor {
   value: SpiceValue { lexeme: "1" }
 }
 
-fn spice_wave1_char_eq(a: Char, b: Char) -> Bool {
-  match nat_compare(a: a, b: b) {
-    Equal => true
-    _ => false
-  }
-}
-
 fn spice_wave1_string_eq(a: String, b: String) -> Bool {
-  zip_eq(a: a, b: b, eq: spice_wave1_char_eq)
+  zip_eq(
+    a: a,
+    b: b,
+    eq: fn(ca, cb) { nat_lte(a: ca, b: cb) && nat_gte(a: ca, b: cb) }
+  )
 }
 
 fn spice_wave1_binding_spellings() -> Map<Symbol, String> {
@@ -385,18 +383,45 @@ fn spice_wave1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn spice_wave1_symbol_spelling(sym: Symbol) -> String {
+fn spice_wave1_symbol_spelling_outcome(sym: Symbol) -> Outcome<String> {
   match spice_wave1_binding_spellings().lookup(sym) {
-    Holds { value: spelling } => spelling
-    Violates { diagnostic: _ } => ""
+    Holds { value: spelling } => outcome_accepted(value: spelling)
+    Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
 
-fn spice_wave1_node_ref_spelling(node: NodeRef) -> String {
+fn spice_wave1_node_ref_spelling_outcome(node: NodeRef) -> Outcome<String> {
   match node {
-    Ground => "0"
-    Named { node: named } => spice_wave1_symbol_spelling(sym: named.name)
+    Ground => outcome_accepted(value: "0")
+    Named { node: named } => spice_wave1_symbol_spelling_outcome(sym: named.name)
   }
+}
+
+fn spice_wave1_join_spaced(
+  name_spelling: String,
+  n_plus_spelling: String,
+  n_minus_spelling: String,
+  value_lexeme: String
+) -> String {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: list_append(
+              left: name_spelling,
+              right: " "
+            ),
+            right: n_plus_spelling
+          ),
+          right: " "
+        ),
+        right: n_minus_spelling
+      ),
+      right: " "
+    ),
+    right: value_lexeme
+  )
 }
 
 fn spice_emit_non_resistor_diagnostic() -> Diagnostic {
@@ -410,26 +435,28 @@ fn spice_emit_non_resistor_diagnostic() -> Diagnostic {
 fn spice_emit_resistor_line(component: Component) -> Outcome<String> {
   match component {
     Resistor { name: name, n_plus: n_plus, n_minus: n_minus, value: value } =>
-      outcome_accepted(
-        value: list_append(
-          left: list_append(
-            left: list_append(
-              left: list_append(
-                left: list_append(
-                  left: list_append(
-                    left: spice_wave1_symbol_spelling(sym: name),
-                    right: " "
-                  ),
-                  right: spice_wave1_node_ref_spelling(node: n_plus)
-                ),
-                right: " "
-              ),
-              right: spice_wave1_node_ref_spelling(node: n_minus)
-            ),
-            right: " "
-          ),
-          right: value.lexeme
-        )
+      bind_outcome(
+        o: spice_wave1_symbol_spelling_outcome(sym: name),
+        f: fn(name_spelling) {
+          bind_outcome(
+            o: spice_wave1_node_ref_spelling_outcome(node: n_plus),
+            f: fn(n_plus_spelling) {
+              bind_outcome(
+                o: spice_wave1_node_ref_spelling_outcome(node: n_minus),
+                f: fn(n_minus_spelling) {
+                  outcome_accepted(
+                    value: spice_wave1_join_spaced(
+                      name_spelling: name_spelling,
+                      n_plus_spelling: n_plus_spelling,
+                      n_minus_spelling: n_minus_spelling,
+                      value_lexeme: value.lexeme
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
       )
     _ => outcome_rejected(d: spice_emit_non_resistor_diagnostic())
   }
