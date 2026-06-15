@@ -5,7 +5,14 @@
 
 module std.cache_identity
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, ContentHash }
 
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
 type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
+
+// Neutral digest bridge — cache_interface.ExecutionReceiptRef and
+// compute_fabric.ExecutionReceipt link via this carrier only (no cross-import).
+type ExecutionReceiptDigest = ContentHash where brand("ExecutionReceiptDigest")
+
+// First ArtifactKindId inhabitant (resolve-cost PR2).
+data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"

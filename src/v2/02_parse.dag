@@ -1266,6 +1266,27 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 
 fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>) -> ItemResult {
   let dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  // An OPTIONAL leading pipe forces the variant-list interpretation: `= | A`
+  // is a single-variant nullary sum (a deliberate novel-tag introduction), and
+  // `= | A | B` falls out as a normal multi-variant sum. A bare `= A` (no
+  // leading pipe) stays an alias and fails closed (UnresolvedType) when the RHS
+  // is not a declared type — that is the alias-vs-single-variant discriminator.
+  match eat(tokens: tokens, expected: ExpectPipe) {
+  EatConsumed { token: _, tokens: __lead } =>
+    let tokens = skip_newlines(tokens: __lead)
+    let rid = expect_ident(tokens: tokens)
+    if has_err(err: rid.err) { return ItemResult { item: dummy, tokens: rid.tokens, ctx: ctx, err: rid.err } }
+    let first_name = rid.name
+    let first_name_span = rid.span
+    let tokens = skip_newlines(tokens: rid.tokens)
+    let rv = parse_variant_fields(tokens: tokens, ctx: ctx, vname: first_name, vname_span: first_name_span)
+    if has_err(err: rv.err) { return ItemResult { item: dummy, tokens: rv.tokens, ctx: rv.ctx, err: rv.err } }
+    let rest = parse_more_variants_acc(tokens: rv.tokens, ctx: rv.ctx, acc: [rv.variant])
+    if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
+    let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
+    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: rest.ctx, err: none }
+  EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: tokens |> first) {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1298,6 +1319,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
     let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
+  }
   }
 }
 
