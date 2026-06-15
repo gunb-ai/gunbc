@@ -1065,7 +1065,11 @@ jobs:
     # re-measure C9 and may recover the perf via the single-walk -- re-derive
     # at that point too. Do not raise further to absorb a slow step;
     # root-cause it (enforced by timeout_budgets).
-    timeout-minutes: 35
+    # 2026-06-15 receipt (#4980 / run 27567579571): uncontended main wall
+    # ~13.7m (lens ~7m + C9 ~4.2m); merge-wave contention pushed lens analysis
+    # alone to ~28m and job killed at 35m29s before C9 started (~4x lens step).
+    # Budget rule re-derive: 13.7m x3.5 contention tail -> 48, rounded to 45.
+    timeout-minutes: 45
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
