@@ -10,6 +10,7 @@ module v4.std.timeseries_signal
 
 import v4.std.collection { Optional, Absent, Present }
 import v4.std.float { Float }
+import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.extdeps.formats.spice {
   Component,
@@ -75,22 +76,10 @@ type Inductance {
 }
 
 // --- spice.dag structural consumption --------------------------------------
+//
+// Practice 11: one parameterized topology carrier; R/L/C arms differ only by tag.
 
-type ResistorSpec {
-  name: Symbol
-  n_plus: NodeRef
-  n_minus: NodeRef
-  value: SpiceValue
-}
-
-type CapacitorSpec {
-  name: Symbol
-  n_plus: NodeRef
-  n_minus: NodeRef
-  value: SpiceValue
-}
-
-type InductorSpec {
+type PassiveElementTopology {
   name: Symbol
   n_plus: NodeRef
   n_minus: NodeRef
@@ -98,44 +87,80 @@ type InductorSpec {
 }
 
 type PassiveComponentSpec
-  = ResistorPassive { spec: ResistorSpec }
-  | CapacitorPassive { spec: CapacitorSpec }
-  | InductorPassive { spec: InductorSpec }
+  = ResistorPassive { topology: PassiveElementTopology }
+  | CapacitorPassive { topology: PassiveElementTopology }
+  | InductorPassive { topology: PassiveElementTopology }
 
-fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+fn passive_topology_from_component(component: Component) -> Optional<PassiveElementTopology> {
   match component {
     Resistor { name, n_plus, n_minus, value } => Present {
-      value: ResistorPassive {
-        spec: ResistorSpec {
-          name: name,
-          n_plus: n_plus,
-          n_minus: n_minus,
-          value: value
-        }
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
       }
     }
     Capacitor { name, n_plus, n_minus, value } => Present {
-      value: CapacitorPassive {
-        spec: CapacitorSpec {
-          name: name,
-          n_plus: n_plus,
-          n_minus: n_minus,
-          value: value
-        }
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
       }
     }
     Inductor { name, n_plus, n_minus, value } => Present {
-      value: InductorPassive {
-        spec: InductorSpec {
-          name: name,
-          n_plus: n_plus,
-          n_minus: n_minus,
-          value: value
-        }
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: n_plus,
+        n_minus: n_minus,
+        value: value
       }
     }
     _ => Absent
   }
+}
+
+fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+  match passive_topology_from_component(component: component) {
+    Present { value: topology } => match component {
+      Resistor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: ResistorPassive { topology: topology }
+      }
+      Capacitor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: CapacitorPassive { topology: topology }
+      }
+      Inductor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: InductorPassive { topology: topology }
+      }
+      _ => Absent
+    }
+    Absent => Absent
+  }
+}
+
+fn potential_reference_eq(
+  left: PotentialReference,
+  right: PotentialReference
+) -> Bool {
+  match left {
+    GroundReference => match right {
+      GroundReference => true
+      NodeReference { name: _ } => false
+    }
+    NodeReference { name: left_name } => match right {
+      GroundReference => false
+      NodeReference { name: right_name } => left_name == right_name
+    }
+  }
+}
+
+fn potential_reference_of_absolute(potential: AbsolutePotential) -> PotentialReference {
+  potential.reference
+}
+
+fn potential_reference_of_named(named: NamedAffineVoltage) -> PotentialReference {
+  named.reference
 }
 
 fn named_affine_voltage(
@@ -154,6 +179,29 @@ fn absolute_potential_from_named(
 ) -> AbsolutePotential {
   AbsolutePotential {
     reference: named.reference,
+    magnitude: magnitude
+  }
+}
+
+fn absolute_potential_from_named_preserves_reference(
+  named: NamedAffineVoltage,
+  magnitude: Float
+) -> Bool {
+  let absolute = absolute_potential_from_named(named: named, magnitude: magnitude)
+  potential_reference_eq(
+    left: potential_reference_of_named(named: named),
+    right: potential_reference_of_absolute(potential: absolute)
+  )
+}
+
+fn potential_difference_of_magnitude(magnitude: Float) -> PotentialDifference {
+  PotentialDifference {
+    magnitude: magnitude
+  }
+}
+
+fn branch_current_of_magnitude(magnitude: Float) -> BranchCurrent {
+  BranchCurrent {
     magnitude: magnitude
   }
 }
