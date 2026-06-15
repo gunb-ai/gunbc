@@ -10,6 +10,7 @@ module v4.workflow.layering_imports_gate
 
 import v4.std.collection { List }
 import v4.std.algebra { fold_list_right }
+import v4.std.text { String }
 
 type LayeringImportsClaimRunRow {
   label: String
