@@ -14,7 +14,8 @@ import std.compute_fabric {
   supply_srv1_host_identity,
   supply_srv2_host_identity,
   supply_srv1_offer,
-  supply_srv2_offer
+  supply_srv2_offer,
+  supply_hetzner_cax41_offer
 }
 
 // Single authority: offer identity must equal the declared HostIdentity data row AND the
@@ -28,15 +29,14 @@ fn ci_runner_pool_offer_matches_authority(
   && pool.host == host
 }
 
-// Recover canonical pool for an inhabited offer — keyed on HostIdentity authorities only.
-fn ci_runner_pool_from_offer(offer: ComputeOffer) -> RunnerPoolFacts {
-  match offer.supply.physical.identity == supply_srv1_host_identity {
-    true => supply_srv1_ci_runner_pool
-    false =>
-      match offer.supply.physical.identity == supply_srv2_host_identity {
-        true => supply_srv2_ci_runner_pool
-        false => supply_srv1_ci_runner_pool
-      }
+// Recover canonical pool for an inhabited offer — fail-closed on unknown HostIdentity.
+fn ci_runner_pool_from_offer(offer: ComputeOffer) -> RunnerPoolFacts? {
+  if offer.supply.physical.identity == supply_srv1_host_identity {
+    Present { value: supply_srv1_ci_runner_pool }
+  } else if offer.supply.physical.identity == supply_srv2_host_identity {
+    Present { value: supply_srv2_ci_runner_pool }
+  } else {
+    none
   }
 }
 
@@ -53,21 +53,27 @@ fn ci_runner_pool_offer_projection_holds() -> Bool {
     host: supply_srv2_host_identity
   )
   && (match ci_runner_pool_from_offer(offer: supply_srv1_offer) {
-    pool1 =>
+    Present { value: pool1 } =>
       pool1.host == supply_srv1_ci_runner_pool.host
       && pool1.runner_count == supply_srv1_ci_runner_pool.runner_count
       && pool1.jobserver_token_cap == supply_srv1_ci_runner_pool.jobserver_token_cap
       && pool1.architecture == supply_srv1_ci_runner_pool.architecture
       && pool1.core_count == supply_srv1_ci_runner_pool.core_count
       && pool1.jobserver_fifo == supply_srv1_ci_runner_pool.jobserver_fifo
+    Absent => false
   })
   && (match ci_runner_pool_from_offer(offer: supply_srv2_offer) {
-    pool2 =>
+    Present { value: pool2 } =>
       pool2.host == supply_srv2_ci_runner_pool.host
       && pool2.runner_count == supply_srv2_ci_runner_pool.runner_count
       && pool2.jobserver_token_cap == supply_srv2_ci_runner_pool.jobserver_token_cap
       && pool2.architecture == supply_srv2_ci_runner_pool.architecture
       && pool2.core_count == supply_srv2_ci_runner_pool.core_count
       && pool2.jobserver_fifo == supply_srv2_ci_runner_pool.jobserver_fifo
+    Absent => false
+  })
+  && (match ci_runner_pool_from_offer(offer: supply_hetzner_cax41_offer) {
+    Present { value: _ } => false
+    Absent => true
   })
 }
