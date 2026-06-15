@@ -9,7 +9,7 @@
 // ("-v host:ctr:ro", "--mount type=bind,...", "256m" size strings) are
 // boundary syntax: parsed into these facts at ingress, re-encoded at
 // egress, never stored (units discipline -- quantities are bare standard
-// units; std/compute_fabric.dag models the hardware the runtime sits on).
+// units; product/compute_fabric.dag models the hardware the runtime sits on).
 //
 // Consumers:
 //   gunb-ai/ctrl plans/models/session_contract -- session bind mounts

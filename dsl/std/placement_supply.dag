@@ -5,8 +5,10 @@
 // absence: only schedulable hosts appear in the supply list — no stored
 // healthy: Bool flag.
 //
-// Authority for ComputeHost remains std.compute_fabric; CpuFacts / CpuIdentity
-// is std.cpu; DIMM populations std.memory.operator_fleet. Thin projection
+// Authority for ComputeHost remains product.compute_fabric; CpuFacts / the CPU
+// concept is std.cpu (vendor catalogs in extdeps.cpu); DIMM taxonomy std.memory
+// (SK Hynix catalog std.memory.sk_hynix). Concrete operator DIMM populations are
+// the operator's deployment (ctrl), not gunbc std. Thin projection
 // surface importable without pulling the full fabric graph.
 
 module std.placement_supply
@@ -35,7 +37,7 @@ type PlacementSupplyRow {
 // Frequency at unit scale, so it projects back onto `Hertz` via `hertz()` rather
 // than leaking a flat `Int` at the std boundary (the dimension stays attached;
 // GATE-0 value-Measure boundary projection, mirroring `money_micros()` in
-// std.compute_fabric). Both factors are `Nat` counts, so the product inhabits
+// product.compute_fabric). Both factors are `Nat` counts, so the product inhabits
 // the `Nat` carrier of `Hertz` without a signed/fractional generalization.
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
   // Let-bind thread_count and clock_count separately: v2 parser rejects the

@@ -255,7 +255,7 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 // `std.currency.CurrencyCode`, not in the phantom `<Q>` (which is the
 // dimension `Currency`, shared by all currencies). A consumer that needs a
 // specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
-// e.g. `std.compute_fabric.CostEstimate { unit_price, currency }`.
+// e.g. `product.compute_fabric.CostEstimate { unit_price, currency }`.
 //
 // `MoneyAmount` is a MULTI-HOP alias (MoneyMicros = MoneyAmount<Micro> =
 // Measure<Currency, Micro, Nat>); reading its `.count` is the multi-hop alias

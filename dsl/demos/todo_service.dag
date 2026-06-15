@@ -14,10 +14,10 @@ import std.types { GET, POST, PUT, PATCH, DELETE, Int, String, Bool }
 import std.effects { LiteralToken, ParamToken }
 import v3.std.services { RestEndpointBinding }
 
-// Trivial root `let` so the module is not purely type-level (same cadence as
+// Trivial root `data` so the module is not purely type-level (same cadence as
 // `omni_emit_anchor` in `m1_5_omni_shape_b_openapi_test` inline fixtures). Unused by route
 // extractors; keeps demo symmetry with other omni Shape B receipts.
-let todo_service_emit_anchor: Int = 0
+data todo_service_emit_anchor: Int = 0
 
 type User {
   id:           String
