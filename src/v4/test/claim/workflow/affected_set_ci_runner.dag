@@ -254,7 +254,7 @@ data ci_runner_fail_closed_superset_claim: TestClaim = EqualsClaim {
 }
 
 data ci_runner_strict_subset_discriminates_claim: TestClaim = EqualsClaim {
-  label: "workflow/affected_set_ci_runner: narrow⊂wide⊂fail-open full roster (strict-subset discrimination)",
+  label: "workflow/affected_set_ci_runner: narrow⊂wide⊂fail-closed full roster (strict-subset discrimination)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_touched_node,
   rhs: ci_runner_strict_subset_discriminates_rhs(),
@@ -473,7 +473,7 @@ data ci_runner_gate_row_narrow_selection: AffectedSetNodeFrontierClaimRunRow = A
 }
 
 data ci_runner_gate_row_strict_subset_discriminates: AffectedSetNodeFrontierClaimRunRow = AffectedSetNodeFrontierClaimRunRow {
-  label: "affected-set narrow⊂wide⊂fail-open strict-subset discrimination (perturb-red)",
+  label: "affected-set narrow⊂wide⊂fail-closed strict-subset discrimination (perturb-red)",
   entry: ci_runner_gate_entry,
   function: "ci_runner_strict_subset_discriminates_holds"
 }
