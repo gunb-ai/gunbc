@@ -149,6 +149,41 @@ fn value_type_label(ctx: &InterpContext, value: &Value) -> String {
     }
 }
 
+fn free_monoid_elems<'a>(ctx: &InterpContext, value: &'a Value) -> Result<Vec<&'a Value>, String> {
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .ok_or_else(|| "Cons without `head` field".to_string())?;
+                out.push(head);
+                cur = ctx
+                    .field(fields, "tail")
+                    .ok_or_else(|| "Cons without `tail` field".to_string())?;
+            }
+            Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => {
+                return Ok(out);
+            }
+            Value::List(items) => {
+                out.extend(items.iter());
+                return Ok(out);
+            }
+            other => {
+                return Err(format!(
+                    "expected FreeMonoid (Cons/Empty), got {}",
+                    value_type_label(ctx, other)
+                ))
+            }
+        }
+    }
+}
+
 /// Walk marshaled host `Value`s and assert the v4 `Node`/`Edge` skeleton the lens
 /// roster expects (TypeNode kind + `List<Edge>` children, each target a `Node`).
 fn assert_v4_node_tree(ctx: &InterpContext, value: &Value, path: &str) {
@@ -182,12 +217,12 @@ fn assert_v4_node_tree(ctx: &InterpContext, value: &Value, path: &str) {
     let children = fields
         .get(&ctx.sym("children"))
         .unwrap_or_else(|| panic!("{path}: missing children"));
-    let Value::List(edges) = children else {
+    let edges = free_monoid_elems(ctx, children).unwrap_or_else(|e| {
         panic!(
-            "{path}.children: expected list, got {}",
+            "{path}.children: expected FreeMonoid Cons/Empty, got {} ({e})",
             value_type_label(ctx, children)
-        );
-    };
+        )
+    });
     for (index, edge) in edges.iter().enumerate() {
         assert_v4_edge(ctx, edge, &format!("{path}.children[{index}]"));
     }
@@ -232,14 +267,12 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
         "root carrier connective"
     );
     let children = fields.get(&ctx.sym("children")).expect("children");
-    let Value::List(edges) = children else {
-        unreachable!()
-    };
+    let edges = free_monoid_elems(&ctx, children).expect("children monoid");
     assert_eq!(edges.len(), 1, "MemorySpec has one field edge");
     let Value::Record {
         fields: edge_fields,
         ..
-    } = &edges[0]
+    } = edges[0]
     else {
         unreachable!()
     };
@@ -305,12 +338,36 @@ fn bare_int_marshaled_inferred_tree_lens_rejects_unit_modeling() {
     run_bare_int_lens_probe("probe_lens_rejects_unit_modeling_from_marshaled_root", true);
 }
 
-#[test]
-#[ignore = "gate-1 accept arm: fold_list_right on second lens witness append (dual-lens Accepted path); reject arm green"]
-fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
+fn run_modeled_carrier_lens_probe(fn_name: &str, expect: bool) {
     let resolved = compile_probe_bundle(MODELED_CARRIER_FIXTURE);
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);
-    assert_bool_probe(&ctx, "probe_lens_accepts_from_marshaled_root", root, true);
+    assert_bool_probe(&ctx, fn_name, root, expect);
+}
+
+/// Bisect (snappy msg_3e3c99ad): after lens1 Accepted + first append, witnesses
+/// carrier must be substrate FreeMonoid (`Empty`/`Cons`), not a stray coproduct Variant.
+#[test]
+fn marshaled_root_witnesses_carrier_after_first_append_is_free_monoid() {
+    let resolved = compile_probe_bundle(MODELED_CARRIER_FIXTURE);
+    assert_resolved_ok(&resolved);
+    let ctx = probe_eval_context(&resolved);
+    let root = memory_spec_root_value(&ctx, &resolved);
+    let value = run_probe_fn_timed(&ctx, "probe_witnesses_carrier_tag_after_first_append", root)
+        .unwrap_or_else(|e| panic!("bisect probe: {e}"));
+    let Value::Str(tag) = value else {
+        panic!("bisect probe: expected String tag, got {value:?}");
+    };
+    assert_eq!(
+        tag, "Cons",
+        "after first append witnesses must be Cons (seed [] is Empty; first snoc yields Cons)"
+    );
+}
+
+/// Decisive PASS arm: modeled ByteSize MemorySpec → dual-lens Accepted through
+/// host-only marshal (no v4 `infer()`).
+#[test]
+fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
+    run_modeled_carrier_lens_probe("probe_lens_accepts_from_marshaled_root", true);
 }

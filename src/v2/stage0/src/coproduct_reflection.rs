@@ -98,7 +98,7 @@ fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value 
             (ctx.sym("kind"), kind),
             (
                 ctx.sym("children"),
-                crate::v2_interpreter::list_value(children),
+                crate::v2_interpreter::free_monoid_value(ctx, children),
             ),
             (ctx.sym("occurrence_id"), synthetic_occurrence(ctx)),
         ])),
@@ -754,7 +754,7 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             ),
             (
                 ctx.sym("children"),
-                crate::v2_interpreter::list_value(trimmed),
+                crate::v2_interpreter::free_monoid_value(ctx, trimmed),
             ),
             (
                 ctx.sym("occurrence_id"),

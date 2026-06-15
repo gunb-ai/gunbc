@@ -433,6 +433,28 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
+/// Build the substrate `FreeMonoid` carrier (`Empty` / `Cons`) that v4 list
+/// builtins and `fold_list_right` accept on marshaled nodes — NOT `Value::List`.
+pub(crate) fn free_monoid_value(ctx: &InterpContext, items: impl IntoIterator<Item = Value>) -> Value {
+    let items: Vec<Value> = items.into_iter().collect();
+    let mut tail = Value::Variant {
+        type_name: ctx.sym("FreeMonoid"),
+        variant_name: ctx.sym("Empty"),
+        fields: Rc::new(HashMap::new()),
+    };
+    for head in items.into_iter().rev() {
+        tail = Value::Variant {
+            type_name: ctx.sym("FreeMonoid"),
+            variant_name: ctx.sym("Cons"),
+            fields: Rc::new(HashMap::from([
+                (ctx.sym("head"), head),
+                (ctx.sym("tail"), tail),
+            ])),
+        };
+    }
+    tail
+}
+
 /// Wrap a map carrier into a `Value::Map`.
 fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
