@@ -91,23 +91,32 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^ram_cap_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^memory_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^disk_bytes, carrier: ^ByteSize },
-  // Currency (MoneyMicros)
+  // Currency (MoneyMicros = MoneyAmount<Micro>, measure.dag:225)
   UnitFieldRow { field: ^hourly_eur_micros, carrier: ^MoneyMicros },
   UnitFieldRow { field: ^monthly_cap_eur_micros, carrier: ^MoneyMicros },
-  // Time (Duration / Milliseconds)
+  // Time. Carrier is compute_fabric.Duration = Measure<Time, One>
+  // (compute_fabric.dag:76) — NOT the legacy types.dag:321 `Duration = Int`
+  // brand, which is itself a form-1 violator (pointing remediation at a bare-Int
+  // brand would be circular). The `^Duration` advisory symbol names the Measure
+  // carrier; the diagnostic guidance is the dimensioned one only. Millisecond
+  // fields (timeout_ms/duration_ms) are DROPPED from this slice: their carrier
+  // would be Measure<Time, Milli> and no named alias exists yet (types.dag:322
+  // `Milliseconds = Int` is a bare-Int brand, not a carrier) — re-add once that
+  // alias is minted (snappy 2026-06-14).
   UnitFieldRow { field: ^timeout_seconds, carrier: ^Duration },
   UnitFieldRow { field: ^lifetime_seconds, carrier: ^Duration },
-  UnitFieldRow { field: ^timeout_ms, carrier: ^Milliseconds },
-  UnitFieldRow { field: ^duration_ms, carrier: ^Milliseconds },
-  // DataRate (Bandwidth)
+  // DataRate. Carrier is compute_fabric.Bandwidth = Measure<DataRate, One>
+  // (compute_fabric.dag:75) — it lives in compute_fabric, not measure.dag.
   UnitFieldRow { field: ^bandwidth_bps, carrier: ^Bandwidth },
-  // Count (additive cardinality — Measure<Count,One> aliases). These pass the
-  // additive-cardinality test (2 cores + 3 cores = 5 cores); they are NOT labels
-  // or coordinates, so they are in scope per the snappy/zesty ruling.
+  // Count (additive cardinality — Measure<Count, One> aliases). These pass the
+  // additive-cardinality test (2 threads + 3 threads = 5 threads); they are NOT
+  // labels or coordinates, so they are in scope per the snappy/zesty ruling.
+  // HardwareThreadCount = Measure<Count, One> (measure.dag:189). Core fields
+  // (core_count/cpu_cores) are DROPPED from this slice: the distinct
+  // `CoreCount = Measure<Count, One>` carrier does not exist yet — re-add once
+  // it is minted (snappy 2026-06-14).
   UnitFieldRow { field: ^hardware_threads, carrier: ^HardwareThreadCount },
-  UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount },
-  UnitFieldRow { field: ^core_count, carrier: ^CoreCount },
-  UnitFieldRow { field: ^cpu_cores, carrier: ^CoreCount }
+  UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount }
 ]
 
 // Build the exact-Symbol-keyed lookup once by folding the rows into an empty Map.
@@ -130,9 +139,22 @@ fn field_name_is_unit_token(name: Symbol) -> Bool {
 }
 
 // Does the field's declared type resolve to the bare kernel `Int` binding?
-// 🟡 First slice: `Int` only. `^dag_binding_type_int` (04_infer.dag) is the one
-// confirmed resolved kernel-scalar symbol; Nat/Float/Real leaves await their
-// canonical symbols before they can be flagged without false positives.
+//
+// 🟡 DISCLOSED COVERAGE GAP — Int only (no silent cap). This slice keys ONLY on
+// `^dag_binding_type_int` (04_infer.dag). That is deliberate and sound for an
+// advisory lint, but it UNDER-COVERS, and the gap is named here so it is not
+// mistaken for full coverage:
+//   - bare `Nat` fields are NOT caught. `Nat` is not a kernel type
+//     (kernel_type_set, types.dag:65, is String/Int/Bool/Float/Secret/Json/
+//     Unit/Bytes — no Nat); it is a std construction (nat.dag), so a bare
+//     `x: Nat` field resolves to the std Nat type node, a different
+//     representational class — NOT a kernel Atom. Keying on it needs a separate
+//     Nat-node-resolution increment, not a one-symbol add. The real violators in
+//     the tree today are bare `Int` (e.g. types.dag `Duration = Int` /
+//     `Milliseconds = Int` brands), which this slice does catch.
+//   - `Float` is excluded — it rides the M=Float keystone, a later increment.
+// The danger direction for an advisory lint is over-flagging a legitimate bare
+// Int, not under-flagging a Nat; Int-only avoids the former. (snappy 2026-06-14.)
 fn type_is_flat_scalar(target: Node) -> Bool {
   edge_field_type_name(target: target) == ^dag_binding_type_int
 }
