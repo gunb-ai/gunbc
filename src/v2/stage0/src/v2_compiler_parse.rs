@@ -11301,7 +11301,7 @@ pub fn try_postfix(
         let span = token_span(tok.clone());
         match sh {
             Some(TokenShape::ShLParen) => {
-                if (14 < min_bp) {
+                if (21 < min_bp) {
                     Rc::new(PostfixResult {
                         expr: lhs.clone(),
                         changed: false,
@@ -11394,7 +11394,7 @@ pub fn try_postfix(
                 }
             }
             Some(TokenShape::ShLBracket) => {
-                if (14 < min_bp) {
+                if (21 < min_bp) {
                     Rc::new(PostfixResult {
                         expr: lhs.clone(),
                         changed: false,
@@ -12120,7 +12120,7 @@ pub fn parse_expr_loop_no_brace(
         } else {
             let loop_span = token_span(tok.clone());
             tokens = skip_continuation_newlines(tokens.clone());
-            if (tok_is_lparen(tokens.clone().first().cloned()) && (14 >= min_bp.clone())) {
+            if (tok_is_lparen(tokens.clone().first().cloned()) && (21 >= min_bp.clone())) {
                 let r = parse_call_args(tokens.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
@@ -12147,7 +12147,7 @@ pub fn parse_expr_loop_no_brace(
                     continue;
                 }
             } else {
-                if (tok_is_lbracket(tokens.clone().first().cloned()) && (14 >= min_bp.clone())) {
+                if (tok_is_lbracket(tokens.clone().first().cloned()) && (21 >= min_bp.clone())) {
                     let span = token_span(tokens.clone().first().cloned());
                     let r = parse_index_or_slice(tokens.clone(), ctx.clone(), lhs.clone(), span);
                     if has_err(r.err.clone()) {

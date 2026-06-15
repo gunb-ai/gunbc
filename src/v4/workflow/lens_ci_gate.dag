@@ -127,6 +127,63 @@ data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow =
   function: "coproduct_reflection_conformance_holds"
 }
 
+// unit-modeling lens (B1) — discriminating pass+fail witnesses. The flag/pass
+// pair (same `ram_bytes` field, bare Int vs ByteSize carrier) proves the lens
+// keys on the resolved type, not the name; the two exempt rows prove it does not
+// over-flag (electrical is GATE-2-pending with no carrier; a coordinate is not a
+// count). All ExpectPass (the `*_holds` Bool asserts the gate verdict).
+data lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/flat_scalar_unit_leaf_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag",
+  function: "flat_scalar_unit_leaf_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_modeled_field_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/modeled_unit_field_passes",
+  entry: "src/v4/test/claim/lens_unit_modeling/modeled_unit_field_passes.dag",
+  function: "modeled_unit_field_passes_holds"
+}
+
+// Inverted-predicate witnesses: the critical novel-unit (high-recall), the two
+// categorical exemptions (label + coordinate), and electrical-now-flagged
+// (blocked-pending class).
+data lens_ci_claim_run_row_unit_modeling_novel_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/novel_unit_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/novel_unit_flagged.dag",
+  function: "novel_unit_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_label_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/label_version_not_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/label_version_not_flagged.dag",
+  function: "label_version_not_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_coordinate_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/coordinate_index_not_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/coordinate_index_not_flagged.dag",
+  function: "coordinate_index_not_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_electrical_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/electrical_blocked_pending_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/electrical_blocked_pending_flagged.dag",
+  function: "electrical_blocked_pending_flagged_holds"
+}
+
+// BitWidth token (Information): pointer/word/bit width — operator ruled in-scope.
+data lens_ci_claim_run_row_unit_modeling_bitwidth_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/bitwidth_flat_scalar_flagged",
+  entry: "src/v4/test/claim/lens_unit_modeling/bitwidth_flat_scalar_flagged.dag",
+  function: "bitwidth_flat_scalar_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_bitwidth_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/bitwidth_modeled_passes",
+  entry: "src/v4/test/claim/lens_unit_modeling/bitwidth_modeled_passes.dag",
+  function: "bitwidth_modeled_passes_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
@@ -143,7 +200,15 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_coproduct_reflection_behavior_nullary_inhabitants,
   lens_ci_claim_run_row_coproduct_reflection_connective_nullary_failclosed,
   lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets,
-  lens_ci_claim_run_row_coproduct_reflection_conformance
+  lens_ci_claim_run_row_coproduct_reflection_conformance,
+  lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged,
+  lens_ci_claim_run_row_unit_modeling_modeled_field_passes,
+  lens_ci_claim_run_row_unit_modeling_novel_flagged,
+  lens_ci_claim_run_row_unit_modeling_label_exempt,
+  lens_ci_claim_run_row_unit_modeling_coordinate_exempt,
+  lens_ci_claim_run_row_unit_modeling_electrical_blocked,
+  lens_ci_claim_run_row_unit_modeling_bitwidth_flagged,
+  lens_ci_claim_run_row_unit_modeling_bitwidth_passes
 ]
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.

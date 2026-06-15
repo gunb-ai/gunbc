@@ -3673,7 +3673,10 @@ fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShLParen } => {
-      if 14 < min_bp {
+      // Postfix call binds tighter than every binary operator (max right_bp 20);
+      // gate at 21, not 14, or a call in a `*`/`/`/`%` RHS (right_bp 16) is
+      // rejected and its `(...)` mis-attaches to the binop as an `<expr>` call.
+      if 21 < min_bp {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         let r = parse_call_args(tokens: tokens, ctx: ctx)
@@ -3696,7 +3699,9 @@ fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -
       }
     }
     Present { value: ShLBracket } => {
-      if 14 < min_bp {
+      // Postfix index binds tighter than every binary operator (see ShLParen);
+      // gate at 21, not 14, for the same `*`/`/`/`%`-RHS reason.
+      if 21 < min_bp {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         if is_constraint_bracket(tokens: tokens) {
@@ -3945,13 +3950,20 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
   } else {
     let loop_span = token_span(tok: tok)
     let tokens = skip_continuation_newlines(tokens: tokens)
-    if tok_is_lparen(tok: tokens |> first) && 14 >= min_bp {
+    // Postfix application/index bind TIGHTER than every binary operator (max
+    // operator right_bp is `.` at 20), so the gate is 21 -- not 14. At 14, a
+    // call/index in the RHS of `*`/`/`/`%` (right_bp 16) was rejected
+    // (`14 >= 16` false) and the trailing `(...)` then attached to the whole
+    // binop via make_call_expr -> an unresolvable `<expr>` call. `+`/`-`
+    // (right_bp 14) masked the bug; multiplication (unused before the numeric
+    // Measure work) exposed it on `a(x) * b(y)`.
+    if tok_is_lparen(tok: tokens |> first) && 21 >= min_bp {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let span = token_span(tok: tokens |> first)
       let new_lhs = make_call_expr(lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
-    } else if tok_is_lbracket(tok: tokens |> first) && 14 >= min_bp {
+    } else if tok_is_lbracket(tok: tokens |> first) && 21 >= min_bp {
       let span = token_span(tok: tokens |> first)
       let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, span: span)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
