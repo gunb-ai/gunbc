@@ -1,0 +1,51 @@
+// src/v4/test/claim/extdeps/spice_rc_passive_deck_claims.dag
+// Scope: E-10 consumer for spice_rc_passive_deck fixture authority — structural topology witness.
+// Status: imports v4.test.fixture.spice_rc_passive_deck; fails if fixture drifts from canonical RC+.op deck.
+
+module v4.test.claim.extdeps.spice_rc_passive_deck_claims
+
+import v4.test.fixture.spice_rc_passive_deck { spice_rc_passive_deck }
+import v4.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  Ground,
+  Named,
+  NamedNode,
+  Op,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue
+}
+import v4.std.logic { Bool }
+
+// Structural match on imported fixture authority — wrong R/C values, nodes, or missing .op → false.
+fn spice_rc_passive_deck_authority_holds() -> Bool {
+  match spice_rc_passive_deck {
+    SpiceNetlist {
+      title: "RC passive series deck",
+      body: [
+        DeckComponent {
+          component: Resistor {
+            name: ^r1,
+            n_plus: Named { node: NamedNode { name: ^vin } },
+            n_minus: Named { node: NamedNode { name: ^mid } },
+            value: SpiceValue { lexeme: "1k" }
+          }
+        },
+        DeckComponent {
+          component: Capacitor {
+            name: ^c1,
+            n_plus: Named { node: NamedNode { name: ^mid } },
+            n_minus: Ground,
+            value: SpiceValue { lexeme: "1u" }
+          }
+        },
+        DeckDirective {
+          directive: Op
+        }
+      ]
+    } => true
+    _ => false
+  }
+}
