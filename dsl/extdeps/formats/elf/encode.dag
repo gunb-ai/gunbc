@@ -1,0 +1,253 @@
+// extdeps/formats/elf/encode.dag — ELF-64 encode (inverse of decode, Slice 0.5).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+
+module extdeps.formats.elf.encode
+
+import extdeps.formats.elf.primitives {
+  ElfClass,
+  ElfClass32,
+  ElfClass64,
+  ElfClassNone,
+  ElfData2Lsb,
+  ElfData2Msb,
+  ElfDataEncoding,
+  ElfDataNone,
+  ElfFileType,
+  ElfMachine,
+  ElfSegmentType,
+  EtCore,
+  EtDyn,
+  EtExec,
+  EtNone,
+  EtRel,
+  EmNone,
+  EmX86_64,
+  PtLoad,
+  PtNull,
+  elf_class_32,
+  elf_class_64,
+  elf_class_none,
+  elf_data_2lsb,
+  elf_data_2msb,
+  elf_data_none,
+  elf64_ehdr_size,
+  elf64_phdr_size,
+  et_core,
+  et_dyn,
+  et_exec,
+  et_none,
+  et_rel,
+  em_none,
+  em_x86_64,
+  pt_load,
+  pt_null,
+}
+import extdeps.formats.elf.segments { Elf64Phdr }
+import extdeps.formats.elf.types {
+  Elf64Ehdr,
+  ElfDecodeOutcome,
+  ElfDecoded,
+  ElfIdent,
+  byte_at_in_bounds,
+  decode_elf64_ehdr,
+}
+import std.types { Bool }
+
+type ElfEncodeOutcome
+  = ElfEncoded { bytes: List<Int> }
+  | ElfEncodeRejected { reason: ElfEncodeReason }
+
+type ElfEncodeReason
+  = EncodeRoundTripMismatch { offset: Int }
+
+data elf_ident_padding_zeros: List<Int> = [0, 0, 0, 0, 0, 0, 0]
+
+fn u8_le_byte(value: Int) -> Int {
+  value - (value / 256) * 256
+}
+
+fn u16_le_bytes(value: Int) -> List<Int> {
+  let low = u8_le_byte(value)
+  let high = u8_le_byte(value / 256)
+  [low, high]
+}
+
+fn u32_le_bytes(value: Int) -> List<Int> {
+  let b0 = u8_le_byte(value)
+  let v1 = value / 256
+  let b1 = u8_le_byte(v1)
+  let v2 = v1 / 256
+  let b2 = u8_le_byte(v2)
+  let b3 = u8_le_byte(v2 / 256)
+  [b0, b1, b2, b3]
+}
+
+fn u64_le_bytes(value: Int) -> List<Int> {
+  let b0 = u8_le_byte(value)
+  let v1 = value / 256
+  let b1 = u8_le_byte(v1)
+  let v2 = v1 / 256
+  let b2 = u8_le_byte(v2)
+  let v3 = v2 / 256
+  let b3 = u8_le_byte(v3)
+  let v4 = v3 / 256
+  let b4 = u8_le_byte(v4)
+  let v5 = v4 / 256
+  let b5 = u8_le_byte(v5)
+  let v6 = v5 / 256
+  let b6 = u8_le_byte(v6)
+  let b7 = u8_le_byte(v6 / 256)
+  [b0, b1, b2, b3, b4, b5, b6, b7]
+}
+
+fn encode_elf_class(class: ElfClass) -> Int {
+  match class {
+    ElfClassNone => elf_class_none
+    ElfClass32 => elf_class_32
+    ElfClass64 => elf_class_64
+  }
+}
+
+fn encode_elf_data(data: ElfDataEncoding) -> Int {
+  match data {
+    ElfDataNone => elf_data_none
+    ElfData2Lsb => elf_data_2lsb
+    ElfData2Msb => elf_data_2msb
+  }
+}
+
+fn encode_elf_file_type(file_type: ElfFileType) -> Int {
+  match file_type {
+    EtNone => et_none
+    EtRel => et_rel
+    EtExec => et_exec
+    EtDyn => et_dyn
+    EtCore => et_core
+  }
+}
+
+fn encode_elf_machine(machine: ElfMachine) -> Int {
+  match machine {
+    EmNone => em_none
+    EmX86_64 => em_x86_64
+  }
+}
+
+fn encode_elf_segment_type(segment_type: ElfSegmentType) -> Int {
+  match segment_type {
+    PtNull => pt_null
+    PtLoad => pt_load
+  }
+}
+
+fn encode_elf_ident(ident: ElfIdent) -> List<Int> {
+  append(
+    [
+      ident.mag0,
+      ident.mag1,
+      ident.mag2,
+      ident.mag3,
+      encode_elf_class(ident.class),
+      encode_elf_data(ident.data),
+      ident.version,
+      ident.osabi,
+      ident.abiversion,
+    ],
+    items: elf_ident_padding_zeros,
+  )
+}
+
+fn encode_elf64_ehdr(hdr: Elf64Ehdr) -> ElfEncodeOutcome {
+  let body = append(
+    append(
+      append(
+        append(
+          append(
+            encode_elf_ident(hdr.ident),
+            items: u16_le_bytes(encode_elf_file_type(hdr.file_type)),
+          ),
+          items: u16_le_bytes(encode_elf_machine(hdr.machine)),
+        ),
+        items: u32_le_bytes(hdr.version),
+      ),
+      items: u64_le_bytes(hdr.entry),
+    ),
+    items: u64_le_bytes(hdr.phoff),
+  )
+  let body2 = append(
+    append(
+      append(
+        append(
+          append(
+            body,
+            items: u64_le_bytes(hdr.shoff),
+          ),
+          items: u32_le_bytes(hdr.flags),
+        ),
+        items: u16_le_bytes(hdr.ehsize),
+      ),
+      items: u16_le_bytes(hdr.phentsize),
+    ),
+    items: u16_le_bytes(hdr.phnum),
+  )
+  let bytes = append(
+    append(
+      append(body2, items: u16_le_bytes(hdr.shentsize)),
+      items: u16_le_bytes(hdr.shnum),
+    ),
+    items: u16_le_bytes(hdr.shstrndx),
+  )
+  ElfEncoded { bytes: bytes }
+}
+
+fn encode_elf64_phdr(phdr: Elf64Phdr) -> ElfEncodeOutcome {
+  let bytes = append(
+    append(
+      append(
+        append(
+          append(
+            append(
+              u32_le_bytes(encode_elf_segment_type(phdr.segment_type)),
+              items: u32_le_bytes(phdr.flags),
+            ),
+            items: u64_le_bytes(phdr.offset),
+          ),
+          items: u64_le_bytes(phdr.vaddr),
+        ),
+        items: u64_le_bytes(phdr.paddr),
+      ),
+      items: u64_le_bytes(phdr.filesz),
+    ),
+    items: append(u64_le_bytes(phdr.memsz), items: u64_le_bytes(phdr.align)),
+  )
+  ElfEncoded { bytes: bytes }
+}
+
+fn int_lists_equal_at(left: List<Int>, right: List<Int>, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else if byte_at_in_bounds(left, i) != byte_at_in_bounds(right, i) {
+    false
+  } else {
+    int_lists_equal_at(left, right, i: i + 1, n: n)
+  }
+}
+
+fn int_lists_equal(left: List<Int>, right: List<Int>) -> Bool {
+  count(left) == count(right)
+    && int_lists_equal_at(left, right, i: 0, n: count(left))
+}
+
+fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
+  match decode_elf64_ehdr(hdr_bytes) {
+    ElfDecoded { value: hdr } =>
+      match encode_elf64_ehdr(hdr) {
+        ElfEncoded { bytes: out } =>
+          count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)
+        ElfEncodeRejected { reason: _ } => false
+      }
+    _ => false
+  }
+}

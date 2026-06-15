@@ -1,4 +1,4 @@
-// extdeps/formats/elf/hello_static_witness.dag — end-to-end decode of one real static hello ELF.
+// extdeps/formats/elf/hello_static_witness.dag — end-to-end decode + encode round-trip of one real static hello ELF.
 //
 // Fixture: musl-static x86-64 hello built in Alpine 3.20 (linux/amd64):
 //   cc -static -o hello 'write(1,"Hello\n",6); return 0;'
@@ -20,6 +20,14 @@ import extdeps.formats.elf.primitives {
   elf64_phdr_size,
   linux_x86_64_elf_format,
   pf_r,
+}
+import extdeps.formats.elf.encode {
+  ElfEncoded,
+  ElfEncodeRejected,
+  encode_elf64_ehdr,
+  encode_elf64_phdr,
+  int_lists_equal,
+  witness_encode_decode_roundtrip_ehdr,
 }
 import extdeps.formats.elf.segments {
   PhdrDecoded,
@@ -228,6 +236,42 @@ fn witness_first_load_segment_align() -> Bool {
   }
 }
 
+fn witness_ehdr_encode_decode_roundtrip() -> Bool {
+  witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
+}
+
+fn witness_phdr_encode_decode_roundtrip() -> Bool {
+  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+    PhdrDecoded { value: phdr } =>
+      match encode_elf64_phdr(phdr) {
+        ElfEncoded { bytes: out } =>
+          count(out) == elf64_phdr_size
+            && int_lists_equal(static_hello_first_phdr_bytes, out)
+        ElfEncodeRejected { reason: _ } => false
+      }
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_ehdr_reencode_preserves_decode() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+    ElfDecoded { value: hdr } =>
+      match encode_elf64_ehdr(hdr) {
+        ElfEncoded { bytes: out } =>
+          match decode_elf64_ehdr(out) {
+            ElfDecoded { value: hdr2 } =>
+              hdr2.entry == hdr.entry
+                && hdr2.phoff == hdr.phoff
+                && hdr2.shoff == hdr.shoff
+                && hdr2.phnum == hdr.phnum
+            ElfRejected { reason: _ } => false
+          }
+        ElfEncodeRejected { reason: _ } => false
+      }
+    ElfRejected { reason: _ } => false
+  }
+}
+
 fn main() -> Bool {
   witness_format_atom_is_elf()
     && witness_truncated_ehdr_rejects()
@@ -250,4 +294,7 @@ fn main() -> Bool {
     && witness_first_load_segment_vaddr()
     && witness_first_load_segment_filesz()
     && witness_first_load_segment_align()
+    && witness_ehdr_encode_decode_roundtrip()
+    && witness_phdr_encode_decode_roundtrip()
+    && witness_ehdr_reencode_preserves_decode()
 }
