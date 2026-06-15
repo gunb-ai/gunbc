@@ -22,7 +22,7 @@ import extdeps.container.oci.image_config {
   RootfsLayers,
   accept_image_configuration,
   image_config_entrypoint,
-  image_config_exposed_port,
+  image_config_first_exposed_port,
   image_config_layer_count,
 }
 import extdeps.container.oci.linux {
@@ -214,7 +214,7 @@ fn witness_image_config_accepts() -> Bool {
     ImageConfigAccepted { value: c } =>
       c.architecture == "arm64"
         && c.os == "linux"
-        && image_config_exposed_port(c) == "7681/tcp"
+        && image_config_first_exposed_port(c) == "7681/tcp"
         && count(image_config_entrypoint(c)) == 4
     ImageConfigRejected { reason: _ } => false
   }

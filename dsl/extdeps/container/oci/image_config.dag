@@ -69,7 +69,7 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
-fn image_config_exposed_port(c: ImageConfiguration) -> String? {
+fn image_config_first_exposed_port(c: ImageConfiguration) -> String? {
   match c.config {
     null => null
     cfg =>
