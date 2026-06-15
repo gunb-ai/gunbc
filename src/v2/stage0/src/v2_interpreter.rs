@@ -435,7 +435,10 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
 
 /// Build the substrate `FreeMonoid` carrier (`Empty` / `Cons`) that v4 list
 /// builtins and `fold_list_right` accept on marshaled nodes — NOT `Value::List`.
-pub(crate) fn free_monoid_value(ctx: &InterpContext, items: impl IntoIterator<Item = Value>) -> Value {
+pub(crate) fn free_monoid_value(
+    ctx: &InterpContext,
+    items: impl IntoIterator<Item = Value>,
+) -> Value {
     let items: Vec<Value> = items.into_iter().collect();
     let mut tail = Value::Variant {
         type_name: ctx.sym("FreeMonoid"),

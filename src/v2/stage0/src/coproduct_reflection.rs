@@ -517,11 +517,12 @@ pub fn arm_payload_pairs_from_marshaled_node(
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
-    let edges = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
+    let edges =
+        crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "children not a list".to_string(),
+            }
+        })?;
     let mut pairs = Vec::with_capacity(edges.len());
     for edge in edges {
         let Value::Record { fields: ef, .. } = edge else {
@@ -602,11 +603,9 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
         Value::Variant {
             variant_name: conn, ..
         } if ctx.resolve(*conn) == "Conj" => {
-            let edge_items =
-                crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
-                    InterpError::TypeError {
-                        msg: "children not list".to_string(),
-                    }
+            let edge_items = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "children not list".to_string(),
                 })?;
             if edge_items.is_empty() {
                 return Ok(NULLARY_PAYLOAD_TYPE_NAME.to_string());
@@ -673,11 +672,12 @@ pub fn arm_labels_from_marshaled_node(
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
-    let edges = crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
+    let edges =
+        crate::v2_interpreter::free_monoid_to_vec_with_ctx(ctx, children).ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "children not a list".to_string(),
+            }
+        })?;
     let mut labels = Vec::with_capacity(edges.len());
     for edge in edges {
         let Value::Record { fields: ef, .. } = edge else {

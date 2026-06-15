@@ -51,7 +51,10 @@ fn assert_resolved_ok(resolved: &v2_compiler::v2_compiler_compile::ResolvedPipel
     );
 }
 
-fn run_bool_witness(resolved: &v2_compiler::v2_compiler_compile::ResolvedPipelineResult, fn_name: &str) -> Result<bool, String> {
+fn run_bool_witness(
+    resolved: &v2_compiler::v2_compiler_compile::ResolvedPipelineResult,
+    fn_name: &str,
+) -> Result<bool, String> {
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = make_eval_context(graph, resolved.source_indices.clone());
     match run_in_context_with_args(&ctx, fn_name, &[], false) {
@@ -61,7 +64,9 @@ fn run_bool_witness(resolved: &v2_compiler::v2_compiler_compile::ResolvedPipelin
     }
 }
 
-fn compile_bundle(entries: &[&str]) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
+fn compile_bundle(
+    entries: &[&str],
+) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     for entry in entries {
         sources.extend(load_entry(entry));
@@ -79,12 +84,16 @@ fn memory_spec_marshaled_root(
         .values()
         .find(|info| info.kind == ItemKind::TypeItem && info.name == "MemorySpec")
         .and_then(|info| {
-            graph.modules.iter().flat_map(|m| m.items.iter()).find(|node| {
-                graph
-                    .item_registry
-                    .get(&node.name)
-                    .is_some_and(|i| i.kind == ItemKind::TypeItem && i.name == info.name)
-            })
+            graph
+                .modules
+                .iter()
+                .flat_map(|m| m.items.iter())
+                .find(|node| {
+                    graph
+                        .item_registry
+                        .get(&node.name)
+                        .is_some_and(|i| i.kind == ItemKind::TypeItem && i.name == info.name)
+                })
         })
         .expect("MemorySpec type item");
     marshal_conj_type_item(&ctx, item).expect("marshal MemorySpec")
