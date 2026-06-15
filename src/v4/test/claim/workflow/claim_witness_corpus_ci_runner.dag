@@ -34,8 +34,8 @@
 //
 // Sign runner (2026-06-13): monolith 20-row spot-perturb measured 1108s (~18.5m) — exceeded the
 //   13m gate; the prior recovery was 2 spot-perturb shards. This change drops spot-perturb
-//   entirely in favor of full per-shard --perturb-check; 3 smaller single-root shards keep each
-//   comfortably under ceiling (per-shard timing receipts at sign).
+//   entirely in favor of full per-shard --perturb-check; six smaller root-aligned shards keep
+//   each comfortably under ceiling (per-shard timing receipts at sign).
 
 module v4.test.claim.workflow.claim_witness_corpus_ci_runner
 
@@ -383,7 +383,7 @@ data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow =
   function: "timeseries_anchor_resistor_map_holds"
 }
 
-// GATE1 signed-magnitude class-4 (zesty): ENROLLED shard-b discriminating witnesses.
+// GATE1 signed-magnitude class-4 (zesty): ENROLLED discriminating witnesses.
 // Deciding artifact: Form-B fold — signed int_mul/int_add crossing zero + int_div.
 data corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 signed negative current resistor map (int_mul R·i)",
