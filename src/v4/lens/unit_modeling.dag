@@ -72,6 +72,16 @@ import v4.std.witness { Holds, Witness }
 // to. The `carrier` is advisory guidance only (it names the alias a fix would
 // reach for); detection turns purely on key membership. Every key is an EXACT
 // authored field Symbol — never a substring — per the exact-Symbol-keyed ruling.
+//
+// 🟡 dissolve-on-arrival — feature:unit-token-carrier-registry-derivation —
+// dissolve-direction: this name⇄carrier table is a hand-curated parallel ledger
+// of unit-field knowledge whose drift from the carriers it points at (the real
+// authority is dsl/std/measure.dag + the aliases it exposes) is silent. The
+// principled end state DERIVES the token set — or at minimum a carrier-validity
+// check — from the carrier registry rather than literaling rows here. A later
+// increment is expected to DISSOLVE this table toward registry-derivation, not
+// just extend it row-by-row; forbidden: growing the literal table as the
+// permanent shape. (M9 / modeling-discipline.md Practice 10/11.)
 type UnitFieldRow {
   field: Symbol
   carrier: Symbol
