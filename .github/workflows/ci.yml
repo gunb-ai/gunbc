@@ -2183,6 +2183,22 @@ jobs:
           echo "::error::v4_claim_witness_corpus_b job did not succeed (result=${{ needs.v4_claim_witness_corpus_b.result }}); claim-witness corpus shard-b enrollment unverified -- ci aggregator fails closed."
           exit 1
         fi
+        if [[ "${{ needs.v4_claim_witness_corpus_c.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_c job did not succeed (result=${{ needs.v4_claim_witness_corpus_c.result }}); claim-witness corpus shard-c enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_claim_witness_corpus_d.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_d job did not succeed (result=${{ needs.v4_claim_witness_corpus_d.result }}); claim-witness corpus shard-d enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_claim_witness_corpus_e.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_e job did not succeed (result=${{ needs.v4_claim_witness_corpus_e.result }}); claim-witness corpus shard-e enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.v4_claim_witness_corpus_f.result }}" != "success" ]]; then
+          echo "::error::v4_claim_witness_corpus_f job did not succeed (result=${{ needs.v4_claim_witness_corpus_f.result }}); claim-witness corpus shard-f (dsl) enrollment unverified -- ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
@@ -2202,4 +2218,4 @@ jobs:
         echo "ci aggregator: Wave 1 safety floor satisfied (stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci + v4_lens_ci_perturb discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci + v4_lens_ci_perturb (node-frontier) + v4_claim_witness_corpus_{a,b} (compiler-semantics enrollment shards)"
+        echo "::notice::Required CI: fmt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci + v4_lens_ci_perturb (node-frontier) + v4_claim_witness_corpus_{a..f} (compiler-semantics enrollment shards: a-e src/v4, f dsl)"
