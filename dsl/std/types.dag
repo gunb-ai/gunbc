@@ -123,35 +123,6 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Structural equality for List<Int> — shared by codec round-trip witnesses (byte lists).
-fn int_list_equal_at(left: List<Int>, right: List<Int>, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    match left |> get(i) {
-      null => match right |> get(i) {
-        null => int_list_equal_at(left, right, i: i + 1, n: n)
-        _ => false
-      }
-      lv => match right |> get(i) {
-        null => false
-        rv => {
-          if lv != rv {
-            false
-          } else {
-            int_list_equal_at(left, right, i: i + 1, n: n)
-          }
-        }
-      }
-    }
-  }
-}
-
-fn int_list_equal(left: List<Int>, right: List<Int>) -> Bool {
-  count(left) == count(right)
-    && int_list_equal_at(left, right, i: 0, n: count(left))
-}
-
 // Canonical query: resolve a container-template name to its algebra.
 // Single surface both consumers (v2/coercion.dag, v2/05_emit.dag) read —
 // neither maintains a parallel spelling table. The rows below are the
