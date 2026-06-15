@@ -306,6 +306,15 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
+// §4 thin lane keystone — first runnable v4 program (Branch+IO+runtime_run); local
+// `gunbc run --source-root src/v4 --entry src/v4/program.dag --function program_runs_holds --claim-run`.
+data corpus_ci_gate_row_program_runs: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "§4 program runs keystone",
+  entry: "src/v4/program.dag",
+  function: "program_runs_holds",
+  expected: ExpectPass
+}
+
 // dsl/-root parametric gate probe — permanent self-owned fixture proving the corpus gate
 // can host dsl/-rooted witnesses end-to-end (--source-root dsl, shard b).
 // NOT a domain model; lives here to prove the gate infrastructure, not to model facts.
@@ -490,6 +499,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_program_runs,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
@@ -509,7 +519,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "54"
+data claim_witness_corpus_claim_run_row_count: String = "55"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -557,6 +567,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
+  corpus_ci_gate_row_program_runs,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
@@ -576,4 +587,4 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_b_row_count: String = "36"
