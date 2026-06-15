@@ -1710,9 +1710,441 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
     - name: claim-witness corpus enrollment gate (shard b)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard b --perturb-check
+  v4_claim_witness_corpus_c:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r sha ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::warning::deleting dangling ref ${ref}"
+              if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
+                echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
+                rm -rf "$repo"
+                echo "::endgroup::"
+                return 0
+              fi
+            fi
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
+          # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
+          # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
+          corrupt=0
+          if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
+            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          fi
+          if [ "$corrupt" -eq 1 ]; then
+            echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
+            rm -rf "$repo"
+          fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard c)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache ci-claim-gate binary (claim witness corpus shard c)
+      id: v4-cg-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard c)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: claim-witness corpus enrollment gate (shard b)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard c --perturb-check
+  v4_claim_witness_corpus_d:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r sha ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::warning::deleting dangling ref ${ref}"
+              if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
+                echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
+                rm -rf "$repo"
+                echo "::endgroup::"
+                return 0
+              fi
+            fi
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
+          # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
+          # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
+          corrupt=0
+          if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
+            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          fi
+          if [ "$corrupt" -eq 1 ]; then
+            echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
+            rm -rf "$repo"
+          fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard d)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache ci-claim-gate binary (claim witness corpus shard d)
+      id: v4-cg-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard d)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: claim-witness corpus enrollment gate (shard b)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard d --perturb-check
+  v4_claim_witness_corpus_e:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r sha ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::warning::deleting dangling ref ${ref}"
+              if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
+                echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
+                rm -rf "$repo"
+                echo "::endgroup::"
+                return 0
+              fi
+            fi
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
+          # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
+          # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
+          corrupt=0
+          if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
+            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          fi
+          if [ "$corrupt" -eq 1 ]; then
+            echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
+            rm -rf "$repo"
+          fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard e)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache ci-claim-gate binary (claim witness corpus shard e)
+      id: v4-cg-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard e)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: claim-witness corpus enrollment gate (shard b)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard e --perturb-check
+  v4_claim_witness_corpus_f:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
+    # branch churn can leave refs/remotes/origin/* pointing at missing objects and make checkout
+    # fail (observed ci_floor srv2-23, run 27514705589: bad object refs/remotes/origin/session/*).
+    - name: Scrub dangling remote refs (shared runner worktree)
+      run: |
+        scrub_repo() {
+          local repo="$1"
+          [ -d "${repo}/.git" ] || return 0
+          echo "::group::Scrub dangling remote refs: ${repo}"
+          while IFS= read -r sha ref; do
+            [ -n "$ref" ] || continue
+            if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::warning::deleting dangling ref ${ref}"
+              if ! git -C "$repo" update-ref -d "$ref" 2>/dev/null; then
+                echo "::warning::update-ref -d failed for ${ref} -- removing repo for fresh clone"
+                rm -rf "$repo"
+                echo "::endgroup::"
+                return 0
+              fi
+            fi
+          done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          # Self-heal: if the ref store is still unreadable, or any ref tip object remains missing
+          # after the dangling-ref scrub (e.g. corrupt packed-refs that update-ref -d could not
+          # clear), the next checkout fails 'fatal: bad object <ref>'. Remove the repo so
+          # actions/checkout fresh-clones. show-ref catches packed-refs entries for-each-ref can skip.
+          corrupt=0
+          if ! git -C "$repo" for-each-ref >/dev/null 2>&1; then
+            corrupt=1
+          else
+            while IFS= read -r sha ref; do
+              [ -n "$ref" ] || continue
+              if ! git -C "$repo" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                echo "::warning::ref ${ref} tip still missing after scrub"
+                corrupt=1
+                break
+              fi
+            done < <(git -C "$repo" show-ref refs/remotes/origin 2>/dev/null || true)
+          fi
+          if [ "$corrupt" -eq 1 ]; then
+            echo "::warning::repo ${repo} has unresolvable refs after scrub -- removing for fresh clone"
+            rm -rf "$repo"
+          fi
+          echo "::endgroup::"
+        }
+        for repo in \
+          "${RUNNER_WORKSPACE}/gunbc" \
+          "${RUNNER_WORKSPACE}/gunbc/gunbc" \
+          "${RUNNER_WORKSPACE}/_work/gunbc/gunbc"; do
+          scrub_repo "$repo"
+        done
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (claim witness corpus shard f)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache ci-claim-gate binary (claim witness corpus shard f)
+      id: v4-cg-bin
+      uses: actions/cache@v5
+      with:
+        path: |
+          target/release/ci-claim-gate
+        key: ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci_claim_gate/src/**', 'tools/ci_claim_gate/Cargo.toml', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          ci-claim-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Ensure ci-claim-gate binary (claim witness corpus shard f)
+      if: steps.v4-cg-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
+    - name: claim-witness corpus enrollment gate (shard b)
+      run: bash scripts/v4-claim-witness-corpus-gate.sh --shard f --perturb-check
   ci:
     if: always()
-    needs: [ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_lens_ci_perturb, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, infra_isolation, doc_refs, layering_imports, timeout_budgets]
+    needs: [ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, v4_lens_ci_perturb, v4_claim_witness_corpus_a, v4_claim_witness_corpus_b, v4_claim_witness_corpus_c, v4_claim_witness_corpus_d, v4_claim_witness_corpus_e, v4_claim_witness_corpus_f, infra_isolation, doc_refs, layering_imports, timeout_budgets]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
