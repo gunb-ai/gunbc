@@ -10,7 +10,7 @@ import extdeps.boot.framebuffer { vga_text_mode_base }
 import extdeps.boot.freestanding_payload {
   EmittedPayload,
   FreestandingPayloadRef,
-  HollowInitPayload,
+  HollowPrebuiltInit,
   PrebuiltPayload,
 }
 import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr }
@@ -32,9 +32,10 @@ import extdeps.formats.elf.primitives {
 import extdeps.formats.elf.segments { Elf64Phdr }
 import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
 import std.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
 
 // Slice-0.5 content label — structural digest defers to hash primitive when dsl bootstrap exports it.
-data pixel_writer_payload_digest_label: String = "freestanding-elf64-slice-0.5"
+data pixel_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-slice-0.5"
 
 // Linux x86-64 static ET_EXEC default load address.
 data freestanding_load_vaddr: Int = 4194304
@@ -108,7 +109,7 @@ fn emit_freestanding_elf64(code_bytes: List<Int>) -> List<Int> {
   )
 }
 
-fn freestanding_payload_digest(_bytes: List<Int>, _entry: Int) -> String {
+fn freestanding_payload_digest(_bytes: List<Int>, _entry: Int) -> NonEmptyStr {
   pixel_writer_payload_digest_label
 }
 
@@ -139,8 +140,8 @@ fn witness_emitted_file_size() -> Bool {
 
 fn witness_emitted_digest_non_empty() -> Bool {
   match emit_pixel_writer_payload() {
-    EmittedPayload { digest: _, entry: _ } => true
+    EmittedPayload { digest: d, entry: _ } => d == pixel_writer_payload_digest_label
     PrebuiltPayload { digest: _, entry: _ } => false
-    HollowInitPayload { entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }

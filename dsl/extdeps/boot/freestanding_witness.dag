@@ -17,7 +17,11 @@ import extdeps.boot.emit {
   witness_pixel_writer_code_uses_vga_base,
   witness_vga_base_matches_framebuffer_fact,
 }
-import extdeps.boot.freestanding_payload { EmittedPayload, HollowInitPayload, PrebuiltPayload }
+import extdeps.boot.freestanding_payload {
+  EmittedPayload,
+  HollowPrebuiltInit,
+  PrebuiltPayload,
+}
 import extdeps.boot.linux_x86_boot {
   BootImageAccepted,
   BootImageRejected,
@@ -58,6 +62,7 @@ import extdeps.formats.elf.types {
   elf64_ehdr_entry_point,
 }
 import std.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
 
 fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
@@ -168,7 +173,7 @@ fn witness_emitted_payload_entry_matches_ehdr() -> Bool {
     EmittedPayload { digest: _, entry: EntryPoint { virtual_address: entry } } =>
       entry == freestanding_load_vaddr
     PrebuiltPayload { digest: _, entry: _ } => false
-    HollowInitPayload { entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }
 
@@ -176,7 +181,7 @@ fn witness_boot_image_accepts_emitted_init() -> Bool {
   match emit_pixel_writer_payload() {
     EmittedPayload { digest: d, entry: e } =>
       match accept_linux_x86_boot_image(LinuxX86BootImage {
-        kernel_digest: "slice-0.5-kernel-placeholder",
+        kernel_digest: slice_05_kernel_digest_placeholder,
         cmdline: [],
         init: EmittedPayload { digest: d, entry: e },
       }) {
@@ -184,9 +189,11 @@ fn witness_boot_image_accepts_emitted_init() -> Bool {
         BootImageRejected { reason: _ } => false
       }
     PrebuiltPayload { digest: _, entry: _ } => false
-    HollowInitPayload { entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }
+
+data slice_05_kernel_digest_placeholder: NonEmptyStr = "slice-0.5-kernel-placeholder"
 
 fn witness_reencode_preserves_decode() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
