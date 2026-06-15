@@ -1,0 +1,41 @@
+// gunbc/tools/ci_runner_pool.dag — CF-M1: project CI self-hosted runner pool from compute_fabric supply.
+//
+// Authority: std.compute_fabric CiRunnerPoolFacts + operator-fleet ComputeOffer constraints.
+// Host consumer: tools/ci_affected_components/src/runner_pool.rs (transport projection until
+// gate-3 dispatches WorkDemand onto the fabric eval path).
+
+module gunbc.tools.ci_runner_pool
+
+import std.compute_fabric {
+  CiRunnerPoolFacts,
+  supply_srv1_ci_runner_pool,
+  supply_srv2_ci_runner_pool,
+  supply_srv1_offer,
+  supply_srv2_offer,
+  ci_runner_pool_from_offer
+}
+import std.cpu.types { Aarch64 }
+
+fn ci_runner_pool_srv1() -> CiRunnerPoolFacts = supply_srv1_ci_runner_pool
+
+fn ci_runner_pool_srv2() -> CiRunnerPoolFacts = supply_srv2_ci_runner_pool
+
+// Fail-closed witness: modeled pool facts are recoverable from the inhabited offers.
+fn ci_runner_pool_offer_projection_holds() -> Bool {
+  match ci_runner_pool_from_offer(offer: supply_srv1_offer) {
+    Some { value: pool1 } =>
+      match ci_runner_pool_from_offer(offer: supply_srv2_offer) {
+        Some { value: pool2 } =>
+          pool1.host == supply_srv1_ci_runner_pool.host
+          && pool1.runner_count == supply_srv1_ci_runner_pool.runner_count
+          && pool1.jobserver_token_cap == supply_srv1_ci_runner_pool.jobserver_token_cap
+          && pool1.architecture == Aarch64
+          && pool2.host == supply_srv2_ci_runner_pool.host
+          && pool2.runner_count == supply_srv2_ci_runner_pool.runner_count
+          && pool2.jobserver_token_cap == supply_srv2_ci_runner_pool.jobserver_token_cap
+          && pool2.architecture == Aarch64
+        none => false
+      }
+    none => false
+  }
+}

@@ -27,6 +27,8 @@ import std.cpu {
   CpuDeploymentFacts,
   CpuFacts,
   CpuArchitecture,
+  cpu_facts_architecture,
+  cpu_facts_cores,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads
 }
@@ -170,6 +172,17 @@ type ProviderConstraint
   | SharedHomeRoot { path: NonEmptyStr }
   | MaxConcurrentRunners { cap: Int }
   | OomBehavior { signal: OomSignalClass }
+
+// CI self-hosted runner pool — projected from operator-fleet ComputeOffer constraints.
+// Consumer: gunbc.tools.ci_runner_pool (host transport) + CF-M1 gate-3 dispatch substrate.
+type CiRunnerPoolFacts {
+  host: HostIdentity
+  architecture: CpuArchitecture
+  core_count: Int
+  runner_count: Int
+  jobserver_fifo: NonEmptyStr
+  jobserver_token_cap: Int
+}
 
 type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 // Lens: RAII borrow window — open acquires scope; close is optional early release.
@@ -532,6 +545,37 @@ data operator_fleet_owned_cost: CostModel = CostModel {
 
 data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open"
 
+// Operator fleet jobserver FIFO (ctrl install-ctrl-jobserver default; srv1/srv2 share host.fifo).
+data operator_fleet_jobserver_fifo: NonEmptyStr = "/var/lib/ctrl/jobserver/host.fifo"
+
+// CI runner pool facts: co-host counts from operator nodes.json commentary (srv1=20, srv2=30);
+// jobserver token caps from fleet governor wiring (runner_pool host mirror until CF-M1 eval lands).
+data supply_srv1_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
+  host: supply_srv1_host_identity,
+  architecture: cpu_facts_architecture(supply_srv1_cpu),
+  core_count: cpu_facts_cores(supply_srv1_cpu),
+  runner_count: 20,
+  jobserver_fifo: operator_fleet_jobserver_fifo,
+  jobserver_token_cap: 25,
+}
+
+data supply_srv2_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
+  host: supply_srv2_host_identity,
+  architecture: cpu_facts_architecture(supply_srv2_cpu),
+  core_count: cpu_facts_cores(supply_srv2_cpu),
+  runner_count: 30,
+  jobserver_fifo: operator_fleet_jobserver_fifo,
+  jobserver_token_cap: 36,
+}
+
+fn ci_runner_pool_from_offer(offer: ComputeOffer) -> CiRunnerPoolFacts? {
+  match offer.supply.physical.identity {
+    supply_srv1_host_identity => Some { value: supply_srv1_ci_runner_pool }
+    supply_srv2_host_identity => Some { value: supply_srv2_ci_runner_pool }
+    _ => none
+  }
+}
+
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
   provider: operator_fleet_provider,
   supply: ComputeSupplyFacts {
@@ -542,7 +586,13 @@ data supply_srv1_offer: ComputeOffer = ComputeOffer {
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
   cost_quote: none,
-  constraints: [],
+  constraints: [
+    MaxConcurrentRunners { cap: supply_srv1_ci_runner_pool.runner_count },
+    HostJobserverFifo {
+      fifo_path: supply_srv1_ci_runner_pool.jobserver_fifo,
+      token_cap: supply_srv1_ci_runner_pool.jobserver_token_cap
+    }
+  ],
 }
 
 data supply_srv2_offer: ComputeOffer = ComputeOffer {
@@ -555,7 +605,13 @@ data supply_srv2_offer: ComputeOffer = ComputeOffer {
   },
   available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
   cost_quote: none,
-  constraints: [],
+  constraints: [
+    MaxConcurrentRunners { cap: supply_srv2_ci_runner_pool.runner_count },
+    HostJobserverFifo {
+      fifo_path: supply_srv2_ci_runner_pool.jobserver_fifo,
+      token_cap: supply_srv2_ci_runner_pool.jobserver_token_cap
+    }
+  ],
 }
 
 // Hetzner CAX41 — ephemeral VM, per-second billed (hourly rate + monthly cap per vendor docs).

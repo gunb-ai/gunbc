@@ -1,0 +1,10 @@
+// dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag
+// CF-M1 witness — CI runner pool facts inhabit compute_fabric supply (not a parallel Rust ledger).
+
+module test.claim.ci_runner_pool_compute_fabric_projection
+
+import gunbc.tools.ci_runner_pool { ci_runner_pool_offer_projection_holds }
+
+fn ci_runner_pool_compute_fabric_projection_holds() -> Bool {
+  ci_runner_pool_offer_projection_holds()
+}
