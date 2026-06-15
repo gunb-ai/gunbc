@@ -1,8 +1,10 @@
 // dsl/test/claim/gunbhub_serve_witness.dag
 //
-// gunbhub M2 served render surface keystone: request → serialized-page
-// round-trip through extdeps.http.server route bindings and canonical
-// std.markup consumers. Hostile href is rejected before any response body.
+// gunbhub M2 served render surface keystone: static route→body table +
+// dispatch witness (request → 200+body / 404). Bodies are compose-time
+// serialize_fragment output; XSS reject-witness runs at compose, not
+// per-request. README row is M1 placeholder (react-composed until
+// std.markdown merges).
 //
 // Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
 
@@ -17,9 +19,13 @@ import gunbc.gunbhub_serve {
   RouteNotFound,
   MethodNotAllowed,
   gunbhub_browse_page,
+  gunbhub_readme_page,
   gunbhub_hostile_page,
   gunbhub_browse_route,
+  gunbhub_readme_route,
   gunbhub_node_route_bindings,
+  gunbhub_static_serve_table,
+  gunbhub_compose_serialized_body,
   serve_gunbhub_request,
   serve_gunbhub_page_source,
 }
@@ -32,19 +38,64 @@ import std.react_markup {
 import std.types { GET, POST }
 
 fn expected_browse_html() -> String {
-  match serialize_react_markup(node: gunbhub_browse_page()) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
-  }
+  gunbhub_compose_serialized_body(node: gunbhub_browse_page())
 }
 
-// End-to-end: served response body == consumer serialization.
+fn expected_readme_html() -> String {
+  gunbhub_compose_serialized_body(node: gunbhub_readme_page())
+}
+
+// Static host table: GET / and GET /README.md with compose-time bodies.
+fn witness_static_table_has_two_get_routes() -> Bool {
+  let table = gunbhub_static_serve_table()
+  count(xs: table.routes) == 2
+}
+
+fn witness_static_table_browse_body_matches_compose() -> Bool {
+  let table = gunbhub_static_serve_table()
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        row.path == "/" && row.body == expected_browse_html()
+      }
+  )
+}
+
+// M1 placeholder: README body is react-composed today; swap when std.markdown lands.
+fn witness_static_table_readme_body_is_m1_placeholder() -> Bool {
+  let table = gunbhub_static_serve_table()
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        row.path == "/README.md" && row.body == expected_readme_html()
+      }
+  )
+}
+
+// End-to-end dispatch: served response body == static table entry.
 fn witness_browse_served_body_matches_consumer() -> Bool {
   let expected = expected_browse_html()
   match serve_gunbhub_request(
     req: GunbhubServeRequest { method: GET, path: "/" }
   ) {
     Served { response: r } => r.body == expected
+    _ => false
+  }
+}
+
+fn witness_readme_served_body_matches_static_table() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/README.md" }
+  ) {
+    Served { response: r } => r.body == expected_readme_html()
     _ => false
   }
 }
@@ -76,6 +127,15 @@ fn witness_wrong_method_not_allowed() -> Bool {
   }
 }
 
+fn witness_readme_wrong_method_not_allowed() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: POST, path: "/README.md" }
+  ) {
+    MethodNotAllowed => true
+    _ => false
+  }
+}
+
 // Hostile javascript: href rejected before response — never reaches body.
 fn witness_hostile_page_rejected_before_response() -> Bool {
   match serve_gunbhub_page_source(
@@ -89,12 +149,9 @@ fn witness_hostile_page_rejected_before_response() -> Bool {
 }
 
 fn witness_hostile_page_not_served_via_request_path() -> Bool {
-  // Hostile content is not on a routed page; direct page-source serve is the
-  // spine check that rejection happens before response assembly.
   witness_hostile_page_rejected_before_response()
 }
 
-// Consumer declares route→handler binding (host attaches bindings at deploy).
 fn witness_browse_route_binding_declared() -> Bool {
   let browse = gunbhub_browse_route()
   fold(
@@ -111,13 +168,35 @@ fn witness_browse_route_binding_declared() -> Bool {
   )
 }
 
+fn witness_readme_route_binding_declared() -> Bool {
+  let readme = gunbhub_readme_route()
+  fold(
+    xs: gunbhub_node_route_bindings(),
+    init: false,
+    f: (acc, binding) =>
+      if acc {
+        acc
+      } else {
+        binding.route.operation_name == readme.operation_name
+          && binding.route.method == readme.method
+          && binding.listener.handler_name == "gunbhub_handle_readmeDoc"
+      }
+  )
+}
+
 fn gunbhub_serve_keystone_holds() -> Bool {
-  witness_browse_served_body_matches_consumer()
+  witness_static_table_has_two_get_routes()
+    && witness_static_table_browse_body_matches_compose()
+    && witness_static_table_readme_body_is_m1_placeholder()
+    && witness_browse_served_body_matches_consumer()
+    && witness_readme_served_body_matches_static_table()
     && witness_browse_empty_path_also_matches()
     && witness_unknown_path_not_found()
     && witness_wrong_method_not_allowed()
+    && witness_readme_wrong_method_not_allowed()
     && witness_hostile_page_rejected_before_response()
     && witness_hostile_page_not_served_via_request_path()
     && witness_browse_route_binding_declared()
+    && witness_readme_route_binding_declared()
     && gunbhub_html_render_keystone_holds()
 }

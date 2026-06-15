@@ -1,10 +1,9 @@
 // gunbc/gunbhub_serve.dag — gunbhub M2 served render surface.
 //
-// Binds an incoming HTTP request to a serialized HTML page through the
-// already-merged canonical std.markup consumers (std.react_markup /
-// std.html_markup). Route declarations and route→handler bindings use
-// extdeps.http.server types; listen/deploy (createServer, port) is the
-// shared host's policy (zesty L2) — not modeled here.
+// Consumer-owned static route→body table for the shared http-serve host
+// (quick-crane L2). Bodies are serialize_fragment output strings, composed
+// and XSS-checked at table-build time (not per-request). Host binds,
+// serves GET, returns 200+body or 404 — gunbhub supplies only the table.
 //
 // Placement: gunbc-owned product surface (ctrl README §Conventions).
 // HTTP wire facts stay in extdeps.http.server; page composition and
@@ -33,14 +32,28 @@ import std.react_markup {
 import extdeps.http.server {
   HttpServerRoute,
   HttpStatusResponse,
-  HttpRequestBodyKind,
   NoRequestBody,
   TextRequestBody,
   NodeHttpServerRouteBinding,
   NodeHttpRequestListener,
 }
 
-// --- Request / response carriers -------------------------------------------
+// --- Host-facing static serve table ----------------------------------------
+//
+// Proof-of-life contract (gunbhub-M2 first consumer): method + path → body.
+// quick-crane's shared host consumes this table; listen/createServer is host-owned.
+
+type GunbhubStaticRouteBody {
+  method: HttpMethod
+  path: String
+  body: String
+}
+
+type GunbhubStaticServeTable {
+  routes: List<GunbhubStaticRouteBody>
+}
+
+// --- Request / response carriers (dispatch witness) ------------------------
 
 type GunbhubServeRequest {
   method: HttpMethod
@@ -115,6 +128,38 @@ fn gunbhub_hostile_page() -> ReactMarkupNode {
   }
 }
 
+// README doc view — M1 placeholder: react-composed body until std.markdown
+// consumer merges; swap body builder when M1 lands (table shape unchanged).
+fn gunbhub_readme_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "article",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ ReactTextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "p",
+        attrs: [],
+        children: [
+          ReactTextNode {
+            text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_compose_serialized_body(node: ReactMarkupNode) -> String {
+  match serialize_react_markup(node: node) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
 // --- Path matching (literal templates; M3 extends for path params) ---------
 
 fn request_path_segments(path: String) -> List<String> {
@@ -166,6 +211,22 @@ fn gunbhub_browse_path_template() -> PathTemplate {
   }
 }
 
+fn gunbhub_readme_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/README.md") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [LiteralToken { text: "README.md" }] }
+  }
+}
+
+fn normalize_request_path(path: String) -> String {
+  if path == "" {
+    "/"
+  } else {
+    path
+  }
+}
+
 // --- Render through canonical consumers ------------------------------------
 
 fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
@@ -192,11 +253,12 @@ fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
   }
 }
 
-// --- Route table + request dispatch ----------------------------------------
+// --- Route table + static host table ---------------------------------------
 
 type GunbhubRouteRow {
   route: HttpServerRoute
   page: GunbhubPageSource
+  canonical_path: String
 }
 
 fn gunbhub_browse_route() -> HttpServerRoute {
@@ -212,13 +274,70 @@ fn gunbhub_browse_route() -> HttpServerRoute {
   }
 }
 
+fn gunbhub_readme_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "readmeDoc",
+    method: GET,
+    path_template: gunbhub_readme_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
 fn gunbhub_route_table() -> List<GunbhubRouteRow> {
   [
     GunbhubRouteRow {
       route: gunbhub_browse_route(),
       page: ReactPage { node: gunbhub_browse_page() },
+      canonical_path: "/",
+    },
+    GunbhubRouteRow {
+      route: gunbhub_readme_route(),
+      page: ReactPage { node: gunbhub_readme_page() },
+      canonical_path: "/README.md",
     },
   ]
+}
+
+// Static table the shared host consumes. Bodies serialized at compose time.
+fn gunbhub_static_serve_table() -> GunbhubStaticServeTable {
+  GunbhubStaticServeTable {
+    routes: map(
+      xs: gunbhub_route_table(),
+      f: row =>
+        GunbhubStaticRouteBody {
+          method: row.route.method,
+          path: row.canonical_path,
+          body: gunbhub_compose_serialized_body(
+            node: match row.page {
+              ReactPage { node: n } => n
+            }
+          ),
+        }
+    ),
+  }
+}
+
+fn static_row_matches_request(row: GunbhubStaticRouteBody, req: GunbhubServeRequest) -> Bool {
+  row.method == req.method
+    && row.path == normalize_request_path(path: req.path)
+}
+
+fn path_matches_any_static_row(path: String, table: GunbhubStaticServeTable) -> Bool {
+  let normalized = normalize_request_path(path: path)
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        row.path == normalized
+      }
+  )
 }
 
 fn request_matches_route(req: GunbhubServeRequest, route: HttpServerRoute) -> Bool {
@@ -230,12 +349,33 @@ fn path_matches_any_route(path: String, route: HttpServerRoute) -> Bool {
   literal_path_matches_template(template: route.path_template, path: path)
 }
 
+type StaticRouteMatchState {
+  found: Bool
+  body: String
+}
+
 fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
-  if request_matches_route(req: req, route: gunbhub_browse_route()) {
-    serve_gunbhub_page_source(
-      source: ReactPage { node: gunbhub_browse_page() }
-    )
-  } else if path_matches_any_route(path: req.path, route: gunbhub_browse_route()) {
+  let table = gunbhub_static_serve_table()
+  let st = fold(
+    xs: table.routes,
+    init: StaticRouteMatchState { found: false, body: "" },
+    f: (acc, row) =>
+      if acc.found {
+        acc
+      } else if static_row_matches_request(row: row, req: req) {
+        StaticRouteMatchState { found: true, body: row.body }
+      } else {
+        acc
+      }
+  )
+  if st.found {
+    Served {
+      response: GunbhubHttpResponse {
+        status: 200,
+        body: st.body,
+      }
+    }
+  } else if path_matches_any_static_row(path: req.path, table: table) {
     MethodNotAllowed
   } else {
     RouteNotFound
