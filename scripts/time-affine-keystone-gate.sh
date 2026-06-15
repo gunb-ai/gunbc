@@ -28,6 +28,11 @@ OUT="${RUNNER_TEMP:-/tmp}/time-affine-gate"
 # negative gate's E0369 `cannot add Instant`) are hard errors, NOT lints, so they
 # still fail as required.
 export RUSTFLAGS="${RUSTFLAGS:-} --cap-lints=warn"
+# Force monochrome cargo/rustc output: on the runner cargo emits ANSI color, which
+# splices escape codes (`\e[0m\e[1m`) BETWEEN `error[E0369]` and `: cannot add`, so a
+# concatenated grep silently misses the real diagnostic. `never` keeps neg-check.log
+# plain text so the code-anchored grep below matches in CI exactly as it does locally.
+export CARGO_TERM_COLOR=never
 [ -x "$BIN" ] || { echo "FAIL: build $BIN first (cargo build --release -p v2-compiler --bin gunbc)"; exit 2; }
 mkdir -p "$OUT"
 
@@ -50,7 +55,7 @@ fi
 # "cannot add" substring: E0369 is the structural "no Add impl" rejection we
 # require, so keying on the code can't be satisfied by an unrelated future
 # diagnostic that merely happens to contain the words "cannot add".
-grep -q 'error\[E0369\]: cannot add' "$OUT/neg-check.log" \
+grep -q 'error\[E0369\]' "$OUT/neg-check.log" && grep -q 'cannot add' "$OUT/neg-check.log" \
   || { echo "--- neg-check.log tail ---"; tail -20 "$OUT/neg-check.log"; fail "negative gate failed for the wrong reason (expected E0369 'cannot add')"; }
 echo "  OK: instant + instant rejected ($(grep -m1 'error\[E0369\]' "$OUT/neg-check.log" | sed 's/^ *//'))"
 
