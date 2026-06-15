@@ -4,24 +4,13 @@
 module gunbc.gunbhub_serve_html
 
 import std.html_markup {
-  HtmlAttr,
   HtmlNode,
   ElementNode,
   TextNode,
   Serialized,
   Rejected,
+  HtmlSerializeResult,
   try_serialize_html_node,
-}
-
-type HtmlPageRender
-  = HtmlRendered { html: String }
-  | HtmlRenderRejected { reason: String }
-
-fn render_html_gunbhub_page(node: HtmlNode) -> HtmlPageRender {
-  match try_serialize_html_node(node: node) {
-    Serialized { html: h } => HtmlRendered { html: h }
-    Rejected { reason: r } => HtmlRenderRejected { reason: r }
-  }
 }
 
 fn sample_html_page() -> HtmlNode {
@@ -33,9 +22,9 @@ fn sample_html_page() -> HtmlNode {
 }
 
 fn witness_html_consumer_serializes() -> Bool {
-  match render_html_gunbhub_page(node: sample_html_page()) {
-    HtmlRendered { html: h } => h == "<p>gunbhub</p>"
-    HtmlRenderRejected { reason: _ } => false
+  match try_serialize_html_node(node: sample_html_page()) {
+    Serialized { html: h } => h == "<p>gunbhub</p>"
+    Rejected { reason: _ } => false
   }
 }
 

@@ -76,6 +76,7 @@ type GunbhubServeResult
 // 🟢 TERMINAL — React consumer page source (M2 browse route).
 type GunbhubPageSource = ReactPage { node: ReactMarkupNode }
 
+// 🟢 TERMINAL — closed render outcome for per-request page-source serve path.
 type GunbhubRenderResult
   = RenderedHtml { html: String }
   | RenderRejected { reason: String }
@@ -153,6 +154,7 @@ fn gunbhub_readme_page() -> ReactMarkupNode {
   }
 }
 
+// 🟢 TERMINAL — closed compose outcome for static-table body serialization.
 type GunbhubComposeResult
   = ComposedOk { html: String }
   | ComposeRejected { reason: String }
