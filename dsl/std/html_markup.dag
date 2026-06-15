@@ -1,0 +1,101 @@
+// std/html_markup.dag — structured HTML markup IR + emit-target serializer.
+//
+// Reintroduces the deleted Fragment / RenderDocument emit path from
+// render.dag (see render.dag §Fragment IR) as an HTML-specific markup IR
+// with a single fold-to-text serializer — not per-app string concatenation.
+//
+// Consumers build HtmlNode trees structurally; serialize_html_node folds the
+// tree to wire text with context-correct escaping.
+
+module std.html_markup
+
+import std.languages { html_format, MarkupFormat }
+
+// Emit target grounded on std.languages.html_format.
+data markup_emit_format: MarkupFormat = html_format
+
+// --- structured HTML element IR -------------------------------------------
+
+type HtmlAttr {
+  name: String
+  value: String
+}
+
+type HtmlNode
+  = ElementNode { tag: String, attrs: List<HtmlAttr>, children: List<HtmlNode> }
+  | TextNode { text: String }
+
+// --- escaping (context-correct; not one-size-fits-all) ----------------------
+
+type MarkupEscapeContext
+  = TextContent
+  | AttributeValue
+  | UrlPath
+
+fn escape_text_content(s: String) -> String {
+  let s1 = replace(s, "&", "&amp;")
+  let s2 = replace(s1, "<", "&lt;")
+  replace(s2, ">", "&gt;")
+}
+
+fn escape_attribute_value(s: String) -> String {
+  let s1 = replace(s, "&", "&amp;")
+  let s2 = replace(s1, "\"", "&quot;")
+  replace(s2, "<", "&lt;")
+}
+
+fn escape_url_path(s: String) -> String {
+  replace(s, "&", "&amp;")
+}
+
+fn escape_markup(s: String, ctx: MarkupEscapeContext) -> String {
+  match ctx {
+    TextContent => escape_text_content(s: s)
+    AttributeValue => escape_attribute_value(s: s)
+    UrlPath => escape_url_path(s: s)
+  }
+}
+
+// --- fold-to-text serializer (the emit primitive) ---------------------------
+
+fn serialize_html_attr(attr: HtmlAttr) -> String {
+  let escaped = escape_markup(s: attr.value, ctx: AttributeValue)
+  concat(
+    concat(concat(concat(" ", attr.name), "=\""), escaped),
+    "\""
+  )
+}
+
+fn serialize_html_attrs(attrs: List<HtmlAttr>) -> String {
+  join(map(attrs, a => serialize_html_attr(attr: a)), "")
+}
+
+fn serialize_html_open_tag(tag: String, attrs: List<HtmlAttr>) -> String {
+  concat(concat(concat("<", tag), serialize_html_attrs(attrs: attrs)), ">")
+}
+
+fn serialize_html_close_tag(tag: String) -> String {
+  concat(concat("</", tag), ">")
+}
+
+fn serialize_html_children(children: List<HtmlNode>) -> String {
+  fold(children,
+    init: "",
+    f: (acc, child) => concat(acc, serialize_html_node(node: child))
+  )
+}
+
+fn serialize_html_node(node: HtmlNode) -> String {
+  match node {
+    TextNode { text } =>
+      escape_markup(s: text, ctx: TextContent)
+    ElementNode { tag, attrs, children } =>
+      concat(
+        concat(
+          serialize_html_open_tag(tag: tag, attrs: attrs),
+          serialize_html_children(children: children)
+        ),
+        serialize_html_close_tag(tag: tag)
+      )
+  }
+}
