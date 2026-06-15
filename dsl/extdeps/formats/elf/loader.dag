@@ -1,0 +1,173 @@
+// extdeps/formats/elf/loader.dag — ELF-64 load+entry dispatch for DeploymentTarget (Slice 3).
+//
+// Scope: decode ELF bytes, validate against cited DeploymentTarget profile, collect PT_LOAD
+// segments, bind EntryPoint + StableInvocationSurface via std/exec_loader.EntryDispatchPlan.
+// First inhabitant: x86_64_linux + SyscallAbiSurface (Linux ET_EXEC static / freestanding).
+//
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
+// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
+
+module extdeps.formats.elf.loader
+
+import extdeps.formats.elf.primitives {
+  ElfData2Lsb,
+  ElfData2Msb,
+  ElfDataEncoding,
+  ElfMachine,
+  EmX86_64,
+  PtLoad,
+  PtNull,
+  elf_data_2lsb,
+  elf_data_2msb,
+  em_x86_64,
+  linux_x86_64_elf_format,
+}
+import extdeps.formats.elf.segments {
+  PhdrDecoded,
+  PhdrRejected,
+  decode_elf64_phdr,
+  elf64_phdr_to_load_segment,
+}
+import extdeps.formats.elf.types {
+  Elf64Ehdr,
+  ElfDecoded,
+  ElfRejected,
+  decode_elf64_ehdr,
+  elf64_ehdr_entry_point,
+}
+import std.architecture_profile { DeploymentTarget, Endianness, TargetArchitecture }
+import std.exec_format { LoadSegment }
+import std.exec_loader {
+  ArchitectureMismatch,
+  EndiannessMismatch,
+  EntryDispatchPlan,
+  HeaderDecodeFailed,
+  InvocationSurfaceNotSyscallAbi,
+  LoadAccepted,
+  LoadedExecutable,
+  LoadOutcome,
+  LoadRejected,
+  NoLoadableSegments,
+  SegmentDecodeFailed,
+}
+import std.os.invocation { SyscallAbiSurface }
+import std.types { Bool }
+
+fn elf_machine_raw(machine: ElfMachine) -> Int {
+  match machine {
+    EmX86_64 => em_x86_64
+    _ => 0
+  }
+}
+
+fn elf_data_raw(data: ElfDataEncoding) -> Int {
+  match data {
+    ElfData2Lsb => elf_data_2lsb
+    ElfData2Msb => elf_data_2msb
+    _ => 0
+  }
+}
+
+fn target_architecture_matches_elf_machine(
+  architecture: TargetArchitecture,
+  machine: ElfMachine,
+) -> Bool {
+  match architecture {
+    X86_64 => machine == EmX86_64
+    _ => false
+  }
+}
+
+fn target_endianness_matches_elf_data(endianness: Endianness, data: ElfDataEncoding) -> Bool {
+  match endianness {
+    LittleEndian => data == ElfData2Lsb
+    BigEndian => data == ElfData2Msb
+  }
+}
+
+fn collect_pt_load_segments(
+  bytes: List<Int>,
+  hdr: Elf64Ehdr,
+  index: Int,
+  acc: List<LoadSegment>,
+) -> LoadOutcome<List<LoadSegment>> {
+  if index >= hdr.phnum {
+    if count(acc) == 0 {
+      LoadRejected { reason: NoLoadableSegments }
+    } else {
+      LoadAccepted { value: acc }
+    }
+  } else {
+    let offset = hdr.phoff + index * hdr.phentsize
+    match decode_elf64_phdr(bytes, offset) {
+      PhdrRejected { reason: _ } =>
+        LoadRejected { reason: SegmentDecodeFailed { index: index } }
+      PhdrDecoded { value: phdr } =>
+        match phdr.segment_type {
+          PtLoad =>
+            collect_pt_load_segments(
+              bytes,
+              hdr,
+              index: index + 1,
+              acc: append(acc, items: [elf64_phdr_to_load_segment(phdr)]),
+            )
+          PtNull =>
+            collect_pt_load_segments(bytes, hdr, index: index + 1, acc: acc)
+          _ =>
+            LoadRejected { reason: SegmentDecodeFailed { index: index } }
+        }
+    }
+  }
+}
+
+fn load_elf64_for_deployment(
+  bytes: List<Int>,
+  target: DeploymentTarget,
+) -> LoadOutcome<EntryDispatchPlan> {
+  match target.invocation {
+    SyscallAbiSurface { abi: _ } =>
+      match decode_elf64_ehdr(bytes) {
+        ElfRejected { reason: _ } =>
+          LoadRejected { reason: HeaderDecodeFailed }
+        ElfDecoded { value: hdr } =>
+          if target_architecture_matches_elf_machine(
+            target.profile.architecture,
+            hdr.machine,
+          ) == false {
+            LoadRejected {
+              reason: ArchitectureMismatch {
+                expected: target.profile.architecture,
+                found_raw: elf_machine_raw(hdr.machine),
+              },
+            }
+          } else if target_endianness_matches_elf_data(
+            target.profile.endianness,
+            hdr.ident.data,
+          ) == false {
+            LoadRejected {
+              reason: EndiannessMismatch {
+                expected: target.profile.endianness,
+                found_raw: elf_data_raw(hdr.ident.data),
+              },
+            }
+          } else {
+            match collect_pt_load_segments(bytes, hdr, index: 0, acc: []) {
+              LoadRejected { reason: r } => LoadRejected { reason: r }
+              LoadAccepted { value: segments } =>
+                LoadAccepted {
+                  value: EntryDispatchPlan {
+                    image: LoadedExecutable {
+                      format: linux_x86_64_elf_format,
+                      segments: segments,
+                      entry: elf64_ehdr_entry_point(hdr),
+                    },
+                    target: target,
+                  },
+                }
+            }
+          }
+      }
+    _ =>
+      LoadRejected { reason: InvocationSurfaceNotSyscallAbi }
+  }
+}

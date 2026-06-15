@@ -1,0 +1,43 @@
+// std/exec_loader.dag — format-agnostic load+entry-dispatch vocabulary for §10.
+//
+// Scope: LoadedExecutable + EntryDispatchPlan bind std/exec_format carriers to
+// DeploymentTarget (profile + StableInvocationSurface). Per-format decode/load
+// inhabits LoadOutcome in extdeps/formats/* (Slice 3: ELF x86_64_linux first).
+// Anchor: ctrl-planning/os-exec-contract-layer-2026-06-14.md §4 (execution contract composition).
+
+module std.exec_loader
+
+import std.architecture_profile { DeploymentTarget, Endianness, TargetArchitecture }
+import std.exec_format { EntryPoint, ExecutableFormat, LoadSegment }
+
+type LoadedExecutable {
+  format: ExecutableFormat
+  segments: List<LoadSegment>
+  entry: EntryPoint
+}
+
+// Binds a loaded image to the deployment target's invocation surface for entry dispatch.
+type EntryDispatchPlan {
+  image: LoadedExecutable
+  target: DeploymentTarget
+}
+
+type LoadRejectReason
+  = HeaderDecodeFailed
+  | ArchitectureMismatch { expected: TargetArchitecture, found_raw: Int }
+  | EndiannessMismatch { expected: Endianness, found_raw: Int }
+  | InvocationSurfaceNotSyscallAbi
+  | SegmentDecodeFailed { index: Int }
+  | NoLoadableSegments
+
+type LoadOutcome<T>
+  = LoadAccepted { value: T }
+  | LoadRejected { reason: LoadRejectReason }
+
+fn entry_dispatch_address(plan: EntryDispatchPlan) -> Int {
+  plan.image.entry.virtual_address
+}
+
+fn loaded_segment_count(plan: EntryDispatchPlan) -> Int {
+  count(plan.image.segments)
+}

@@ -1,0 +1,118 @@
+// extdeps/formats/elf/loader_witness.dag — Slice 3 ELF loader witnesses (x86_64_linux first inhabitant).
+//
+// Green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+
+module extdeps.formats.elf.loader_witness
+
+import extdeps.boot.emit {
+  emit_freestanding_elf64,
+  freestanding_load_vaddr,
+  pixel_writer_code_bytes,
+}
+import extdeps.formats.elf.hello_static_witness {
+  static_hello_elf64_ehdr_bytes,
+  static_hello_truncated_ehdr_bytes,
+}
+import extdeps.formats.elf.loader {
+  load_elf64_for_deployment,
+}
+import extdeps.formats.elf.primitives { Elf }
+import extdeps.runtime.architecture.aarch64_linux { aarch64_linux_deployment_target }
+import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_deployment_target }
+import extdeps.runtime.syscalls.linux { linux_x86_64_syscall_abi }
+import std.exec_loader {
+  ArchitectureMismatch,
+  HeaderDecodeFailed,
+  LoadAccepted,
+  LoadRejected,
+  SegmentDecodeFailed,
+  entry_dispatch_address,
+  loaded_segment_count,
+}
+import std.os.invocation { SyscallAbiSurface }
+import std.exec_format { LoadSegment }
+import std.types { Bool }
+
+fn load_segment_at(segments: List<LoadSegment>, index: Int) -> LoadSegment? {
+  match segments |> get(index) {
+    null => null
+    other => other
+  }
+}
+
+fn witness_freestanding_load_accepts_x86_64_linux() -> Bool {
+  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  match load_elf64_for_deployment(bytes, x86_64_linux_deployment_target) {
+    LoadAccepted { value: plan } =>
+      plan.image.format.family == Elf
+        && entry_dispatch_address(plan) == freestanding_load_vaddr
+        && loaded_segment_count(plan) == 1
+    LoadRejected { reason: _ } => false
+  }
+}
+
+fn witness_freestanding_dispatch_invocation_is_linux_syscall_abi() -> Bool {
+  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  match load_elf64_for_deployment(bytes, x86_64_linux_deployment_target) {
+    LoadAccepted { value: plan } =>
+      match plan.target.invocation {
+        SyscallAbiSurface { abi: a } => a == linux_x86_64_syscall_abi
+        _ => false
+      }
+    LoadRejected { reason: _ } => false
+  }
+}
+
+fn witness_freestanding_load_segment_is_executable() -> Bool {
+  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  match load_elf64_for_deployment(bytes, x86_64_linux_deployment_target) {
+    LoadAccepted { value: plan } =>
+      match load_segment_at(plan.image.segments, index: 0) {
+        null => false
+        seg =>
+          seg.virtual_address == freestanding_load_vaddr
+            && seg.permissions.readable == true
+            && seg.permissions.executable == true
+            && seg.permissions.writable == false
+      }
+    LoadRejected { reason: _ } => false
+  }
+}
+
+fn witness_truncated_bytes_reject_header_decode() -> Bool {
+  match load_elf64_for_deployment(
+    static_hello_truncated_ehdr_bytes,
+    x86_64_linux_deployment_target,
+  ) {
+    LoadRejected { reason: HeaderDecodeFailed } => true
+    LoadAccepted { value: _ } => false
+  }
+}
+
+fn witness_ehdr_only_rejects_segment_decode() -> Bool {
+  match load_elf64_for_deployment(
+    static_hello_elf64_ehdr_bytes,
+    x86_64_linux_deployment_target,
+  ) {
+    LoadRejected { reason: SegmentDecodeFailed { index: 0 } } => true
+    LoadAccepted { value: _ } => false
+  }
+}
+
+fn witness_aarch64_target_rejects_x86_64_elf() -> Bool {
+  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  match load_elf64_for_deployment(bytes, aarch64_linux_deployment_target) {
+    LoadRejected { reason: ArchitectureMismatch { expected: Aarch64, found_raw: 62 } } => true
+    LoadAccepted { value: _ } => false
+  }
+}
+
+fn main() -> Bool {
+  witness_freestanding_load_accepts_x86_64_linux()
+    && witness_freestanding_dispatch_invocation_is_linux_syscall_abi()
+    && witness_freestanding_load_segment_is_executable()
+    && witness_truncated_bytes_reject_header_decode()
+    && witness_ehdr_only_rejects_segment_decode()
+    && witness_aarch64_target_rejects_x86_64_elf()
+}
