@@ -1,0 +1,103 @@
+// extdeps/container/oci/manifest.dag — OCI Image Manifest (image-spec manifest.md).
+//
+// Spec: https://github.com/opencontainers/image-spec/blob/main/manifest.md
+// Version: image-spec v1.1.0
+
+module extdeps.container.oci.manifest
+
+import extdeps.container.oci.descriptor {
+  OciDescriptor,
+  DescriptorAccepted,
+  DescriptorRejected,
+  accept_descriptor,
+}
+import extdeps.container.oci.media_types {
+  media_type_oci_image_config_v1,
+  media_type_oci_image_manifest_v1,
+  oci_image_schema_version,
+}
+import std.types { Bool }
+
+type ImageManifest {
+  schemaVersion: Int
+  mediaType: String
+  config: OciDescriptor
+  layers: List<OciDescriptor>
+}
+
+type ManifestRejectReason
+  = WrongSchemaVersion { got: Int, expected: Int }
+  | WrongMediaType { got: String, expected: String }
+  | ConfigDescriptorRejected { detail: String }
+  | LayerDescriptorRejected { index: Int, detail: String }
+  | EmptyLayers
+
+type ManifestOutcome
+  = ManifestAccepted { value: ImageManifest }
+  | ManifestRejected { reason: ManifestRejectReason }
+
+fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
+  if m.schemaVersion != oci_image_schema_version {
+    ManifestRejected {
+      reason: WrongSchemaVersion { got: m.schemaVersion, expected: oci_image_schema_version },
+    }
+  } else if m.mediaType != media_type_oci_image_manifest_v1 {
+    ManifestRejected {
+      reason: WrongMediaType { got: m.mediaType, expected: media_type_oci_image_manifest_v1 },
+    }
+  } else {
+    match accept_descriptor(m.config) {
+      DescriptorRejected { reason: _ } =>
+        ManifestRejected { reason: ConfigDescriptorRejected { detail: "config" } }
+      DescriptorAccepted { value: cfg } =>
+        if cfg.mediaType != media_type_oci_image_config_v1 {
+          ManifestRejected {
+            reason: ConfigDescriptorRejected { detail: "config.mediaType" },
+          }
+        } else if count(m.layers) == 0 {
+          ManifestRejected { reason: EmptyLayers }
+        } else {
+          accept_image_manifest_layers(m, layers_ok: true, index: 0)
+        }
+    }
+  }
+}
+
+fn layer_at(layers: List<OciDescriptor>, index: Int) -> OciDescriptor? {
+  match layers |> get(index) {
+    null => null
+    other => other
+  }
+}
+
+fn accept_image_manifest_layers(m: ImageManifest, layers_ok: Bool, index: Int) -> ManifestOutcome {
+  if layers_ok == false {
+    ManifestRejected {
+      reason: LayerDescriptorRejected { index: index, detail: "layer" },
+    }
+  } else if index >= count(m.layers) {
+    ManifestAccepted { value: m }
+  } else {
+    match layer_at(m.layers, index) {
+      null =>
+        ManifestRejected {
+          reason: LayerDescriptorRejected { index: index, detail: "missing" },
+        }
+      layer =>
+        match accept_descriptor(layer) {
+          DescriptorRejected { reason: _ } =>
+            accept_image_manifest_layers(m, layers_ok: false, index: index)
+          DescriptorAccepted { value: _ } =>
+            accept_image_manifest_layers(m, layers_ok: true, index: index + 1)
+        }
+    }
+  }
+}
+
+fn manifest_layer_count(m: ImageManifest) -> Int {
+  count(m.layers)
+}
+
+fn manifest_config_size(m: ImageManifest) -> Int {
+  m.config.size
+}

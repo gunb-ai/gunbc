@@ -1,0 +1,83 @@
+// extdeps/container/oci/image_config.dag — OCI Image Configuration (image-spec config.md).
+//
+// Spec: https://github.com/opencontainers/image-spec/blob/main/config.md
+// Version: image-spec v1.1.0
+
+module extdeps.container.oci.image_config
+
+import std.types { Bool }
+
+type ContainerImageConfig {
+  User: String?
+  Env: List<String>?
+  Entrypoint: List<String>?
+  Cmd: List<String>?
+  WorkingDir: String?
+  ExposedPorts: List<String>?
+}
+
+type ImageRootfs {
+  rootfs_type: String
+  diff_ids: List<String>
+}
+
+type ImageConfiguration {
+  architecture: String
+  os: String
+  config: ContainerImageConfig?
+  rootfs: ImageRootfs
+}
+
+type ImageConfigRejectReason
+  = EmptyArchitecture
+  | EmptyOs
+  | RootfsTypeNotLayers { got: String }
+  | EmptyDiffIds
+
+type ImageConfigOutcome
+  = ImageConfigAccepted { value: ImageConfiguration }
+  | ImageConfigRejected { reason: ImageConfigRejectReason }
+
+fn accept_image_configuration(c: ImageConfiguration) -> ImageConfigOutcome {
+  if c.architecture == "" {
+    ImageConfigRejected { reason: EmptyArchitecture }
+  } else if c.os == "" {
+    ImageConfigRejected { reason: EmptyOs }
+  } else if c.rootfs.rootfs_type != "layers" {
+    ImageConfigRejected { reason: RootfsTypeNotLayers { got: c.rootfs.rootfs_type } }
+  } else if count(c.rootfs.diff_ids) == 0 {
+    ImageConfigRejected { reason: EmptyDiffIds }
+  } else {
+    ImageConfigAccepted { value: c }
+  }
+}
+
+fn image_config_layer_count(c: ImageConfiguration) -> Int {
+  count(c.rootfs.diff_ids)
+}
+
+fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
+  match c.config {
+    null => []
+    cfg =>
+      match cfg.Entrypoint {
+        null => []
+        ep => ep
+      }
+  }
+}
+
+fn image_config_exposed_port(c: ImageConfiguration) -> String? {
+  match c.config {
+    null => null
+    cfg =>
+      match cfg.ExposedPorts {
+        null => null
+        ports =>
+          match ports |> first {
+            Present { value: port } => port
+            Absent => null
+          }
+      }
+  }
+}
