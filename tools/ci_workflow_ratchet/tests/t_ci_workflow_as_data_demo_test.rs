@@ -500,7 +500,7 @@ fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
     &gate57_ci_artifacts().dag
 }
 
-/// Floor prerequisite chain: `dsl-compile-clean` → `fmt` → `v4-lens-gate`.
+/// Floor prerequisite chain: `dsl-compile-clean` → `fmt` → `affected-tests` → `ci-floor-parity`.
 fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
     let edges: Vec<_> = input
         .edges
@@ -511,7 +511,8 @@ fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
         edges,
         vec![
             ("dsl-compile-clean", "fmt"),
-            ("fmt", "v4-lens-gate"),
+            ("fmt", "affected-tests"),
+            ("affected-tests", "ci-floor-parity"),
         ],
         "blocking floor must be a linear prerequisite chain"
     );
@@ -552,14 +553,8 @@ fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue
     for label in [
         "DslCompileCleanCommand",
         "FmtCommand",
-        "LensWitnessCommand",
+        "AffectedTestsCommand",
         "DagParityCommand",
-        "NodeFrontierCommand",
-        "LensPerturbCommand",
-        "CorpusEnrollmentCommand",
-        "LayeringImportsCommand",
-        "FreshnessVerifyCommand",
-        "FullTreeEmitCommand",
     ] {
         if *constructor == disj_variant_constructor_id(dag, sum_name, label) {
             return label;
@@ -689,15 +684,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
         vec![
             "dsl-compile-clean",
             "fmt",
-            "v4-lens-gate",
+            "affected-tests",
             "ci-floor-parity",
-            "v4-lens-ci",
-            "v4-lens-ci-perturb",
-            "v4-claim-witness-corpus-a",
-            "v4-claim-witness-corpus-b",
-            "layering-imports",
-            "ci-floor-freshness",
-            "ci-floor-emit",
         ],
         "CI workflow DAG must carry one node per structural gate"
     );
@@ -706,7 +694,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
         edges,
         vec![
             ("dsl-compile-clean", "fmt"),
-            ("fmt", "v4-lens-gate"),
+            ("fmt", "affected-tests"),
+            ("affected-tests", "ci-floor-parity"),
         ],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
     );
@@ -736,17 +725,10 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
     assert_eq!(
         commands,
         vec![
-            ("ci-floor-emit", "FullTreeEmitCommand"),
-            ("ci-floor-freshness", "FreshnessVerifyCommand"),
+            ("affected-tests", "AffectedTestsCommand"),
             ("ci-floor-parity", "DagParityCommand"),
             ("dsl-compile-clean", "DslCompileCleanCommand"),
             ("fmt", "FmtCommand"),
-            ("layering-imports", "LayeringImportsCommand"),
-            ("v4-claim-witness-corpus-a", "CorpusEnrollmentCommand"),
-            ("v4-claim-witness-corpus-b", "CorpusEnrollmentCommand"),
-            ("v4-lens-ci", "NodeFrontierCommand"),
-            ("v4-lens-ci-perturb", "LensPerturbCommand"),
-            ("v4-lens-gate", "LensWitnessCommand"),
         ],
         "CICommand must keep impossible field combinations out of authored gate data"
     );
@@ -770,19 +752,13 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
             vec![
                 "dsl-compile-clean",
                 "fmt",
-                "v4-lens-gate",
+                "affected-tests",
                 "ci-floor-parity",
-                "v4-lens-ci",
-                "v4-lens-ci-perturb",
-                "v4-claim-witness-corpus-a",
-                "v4-claim-witness-corpus-b",
-                "layering-imports",
-                "ci-floor-freshness",
-                "ci-floor-emit",
             ],
             vec![
                 ("dsl-compile-clean", "fmt"),
-                ("fmt", "v4-lens-gate"),
+                ("fmt", "affected-tests"),
+                ("affected-tests", "ci-floor-parity"),
             ],
         ),
         "dsl/gunbc/ci.dag must remain the single CI DAG topology authority"
@@ -908,15 +884,14 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         .expect("affected-set selection must succeed on gunbc-ci topology");
     assert_eq!(
         affected.len(),
-        11,
+        4,
         "TouchAll must schedule the full gunbc-ci gate roster"
     );
     for id in [
         "dsl-compile-clean",
         "fmt",
-        "v4-lens-gate",
+        "affected-tests",
         "ci-floor-parity",
-        "v4-lens-ci",
     ] {
         assert!(
             affected.iter().any(|g| g == id),
@@ -928,9 +903,9 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         .iter()
         .position(|g| g == "dsl-compile-clean")
         .expect("dsl-compile-clean");
-    let lens_pos = affected.iter().position(|g| g == "v4-lens-gate").expect("lens");
+    let affected_pos = affected.iter().position(|g| g == "affected-tests").expect("affected-tests");
     assert!(dsl_pos < fmt_pos, "dsl-compile-clean must precede fmt in topo order");
-    assert!(fmt_pos < lens_pos, "fmt must precede v4-lens-gate in topo order");
+    assert!(fmt_pos < affected_pos, "fmt must precede affected-tests in topo order");
 }
 
 // --- R3 gate #103 (`ci_uses_affected_set_selection`), Layer 1: gate-id receipt → `select_affected_gates`.
