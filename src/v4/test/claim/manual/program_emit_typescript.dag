@@ -226,6 +226,32 @@ fn program_emit_from_tree(tree: InferredTree, target: TargetModel) -> Outcome<Ta
   emit(tree: tree, target: target)
 }
 
+fn program_emit_typescript_body_tokens_accepts() -> Bool {
+  match target_value_expression_projection_from_target(target: ts_program_target_model()) {
+    Accepted { value: projection, diagnostics: pd } =>
+      match target_project_arrow_body_to_value_expression(
+        arrow: program_emit_arrow_node(),
+        target: ts_program_target_model(),
+        handle_transform: fn(a, b, t) {
+          translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+        }
+      ) {
+        Accepted { value: expr, diagnostics: ed } =>
+          match target_value_expression_tokens_from_target(
+            expr: expr,
+            target: ts_program_target_model(),
+            projection: projection
+          ) {
+            Accepted { value: _, diagnostics: td } =>
+              (pd == None) && (ed == None) && (td == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn program_emit_typescript_body_serialize_accepts() -> Bool {
   match target_value_expression_projection_from_target(target: ts_program_target_model()) {
     Accepted { value: projection, diagnostics: pd } =>
