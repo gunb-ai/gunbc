@@ -37,6 +37,7 @@ import extdeps.container.oci.linux {
   LinuxResources,
   accept_linux_platform,
   LinuxPlatformAccepted,
+  LinuxPlatformRejected,
   linux_memory_limit,
   linux_namespace_count,
 }
