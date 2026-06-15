@@ -1321,6 +1321,10 @@ jobs:
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure ci-claim-gate binary (v4 lens CI)
+      # probe-selector keystone gate is host-collapsed onto ci-claim-gate (was claim_batch
+      # green + inline-python perturb); build it here as the v4-lens-gate job does (line ~1100).
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
     # GREEN-only here: the must-pass batched (claim_batch) witnesses + modeled
     # row-count guard for both row-sets (node-frontier + affected-testgen). The
     # per-row PERTURB fan-out (the 15-row red-under-mutation receipts) moved to
