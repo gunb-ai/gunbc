@@ -73,6 +73,7 @@ CEILINGS = {
         "v4_claim_witness_corpus_b": 20,
         "timeout_budgets": 5,
         "ci_lens_lane_class": 5,
+        "ci_fleet_shard": 2,
         "ci": 5,
     },
     "ci-spot-rerun.yml": {

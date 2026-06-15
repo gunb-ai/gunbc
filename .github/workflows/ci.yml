@@ -76,6 +76,21 @@ jobs:
     - name: Classify lens lane requirement (docs-only skip)
       id: class
       run: bash scripts/ci-lens-lane-required.sh
+  # Fleet compile admission shard — drives GHA concurrency group count (K = dispatch cap).
+  # Queue semantics: jobs pend when shard is busy; they do not fail (backpressure, not reject).
+  ci_fleet_shard:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 2
+    outputs:
+      shard: ${{ steps.calc.outputs.shard }}
+    steps:
+    - name: Compute fleet compile shard (run_id mod K)
+      id: calc
+      run: |
+        cap=16
+        shard=$(( GITHUB_RUN_ID % cap ))
+        echo "shard=${shard}" >> "$GITHUB_OUTPUT"
+        echo "::notice::fleet compile shard ${shard}/${cap} (authority: operator_fleet_ci_compile_dispatch_cap)"
   fmt:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
@@ -567,8 +582,9 @@ jobs:
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
   # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
+    needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -734,8 +750,9 @@ jobs:
   # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
   # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
   ci_floor_parity:
+    needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -912,8 +929,9 @@ jobs:
   # PR -- branch protection references `ci_floor_emit` by name (unchanged).
   # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
+    needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -1062,10 +1080,10 @@ jobs:
   # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
-    needs: [ci_lens_lane_class]
+    needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
@@ -1228,10 +1246,10 @@ jobs:
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
-    needs: [ci_lens_lane_class]
+    needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
@@ -1391,10 +1409,10 @@ jobs:
   # Enforced via the `ci` aggregator. dissolve-on: PR3 (uniform ci_claim_gate
   # single-process perturb) re-absorbs this split.
   v4_lens_ci_perturb:
-    needs: [ci_lens_lane_class]
+    needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # Per-shard budget rule (documented uncontended wall x2): with N=4 the
@@ -1527,8 +1545,9 @@ jobs:
   # CI: --shard a|b --spot-perturb-check; full --perturb-check local-only (both shards).
   # dissolve-on-arrival: #4783 multi-entry claim_batch shrinks Phase A wall.
   v4_claim_witness_corpus_a:
+    needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -1638,8 +1657,9 @@ jobs:
     - name: claim-witness corpus enrollment gate (shard a)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
   v4_claim_witness_corpus_b:
+    needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
