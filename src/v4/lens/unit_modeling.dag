@@ -50,6 +50,8 @@ import v4.std.collection {
   Optional,
   Present,
   Absent,
+  optional_present,
+  optional_absent,
   empty_map,
   map_insert,
   map_get
@@ -179,16 +181,21 @@ fn first_present(a: Optional<Diagnostic>, b: Optional<Diagnostic>) -> Optional<D
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Named { name: nm } =>
+      // Use the typed `optional_*` constructors (each `-> Optional<T>`) rather
+      // than bare `Present {..}` / `Absent` literals: a bare record-literal in
+      // an `if` branch does not widen to its parent coproduct, so the branches
+      // would type as Diagnostic vs Optional. The helpers carry the Optional
+      // type explicitly and unify cleanly.
       if field_name_is_unit_token(name: nm) {
         if type_is_flat_scalar(target: edge.target) {
-          Present { value: unit_modeling_diagnostic(carrier: carrier) }
+          optional_present(value: unit_modeling_diagnostic(carrier: carrier))
         } else {
-          Absent
+          optional_absent()
         }
       } else {
-        Absent
+        optional_absent()
       }
-    Positional => Absent
+    Positional => optional_absent()
   }
 }
 
