@@ -13,17 +13,7 @@ import v4.compiler.compile {
 }
 import v4.compiler.infer { infer, InferredTree }
 import v4.compiler.normalize { normalize }
-import v4.compiler.parse {
-  ParseTree,
-  build_parse_table,
-  compute_nullable_set,
-  grammar_has_left_recursion,
-  grammar_validate_for_parse,
-  parse,
-  parse_stage_locus_port
-}
-import v4.std.grammar { GrammarRoot, ModeledGrammar }
-import v4.std.diagnostic { port_locus }
+import v4.compiler.parse { parse, ParseTree }
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize, TokenStream }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
@@ -92,50 +82,6 @@ fn bisect_parse_terminates() -> Bool {
   match bisect_through_parse() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
-  }
-}
-
-fn bisect_lm_grammar_root() -> GrammarRoot {
-  let lm = dag_language_model_wave1()
-  match lm.grammar {
-    ModeledGrammar { root: root } => root
-  }
-}
-
-fn bisect_nullable_set_terminates() -> Bool {
-  let _ = compute_nullable_set(root: bisect_lm_grammar_root())
-  true
-}
-
-fn bisect_left_recursion_check_terminates() -> Bool {
-  let _ = grammar_has_left_recursion(root: bisect_lm_grammar_root())
-  true
-}
-
-fn bisect_grammar_validate_terminates() -> Bool {
-  match grammar_validate_for_parse(
-    root: bisect_lm_grammar_root(),
-    at: port_locus(port: parse_stage_locus_port)
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-fn bisect_build_parse_table_terminates() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(
-    text: bisect_empty_source,
-    file: compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match lm.grammar {
-        ModeledGrammar { root: root } =>
-          let _ = build_parse_table(all_tokens: token_stream.tokens, root: root)
-          true
-      }
   }
 }
 

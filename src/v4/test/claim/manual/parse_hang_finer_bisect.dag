@@ -1,0 +1,70 @@
+// src/v4/test/claim/manual/parse_hang_finer_bisect.dag
+// Scope: finer bisect of interpreted v4-parse hang (diagnostic only; not load-bearing).
+
+module v4.test.claim.manual.parse_hang_finer_bisect
+
+import v4.compiler.compile { Source, compile_ingest_staging_source_file }
+import v4.compiler.parse {
+  build_parse_table,
+  grammar_has_left_recursion,
+  grammar_validate_for_parse,
+  parse_stage_locus_port
+}
+import v4.compiler.tokenize { tokenize }
+import v4.extdeps.languages.dag { dag_language_model_wave1 }
+import v4.std.diagnostic { Accepted, Rejected, port_locus }
+import v4.std.grammar {
+  GrammarRoot,
+  ModeledGrammar,
+  VoidGrammar,
+  grammar_empty_sync_tokens
+}
+import v4.std.algebra { Empty }
+import v4.std.logic { Bool }
+
+data finer_empty_source: Source = "module stage0.bisect.empty\n"
+
+fn finer_dag_grammar_root() -> GrammarRoot {
+  match dag_language_model_wave1().grammar {
+    ModeledGrammar { root: root } => root
+    VoidGrammar =>
+      GrammarRoot {
+        start: ^finer_void_grammar_start,
+        productions: Empty,
+        sync_tokens: grammar_empty_sync_tokens()
+      }
+  }
+}
+
+fn finer_left_recursion_terminates() -> Bool {
+  let _ = grammar_has_left_recursion(root: finer_dag_grammar_root())
+  true
+}
+
+fn finer_grammar_validate_terminates() -> Bool {
+  match grammar_validate_for_parse(
+    root: finer_dag_grammar_root(),
+    at: port_locus(port: parse_stage_locus_port)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn finer_build_parse_table_terminates() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          let _ = build_parse_table(all_tokens: token_stream.tokens, root: root)
+          true
+        VoidGrammar => true
+      }
+  }
+}
