@@ -332,3 +332,23 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
     }
   }
 }
+
+data spice_format_grammar_probe_authority: GrammarSchemaProbeBinding = spice_format_grammar_probe()
+
+// wave-1 emit: project value lexeme from a Resistor arm.
+// Symbol→String conversion (name, node labels) is wave-2 scope.
+// 🟡 needs-more-work — feature:spice-emit-full-line — dissolve-on: Symbol→String carrier in std/ (T-3 string substrate) unlocks full-line resistor emit · ledger: T-4
+fn spice_emit_resistor_value_lexeme(c: Component) -> String {
+  match c {
+    Resistor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
+    Capacitor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
+    Inductor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
+    VoltageSource { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
+    CurrentSource { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
+    Diode { name: _, anode: _, cathode: _, model: _ } => ""
+    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => ""
+    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => ""
+    MutualInductance { name: _, l1: _, l2: _, coupling: v } => v.lexeme
+    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => ""
+  }
+}
