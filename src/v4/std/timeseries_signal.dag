@@ -10,7 +10,7 @@
 // M9 DFS: reuses v4.std.algebra {fold_list, fold_list_right, list_snoc_item},
 //         v4.std.collection {List, Optional}, v4.std.float {Float},
 //         v4.extdeps.formats.spice {Component, SpiceApproxVoltage, SpiceValue, NodeRef}.
-// Status: S1 modeled 2026-06-14 (valiant-ram-713).
+// Status: S1 modeled 2026-06-15 (clever-badger-36).
 
 module v4.std.timeseries_signal
 
@@ -23,6 +23,7 @@ import v4.std.algebra {
 }
 import v4.std.collection { List, Optional, Absent, Present }
 import v4.std.float { Float, Finite }
+import v4.std.integer { Int }
 import v4.std.nat { Zero }
 import v4.std.node { Symbol }
 import v4.extdeps.formats.spice {
@@ -43,6 +44,12 @@ import v4.extdeps.formats.spice {
 type AffineVoltageReference
   = GroundReference
   | NodeReference { name: Symbol }
+
+// 🟢 grounded — gauge-dependent absolute potential (alias: AffineVoltage).
+type AbsolutePotential = AffineVoltage
+
+// 🟢 grounded — gauge-free potential difference (alias: AffineVoltageDelta).
+type PotentialDifference = AffineVoltageDelta
 
 // 🟢 grounded — named voltage sample relative to an explicit reference.
 type AffineVoltage {

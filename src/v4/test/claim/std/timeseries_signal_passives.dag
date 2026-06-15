@@ -75,7 +75,7 @@ fn fold_running_sum_holds() -> Bool {
 }
 
 fn spice_resistor_projects_passive_spec_holds() -> Bool {
-  let component: Component = Resistor {
+  let component = Resistor {
     name: ^r1,
     n_plus: Named { node: NamedNode { name: ^n1 } },
     n_minus: Ground,
