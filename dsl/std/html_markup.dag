@@ -4,15 +4,13 @@
 // render.dag (see render.dag §Fragment IR) as an HTML-specific markup IR
 // with a single fold-to-text serializer — not per-app string concatenation.
 //
-// Consumers build HtmlNode trees structurally; serialize_markup_node folds the
+// Emit target: HTML only (see std.languages.html_format). A format-agnostic
+// markup serializer belongs in a separate module when a second consumer needs it.
+//
+// Consumers build HtmlNode trees structurally; serialize_html_node folds the
 // tree to wire text with context-correct escaping.
 
 module std.html_markup
-
-import std.languages { html_format, MarkupFormat }
-
-// Emit target grounded on std.languages.html_format.
-data markup_emit_format: MarkupFormat = html_format
 
 // --- structured HTML element IR -------------------------------------------
 
@@ -56,6 +54,7 @@ fn escape_markup(s: String, ctx: MarkupEscapeContext) -> String {
   }
 }
 
+// R0: only href is URL-bearing; extend when a consumer needs src/action/formaction.
 fn attr_escape_context(name: String) -> MarkupEscapeContext {
   if name == "href" {
     UrlPath
@@ -92,11 +91,11 @@ fn serialize_html_close_tag(tag: String) -> String {
 fn serialize_html_children(children: List<HtmlNode>) -> String {
   fold(children,
     init: "",
-    f: (acc, child) => concat(acc, serialize_html_node_body(node: child))
+    f: (acc, child) => concat(acc, serialize_html_node(node: child))
   )
 }
 
-fn serialize_html_node_body(node: HtmlNode) -> String {
+fn serialize_html_node(node: HtmlNode) -> String {
   match node {
     TextNode { text } =>
       escape_markup(s: text, ctx: TextContent)
@@ -109,15 +108,4 @@ fn serialize_html_node_body(node: HtmlNode) -> String {
         serialize_html_close_tag(tag: tag)
       )
   }
-}
-
-fn serialize_markup_node(node: HtmlNode, format: MarkupFormat) -> String {
-  match format.id {
-    "html" => serialize_html_node_body(node: node)
-    _ => ""
-  }
-}
-
-fn serialize_html_node(node: HtmlNode) -> String {
-  serialize_markup_node(node: node, format: markup_emit_format)
 }

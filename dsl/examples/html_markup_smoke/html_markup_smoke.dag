@@ -1,6 +1,6 @@
 // examples/html_markup_smoke.dag — in-repo consumer for std.html_markup.
 //
-// Builds HtmlNode trees and asserts serialize_markup_node output through
+// Builds HtmlNode trees and asserts serialize_html_node output through
 // func main (executed-green receipt). Run:
 //   gunbc run \
 //     --source-root dsl/examples/html_markup_smoke \
@@ -10,7 +10,6 @@
 
 module examples.html_markup_smoke
 
-import std.languages { html_format }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import std.html_markup {
   HtmlAttr,
@@ -18,7 +17,6 @@ import std.html_markup {
   ElementNode,
   TextNode,
   serialize_html_node,
-  serialize_markup_node,
   escape_text_content,
 }
 
@@ -43,14 +41,12 @@ data href_amp: HtmlNode = ElementNode {
 data tiny_html: String = serialize_html_node(node: tiny)
 data attr_html: String = serialize_html_node(node: with_attr)
 data href_amp_html: String = serialize_html_node(node: href_amp)
-data format_threaded: String = serialize_markup_node(node: tiny, format: html_format)
 data escaped: String = escape_text_content(s: "<b>")
 
 func main() -> ProcessExit {
   if tiny_html == "<p>ok</p>"
     && attr_html == "<a href=\"/tree/dsl\">dsl</a>"
     && href_amp_html == "<a href=\"/x?a=1&amp;b=2\">link</a>"
-    && format_threaded == "<p>ok</p>"
     && escaped == "&lt;b&gt;" {
     ExitSuccess
   } else {
