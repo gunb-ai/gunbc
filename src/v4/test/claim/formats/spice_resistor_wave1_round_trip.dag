@@ -46,10 +46,13 @@ fn spice_wave1_parse_accepted(text: String) -> Bool {
 }
 
 fn spice_wave1_emit_parse_round_trip_holds() -> Bool {
-  let emitted = spice_emit_resistor_line(resistor: spice_wave1_witness_resistor)
-  spice_wave1_emit_matches_fixture_holds()
-    && spice_wave1_parse_accepted(text: spice_wave1_resistor_fixture_text)
-    && spice_wave1_parse_accepted(text: emitted)
+  match spice_emit_resistor_line(component: spice_wave1_witness_resistor) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      spice_wave1_emit_matches_fixture_holds()
+        && spice_wave1_parse_accepted(text: spice_wave1_resistor_fixture_text)
+        && spice_wave1_parse_accepted(text: emitted)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn spice_resistor_wave1_round_trip_holds() -> Bool {

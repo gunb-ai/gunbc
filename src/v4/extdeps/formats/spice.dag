@@ -31,7 +31,18 @@ module v4.extdeps.formats.spice
 
 import v4.std.algebra { list_append, zip_eq }
 import v4.std.collection { Map, empty_map, map_insert }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.logic { Bool }
 import v4.std.nat { Equal, nat_compare }
@@ -388,35 +399,46 @@ fn spice_wave1_node_ref_spelling(node: NodeRef) -> String {
   }
 }
 
-fn spice_emit_resistor_line(resistor: Component) -> String {
-  match resistor {
+fn spice_emit_non_resistor_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^spice_emit_wave1_non_resistor_component,
+    at: port_locus(port: ^spice_emit_resistor_line_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn spice_emit_resistor_line(component: Component) -> Outcome<String> {
+  match component {
     Resistor { name: name, n_plus: n_plus, n_minus: n_minus, value: value } =>
-      list_append(
-        left: list_append(
+      outcome_accepted(
+        value: list_append(
           left: list_append(
             left: list_append(
               left: list_append(
                 left: list_append(
-                  left: spice_wave1_symbol_spelling(sym: name),
-                  right: " "
+                  left: list_append(
+                    left: spice_wave1_symbol_spelling(sym: name),
+                    right: " "
+                  ),
+                  right: spice_wave1_node_ref_spelling(node: n_plus)
                 ),
-                right: spice_wave1_node_ref_spelling(node: n_plus)
+                right: " "
               ),
-              right: " "
+              right: spice_wave1_node_ref_spelling(node: n_minus)
             ),
-            right: spice_wave1_node_ref_spelling(node: n_minus)
+            right: " "
           ),
-          right: " "
-        ),
-        right: value.lexeme
+          right: value.lexeme
+        )
       )
-    _ => ""
+    _ => outcome_rejected(d: spice_emit_non_resistor_diagnostic())
   }
 }
 
 fn spice_wave1_emit_matches_fixture_holds() -> Bool {
-  spice_wave1_string_eq(
-    a: spice_emit_resistor_line(resistor: spice_wave1_witness_resistor),
-    b: spice_wave1_resistor_fixture_text
-  )
+  match spice_emit_resistor_line(component: spice_wave1_witness_resistor) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      spice_wave1_string_eq(a: emitted, b: spice_wave1_resistor_fixture_text)
+    Rejected { diagnostics: _ } => false
+  }
 }
