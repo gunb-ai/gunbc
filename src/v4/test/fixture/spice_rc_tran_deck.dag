@@ -71,7 +71,3 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
 // Canonical ngspice-ready netlist string for the RC tran circuit.
 // Verified by scripts/v4-spice-ngspice-rc-oracle.sh when ngspice is available.
 data spice_rc_tran_deck_ngspice_text: String = spice_emit_ngspice(netlist: spice_rc_tran_deck)
-
-// Entry point for gunbc run --function; lets the shell oracle derive the netlist from
-// the .dag authority rather than maintaining a parallel literal copy.
-fn emit_ngspice_text() -> String { spice_rc_tran_deck_ngspice_text }
