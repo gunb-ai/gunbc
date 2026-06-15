@@ -1,0 +1,40 @@
+// src/v4/test/claim/formats/spice_dual_emission.dag
+// Scope: paradigm-falsification witness — SAME composed RC deck emits to spice AND Modelica.
+// Anchor: spice_rc_passive_deck fixture; Shape B dual-target projection.
+
+module v4.test.claim.formats.spice_dual_emission
+
+import v4.extdeps.formats.modelica { modelica_emit_from_spice_netlist }
+import v4.extdeps.formats.spice { spice_emit }
+import v4.test.fixture.spice_rc_passive_deck { spice_rc_passive_deck }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn spice_dual_emission_spice_netlist_nonempty_holds() -> Bool {
+  let text = spice_emit(netlist: spice_rc_passive_deck)
+  (text != "") && (text != "* rc passive witness")
+}
+
+fn spice_dual_emission_modelica_model_nonempty_holds() -> Bool {
+  let text = modelica_emit_from_spice_netlist(netlist: spice_rc_passive_deck)
+  (text != "") && (text != "model RcPassiveWitness")
+}
+
+fn spice_dual_emission_same_deck_both_targets_holds() -> Bool {
+  let spice_text = spice_emit(netlist: spice_rc_passive_deck)
+  let modelica_text = modelica_emit_from_spice_netlist(netlist: spice_rc_passive_deck)
+  (spice_text != "")
+    && (modelica_text != "")
+    && (spice_text != modelica_text)
+}
+
+data unified_claim_spice_dual_emission_same_deck: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_dual_emission.dag",
+    function: spice_dual_emission_same_deck_both_targets_holds
+  }
+}
