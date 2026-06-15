@@ -461,6 +461,7 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+<<<<<<< HEAD
 // effect_io T-33 first-consumer registry population (model_core EffectSemanticsDecl.operations).
 // EXECUTING CI consumer for the populated registry (INVARIANTS E-10): the gate folds the shard List
 // and runs each function, so reverting model_core back to operations: [] makes
@@ -478,6 +479,25 @@ data corpus_ci_gate_row_effect_io_registry_rejects_bogus: ClaimWitnessCorpusClai
   label: "effect_io T-33 registry membership rejects a bogus operation ref",
   entry: "src/v4/test/claim/effects/effect_io_operation_registered.dag",
   function: "effect_io_registry_rejects_bogus_holds",
+=======
+// Self-host M3a / Stage A (design-self-host-fixed-point.md §5): executed structural-equality of
+// emitted FIXTURE stages through self_host.stage_emission_equality — a matching candidate Holds,
+// a divergent candidate Violates (the discriminating red). NOT self-hosting achieved — these
+// de-risk the comparison machinery on hand-built fixtures only. The terminal self-host fixed
+// point is M3b / stage C (whole-compiler bit-identical stage1==stage2, merkle digests + the
+// root-sequenced T-22 / PB-Runtime eval substrate) and stays gated on the emit ladder.
+data corpus_ci_gate_row_self_host_stage_emission_equality_holds: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-host stage emission equality holds on equal",
+  entry: "src/v4/test/claim/self_host/stage_emission_equality_fixture.dag",
+  function: "stage_emission_equality_holds_on_equal",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_self_host_stage_emission_equality_violates: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "self-host stage emission equality violates on perturbed",
+  entry: "src/v4/test/claim/self_host/stage_emission_equality_fixture.dag",
+  function: "stage_emission_equality_violates_on_perturbed",
+>>>>>>> origin/main
   expected: ExpectPass
 }
 
@@ -544,6 +564,11 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
+<<<<<<< HEAD
   corpus_ci_gate_row_effect_io_operation_registered,
   corpus_ci_gate_row_effect_io_registry_rejects_bogus
+=======
+  corpus_ci_gate_row_self_host_stage_emission_equality_holds,
+  corpus_ci_gate_row_self_host_stage_emission_equality_violates
+>>>>>>> origin/main
 ]
