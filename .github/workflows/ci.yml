@@ -76,8 +76,10 @@ jobs:
     - name: Classify lens lane requirement (docs-only skip)
       id: class
       run: bash scripts/ci-lens-lane-required.sh
-  # Fleet compile admission shard — drives GHA concurrency group count (K = dispatch cap).
-  # Queue semantics: jobs pend when shard is busy; they do not fail (backpressure, not reject).
+  # Fleet compile admission shard — cross-PR spread only (run_id mod K; identical within one run).
+  # Per-job suffix on compile concurrency groups (below) prevents within-run cancellation:
+  # GHA default queue allows one pending job per group; N parallel jobs sharing one group
+  # cancel each other (observed 69321a4: ci_floor + corpus legs cancelled at spawn).
   ci_fleet_shard:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 2
@@ -584,7 +586,7 @@ jobs:
   ci_floor:
     needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -752,7 +754,7 @@ jobs:
   ci_floor_parity:
     needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -931,7 +933,7 @@ jobs:
   ci_floor_emit:
     needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -1083,7 +1085,7 @@ jobs:
     needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
@@ -1249,7 +1251,7 @@ jobs:
     needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
@@ -1412,7 +1414,7 @@ jobs:
     needs: [ci_lens_lane_class, ci_fleet_shard]
     if: needs.ci_lens_lane_class.outputs.lens_lane_required == 'true'
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}-${{ matrix.shard }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     # Per-shard budget rule (documented uncontended wall x2): with N=4 the
@@ -1547,7 +1549,7 @@ jobs:
   v4_claim_witness_corpus_a:
     needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -1659,7 +1661,7 @@ jobs:
   v4_claim_witness_corpus_b:
     needs: [ci_fleet_shard]
     concurrency:
-      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}
+      group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
