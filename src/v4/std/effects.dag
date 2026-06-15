@@ -147,6 +147,31 @@ fn atom_node(s: Symbol) -> Node {
 }
 
 
+// 🟡 needs-more-work — feature:effect-io-first-consumer — the abstract (backend-INDEPENDENT)
+// effect_io roundtrip operation the source callee `effect_io_roundtrip` resolves to. model_core.dag
+// builds its PrimitiveOperationRef and registers it in EffectSemanticsDecl.operations (the T-33 /
+// model_core.dag:109 "first PrimitiveOperationRef carries non-trivial effect" trigger). The backend
+// (pure/file handler+store) binds at eval-context (program.dag), NOT in this identity — target
+// independence: the source program names this abstract operation, never a backend. The pure backend's
+// effect_io_pure_operation_node (extdeps/runtimes/v4_effect_io_pure.dag) is the backend realization,
+// not the model operation. EffectSignature.signature stays an opaque atom for MVP1.
+// dissolve-on: EffectSignature gains a structural read/write face (runtime.dag effect_request_kind_of)
+// replacing this opaque signature atom; forbidden: resolving `effect_io_roundtrip` to a backend-named
+// operation symbol (would bake the backend into source-level programs).
+data effect_io_roundtrip_operation_symbol: Symbol = effect_io_roundtrip_operation_symbol
+data effect_io_roundtrip_effect_signature_symbol: Symbol = effect_io_roundtrip_effect_signature_symbol
+
+
+fn effect_io_roundtrip_operation_node() -> Node {
+  atom_node(s: effect_io_roundtrip_operation_symbol)
+}
+
+
+fn effect_io_roundtrip_effect_signature_node() -> Node {
+  atom_node(s: effect_io_roundtrip_effect_signature_symbol)
+}
+
+
 fn key_source_node(key_source: KeySource) -> Node {
   match key_source {
     PathParam { param: p } =>

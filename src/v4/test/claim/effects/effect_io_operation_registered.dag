@@ -1,0 +1,126 @@
+// src/v4/test/claim/effects/effect_io_operation_registered.dag
+// Scope: T-33 first-consumer — the abstract effect_io roundtrip operation is registered LIVE in
+//   EffectSemanticsDecl.operations (model_core.wave1_model_core) and carries its EffectSignature.
+// Status: CI-EXERCISED — enrolled in claim_witness_corpus_shard_b_rows (CI gate
+//   scripts/v4-claim-witness-corpus-gate.sh --shard b). claim-run EVALUATES the populated registry
+//   (reads wave1_model_core().effects.operations), so the population is proven LIVE, not merely
+//   present-in-source. INVARIANTS E-10 teeth, verified: reverting model_core to operations: [] flips
+//   effect_io_roundtrip_operation_registered_holds to false ⇒ this ExpectPass row goes RED. A bogus
+//   operation ref is the discriminating red.
+//
+// ⚠️ This is the MODEL-SIDE population witness only. It does NOT prove the dispatch recognizer
+// (stern-seal slice-iii) looking the operation up — that recognizer-on-registry exercise lands when
+// that recognizer merges. NOT self-hosting, NOT the effect-parse-from-source demo (those are later).
+
+module v4.test.claim.effects.effect_io_operation_registered
+
+import v4.std.model_core { EffectSignature, PrimitiveOperationRef, wave1_model_core }
+import v4.std.effects {
+  effect_io_roundtrip_effect_signature_symbol,
+  effect_io_roundtrip_operation_node,
+  effect_io_roundtrip_operation_symbol
+}
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.collection { Absent, list_at_optional, Present }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+
+data effect_io_registry_non_atom_sentinel: Symbol = effect_io_registry_non_atom_sentinel
+data effect_io_registry_bogus_operation_symbol: Symbol = effect_io_registry_bogus_operation_symbol
+
+
+fn node_atom_identity(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id
+    _ => effect_io_registry_non_atom_sentinel
+  }
+}
+
+
+fn atom_node_of(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+
+// A registered ref is the effect_io roundtrip iff its operation symbol is the abstract roundtrip
+// operation AND it carries the abstract effect signature (cardinality-independent — does not assume
+// list position or length).
+fn ref_is_effect_io_roundtrip(ref: PrimitiveOperationRef) -> Bool {
+  if node_atom_identity(n: ref.operation) == effect_io_roundtrip_operation_symbol {
+    node_atom_identity(n: ref.effect_signature.signature) == effect_io_roundtrip_effect_signature_symbol
+  } else {
+    false
+  }
+}
+
+
+// LIVE exercise: read the populated registry. effect_io is the first consumer, so it sits at index 0
+// today; the read returns Absent (→ false) if the population is reverted, so the green genuinely
+// depends on the live registry, not on source presence.
+fn effect_io_roundtrip_operation_registered_holds() -> Bool {
+  match list_at_optional(xs: wave1_model_core().effects.operations, index: 0) {
+    Present { value: ref } => ref_is_effect_io_roundtrip(ref: ref)
+    Absent => false
+  }
+}
+
+
+// Discriminating red (cardinality-independent): a ref carrying a bogus operation symbol is NOT
+// recognized as the effect_io roundtrip. Pins the membership predicate to the real operation
+// identity, not a fail-open accept-anything.
+fn bogus_operation_ref() -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: atom_node_of(sym: effect_io_registry_bogus_operation_symbol),
+    effect_signature: EffectSignature {
+      signature: atom_node_of(sym: effect_io_registry_bogus_operation_symbol)
+    }
+  }
+}
+
+fn effect_io_registry_rejects_bogus_holds() -> Bool {
+  if ref_is_effect_io_roundtrip(ref: bogus_operation_ref()) {
+    false
+  } else {
+    true
+  }
+}
+
+
+// Bool->input lift so the witnesses also stand as resolvable TestClaims (ok ⇒ input == expected).
+fn registry_claim_input(ok: Bool) -> Node {
+  if ok {
+    effect_io_roundtrip_operation_node()
+  } else {
+    atom_node_of(sym: effect_io_registry_non_atom_sentinel)
+  }
+}
+
+
+data claim_effect_io_roundtrip_operation_registered: TestClaim = CompilesClaim {
+  label: "effects/effect_io: roundtrip operation registered live in EffectSemanticsDecl.operations",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: registry_claim_input(ok: effect_io_roundtrip_operation_registered_holds()),
+  expected_value: effect_io_roundtrip_operation_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_effect_io_registry_rejects_bogus: TestClaim = CompilesClaim {
+  label: "effects/effect_io: registry membership rejects a bogus operation ref",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: registry_claim_input(ok: effect_io_registry_rejects_bogus_holds()),
+  expected_value: effect_io_roundtrip_operation_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

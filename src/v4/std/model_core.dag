@@ -20,6 +20,10 @@ import v4.std.algebra {
   field_reciprocal_operation_node,
   fold_list
 }
+import v4.std.effects {
+  effect_io_roundtrip_effect_signature_node,
+  effect_io_roundtrip_operation_node
+}
 import v4.std.logic {
   BoolPrimitiveFacts,
   bool_boolean_algebra_node,
@@ -106,7 +110,12 @@ type PrimitiveOperationRef {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) binds EffectSemanticsDecl.operations when first PrimitiveOperationRef carries non-trivial effect (bind gunbc#4764)
+// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · PARTIAL
+// advance: effect_io roundtrip populated as the FIRST consumer (the "first PrimitiveOperationRef
+// carries non-trivial effect" trigger — see effect_io_effects_decl below). NOT fully resolved: further
+// effect operations land in EffectSemanticsDecl.operations as their consumers arrive. dissolve-on:
+// T-33 (#3474) all effect operations populated + EffectSignature.signature gains a structural face
+// (bind gunbc#4764)
 type EffectSemanticsDecl {
   operations: List<PrimitiveOperationRef>
 }
@@ -128,6 +137,23 @@ type PartialityDischarge
 // 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (bind gunbc#4764)
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
+}
+
+
+// effect_io is the first clean consumer of the effect-operation registry — it carries the first
+// PrimitiveOperationRef with a non-trivial effect, the trigger named in the EffectSemanticsDecl mark.
+// The operation + signature are ABSTRACT (std/effects.dag); the backend binds at eval-context.
+fn effect_io_effects_decl() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      PrimitiveOperationRef {
+        operation: effect_io_roundtrip_operation_node(),
+        effect_signature: EffectSignature {
+          signature: effect_io_roundtrip_effect_signature_node()
+        }
+      }
+    ]
+  }
 }
 
 
@@ -267,7 +293,7 @@ fn wave1_model_core() -> ModelCore {
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
     ],
-    effects: EffectSemanticsDecl { operations: [] },
+    effects: effect_io_effects_decl(),
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }

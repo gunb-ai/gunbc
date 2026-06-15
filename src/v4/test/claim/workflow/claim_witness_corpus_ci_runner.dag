@@ -451,6 +451,26 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+// effect_io T-33 first-consumer registry population (model_core EffectSemanticsDecl.operations).
+// EXECUTING CI consumer for the populated registry (INVARIANTS E-10): the gate folds the shard List
+// and runs each function, so reverting model_core back to operations: [] makes
+// effect_io_roundtrip_operation_registered_holds read Absent ⇒ false ⇒ this ExpectPass row goes RED.
+// Present-in-source alone is NOT the gate — the live-registry read is. The bogus-ref row is the
+// discriminating red. NOT self-hosting / NOT the effect-parse demo (those land later).
+data corpus_ci_gate_row_effect_io_operation_registered: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect_io T-33 roundtrip operation registered live in EffectSemanticsDecl.operations",
+  entry: "src/v4/test/claim/effects/effect_io_operation_registered.dag",
+  function: "effect_io_roundtrip_operation_registered_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_effect_io_registry_rejects_bogus: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "effect_io T-33 registry membership rejects a bogus operation ref",
+  entry: "src/v4/test/claim/effects/effect_io_operation_registered.dag",
+  function: "effect_io_registry_rejects_bogus_holds",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -506,7 +526,9 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_effect_io_operation_registered,
+  corpus_ci_gate_row_effect_io_registry_rejects_bogus
 ]
 
 data claim_witness_corpus_claim_run_row_count: String = "54"
@@ -573,7 +595,9 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_effect_io_operation_registered,
+  corpus_ci_gate_row_effect_io_registry_rejects_bogus
 ]
 
 data claim_witness_corpus_shard_b_row_count: String = "35"
