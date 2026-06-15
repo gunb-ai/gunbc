@@ -509,10 +509,7 @@ fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
         .collect();
     assert_eq!(
         edges,
-        vec![
-            ("dsl-compile-clean", "fmt"),
-            ("fmt", "affected-tests"),
-        ],
+        vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
         "blocking floor must be a linear prerequisite chain"
     );
 }
@@ -679,20 +676,13 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 
     assert_eq!(
         node_ids,
-        vec![
-            "dsl-compile-clean",
-            "fmt",
-            "affected-tests",
-        ],
+        vec!["dsl-compile-clean", "fmt", "affected-tests",],
         "CI workflow DAG must carry one node per structural gate"
     );
 
     assert_eq!(
         edges,
-        vec![
-            ("dsl-compile-clean", "fmt"),
-            ("fmt", "affected-tests"),
-        ],
+        vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
     );
 
@@ -744,15 +734,8 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
         workflow_topology(&ci, structural_value_body(&ci, "ci_workflow_dag")),
         (
             "gunbc-ci",
-            vec![
-                "dsl-compile-clean",
-                "fmt",
-                "affected-tests",
-            ],
-            vec![
-                ("dsl-compile-clean", "fmt"),
-                ("fmt", "affected-tests"),
-            ],
+            vec!["dsl-compile-clean", "fmt", "affected-tests",],
+            vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
         ),
         "dsl/gunbc/ci.dag must remain the single CI DAG topology authority"
     );
@@ -880,11 +863,7 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         3,
         "TouchAll must schedule the full gunbc-ci gate roster"
     );
-    for id in [
-        "dsl-compile-clean",
-        "fmt",
-        "affected-tests",
-    ] {
+    for id in ["dsl-compile-clean", "fmt", "affected-tests"] {
         assert!(
             affected.iter().any(|g| g == id),
             "TouchAll roster must include `{id}`"
@@ -895,9 +874,18 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         .iter()
         .position(|g| g == "dsl-compile-clean")
         .expect("dsl-compile-clean");
-    let affected_pos = affected.iter().position(|g| g == "affected-tests").expect("affected-tests");
-    assert!(dsl_pos < fmt_pos, "dsl-compile-clean must precede fmt in topo order");
-    assert!(fmt_pos < affected_pos, "fmt must precede affected-tests in topo order");
+    let affected_pos = affected
+        .iter()
+        .position(|g| g == "affected-tests")
+        .expect("affected-tests");
+    assert!(
+        dsl_pos < fmt_pos,
+        "dsl-compile-clean must precede fmt in topo order"
+    );
+    assert!(
+        fmt_pos < affected_pos,
+        "fmt must precede affected-tests in topo order"
+    );
 }
 
 // --- R3 gate #103 (`ci_uses_affected_set_selection`), Layer 1: gate-id receipt → `select_affected_gates`.
