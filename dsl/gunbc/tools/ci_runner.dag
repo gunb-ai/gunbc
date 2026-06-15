@@ -115,7 +115,7 @@ func witness_gate3_logged_script_perturb() -> ProcessExit {
 // the daemon this preflight guarantees is up.
 //
 // Forward (seam P-CF-INGRESS): the typed home for an "upsert into a content cache"
-// is the compute_fabric cache model (std.compute_fabric UpsertInputRef /
+// is the compute_fabric cache model (product.compute_fabric UpsertInputRef /
 // std.cache_identity), owned by the compute-fabric lane. This CI-local preflight
 // dissolves onto that carrier when it inhabits; kept CI-local here to ship the
 // fail-closed behavior without reaching across the seam.

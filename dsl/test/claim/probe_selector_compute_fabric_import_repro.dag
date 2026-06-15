@@ -1,5 +1,5 @@
 // dsl/test/claim/probe_selector_compute_fabric_import_repro.dag
-// P-PROBE-CF-IMPORT witness — proves `import std.compute_fabric` resolves a supply
+// P-PROBE-CF-IMPORT witness — proves `import product.compute_fabric` resolves a supply
 // offer — repointed to the concept's generic example offer after the real srv1/srv2
 // fleet offers moved to the operator deployment repo (ctrl).
 // (the Option substrate gap dissolved in #4887; the Nat-mul algebra
@@ -10,7 +10,7 @@
 
 module test.claim.probe_selector_compute_fabric_import_repro
 
-import std.compute_fabric { example_shared_host_offer }
+import product.compute_fabric { example_shared_host_offer }
 
 fn probe_selector_compute_fabric_import_repro_holds() -> Bool {
   example_shared_host_offer.provider == example_shared_host_offer.provider

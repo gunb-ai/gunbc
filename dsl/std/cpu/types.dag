@@ -23,7 +23,7 @@ type CpuModelCatalogRow {
   socket: NonEmptyStr
   tdp_watts: Int
   // TODO(P-CF-ISA): populate instruction_sets when InstructionSet dissolves
-  // from Node in std.compute_fabric (Neoverse-N1 extension set for Altra Max).
+  // from Node in product.compute_fabric (Neoverse-N1 extension set for Altra Max).
 }
 
 type CpuDeploymentFacts {

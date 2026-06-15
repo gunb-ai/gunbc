@@ -1209,8 +1209,8 @@ mod parse_stage4_prep {
         // (`docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md`) until T-PB-B
         // hand-Rust test floor reaches zero.
         parse_file(
-            include_str!("../../../../dsl/std/compute_fabric.dag"),
-            "dsl/std/compute_fabric.dag",
+            include_str!("../../../../dsl/product/compute_fabric.dag"),
+            "dsl/product/compute_fabric.dag",
         );
     }
 
