@@ -22,6 +22,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
+import v4.lens.unit_modeling { unit_modeling_gate }
 import v4.std.algebra { list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -127,14 +128,27 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
 
+data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
+
 
 fn always_required_lenses() -> List<CompileLens> {
-  [fact_density_lens]
+  [fact_density_lens, unit_modeling_lens]
 }
 
 
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
+}
+
+
+// Compile-gate adapter for the unit-modeling soundness lens: self-traverses the
+// resolved typed subtree from the root (same shape as the fact_density adapter).
+// Registered in always_required_lenses() above, so validate_then_compile runs it
+// fail-closed (CompileLensEnforce) on every gated compile — a flat-scalar field
+// carrying a known unit (e.g. a raw Nat byte-count where Measure<…> is owed)
+// rejects compilation. M12 / Practice 13 made executable.
+fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  unit_modeling_gate(node: tree.root)
 }
 
 

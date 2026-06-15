@@ -7,6 +7,10 @@
 //     https://www.rfc-editor.org/rfc/rfc3986
 //   OpenAPI 3.1 path templating convention
 //     https://spec.openapis.org/oas/v3.1.0
+//   Node.js http module (gunbhub-A serve/listen/respond effect chain)
+//     https://nodejs.org/api/http.html#httpcreateserveroptions-requestlistener
+//     https://nodejs.org/api/http.html#serverlisten
+//     https://nodejs.org/api/http.html#responseenddata-encoding-callback
 //
 // Ctrl-Migration Phase 3 authority for generated HTTP server surfaces.
 // This file models the emitted server artifact shape, not a runtime framework
@@ -16,7 +20,7 @@
 module extdeps.http.server
 
 import std.http_path { PathTemplate }
-import std.types { HttpMethod, HttpStatus }
+import std.types { HttpMethod, HttpStatus, Port }
 
 // Coproduct dissolution classification (modeling-discipline.md Practice 4):
 // GREEN (terminal). These are distinct HTTP request-body media families
@@ -50,6 +54,7 @@ type HttpStatusResponse {
   body_kind: HttpRequestBodyKind
 }
 
+// Framework-agnostic route metadata + declared response contract.
 type HttpServerRoute {
   operation_name: String
   method: HttpMethod
@@ -65,4 +70,40 @@ type HttpServerRoute {
 type HttpServerEmissionTarget {
   service_name: String
   routes: List<HttpServerRoute>
+}
+
+// Node requestListener emission symbol (nodejs.org/api/http.html#createServer).
+type NodeHttpRequestListener {
+  handler_name: String
+}
+
+type HttpServerListenConfig {
+  host: String
+  port: Port
+}
+
+// Per-route Node projection: route metadata + requestListener + respond contract.
+// Respond (ServerResponse#end) is per-binding callback work inside the listener,
+// not a server-level step parallel to createServer/listen.
+type NodeHttpServerRouteBinding {
+  route: HttpServerRoute
+  listener: NodeHttpRequestListener
+}
+
+// http.createServer(requestListener) — registers route→listener dispatch.
+type NodeHttpCreateServerServe {
+  route_bindings: List<NodeHttpServerRouteBinding>
+}
+
+// Fixed Node server effect chain: createServer (serve) then listen.
+// Field shape enforces ordering; not a free phase list.
+type NodeHttpCreateServerEffectChain {
+  serve: NodeHttpCreateServerServe
+  listen: HttpServerListenConfig
+}
+
+// STAGED. Node http.createServer emission target for gunbhub web surfaces.
+type NodeHttpCreateServerEmissionTarget {
+  service_name: String
+  effects: NodeHttpCreateServerEffectChain
 }

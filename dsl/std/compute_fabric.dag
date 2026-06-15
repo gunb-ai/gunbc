@@ -72,8 +72,8 @@ type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttent
 // Lens: tiered-access cost — owned marginal vs metered vs attention-priced axes.
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type Bandwidth = Measure<DataRate, One>
-type Duration = Measure<Time, One>
+type Bandwidth = Measure<DataRate, One, Nat>
+type Duration = Measure<Time, One, Nat>
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
 
 type ComputeArtifactLocality
