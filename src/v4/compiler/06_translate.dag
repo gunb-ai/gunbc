@@ -940,31 +940,10 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
-fn translate_node_is_value_literal(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Value } => true
-    _ => false
-  }
-}
-
-fn translate_optional_node_is_value_literal(opt: Optional<Node>) -> Bool {
-  match opt {
-    Present { value: node } => translate_node_is_value_literal(node: node)
-    Absent => false
-  }
-}
-
 // Callee-free 2-arg Transform — mirrors `eval_node_is_effect_io_roundtrip` shape gate (05_eval.dag).
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Transform } =>
-      length(xs: node.children) == 2
-        && translate_optional_node_is_value_literal(
-          opt: list_at_optional(
-            xs: node_positional_child_targets(node: node),
-            index: 0
-          )
-        )
+    ComputationNode { behavior: Transform } => length(xs: node.children) == 2
     _ => false
   }
 }
