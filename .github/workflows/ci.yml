@@ -80,8 +80,6 @@ jobs:
   # Per-job suffix on compile concurrency groups (below) prevents within-run cancellation:
   # GHA default queue allows one pending job per group; N parallel jobs sharing one group
   # cancel each other (observed 69321a4: ci_floor + corpus legs cancelled at spawn).
-  # `queue: max` on each compile group (below) prevents cross-PR spawn cancellation when
-  # the fleet herd exceeds one pending waiter per shard+job (observed 863d6f46 / run 27577606221).
   ci_fleet_shard:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 2
@@ -590,7 +588,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -759,7 +756,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -939,7 +935,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -1092,7 +1087,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13, RCA consolidated from #4792/#4785/#4786): the
     # job's UNCONTENDED wall structurally outgrew 20m. Per-step baseline: the
@@ -1116,11 +1110,7 @@ jobs:
     # re-measure C9 and may recover the perf via the single-walk -- re-derive
     # at that point too. Do not raise further to absorb a slow step;
     # root-cause it (enforced by timeout_budgets).
-    # 2026-06-15 receipt (#4980 / run 27567579571): uncontended main wall
-    # ~13.7m (lens ~7m + C9 ~4.2m); merge-wave contention pushed lens analysis
-    # alone to ~28m and job killed at 35m29s before C9 started (~4x lens step).
-    # Budget rule re-derive: 13.7m x3.5 contention tail -> 48, rounded to 45.
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -1263,7 +1253,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     # INTERIM 35m (2026-06-13): same RCA, budget rule, and dissolve-on terms
     # as v4_lens_gate above (uncontended wall ~16m x2 = 32, rounded to 35;
@@ -1427,7 +1416,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}-${{ matrix.shard }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     # Per-shard budget rule (documented uncontended wall x2): with N=4 the
     # heaviest shard owns 4 of 15 rows; ~108s cold resolve/row + per-row src/v4
@@ -1563,7 +1551,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
@@ -1676,7 +1663,6 @@ jobs:
     concurrency:
       group: gunbc-operator-fleet-compile-${{ needs.ci_fleet_shard.outputs.shard }}-${{ github.job }}
       cancel-in-progress: false
-      queue: max
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
