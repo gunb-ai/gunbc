@@ -20,7 +20,7 @@
 //   (STOP-and-escalate), not after it is load-bearing.
 // Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
 //   simulates (omni-emission reaches analog hardware).
-// Status: T-4.10 modeled 2026-05-16 (smart-raven-655); physical-quantity axis wave-1 (quiet-otter-381) — approximate voltage + named exact-carrier gap (T-3 `Dimension`/`Volt` std/ dissolution deferred). The I/O contract
+// Status: T-4.10 modeled 2026-05-16 (smart-raven-655); physical-quantity axis wave-1 (quiet-otter-381) — approximate voltage + named exact-carrier gap (T-3 `Dimension`/`Volt` std/ dissolution deferred); wave-1 resistor emit (sleek-wolf-815 closeout). The I/O contract
 // lives in the module body for downstream workers. Splitting this
 // file requires explicit operator ratification (substrate extension =
 // stop signal).
@@ -29,8 +29,14 @@
 module v4.extdeps.formats.spice
 
 
+import v4.std.algebra { list_append, zip_eq }
+import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic { Outcome }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.logic { Bool }
+import v4.std.nat { Equal, nat_compare }
+import v4.std.text { Char, String }
+import v4.std.witness { Holds, Violates }
 import v4.std.compilers.lexing {
   CharClassPattern,
   DigitChar,
@@ -326,9 +332,87 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: spice_format_grammar_schema(),
     probe: GrammarSchemaProbe {
-      fixture: "R1 n1 n2 1",
+      fixture: spice_wave1_resistor_fixture_text,
       production: spice_resistor_statement_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
     }
   }
+}
+
+
+// --- Wave-1 resistor line emit (Shape B; parse witness lives in test/claim/formats/) ---
+
+data spice_wave1_resistor_fixture_text: String = "R1 n1 n2 1"
+
+data spice_wave1_witness_resistor: Resistor = Resistor {
+  name: ^r1,
+  n_plus: Named { node: NamedNode { name: ^n1 } },
+  n_minus: Named { node: NamedNode { name: ^n2 } },
+  value: SpiceValue { lexeme: "1" }
+}
+
+fn spice_wave1_char_eq(a: Char, b: Char) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Equal => true
+    _ => false
+  }
+}
+
+fn spice_wave1_string_eq(a: String, b: String) -> Bool {
+  zip_eq(a: a, b: b, eq: spice_wave1_char_eq)
+}
+
+fn spice_wave1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^r1, "R1"),
+      ^n1,
+      "n1"
+    ),
+    ^n2,
+    "n2"
+  )
+}
+
+fn spice_wave1_symbol_spelling(sym: Symbol) -> String {
+  match spice_wave1_binding_spellings().lookup(sym) {
+    Holds { value: spelling } => spelling
+    Violates { diagnostic: _ } => ""
+  }
+}
+
+fn spice_wave1_node_ref_spelling(node: NodeRef) -> String {
+  match node {
+    Ground => "0"
+    Named { node: named } => spice_wave1_symbol_spelling(sym: named.name)
+  }
+}
+
+fn spice_emit_resistor_line(resistor: Resistor) -> String {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: list_append(
+              left: spice_wave1_symbol_spelling(sym: resistor.name),
+              right: " "
+            ),
+            right: spice_wave1_node_ref_spelling(node: resistor.n_plus)
+          ),
+          right: " "
+        ),
+        right: spice_wave1_node_ref_spelling(node: resistor.n_minus)
+      ),
+      right: " "
+    ),
+    right: resistor.value.lexeme
+  )
+}
+
+fn spice_wave1_emit_matches_fixture_holds() -> Bool {
+  spice_wave1_string_eq(
+    a: spice_emit_resistor_line(resistor: spice_wave1_witness_resistor),
+    b: spice_wave1_resistor_fixture_text
+  )
 }
