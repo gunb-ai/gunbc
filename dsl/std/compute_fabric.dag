@@ -1,6 +1,6 @@
 // std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
 //
-// Authority: docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md
+// Authority: this module (.dag self-authoritative; worksheet refs retired).
 // Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
 //
 // Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
@@ -22,7 +22,7 @@ import std.os.types {
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
 import std.currency { CurrencyCode, Eur }
-import std.cache_identity { CacheInterfaceId, ArtifactKindId }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuDeploymentFacts,
   CpuFacts,
@@ -675,4 +675,12 @@ fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
     Eligible { witness: _ } => true
     Rejected { reason: _ } => false
   }
+}
+
+// Content-pure digest projected from work identity (work.id) only; output
+// content_digest joins when ArtifactRef inhabits. Full canonical encoding
+// (action + inputs + output spec + output content_digest) supplied by the
+// harness when Outcome/ArtifactRef inhabit (Node stubs today).
+fn execution_receipt_digest<T>(receipt: ExecutionReceipt<T>) -> ExecutionReceiptDigest {
+  receipt.work.id
 }

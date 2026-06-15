@@ -502,6 +502,11 @@ jobs:
     # this reuses that crate and adds only the test's own ~ms of file I/O + resolve.
     - name: resolve typed-cache equivalence (order-permuted cold-oracle guard, #4867)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release resolve_typed_cache_equivalence_test::typed_module_cache_matches_cold_oracle_in_every_order -- --exact --quiet
+    # resolve-cost lever (PR2): cross-process resolved-graph cache falsifiers —
+    # cold-oracle equivalence, poisoned-hit RejectedHit, WriteOnce concurrency,
+    # key-mismatch miss, eval-deterministic corpus only.
+    - name: resolve cross-process cache falsifiers (PR2)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release resolve_cross_process_cache_test -- --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
