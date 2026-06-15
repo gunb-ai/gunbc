@@ -4,23 +4,14 @@
 
 module v4.test.claim.manual.timeseries_signal_anchor
 
-import v4.extdeps.formats.spice {
-  Capacitor,
-  Component,
-  Inductor,
-  Named,
-  NamedNode,
-  NodeRef,
-  Resistor,
-  SpiceValue
-}
+import v4.extdeps.formats.spice { Component, SpiceValue, Named, NamedNode }
 import v4.extdeps.formats.spice_analog {
   spice_capacitor_to_fold_step,
   spice_inductor_to_fold_step,
   spice_passive_to_step_operator,
   spice_resistor_to_map_step
 }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { Cons, Empty, fold_list, length }
 import v4.std.diagnostic { Accepted }
 import v4.std.integer { Int }
 import v4.std.node { Node }
@@ -38,6 +29,8 @@ import v4.std.timeseries_signal {
   timeseries_map
 }
 import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
   CompilesClaim,
   EqualsClaim,
   ManualAnchorAbsent,
@@ -45,6 +38,7 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
+  UnifiedTestClaim,
   manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
@@ -52,7 +46,7 @@ import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_dis
 data anchor_dt: TimeStep = TimeStep { dt_lexeme: "1u" }
 
 data anchor_current_samples: TimeSeriesSignal<Int> = TimeSeriesSignal {
-  samples: [2, 3],
+  samples: Cons { head: 2, tail: Cons { head: 3, tail: Empty } },
   dt: anchor_dt
 }
 
@@ -97,10 +91,8 @@ fn witness_resistor_map_v_equals_r_times_i() -> Bool {
   ) {
     Accepted { value: step, diagnostics: _ } => {
       let mapped = timeseries_map(signal: anchor_current_samples, step: step.map)
-      match mapped.samples {
-        Cons { head: h, tail: Cons { head: t, tail: Empty } } => h == 2000 && t == 3000
-        _ => false
-      }
+      length(xs: mapped.samples) == 2
+        && fold_list(xs: mapped.samples, empty: 0, cons: fn(acc, sample) { acc + sample }) == 5000
     }
     _ => false
   }
@@ -203,4 +195,32 @@ data claim_spice_passive_operator_rlc: TestClaim = EqualsClaim {
   lhs: anchor_claim_input(ok: witness_spice_passive_operator_classifies_rlc()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data unified_claim_timeseries_resistor_map: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/timeseries_signal_anchor.dag",
+    function: witness_resistor_map_v_equals_r_times_i
+  }
+}
+
+data unified_claim_timeseries_capacitor_fold: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/timeseries_signal_anchor.dag",
+    function: witness_capacitor_fold_accepts
+  }
+}
+
+data unified_claim_timeseries_inductor_fold: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/timeseries_signal_anchor.dag",
+    function: witness_inductor_fold_accepts
+  }
+}
+
+data unified_claim_timeseries_spice_passive_rlc: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/timeseries_signal_anchor.dag",
+    function: witness_spice_passive_operator_classifies_rlc
+  }
 }
