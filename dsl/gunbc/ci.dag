@@ -46,7 +46,7 @@ type CorpusShard = ShardA | ShardB
 
 // ── Command carrier ─────────────────────────────────────────────────
 
-// Structural command intent — rendered to shell by render_ci_command().
+// Structural command intent — rendered to shell in gunbc.tools.ci_runner.
 type CICommand
   = DslCompileCleanCommand { root: SourceRoot }
   | FmtCommand
@@ -80,94 +80,6 @@ type CIGateEdge {
 type CIWorkflowDag {
   pipeline: CIPipeline
   edges: List<CIGateEdge>
-}
-
-// ── Command rendering ─────────────────────────────────────────────────
-// Shell transport derived from structural command variants.
-
-fn ensure_gunbc_binary() -> String {
-  "test -x target/release/gunbc || cargo build -p v2-compiler --release"
-}
-
-fn ensure_ci_claim_gate_binary() -> String {
-  "test -x target/release/ci-claim-gate || cargo build -p ci_claim_gate --release"
-}
-
-fn ensure_claim_batch_binary() -> String {
-  "test -x target/release/claim_batch || cargo build -p v2-compiler --release --bin claim_batch"
-}
-
-fn ensure_discover_owned_data_binary() -> String {
-  "test -x target/release/discover_owned_data || cargo build -p v2-compiler --release --bin discover_owned_data"
-}
-
-fn dsl_compile_clean_shell(root: SourceRoot) -> String {
-  concat(
-    ensure_gunbc_binary(), "; ",
-    "target/release/gunbc run --source-root ", root.path,
-    " --entry dsl/gunbc/tools/ci_runner.dag --function ci_floor_parse_check --claim-run"
-  )
-}
-
-fn render_ci_command(cmd: CICommand) -> String {
-  match cmd {
-    DslCompileCleanCommand { root: r } => dsl_compile_clean_shell(root: r)
-    FmtCommand => "cargo fmt --all --check"
-    LensWitnessCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_ci_claim_gate_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      ensure_discover_owned_data_binary(), "; ",
-      "bash scripts/v4-lens-ci-gate.sh --perturb-check && ",
-      "bash scripts/v4-substrate-equivalence-gate.sh --perturb-check"
-    )
-    DagParityCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      "cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet && ",
-      "cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet && ",
-      "cargo test -p v2-compiler-tests --release resolve_typed_cache_equivalence_test::typed_module_cache_matches_cold_oracle_in_every_order -- --exact --quiet && ",
-      "cargo test -p v2-compiler-tests --release resolve_cross_process_cache_test -- --quiet"
-    )
-    NodeFrontierCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_ci_claim_gate_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      "bash scripts/v4-affected-set-node-frontier-gate.sh --green-only && ",
-      "bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check && ",
-      "bash scripts/v4-batch-executor-gate.sh --perturb-check"
-    )
-    LensPerturbCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      "bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard 0 4 && ",
-      "bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard 1 4 && ",
-      "bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard 2 4 && ",
-      "bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-shard 3 4"
-    )
-    CorpusEnrollmentCommand { shard: ShardA } => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      "bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check"
-    )
-    CorpusEnrollmentCommand { shard: ShardB } => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      "bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check"
-    )
-    LayeringImportsCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_ci_claim_gate_binary(), "; ",
-      "cargo build -p layering_imports_scan --release; ",
-      "bash scripts/v4-layering-imports-gate.sh --perturb-check"
-    )
-    FreshnessVerifyCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      "cargo run --release -p v2-compiler --bin regen_stage0 -- --verify"
-    )
-    FullTreeEmitCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      "bash .github/ci-floor/v4-rust-full-tree-emit-probe.sh"
-    )
-  }
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
