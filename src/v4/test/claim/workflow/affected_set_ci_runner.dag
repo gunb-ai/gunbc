@@ -20,7 +20,7 @@ import v4.std.algebra { count_equal, filter, fold_list_right, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v4.std.text { concat, String }
+import v4.std.text { String }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

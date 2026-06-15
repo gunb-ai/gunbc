@@ -29,7 +29,11 @@ fi
   --rows-fn probe_selector_ci_runner_rows_tsv \
   --notice-title "affected-tests selection semantics"
 
-bash scripts/v4-affected-set-node-frontier-gate.sh --green-only
+"$bin" \
+  --source-root src/v4 \
+  --gate-entry src/v4/test/claim/workflow/affected_set_ci_runner.dag \
+  --rows-fn affected_set_node_frontier_rows_tsv \
+  --notice-title "affected-set node-frontier"
 bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
 bash scripts/v4-batch-executor-gate.sh --perturb-check
 bash scripts/v4-lens-ci-gate.sh --perturb-check
