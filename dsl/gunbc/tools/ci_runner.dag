@@ -61,22 +61,64 @@ fn run_logged_script(inner: String, log_label: String) -> String {
   )
 }
 
-fn dsl_compile_clean_shell(root: SourceRoot) -> String {
+// ── sccache upsert (modeled, fail-closed) ───────────────────────────
+//
+// The sccache server bring-up is no longer a fail-open `.github/workflows/ci.yml`
+// preamble that fell back to "building cold". It is brought up here, inside the
+// floor binary, BEFORE the 3 floor gates run (sccache_upsert_preflight). If the
+// upsert fails — UDS unset, dir unwritable, server unreachable — the pipeline
+// fails closed: no cold-build fallback, no warning. Cargo-bearing gates are then
+// wrapped (with_sccache_env) so every rustc invocation they spawn routes through
+// the daemon this preflight guarantees is up.
+//
+// Forward (seam P-CF-INGRESS): the typed home for an "upsert into a content cache"
+// is the compute_fabric cache model (std.compute_fabric UpsertInputRef /
+// std.cache_identity), owned by the compute-fabric lane. This CI-local preflight
+// dissolves onto that carrier when it inhabits; kept CI-local here to ship the
+// fail-closed behavior without reaching across the seam.
+fn sccache_upsert_shell() -> String {
   concat(
-    ensure_gunbc_binary(), "; ",
-    "bash scripts/v2-dsl-full-tree-parse-gate.sh"
+    "if [ -z \"$SCCACHE_SERVER_UDS\" ]; then ",
+    "echo '::error::sccache upsert: SCCACHE_SERVER_UDS unset' >&2; exit 1; fi; ",
+    "if [ ! -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then ",
+    "echo '::error::sccache upsert: dir of SCCACHE_SERVER_UDS not writable' >&2; exit 1; fi; ",
+    "sccache --stop-server >/dev/null 2>&1 || true; ",
+    "sccache --start-server >/dev/null 2>&1 || { ",
+    "echo '::error::sccache upsert: --start-server failed' >&2; exit 1; }; ",
+    "sccache --show-stats >/dev/null 2>&1 || { ",
+    "echo '::error::sccache upsert: --show-stats failed (server unreachable)' >&2; exit 1; }; ",
+    "echo 'sccache upsert: server up'"
+  )
+}
+
+// Route a cargo-bearing gate script through the upserted daemon. `export` (not an
+// inline prefix) so every nested cargo/rustc — including those inside the bash
+// sub-gates — inherits the wrapper. CARGO_INCREMENTAL=0: incremental + sccache
+// double-caches and thrashes; off under the shared cache.
+fn with_sccache_env(script: String) -> String {
+  concat("export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0; ", script)
+}
+
+fn dsl_compile_clean_shell(root: SourceRoot) -> String {
+  with_sccache_env(
+    concat(
+      ensure_gunbc_binary(), "; ",
+      "bash scripts/v2-dsl-full-tree-parse-gate.sh"
+    )
   )
 }
 
 fn affected_tests_shell() -> String {
-  concat(
-    ensure_gunbc_binary(), "; ",
-    ensure_ci_claim_gate_binary(), "; ",
-    ensure_claim_batch_binary(), "; ",
-    ensure_discover_owned_data_binary(), "; ",
-    run_logged_script(
-      inner: "bash scripts/v4-affected-tests-gate.sh",
-      log_label: "gate3"
+  with_sccache_env(
+    concat(
+      ensure_gunbc_binary(), "; ",
+      ensure_ci_claim_gate_binary(), "; ",
+      ensure_claim_batch_binary(), "; ",
+      ensure_discover_owned_data_binary(), "; ",
+      run_logged_script(
+        inner: "bash scripts/v4-affected-tests-gate.sh",
+        log_label: "gate3"
+      )
     )
   )
 }
@@ -163,6 +205,33 @@ fn pipeline_to_exit(result: PipelineResult) -> ProcessExit {
   }
 }
 
+// Fail-closed sccache bring-up, run before the 3 floor gates. Returns ExitSuccess
+// only when the daemon is up; any failure short-circuits the whole pipeline.
+func sccache_upsert_preflight() -> ProcessExit {
+  let _ = emit_log_annotation(AnnotationGroup { title: "sccache upsert" })
+  let result = shell.Exec.Run(script: sccache_upsert_shell())
+  let _ = emit_log_annotation(AnnotationEndGroup)
+  if result.success {
+    ExitSuccess
+  } else {
+    let _ = emit_log_annotation(
+      AnnotationError {
+        message: "sccache upsert failed (fail-closed; no cold-build fallback)",
+        file: none,
+        line: none,
+        col: none
+      }
+    )
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "sccache upsert failed"
+    }
+  }
+}
+
 func run_ci_pipeline() -> ProcessExit {
-  pipeline_to_exit(result: compute_pipeline_result())
+  match sccache_upsert_preflight() {
+    ExitSuccess => pipeline_to_exit(result: compute_pipeline_result())
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+  }
 }
