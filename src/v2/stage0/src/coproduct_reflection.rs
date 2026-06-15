@@ -176,6 +176,20 @@ fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpRes
     }
     Ok(node_record(
         ctx,
+        node_kind_type_node(ctx, atom_connective_variant(ctx, &name)),
+        vec![],
+    ))
+}
+
+fn marshal_kernel_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpResult<Value> {
+    let name = type_expr_authored_name(ctx, type_expr);
+    if name.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "marshal_kernel_type_expr_ref: empty authored type name".to_string(),
+        });
+    }
+    Ok(node_record(
+        ctx,
         node_kind_type_node(
             ctx,
             atom_connective_variant(ctx, kernel_binding_symbol(&name)),
@@ -223,7 +237,7 @@ pub fn marshal_conj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpRes
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, &type_expr)?;
+        let target = marshal_kernel_type_expr_ref(ctx, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
     }
     Ok(node_record(
