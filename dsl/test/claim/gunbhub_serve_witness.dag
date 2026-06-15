@@ -1,9 +1,9 @@
 // dsl/test/claim/gunbhub_serve_witness.dag
 //
-// gunbhub M2 served render surface keystone: static route→body table +
+// gunbhub M2 served render surface keystone: ServedStaticRouteTable +
 // dispatch witness (request → 200+body / 404). Bodies are compose-time
 // serialize_fragment output; XSS reject-witness runs at compose, not
-// per-request. README row is M1 placeholder (react-composed until
+// per-request. Repo-path row is M1 placeholder (react-composed until
 // std.markdown merges).
 //
 // Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
@@ -24,10 +24,14 @@ import gunbc.gunbhub_serve {
   gunbhub_readme_page,
   gunbhub_hostile_page,
   gunbhub_browse_route,
-  gunbhub_readme_route,
+  gunbhub_repo_path_route,
+  gunbhub_browse_path_template,
+  gunbhub_repo_path_template,
+  gunbhub_html_content_type,
   gunbhub_node_route_bindings,
-  gunbhub_static_serve_table,
+  gunbhub_served_static_route_table,
   gunbhub_compose_body,
+  path_matches_template,
   serve_gunbhub_request,
   serve_gunbhub_page_source,
 }
@@ -56,14 +60,15 @@ fn expected_readme_html() -> String {
   witness_compose_ok_html(node: gunbhub_readme_page())
 }
 
-// Static host table: GET / and GET /README.md with compose-time bodies.
+// Host contract table: GET / and GET /{repo-path} with compose-time bodies.
 fn witness_static_table_has_two_get_routes() -> Bool {
-  let table = gunbhub_static_serve_table()
+  let table = gunbhub_served_static_route_table()
   count(xs: table.routes) == 2
 }
 
-fn witness_static_table_browse_body_matches_compose() -> Bool {
-  let table = gunbhub_static_serve_table()
+fn witness_static_table_browse_row_matches_host_contract() -> Bool {
+  let table = gunbhub_served_static_route_table()
+  let browse_tpl = gunbhub_browse_path_template()
   fold(
     xs: table.routes,
     init: false,
@@ -71,14 +76,20 @@ fn witness_static_table_browse_body_matches_compose() -> Bool {
       if acc {
         acc
       } else {
-        row.path == "/" && row.body == expected_browse_html()
+        row.method == GET
+          && path_matches_template(template: row.path_pattern, path: "/")
+          && path_matches_template(template: browse_tpl, path: "/")
+          && row.body == expected_browse_html()
+          && row.content_type == gunbhub_html_content_type()
+          && row.status_on_hit == 200
       }
   )
 }
 
-// M1 placeholder: README body is react-composed today; swap when std.markdown lands.
-fn witness_static_table_readme_body_is_m1_placeholder() -> Bool {
-  let table = gunbhub_static_serve_table()
+// M1 placeholder: repo-path body is react-composed today; swap when std.markdown lands.
+fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
+  let table = gunbhub_served_static_route_table()
+  let repo_tpl = gunbhub_repo_path_template()
   fold(
     xs: table.routes,
     init: false,
@@ -86,7 +97,12 @@ fn witness_static_table_readme_body_is_m1_placeholder() -> Bool {
       if acc {
         acc
       } else {
-        row.path == "/README.md" && row.body == expected_readme_html()
+        row.method == GET
+          && path_matches_template(template: row.path_pattern, path: "/README.md")
+          && path_matches_template(template: repo_tpl, path: "/README.md")
+          && row.body == expected_readme_html()
+          && row.content_type == gunbhub_html_content_type()
+          && row.status_on_hit == 200
       }
   )
 }
@@ -97,7 +113,7 @@ fn witness_browse_served_body_matches_consumer() -> Bool {
   match serve_gunbhub_request(
     req: GunbhubServeRequest { method: GET, path: "/" }
   ) {
-    Served { response: r } => r.body == expected
+    Served { response: r } => r.body == expected && r.status == 200
     _ => false
   }
 }
@@ -106,7 +122,7 @@ fn witness_readme_served_body_matches_static_table() -> Bool {
   match serve_gunbhub_request(
     req: GunbhubServeRequest { method: GET, path: "/README.md" }
   ) {
-    Served { response: r } => r.body == expected_readme_html()
+    Served { response: r } => r.body == expected_readme_html() && r.status == 200
     _ => false
   }
 }
@@ -138,7 +154,7 @@ fn witness_wrong_method_not_allowed() -> Bool {
   }
 }
 
-fn witness_readme_wrong_method_not_allowed() -> Bool {
+fn witness_repo_path_wrong_method_not_allowed() -> Bool {
   match serve_gunbhub_request(
     req: GunbhubServeRequest { method: POST, path: "/README.md" }
   ) {
@@ -158,7 +174,7 @@ fn witness_hostile_compose_rejects_fail_closed() -> Bool {
 fn witness_hostile_page_not_in_static_table() -> Bool {
   match gunbhub_compose_body(node: gunbhub_hostile_page()) {
     ComposeRejected { reason: _ } =>
-      count(xs: gunbhub_static_serve_table().routes) == 2
+      count(xs: gunbhub_served_static_route_table().routes) == 2
     ComposedOk { html: _ } => false
   }
 }
@@ -194,8 +210,8 @@ fn witness_browse_route_binding_declared() -> Bool {
   )
 }
 
-fn witness_readme_route_binding_declared() -> Bool {
-  let readme = gunbhub_readme_route()
+fn witness_repo_path_route_binding_declared() -> Bool {
+  let repo = gunbhub_repo_path_route()
   fold(
     xs: gunbhub_node_route_bindings(),
     init: false,
@@ -203,28 +219,28 @@ fn witness_readme_route_binding_declared() -> Bool {
       if acc {
         acc
       } else {
-        binding.route.operation_name == readme.operation_name
-          && binding.route.method == readme.method
-          && binding.listener.handler_name == "gunbhub_handle_readmeDoc"
+        binding.route.operation_name == repo.operation_name
+          && binding.route.method == repo.method
+          && binding.listener.handler_name == "gunbhub_handle_repoPathDoc"
       }
   )
 }
 
 fn gunbhub_serve_keystone_holds() -> Bool {
   witness_static_table_has_two_get_routes()
-    && witness_static_table_browse_body_matches_compose()
-    && witness_static_table_readme_body_is_m1_placeholder()
+    && witness_static_table_browse_row_matches_host_contract()
+    && witness_static_table_repo_path_row_is_m1_placeholder()
     && witness_browse_served_body_matches_consumer()
     && witness_readme_served_body_matches_static_table()
     && witness_browse_empty_path_also_matches()
     && witness_unknown_path_not_found()
     && witness_wrong_method_not_allowed()
-    && witness_readme_wrong_method_not_allowed()
+    && witness_repo_path_wrong_method_not_allowed()
     && witness_hostile_compose_rejects_fail_closed()
     && witness_hostile_page_not_in_static_table()
     && witness_hostile_page_rejected_before_response()
     && witness_hostile_page_not_served_via_request_path()
     && witness_browse_route_binding_declared()
-    && witness_readme_route_binding_declared()
+    && witness_repo_path_route_binding_declared()
     && gunbhub_html_render_keystone_holds()
 }

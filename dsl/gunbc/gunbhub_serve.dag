@@ -1,9 +1,9 @@
 // gunbc/gunbhub_serve.dag — gunbhub M2 served render surface.
 //
-// Consumer-owned static route→body table for the shared http-serve host
+// Consumer-owned ServedStaticRouteTable for the shared http-serve host
 // (quick-crane L2). Bodies are serialize_fragment output strings, composed
 // and XSS-checked at table-build time (not per-request). Host binds,
-// serves GET, returns 200+body or 404 — gunbhub supplies only the table.
+// serves GET, returns status_on_hit+body or 404 — gunbhub supplies only the table.
 //
 // Placement: gunbc-owned product surface (ctrl README §Conventions).
 // HTTP wire facts stay in extdeps.http.server; page composition and
@@ -36,21 +36,8 @@ import extdeps.http.server {
   TextRequestBody,
   NodeHttpServerRouteBinding,
   NodeHttpRequestListener,
-}
-
-// --- Host-facing static serve table ----------------------------------------
-//
-// Proof-of-life contract (gunbhub-M2 first consumer): method + path → body.
-// quick-crane's shared host consumes this table; listen/createServer is host-owned.
-
-type GunbhubStaticRouteBody {
-  method: HttpMethod
-  path: String
-  body: String
-}
-
-type GunbhubStaticServeTable {
-  routes: List<GunbhubStaticRouteBody>
+  ServedStaticRoute,
+  ServedStaticRouteTable,
 }
 
 // --- Request / response carriers (dispatch witness) ------------------------
@@ -167,6 +154,10 @@ fn gunbhub_compose_body(node: ReactMarkupNode) -> GunbhubComposeResult {
   }
 }
 
+fn gunbhub_html_content_type() -> String {
+  "text/html; charset=utf-8"
+}
+
 fn gunbhub_browse_path_template() -> PathTemplate {
   match parse_path_template(raw: "/") {
     ParsedPathTemplate { template: t } => t
@@ -175,11 +166,12 @@ fn gunbhub_browse_path_template() -> PathTemplate {
   }
 }
 
-fn gunbhub_readme_path_template() -> PathTemplate {
-  match parse_path_template(raw: "/README.md") {
+// BEST-GUESS encoding (sync with quick-crane-803): OpenAPI-style /{repo-path}.
+fn gunbhub_repo_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/{repo-path}") {
     ParsedPathTemplate { template: t } => t
     MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [LiteralToken { text: "README.md" }] }
+      PathTemplate { tokens: [] }
   }
 }
 
@@ -189,6 +181,57 @@ fn normalize_request_path(path: String) -> String {
   } else {
     path
   }
+}
+
+fn request_path_segments(path: String) -> List<String> {
+  let path_only = match split(s: normalize_request_path(path: path), delimiter: "?") |> first {
+    Present { value: p } => p
+    Absent => normalize_request_path(path: path)
+  }
+  if path_only == "/" {
+    []
+  } else {
+    filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+  }
+}
+
+type PathMatchState {
+  seg_idx: Int
+  ok: Bool
+}
+
+fn path_matches_template(template: PathTemplate, path: String) -> Bool {
+  let segs = request_path_segments(path: path)
+  let st = fold(
+    xs: template.tokens,
+    init: PathMatchState { seg_idx: 0, ok: true },
+    f: (acc, tok) =>
+      if !acc.ok {
+        acc
+      } else {
+        match tok {
+          ParamToken { name: _ } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: _ } =>
+                PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+          LiteralToken { text: lit } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: seg } =>
+                if seg == lit {
+                  PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+                } else {
+                  PathMatchState { seg_idx: acc.seg_idx, ok: false }
+                }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+        }
+      }
+  )
+  st.ok && st.seg_idx == count(xs: segs)
 }
 
 // --- Render through canonical consumers ------------------------------------
@@ -217,12 +260,11 @@ fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
   }
 }
 
-// --- Route table + static host table ---------------------------------------
+// --- Route table + host static serve table -----------------------------------
 
 type GunbhubRouteRow {
   route: HttpServerRoute
   page: GunbhubPageSource
-  canonical_path: String
 }
 
 fn gunbhub_browse_route() -> HttpServerRoute {
@@ -238,11 +280,11 @@ fn gunbhub_browse_route() -> HttpServerRoute {
   }
 }
 
-fn gunbhub_readme_route() -> HttpServerRoute {
+fn gunbhub_repo_path_route() -> HttpServerRoute {
   HttpServerRoute {
-    operation_name: "readmeDoc",
+    operation_name: "repoPathDoc",
     method: GET,
-    path_template: gunbhub_readme_path_template(),
+    path_template: gunbhub_repo_path_template(),
     request_body: NoRequestBody,
     parameters: [],
     responses: [
@@ -256,19 +298,17 @@ fn gunbhub_route_table() -> List<GunbhubRouteRow> {
     GunbhubRouteRow {
       route: gunbhub_browse_route(),
       page: ReactPage { node: gunbhub_browse_page() },
-      canonical_path: "/",
     },
     GunbhubRouteRow {
-      route: gunbhub_readme_route(),
+      route: gunbhub_repo_path_route(),
       page: ReactPage { node: gunbhub_readme_page() },
-      canonical_path: "/README.md",
     },
   ]
 }
 
-// Static table the shared host consumes. Bodies serialized at compose time.
+// ServedStaticRouteTable the shared host consumes. Bodies serialized at compose time.
 // ComposeRejected rows are OMITTED (fail-closed: host 404s, not empty 200).
-fn gunbhub_static_serve_table() -> GunbhubStaticServeTable {
+fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
   let routes = fold(
     xs: gunbhub_route_table(),
     init: [],
@@ -282,26 +322,27 @@ fn gunbhub_static_serve_table() -> GunbhubStaticServeTable {
           concat(
             acc,
             [
-              GunbhubStaticRouteBody {
+              ServedStaticRoute {
                 method: row.route.method,
-                path: row.canonical_path,
+                path_pattern: row.route.path_template,
                 body: h,
+                content_type: gunbhub_html_content_type(),
+                status_on_hit: 200,
               },
             ]
           )
         ComposeRejected { reason: _ } => acc
       }
   )
-  GunbhubStaticServeTable { routes: routes }
+  ServedStaticRouteTable { routes: routes }
 }
 
-fn static_row_matches_request(row: GunbhubStaticRouteBody, req: GunbhubServeRequest) -> Bool {
+fn served_row_matches_request(row: ServedStaticRoute, req: GunbhubServeRequest) -> Bool {
   row.method == req.method
-    && row.path == normalize_request_path(path: req.path)
+    && path_matches_template(template: row.path_pattern, path: req.path)
 }
 
-fn path_matches_any_static_row(path: String, table: GunbhubStaticServeTable) -> Bool {
-  let normalized = normalize_request_path(path: path)
+fn path_matches_any_served_pattern(path: String, table: ServedStaticRouteTable) -> Bool {
   fold(
     xs: table.routes,
     init: false,
@@ -309,7 +350,7 @@ fn path_matches_any_static_row(path: String, table: GunbhubStaticServeTable) -> 
       if acc {
         acc
       } else {
-        row.path == normalized
+        path_matches_template(template: row.path_pattern, path: path)
       }
   )
 }
@@ -317,18 +358,23 @@ fn path_matches_any_static_row(path: String, table: GunbhubStaticServeTable) -> 
 type StaticRouteMatchState {
   found: Bool
   body: String
+  status: HttpStatus
 }
 
 fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
-  let table = gunbhub_static_serve_table()
+  let table = gunbhub_served_static_route_table()
   let st = fold(
     xs: table.routes,
-    init: StaticRouteMatchState { found: false, body: "" },
+    init: StaticRouteMatchState { found: false, body: "", status: 404 },
     f: (acc, row) =>
       if acc.found {
         acc
-      } else if static_row_matches_request(row: row, req: req) {
-        StaticRouteMatchState { found: true, body: row.body }
+      } else if served_row_matches_request(row: row, req: req) {
+        StaticRouteMatchState {
+          found: true,
+          body: row.body,
+          status: row.status_on_hit,
+        }
       } else {
         acc
       }
@@ -336,11 +382,11 @@ fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
   if st.found {
     Served {
       response: GunbhubHttpResponse {
-        status: 200,
+        status: st.status,
         body: st.body,
       }
     }
-  } else if path_matches_any_static_row(path: req.path, table: table) {
+  } else if path_matches_any_served_pattern(path: req.path, table: table) {
     MethodNotAllowed
   } else {
     RouteNotFound
