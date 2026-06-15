@@ -1,0 +1,38 @@
+// extdeps/cpu/ampere.dag — Ampere CPU model catalog (vendor data authority).
+//
+// Ampere's published Altra-family parts, as std.cpu CpuModelCatalogRow values.
+// Vendor hardware is an external dependency: it lives in extdeps/, importing the
+// catalog SHAPE from std/cpu. std/cpu owns only the shape; it does not enumerate
+// any one vendor's lineup. Which specific part a given host runs is an operator
+// deployment fact (ctrl), not a fact about Ampere.
+
+module extdeps.cpu.ampere
+
+import std.cpu.types { CpuArchitecture, CpuModelCatalogRow, CpuSocket, CpuVendor, SocketPackage }
+import std.measure { hardware_thread_count, hertz }
+
+// Ampere Altra Max M128-30 — 128c/128t, 183W, Neoverse-N1.
+data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "M128-30",
+  oem_listing_id: none,
+  vendor: Ampere,
+  architecture: Aarch64,
+  cores: 128,
+  threads: hardware_thread_count(128),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  tdp_watts: 183,
+}
+
+// Ampere Altra Q64-30 — 64c/64t, 124W.
+data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "Q64-30",
+  oem_listing_id: "AC-106418002",
+  vendor: Ampere,
+  architecture: Aarch64,
+  cores: 64,
+  threads: hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  tdp_watts: 124,
+}
