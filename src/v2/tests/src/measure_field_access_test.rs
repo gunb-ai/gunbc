@@ -192,6 +192,62 @@ fn money_micros_count(m: MoneyMicros) -> Nat {
 // failed with `no field 'count' on type 'MoneyMicros'` -- the multi-hop chain
 // MoneyMicros = MoneyAmount<Micro> = Measure<Currency, Micro>. With multi-hop
 // alias field-access it resolves end-to-end (transitive import closure).
+//
+// Emit regression (G1 phantom enum type-args): parametric aliases such as
+// `MoneyAmount<S> = Measure<Currency, S>` must terminate under rust-emit — the
+// phantom Quantity/Scale tags are not standalone type items and must short-circuit
+// the alias RHS authority walk (see 05_emit_rust.dag is_phantom_unit_variant_type_arg).
+#[test]
+fn money_amount_parametric_alias_rust_emit_terminates() {
+    let src = r#"
+module m
+type Nat
+type Quantity = Time | Memory | Currency
+type Scale = One | Micro
+type Measure<Q, S> { count: Nat }
+type MoneyAmount<S> = Measure<Currency, S>
+"#;
+    let result = crate::helpers::compile_dag(src);
+    crate::helpers::assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "parametric Measure alias with phantom enum type-arg should emit Rust"
+    );
+}
+
+#[test]
+fn measure_dag_rust_emit_terminates() {
+    use std::rc::Rc;
+    use v2_compiler::cli_run;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_compile::compile_sources;
+    use v2_compiler::v2_std_core::diagnostic_to_message;
+
+    let roots: Vec<String> = crate::helpers::source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
+    let entry = entry.to_string_lossy().to_string();
+    let sources = cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
+    let msgs: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        msgs.is_empty(),
+        "measure.dag rust emit should complete with zero hard diagnostics, got: {msgs:?}"
+    );
+    assert!(
+        !result.files.is_empty(),
+        "measure.dag rust emit should produce files"
+    );
+}
+
 #[test]
 fn measure_dag_v2_loads_without_field_errors() {
     use std::rc::Rc;
