@@ -6,7 +6,6 @@ module v4.test.claim.formats.spice_rc_ngspice_op
 
 import v4.extdeps.formats.spice { spice_emit }
 import v4.std.logic { Bool }
-import v4.std.text { string_contains }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -17,15 +16,10 @@ import v4.test.fixture.spice_rc_passive_deck {
   spice_rc_passive_deck_emitted
 }
 
-fn spice_rc_passive_deck_emit_has_op_directive_holds() -> Bool {
-  let text = spice_emit(netlist: spice_rc_passive_deck)
-  string_contains(haystack: text, needle: ".op")
-}
+data spice_rc_passive_deck_expected_cir: String = "RC passive series deck\nR1 vin mid 1k\nC1 mid 0 1u\n.op"
 
-fn spice_rc_passive_deck_emit_has_rc_passives_holds() -> Bool {
-  let text = spice_emit(netlist: spice_rc_passive_deck)
-  string_contains(haystack: text, needle: "R1 vin mid 1k")
-    && string_contains(haystack: text, needle: "C1 mid 0 1u")
+fn spice_rc_passive_deck_emit_matches_expected_cir_holds() -> Bool {
+  spice_emit(netlist: spice_rc_passive_deck) == spice_rc_passive_deck_expected_cir
 }
 
 fn spice_rc_passive_deck_emit_matches_data_holds() -> Bool {
@@ -35,8 +29,7 @@ fn spice_rc_passive_deck_emit_matches_data_holds() -> Bool {
 // Structural emit authority for claim-run; ngspice -b execution is the host gate consumer.
 fn spice_rc_ngspice_op_holds() -> Bool {
   spice_rc_passive_deck_emit_matches_data_holds()
-    && spice_rc_passive_deck_emit_has_rc_passives_holds()
-    && spice_rc_passive_deck_emit_has_op_directive_holds()
+    && spice_rc_passive_deck_emit_matches_expected_cir_holds()
 }
 
 data unified_claim_spice_rc_ngspice_op: UnifiedTestClaim = BoolWitnessClaim {
