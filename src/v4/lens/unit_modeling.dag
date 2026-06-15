@@ -152,7 +152,16 @@ data unit_field_rows: List<UnitFieldRow> = [
   // `CoreCount = Measure<Count, One>` carrier does not exist yet — re-add once
   // it is minted (snappy 2026-06-14).
   UnitFieldRow { field: ^hardware_threads, carrier: ^HardwareThreadCount },
-  UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount }
+  UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount },
+  // Electrical (SPICE S1 Measure remodel — domain aliases in v4.std.timeseries_signal).
+  UnitFieldRow { field: ^microvolts, carrier: ^Voltage },
+  UnitFieldRow { field: ^microamperes, carrier: ^Current },
+  UnitFieldRow { field: ^microohms, carrier: ^ResistanceMicro },
+  UnitFieldRow { field: ^microfarads, carrier: ^CapacitanceMicro },
+  UnitFieldRow { field: ^microhenries, carrier: ^InductanceMicro },
+  UnitFieldRow { field: ^charge_microcoulombs, carrier: ^ChargeMicro },
+  UnitFieldRow { field: ^flux_microwebers, carrier: ^FluxMicro },
+  UnitFieldRow { field: ^dt_microseconds, carrier: ^DurationMicro }
 ]
 
 // Build the exact-Symbol-keyed lookup once by folding the rows into an empty Map.
