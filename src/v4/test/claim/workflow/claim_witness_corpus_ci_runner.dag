@@ -481,6 +481,19 @@ data corpus_ci_gate_row_self_host_stage_emission_equality_violates: ClaimWitness
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M1 spice RC tran ngspice emit matches golden",
+  entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+  function: "spice_rc_ngspice_op_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_spice_rc_ngspice_nonempty: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M1 spice RC tran ngspice emit nonempty",
+  entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+  function: "spice_rc_tran_emit_ngspice_nonempty_holds",
+  expected: ExpectPass
+}
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -545,5 +558,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
   corpus_ci_gate_row_spice_resistor_passive_topology,
   corpus_ci_gate_row_self_host_stage_emission_equality_holds,
-  corpus_ci_gate_row_self_host_stage_emission_equality_violates
+  corpus_ci_gate_row_self_host_stage_emission_equality_violates,
+  corpus_ci_gate_row_spice_rc_ngspice_op,
+  corpus_ci_gate_row_spice_rc_ngspice_nonempty
 ]
