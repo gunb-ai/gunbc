@@ -184,6 +184,23 @@ data lens_ci_claim_run_row_unit_modeling_bitwidth_passes: LensCiClaimRunRow = Le
   function: "bitwidth_modeled_passes_holds"
 }
 
+// Registration witnesses: unit_modeling_lens is wired into always_required_lenses()
+// (the roster validate_then_compile runs fail-closed). Paired FAIL/PASS arms prove the
+// lens is live in the roster — a fact-bearing flat-scalar unit leaf is rejected with the
+// unit-modeling reason (fact_density accepts, so the rejecter is unit_modeling); a modeled
+// ByteSize field is admitted.
+data lens_ci_claim_run_row_unit_modeling_registration_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses",
+  entry: "src/v4/test/claim/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
+  function: "unit_modeling_blocked_via_always_required_lenses_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_registration_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses",
+  entry: "src/v4/test/claim/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
+  function: "modeled_unit_field_admitted_via_always_required_lenses_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
@@ -208,7 +225,9 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_unit_modeling_coordinate_exempt,
   lens_ci_claim_run_row_unit_modeling_electrical_blocked,
   lens_ci_claim_run_row_unit_modeling_bitwidth_flagged,
-  lens_ci_claim_run_row_unit_modeling_bitwidth_passes
+  lens_ci_claim_run_row_unit_modeling_bitwidth_passes,
+  lens_ci_claim_run_row_unit_modeling_registration_blocked,
+  lens_ci_claim_run_row_unit_modeling_registration_passes
 ]
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
