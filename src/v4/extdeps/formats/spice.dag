@@ -513,6 +513,11 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
   )
 }
 
+// Wave-1 text emit: unsupported deck statements propagate `Absent` from the
+// per-line emitters; this arm maps that to `""` rather than surfacing an
+// `Outcome` diagnostic — mild fail-open bounded to enrolled witnesses only.
+// The SP-M1 ngspice oracle golden-equality check catches empty regressions;
+// SP-M2+ should revisit fail-closed emit at this boundary.
 fn spice_emit(netlist: SpiceNetlist) -> String {
   match spice_emit_body_lines(body: netlist.body) {
     Present { value: body_text } =>
@@ -532,6 +537,7 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
 // Transient decks also carry the ngspice-39 batch `.control run` trailer so `ngspice -b`
 // executes the analysis without a separate interactive wrapper.
 // Tran detection is inlined as a direct coproduct branch (no detached *_is_* predicate).
+// Empty `base` means wave-1 emit could not render the body (see `spice_emit` note).
 fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
   let base = spice_emit(netlist: netlist)
   if base == "" {
