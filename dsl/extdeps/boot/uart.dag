@@ -1,0 +1,33 @@
+// extdeps/boot/uart.dag — 16550 UART hardware facts for COM1 serial console (Slice-1 boot).
+//
+// Anchor: National Semiconductor NS16550A UART datasheet (1987), §2 register map.
+// Anchor: https://en.wikibooks.org/wiki/Serial_Programming/8250_UART_Programming
+// Anchor: IBM PC Technical Reference (1984), §1-31: standard COM port I/O addresses.
+//
+// M9 attach: no existing std/ carrier for I/O-port-mapped device register maps;
+// hardware I/O port constants are extdeps facts per M3 (external spec, not std/ primitives).
+// Slice-1: THR (write) + LSR (read, THRE bit) — minimum surface for polling character output.
+
+module extdeps.boot.uart
+
+// COM1 base I/O port (IBM PC hardware assignment; fixed by PC/AT standard).
+// 0x3F8 = 1016 decimal.
+data com1_base_port: Int = 1016
+
+// THR (Transmit Holding Register) offset from base = 0.
+// Write data bytes here when THRE is set.
+// 0x3F8 + 0 = 0x3F8 = 1016.
+data com1_data_port: Int = 1016
+
+// LSR (Line Status Register) offset from base = 5.
+// Bit 5 (THRE) = 1 means transmitter ready to accept a new byte.
+// 0x3F8 + 5 = 0x3FD = 1021 decimal.
+data com1_lsr_port: Int = 1021
+
+// THRE (Transmit Holding Register Empty) bit mask in LSR.
+// Bit 5 of the LSR byte: 1 << 5 = 32 = 0x20.
+data uart_thre_mask: Int = 32
+
+// ASCII 'H' (0x48 = 72 decimal) — boot liveness probe character.
+// The M1 serial-console witness writes this character to confirm the UART path is live.
+data uart_hello_char: Int = 72
