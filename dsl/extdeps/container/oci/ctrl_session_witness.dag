@@ -1,0 +1,292 @@
+// extdeps/container/oci/ctrl_session_witness.dag — decode ctrl-session:latest OCI facts (arm64).
+//
+// Fixture: ctrl-session:latest exported 2026-06-14 (docker save → blobs/sha256/*).
+// Anchors: image-spec manifest.md + config.md; runtime-spec config.md + config-linux.md.
+//
+// Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+
+module extdeps.container.oci.ctrl_session_witness
+
+import extdeps.container.oci.descriptor {
+  OciDescriptor,
+  DescriptorRejected,
+  accept_descriptor,
+}
+import extdeps.container.oci.image_config {
+  ContainerImageConfig,
+  ImageConfiguration,
+  ImageConfigAccepted,
+  ImageConfigRejected,
+  ImageRootfs,
+  RootfsLayers,
+  accept_image_configuration,
+  image_config_entrypoint,
+  image_config_first_exposed_port,
+  image_config_layer_count,
+}
+import extdeps.container.oci.linux {
+  LinuxMemoryResources,
+  LinuxNamespace,
+  LinuxNsCgroup,
+  LinuxNsIpc,
+  LinuxNsMount,
+  LinuxNsNetwork,
+  LinuxNsPid,
+  LinuxNsUts,
+  LinuxPlatform,
+  LinuxResources,
+  accept_linux_platform,
+  LinuxPlatformAccepted,
+  LinuxPlatformRejected,
+  linux_memory_limit,
+  linux_namespace_count,
+}
+import extdeps.container.oci.manifest {
+  ImageManifest,
+  ManifestAccepted,
+  ManifestRejected,
+  accept_image_manifest,
+  manifest_config_size,
+  manifest_layer_count,
+}
+import extdeps.container.oci.media_types {
+  media_type_oci_image_config_v1,
+  media_type_oci_image_layer_v1_tar_gzip,
+  media_type_oci_image_manifest_v1,
+  oci_image_schema_version,
+}
+import extdeps.container.oci.runtime_config {
+  RuntimeBundleConfig,
+  RuntimeConfigAccepted,
+  RuntimeConfigRejected,
+  RuntimeMount,
+  RuntimeProcess,
+  RuntimeRoot,
+  accept_runtime_bundle_config,
+  runtime_mount_count,
+}
+import std.types { Bool }
+
+data ctrl_session_config_digest: String = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
+
+data ctrl_session_config_size: Int = 34025
+
+data ctrl_session_layer0_digest: String = "sha256:402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a"
+
+data ctrl_session_layer0_size: Int = 28122307
+
+// Slice-0 fixture encodes manifest layer[0] + matching rootfs diff_ids[0] only
+// (full ctrl-session export has 33 layers; not all inlined in this witness).
+
+data ctrl_session_first_diff_id: String = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
+
+data ctrl_session_manifest: ImageManifest = {
+  schemaVersion: oci_image_schema_version,
+  mediaType: media_type_oci_image_manifest_v1,
+  config: {
+    mediaType: media_type_oci_image_config_v1,
+    digest: ctrl_session_config_digest,
+    size: ctrl_session_config_size,
+  },
+  layers: [
+    {
+      mediaType: media_type_oci_image_layer_v1_tar_gzip,
+      digest: ctrl_session_layer0_digest,
+      size: ctrl_session_layer0_size,
+    },
+  ],
+}
+
+data ctrl_session_image_config: ImageConfiguration = {
+  architecture: "arm64",
+  os: "linux",
+  config: {
+    User: null,
+    Env: [
+      "PATH=/usr/local/ctrl-build-shims:/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "NODE_VERSION=22.22.3",
+    ],
+    Entrypoint: [
+      "/usr/bin/tini",
+      "-g",
+      "--",
+      "/usr/local/bin/session-entrypoint",
+    ],
+    Cmd: null,
+    WorkingDir: null,
+    ExposedPorts: ["7681/tcp"],
+  },
+  rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
+}
+
+data ctrl_session_runtime_config: RuntimeBundleConfig = {
+  ociVersion: "1.2.0",
+  process: {
+    terminal: false,
+    cwd: "/",
+    env: [
+      "PATH=/usr/local/ctrl-build-shims:/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    ],
+    args: [
+      "/usr/bin/tini",
+      "-g",
+      "--",
+      "/usr/local/bin/session-entrypoint",
+    ],
+  },
+  root: {
+    path: "rootfs",
+    readonly: false,
+  },
+  mounts: [
+    {
+      destination: "/tmp",
+      source: "tmpfs",
+      mount_type: "tmpfs",
+      options: ["nosuid", "strictatime", "mode=755", "size=65536k"],
+    },
+  ],
+  linux: {
+    namespaces: [
+      { namespace_type: LinuxNsPid, path: null },
+      { namespace_type: LinuxNsNetwork, path: null },
+      { namespace_type: LinuxNsMount, path: null },
+      { namespace_type: LinuxNsIpc, path: null },
+      { namespace_type: LinuxNsUts, path: null },
+      { namespace_type: LinuxNsCgroup, path: null },
+    ],
+    resources: {
+      memory: {
+        limit: 8589934592,
+        reservation: null,
+      },
+    },
+  },
+}
+
+data bad_manifest_schema: ImageManifest = {
+  schemaVersion: 1,
+  mediaType: media_type_oci_image_manifest_v1,
+  config: ctrl_session_manifest.config,
+  layers: ctrl_session_manifest.layers,
+}
+
+data bad_descriptor: OciDescriptor = {
+  mediaType: media_type_oci_image_config_v1,
+  digest: ctrl_session_config_digest,
+  size: -1,
+}
+
+data duplicate_namespace_linux: LinuxPlatform = {
+  namespaces: [
+    { namespace_type: LinuxNsPid, path: null },
+    { namespace_type: LinuxNsPid, path: null },
+  ],
+  resources: null,
+}
+
+fn witness_manifest_accepts() -> Bool {
+  match accept_image_manifest(ctrl_session_manifest) {
+    ManifestAccepted { value: m } =>
+      manifest_config_size(m) == ctrl_session_config_size
+        && m.config.digest == ctrl_session_config_digest
+    ManifestRejected { reason: _ } => false
+  }
+}
+
+fn witness_manifest_rejects_bad_schema() -> Bool {
+  match accept_image_manifest(bad_manifest_schema) {
+    ManifestRejected { reason: _ } => true
+    ManifestAccepted { value: _ } => false
+  }
+}
+
+fn witness_descriptor_rejects_negative_size() -> Bool {
+  match accept_descriptor(bad_descriptor) {
+    DescriptorRejected { reason: _ } => true
+    _ => false
+  }
+}
+
+fn witness_image_config_accepts() -> Bool {
+  match accept_image_configuration(ctrl_session_image_config) {
+    ImageConfigAccepted { value: c } =>
+      c.architecture == "arm64"
+        && c.os == "linux"
+        && image_config_first_exposed_port(c) == "7681/tcp"
+        && count(image_config_entrypoint(c)) == 4
+    ImageConfigRejected { reason: _ } => false
+  }
+}
+
+fn witness_image_config_rejects_empty_os() -> Bool {
+  let bad = {
+    architecture: "arm64",
+    os: "",
+    config: null,
+    rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
+  }
+  match accept_image_configuration(bad) {
+    ImageConfigRejected { reason: _ } => true
+    ImageConfigAccepted { value: _ } => false
+  }
+}
+
+fn witness_runtime_config_accepts() -> Bool {
+  match accept_runtime_bundle_config(ctrl_session_runtime_config) {
+    RuntimeConfigAccepted { value: c } =>
+      c.ociVersion == "1.2.0"
+        && runtime_mount_count(c) == 1
+        && c.root.path == "rootfs"
+    RuntimeConfigRejected { reason: _ } => false
+  }
+}
+
+fn witness_linux_namespaces_count() -> Bool {
+  match ctrl_session_runtime_config.linux {
+    null => false
+    linux =>
+      match accept_linux_platform(linux) {
+        LinuxPlatformAccepted { value: p } => linux_namespace_count(p) == 6
+        _ => false
+      }
+  }
+}
+
+fn witness_linux_memory_limit() -> Bool {
+  match ctrl_session_runtime_config.linux {
+    null => false
+    linux =>
+      match linux_memory_limit(linux) {
+        null => false
+        limit => limit == 8589934592
+      }
+  }
+}
+
+fn witness_linux_rejects_duplicate_namespace() -> Bool {
+  match accept_linux_platform(duplicate_namespace_linux) {
+    LinuxPlatformRejected { reason: _ } => true
+    LinuxPlatformAccepted { value: _ } => false
+  }
+}
+
+fn witness_layer_manifest_rootfs_consistent() -> Bool {
+  let manifest_layers = manifest_layer_count(ctrl_session_manifest)
+  let rootfs_layers = image_config_layer_count(ctrl_session_image_config)
+  manifest_layers == rootfs_layers && manifest_layers == 1
+}
+
+fn main() -> Bool {
+  witness_manifest_accepts()
+    && witness_manifest_rejects_bad_schema()
+    && witness_descriptor_rejects_negative_size()
+    && witness_image_config_accepts()
+    && witness_image_config_rejects_empty_os()
+    && witness_runtime_config_accepts()
+    && witness_linux_namespaces_count()
+    && witness_linux_memory_limit()
+    && witness_linux_rejects_duplicate_namespace()
+    && witness_layer_manifest_rootfs_consistent()
+}

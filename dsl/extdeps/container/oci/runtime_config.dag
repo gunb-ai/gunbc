@@ -1,0 +1,96 @@
+// extdeps/container/oci/runtime_config.dag — OCI Runtime bundle config (runtime-spec config.md).
+//
+// Spec: https://github.com/opencontainers/runtime-spec/blob/main/config.md
+// Version: runtime-spec v1.2.0
+
+module extdeps.container.oci.runtime_config
+
+import extdeps.container.oci.linux {
+  LinuxPlatform,
+  accept_linux_platform,
+  LinuxPlatformAccepted,
+  LinuxPlatformRejected,
+}
+import std.types { Bool }
+
+type RuntimeProcess {
+  terminal: Bool?
+  cwd: String
+  env: List<String>?
+  args: List<String>?
+}
+
+type RuntimeRoot {
+  path: String
+  readonly: Bool?
+}
+
+type RuntimeMount {
+  destination: String
+  source: String?
+  mount_type: String?
+  options: List<String>?
+}
+
+type RuntimeBundleConfig {
+  ociVersion: String
+  process: RuntimeProcess?
+  root: RuntimeRoot?
+  mounts: List<RuntimeMount>?
+  linux: LinuxPlatform?
+}
+
+type RuntimeConfigRejectReason
+  = EmptyOciVersion
+  | MissingRoot
+  | EmptyRootPath
+  | MissingProcessCwd
+  | LinuxPlatformInvalid { detail: String }
+
+type RuntimeConfigOutcome
+  = RuntimeConfigAccepted { value: RuntimeBundleConfig }
+  | RuntimeConfigRejected { reason: RuntimeConfigRejectReason }
+
+fn accept_runtime_bundle_config(c: RuntimeBundleConfig) -> RuntimeConfigOutcome {
+  if c.ociVersion == "" {
+    RuntimeConfigRejected { reason: EmptyOciVersion }
+  } else {
+    match c.root {
+      null => RuntimeConfigRejected { reason: MissingRoot }
+      root =>
+        if root.path == "" {
+          RuntimeConfigRejected { reason: EmptyRootPath }
+        } else {
+          match c.process {
+            null => accept_runtime_linux(c)
+            proc =>
+              if proc.cwd == "" {
+                RuntimeConfigRejected { reason: MissingProcessCwd }
+              } else {
+                accept_runtime_linux(c)
+              }
+          }
+        }
+    }
+  }
+}
+
+fn accept_runtime_linux(c: RuntimeBundleConfig) -> RuntimeConfigOutcome {
+  match c.linux {
+    null => RuntimeConfigAccepted { value: c }
+    linux =>
+      match accept_linux_platform(linux) {
+        LinuxPlatformRejected { reason: _ } =>
+          RuntimeConfigRejected { reason: LinuxPlatformInvalid { detail: "linux" } }
+        LinuxPlatformAccepted { value: _ } =>
+          RuntimeConfigAccepted { value: c }
+      }
+  }
+}
+
+fn runtime_mount_count(c: RuntimeBundleConfig) -> Int {
+  match c.mounts {
+    null => 0
+    mounts => count(mounts)
+  }
+}
