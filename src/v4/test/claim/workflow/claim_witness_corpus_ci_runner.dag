@@ -315,7 +315,6 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
-<<<<<<< HEAD
 // Fragment-IR markup serializer (dsl/std/markup.dag) — class-2 emit-correctness.
 // One keystone row ANDs by-execution-per-escaping-context + full-tree serialize +
 // CoC=1 one-fold-serves-both + emit->parse round-trip + perturb-discrimination.
@@ -324,7 +323,9 @@ data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRo
   label: "markup fragment-ir serializer keystone",
   entry: "dsl/test/claim/markup_serializer_witness.dag",
   function: "markup_serializer_keystone_holds",
-=======
+  expected: ExpectPass
+}
+
 // Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
 // that breaks on regression of the magnitude generalization (gunbc#4929): GATE0 M=Nat,
 // GATE1 signed M=Int, and the two-hop alias-chain `.count` round-trip (G3 + multi-hop).
@@ -346,7 +347,6 @@ data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpu
   label: "measure carrier two-hop alias .count round-trip",
   entry: "dsl/test/claim/measure_magnitude_carrier.dag",
   function: "measure_two_hop_alias_count_roundtrip_holds",
->>>>>>> origin/main
   expected: ExpectPass
 }
 
@@ -389,19 +389,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
-<<<<<<< HEAD
-  corpus_ci_gate_row_markup_serializer_keystone
-]
-
-data claim_witness_corpus_claim_run_row_count: String = "39"
-=======
+  corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "41"
->>>>>>> origin/main
+data claim_witness_corpus_claim_run_row_count: String = "42"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -449,16 +443,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
-<<<<<<< HEAD
-  corpus_ci_gate_row_markup_serializer_keystone
-]
-
-data claim_witness_corpus_shard_b_row_count: String = "21"
-=======
+  corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "23"
->>>>>>> origin/main
+data claim_witness_corpus_shard_b_row_count: String = "24"
