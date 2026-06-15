@@ -8,6 +8,7 @@
 module std.architecture_profile
 
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
+import std.measure { BitWidth, ByteSize }
 import std.os.invocation { SyscallAbi }
 
 // 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on std.cpu.types
@@ -22,12 +23,12 @@ type Endianness = LittleEndian | BigEndian
 type ArchitectureProfile {
   architecture: TargetArchitecture
   // 🟡 feature:L-8-fixed-width-words — bind os-exec-contract-layer L-8 — dissolve-on: enforced
-  // fixed-width word carriers in std.bit replace plain Int width fields.
-  word_width_bits: Int
-  pointer_width_bits: Int
+  // fixed-width word carriers in std.bit replace Measure<Information, One> width fields.
+  word_width: BitWidth
+  pointer_width: BitWidth
   endianness: Endianness
-  page_size_bytes: Int
-  default_alignment_bytes: Int
+  page_size: ByteSize
+  default_alignment: ByteSize
   register_file: List<ArchitecturalRegister>
   calling_convention: CallingConvention
   stack_layout: StackLayout
