@@ -224,6 +224,15 @@ fn remap_entry_for_temp(source_root: &str, entry: &str) -> PathBuf {
 // temp tree (copy each source-root preserving its path, remap each entry verbatim) WHEN a
 // cost-balanced shard first genuinely needs perturbed rows spanning multiple roots — that is the
 // JIT trigger (a second real consumer), not a speculative generalization for one.
+//
+// Born-mark (per-row copy cost): each row re-copies the entire primary source root via
+// copy_dir_all, so an N-row shard pays N full-tree copies. For large roots (src/v4) the
+// per-row cost is ~tens of seconds, which is why the claim-witness-corpus gate shards small
+// (~9–10 rows). PERF LEVER if per-row perturb cost ever forces shard proliferation past what
+// re-sharding can absorb: copy the tree ONCE per invocation and perturb-RESTORE the single
+// mutated file per row instead of re-copying. Behavior-identical, but a host change touching
+// all gates — gate it on first MEASURING the copy-vs-cold-resolve split (if cold resolve
+// dominates, copy-once barely helps) plus a 4-gate re-verify. Do it then, not speculatively.
 fn run_perturb_pass(
     _source_roots: &[String],
     rows: &[GateRow],
