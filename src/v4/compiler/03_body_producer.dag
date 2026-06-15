@@ -122,24 +122,20 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   }
 }
 
-// ── normalize-to-dispatch dissolution — node://adhoc-87678e9b-420 ─────────────────────
-// The structured-Behavior dispatch surface that subsumes the four flat-index tables
-// (produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved). Under structured normalize
-// (03_normalize.dag), a resolved fn body arrives as a Behavior sub-DAG keyed by the
-// node.dag Behavior coproduct (node.dag:38) — Transform (a call: infix op / fn application,
-// callee-ref child[0] per node_query.node_is_call), Branch (if), Loop (loop), Bind (let) —
-// not a flat token sequence to index-read. This surface validates the already-structured
-// Behavior against the per-variant edge contract (well_formed → behavior_edges_conform) and
-// marries it to the signature Arrow. The per-form reconstruction and atom→symbol bridging
-// dissolve UP into normalize; body_producer no longer index-reads fixed token positions.
-// STATUS (operator wind-down 2026-06-15): ADDITIVE + DORMANT. This surface is NOT yet wired into
-// the pipeline and the four produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved tables are NOT
-// deleted — full (B) dissolution is DEFERRED. What IS proven: the byte-identical subsumption
-// licensing set (test/claim/manual/structured_body_dispatch.dag = add;
-// structured_body_subsumption_set.dag = pick/loop/bind) shows this surface reconstructs each
-// table's exact target Arrow — those four witnesses LICENSE the future deletion + rewire as a safe
-// mechanical step for whoever resumes. Do not read this as "tables replaced"; read it as "deletion
-// pre-licensed, awaiting the pipeline rewire."
+// The structured-Behavior dispatch surface: given a resolved signature Arrow + the Behavior body
+// normalize emits (Transform call / Branch / Loop / Bind, keyed on the node.dag Behavior coproduct
+// node.dag:38; Transform callee-ref child[0] per node_query.node_is_call), validate it against the
+// per-variant edge contract (well_formed → behavior_edges_conform) and marry it to the Arrow.
+// Subsumes the four flat-index tables (produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved);
+// per-form reconstruction + atom→symbol bridging dissolve UP into normalize.
+// 🟡 gated — dormant structured-Behavior dispatch surface (docs/modeling-discipline.md Practice 4 /
+// INVARIANTS P5) — feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 —
+// dissolve-on: normalize emits the structured Behavior body (03_normalize.dag / std/compilers/
+// body_lowering.dag) and the pipeline rewires its produce_mvp1_*_from_resolved call sites to
+// produce_arrow_with_structured_body, deleting the four flat-index tables — that deletion is
+// licensed by the byte-identical subsumption witnesses (test/claim/manual/structured_body_dispatch.dag
+// = add; structured_body_subsumption_set.dag = pick/loop/bind) — forbidden: wiring this surface into
+// the pipeline while any flat-index table still runs (dual-authority half-rewire).
 fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   if well_formed(n: body) {
     outcome_accepted(value: body)
