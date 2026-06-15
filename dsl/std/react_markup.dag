@@ -30,7 +30,7 @@ type ReactAttr {
 
 type ReactMarkupNode
   = ElementNode { tag: String, attrs: List<ReactAttr>, children: List<ReactMarkupNode> }
-  | TextNode { text: String }
+  | ReactTextNode { text: String }
 
 // --- XSS: untrusted URL scheme rejection ------------------------------------
 
@@ -69,7 +69,7 @@ fn validate_react_attr(attr: ReactAttr) -> Bool {
 
 fn validate_react_markup_node(node: ReactMarkupNode) -> Bool {
   match node {
-    TextNode { text: _ } => true
+    ReactTextNode { text: _ } => true
     ElementNode { tag: _, attrs, children } =>
       fold(attrs, init: true, f: (acc, a) => acc && validate_react_attr(attr: a))
         && fold(children, init: true, f: (acc, c) => acc && validate_react_markup_node(node: c))
@@ -78,7 +78,7 @@ fn validate_react_markup_node(node: ReactMarkupNode) -> Bool {
 
 fn first_untrusted_url_in_node(node: ReactMarkupNode) -> String {
   match node {
-    TextNode { text: _ } => ""
+    ReactTextNode { text: _ } => ""
     ElementNode { tag: _, attrs, children } =>
       let from_attrs = fold(attrs, init: "", f: (acc, a) =>
         if acc != "" {
@@ -115,7 +115,7 @@ fn react_attr_to_fragment(attr: ReactAttr) -> Attribute {
 
 fn react_markup_node_to_fragment(node: ReactMarkupNode) -> Fragment {
   match node {
-    TextNode { text } =>
+    ReactTextNode { text } =>
       TextNode { content: text }
     ElementNode { tag, attrs, children } =>
       Element {

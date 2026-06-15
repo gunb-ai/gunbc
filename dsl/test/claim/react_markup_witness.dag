@@ -13,7 +13,7 @@ module test.claim.react_markup_witness
 
 import std.react_markup {
   ElementNode,
-  TextNode as ReactTextNode,
+  ReactTextNode,
   ReactAttr,
   ReactMarkupNode,
   EmitOk,
@@ -33,7 +33,7 @@ fn sample_button() -> ReactMarkupNode {
   ElementNode {
     tag: "button",
     attrs: [ ReactAttr { name: "class", value: "primary" } ],
-    children: [ TextNode { text: "Go" } ],
+    children: [ ReactTextNode { text: "Go" } ],
   }
 }
 
@@ -56,7 +56,7 @@ fn hostile_javascript_href() -> ReactMarkupNode {
   ElementNode {
     tag: "a",
     attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ TextNode { text: "click" } ],
+    children: [ ReactTextNode { text: "click" } ],
   }
 }
 
@@ -100,7 +100,7 @@ fn trusted_relative_link() -> ReactMarkupNode {
   ElementNode {
     tag: "a",
     attrs: [ ReactAttr { name: "href", value: "/tree/dsl" } ],
-    children: [ TextNode { text: "dsl" } ],
+    children: [ ReactTextNode { text: "dsl" } ],
   }
 }
 

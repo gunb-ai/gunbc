@@ -326,6 +326,23 @@ data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRo
   expected: ExpectPass
 }
 
+// gunbhub R1 React/TSX consumer (dsl/std/react_markup.dag) — reduces to Fragment IR,
+// serializes through the one fold, and rejects javascript:/data: href schemes (XSS).
+data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "react markup consumer + XSS reject keystone",
+  entry: "dsl/test/claim/react_markup_witness.dag",
+  function: "react_markup_keystone_holds",
+  expected: ExpectPass
+}
+
+// gunbhub R1 browse-page structural compose + serialize receipt.
+data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "gunbhub react browse page serialize keystone",
+  entry: "dsl/test/claim/gunbhub_react_browse_witness.dag",
+  function: "gunbhub_browse_keystone_holds",
+  expected: ExpectPass
+}
+
 // Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
 // that breaks on regression of the magnitude generalization (gunbc#4929): GATE0 M=Nat,
 // GATE1 signed M=Int, and the two-hop alias-chain `.count` round-trip (G3 + multi-hop).
@@ -390,12 +407,14 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
+  corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "42"
+data claim_witness_corpus_claim_run_row_count: String = "44"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -444,9 +463,11 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_dsl_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
+  corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "24"
+data claim_witness_corpus_shard_b_row_count: String = "26"
