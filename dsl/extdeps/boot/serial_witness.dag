@@ -1,0 +1,234 @@
+// extdeps/boot/serial_witness.dag — Slice-1 serial-console ELF emit witnesses.
+//
+// Green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
+// Covers: COM1 port constants, THRE mask, 'H' character, ELF structure, payload type, boot acceptance.
+// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+//
+// M1 liveness signal: witness_serial_boot_image_accepts_emitted_init → accept_linux_x86_boot_image
+// returns BootImageAccepted, proving the serial payload satisfies the boot contract.
+
+module extdeps.boot.serial_witness
+
+import extdeps.boot.freestanding_payload {
+  EmittedPayload,
+  HollowPrebuiltInit,
+  PrebuiltPayload,
+}
+import extdeps.boot.linux_x86_boot {
+  BootImageAccepted,
+  BootImageRejected,
+  LinuxX86BootImage,
+  accept_linux_x86_boot_image,
+}
+import extdeps.boot.serial_emit {
+  emit_serial_writer_elf64,
+  emit_serial_writer_payload,
+  serial_writer_code_bytes,
+  serial_writer_payload_digest_label,
+  witness_com1_data_low_byte_in_code,
+  witness_com1_data_port_fact,
+  witness_com1_data_high_byte_in_code,
+  witness_com1_lsr_high_byte_in_code,
+  witness_com1_lsr_low_byte_in_code,
+  witness_com1_lsr_port_fact,
+  witness_hello_char_in_code,
+  witness_serial_writer_code_length,
+  witness_serial_writer_payload_is_emitted,
+  witness_thre_mask_in_code,
+  witness_uart_hello_char_fact,
+  witness_uart_thre_mask_fact,
+}
+import extdeps.formats.elf.encode {
+  encode_elf64_ehdr,
+  encode_elf64_phdr,
+  int_lists_equal,
+  int_lists_equal_at,
+}
+import extdeps.formats.elf.primitives {
+  EtExec,
+  EmX86_64,
+  PtLoad,
+  elf64_ehdr_size,
+  elf64_phdr_size,
+  pf_r,
+  pf_x,
+}
+import extdeps.formats.elf.segments {
+  PhdrDecoded,
+  PhdrRejected,
+  decode_elf64_phdr,
+  elf64_phdr_to_load_segment,
+}
+import extdeps.formats.elf.types {
+  ElfDecoded,
+  ElfRejected,
+  byte_at_in_bounds,
+  decode_elf64_ehdr,
+  elf64_ehdr_entry_point,
+}
+import extdeps.boot.emit { freestanding_code_file_offset, freestanding_load_vaddr, freestanding_phoff }
+import std.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
+
+fn witness_serial_emitted_file_size() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  count(bytes) == freestanding_code_file_offset + count(serial_writer_code_bytes)
+}
+
+fn witness_serial_ehdr_is_et_exec_x86_64() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_ehdr(bytes) {
+    ElfDecoded { value: hdr } =>
+      hdr.file_type == EtExec
+        && hdr.machine == EmX86_64
+        && hdr.phoff == freestanding_phoff
+        && hdr.phnum == 1
+        && hdr.shnum == 0
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_serial_ehdr_no_section_headers() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_ehdr(bytes) {
+    ElfDecoded { value: hdr } =>
+      hdr.shnum == 0
+        && hdr.shentsize == 0
+        && hdr.shoff == 0
+        && hdr.shstrndx == 0
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_serial_entry_point() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_ehdr(bytes) {
+    ElfDecoded { value: hdr } =>
+      elf64_ehdr_entry_point(hdr).virtual_address == freestanding_load_vaddr
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_serial_first_phdr_is_pt_load_rx() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_phdr(bytes, freestanding_phoff) {
+    PhdrDecoded { value: phdr } =>
+      phdr.segment_type == PtLoad
+        && phdr.flags == pf_r + pf_x
+        && phdr.offset == freestanding_code_file_offset
+        && phdr.vaddr == freestanding_load_vaddr
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn witness_serial_load_segment_carries_code() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_phdr(bytes, freestanding_phoff) {
+    PhdrDecoded { value: phdr } =>
+      let seg = elf64_phdr_to_load_segment(phdr)
+      seg.file_size == count(serial_writer_code_bytes)
+        && seg.permissions.readable == true
+        && seg.permissions.writable == false
+        && seg.permissions.executable == true
+    PhdrRejected { reason: _ } => false
+  }
+}
+
+fn int_lists_equal_at_offset(
+  left: List<Int>,
+  right: List<Int>,
+  left_offset: Int,
+  right_offset: Int,
+  n: Int,
+) -> Bool {
+  if n <= 0 {
+    true
+  } else if byte_at_in_bounds(left, left_offset) != byte_at_in_bounds(right, right_offset) {
+    false
+  } else {
+    int_lists_equal_at_offset(
+      left,
+      right,
+      left_offset: left_offset + 1,
+      right_offset: right_offset + 1,
+      n: n - 1,
+    )
+  }
+}
+
+fn witness_serial_code_bytes_at_offset() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  int_lists_equal_at_offset(
+    bytes,
+    serial_writer_code_bytes,
+    left_offset: freestanding_code_file_offset,
+    right_offset: 0,
+    n: count(serial_writer_code_bytes),
+  )
+}
+
+fn witness_serial_ehdr_encode_decode_roundtrip() -> Bool {
+  let bytes = emit_serial_writer_elf64()
+  match decode_elf64_ehdr(bytes) {
+    ElfDecoded { value: hdr } =>
+      let out = encode_elf64_ehdr(hdr)
+      count(out) == elf64_ehdr_size
+        && int_lists_equal_at(bytes, out, i: 0, n: elf64_ehdr_size)
+    ElfRejected { reason: _ } => false
+  }
+}
+
+fn witness_serial_payload_entry_matches_ehdr() -> Bool {
+  match emit_serial_writer_payload() {
+    EmittedPayload { digest: _, entry: EntryPoint { virtual_address: entry } } =>
+      entry == freestanding_load_vaddr
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
+  }
+}
+
+data slice_1_serial_kernel_digest_placeholder: NonEmptyStr = "slice-1-serial-kernel-placeholder"
+
+fn witness_serial_boot_image_accepts_emitted_init() -> Bool {
+  match emit_serial_writer_payload() {
+    EmittedPayload { digest: d, entry: e } =>
+      match accept_linux_x86_boot_image(LinuxX86BootImage {
+        kernel_digest: slice_1_serial_kernel_digest_placeholder,
+        cmdline: [],
+        init: EmittedPayload { digest: d, entry: e },
+      }) {
+        BootImageAccepted { value: _ } => true
+        BootImageRejected { reason: _ } => false
+      }
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
+  }
+}
+
+fn main() -> Bool {
+  // COM1 UART hardware constant witnesses
+  witness_com1_lsr_port_fact()
+    && witness_com1_lsr_low_byte_in_code()
+    && witness_com1_lsr_high_byte_in_code()
+    && witness_com1_data_port_fact()
+    && witness_com1_data_low_byte_in_code()
+    && witness_com1_data_high_byte_in_code()
+    && witness_uart_thre_mask_fact()
+    && witness_thre_mask_in_code()
+    && witness_uart_hello_char_fact()
+    && witness_hello_char_in_code()
+    // Code + ELF structure witnesses
+    && witness_serial_writer_code_length()
+    && witness_serial_writer_payload_is_emitted()
+    && witness_serial_emitted_file_size()
+    && witness_serial_ehdr_is_et_exec_x86_64()
+    && witness_serial_ehdr_no_section_headers()
+    && witness_serial_entry_point()
+    && witness_serial_first_phdr_is_pt_load_rx()
+    && witness_serial_load_segment_carries_code()
+    && witness_serial_code_bytes_at_offset()
+    && witness_serial_ehdr_encode_decode_roundtrip()
+    && witness_serial_payload_entry_matches_ehdr()
+    // M1 liveness probe: serial boot image acceptance
+    && witness_serial_boot_image_accepts_emitted_init()
+}

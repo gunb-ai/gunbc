@@ -1,0 +1,121 @@
+// extdeps/boot/serial_emit.dag — x86-64 freestanding serial console ELF emit (Slice-1 boot).
+//
+// Produces an EmittedPayload that polls COM1 LSR for THRE and outputs 'H' on the serial line.
+// Reuses emit_freestanding_elf64() infrastructure from Slice-0.5 — same layout constants.
+// M1 liveness probe: boot → serial output → QEMU reads character on -serial stdio.
+//
+// Anchor: NS16550A §2 register map (THR offset=0, LSR offset=5, THRE bit=bit5).
+// Anchor: Intel SDM vol.2 — IN/OUT/MOV/TEST/JZ/HLT encodings used below.
+
+module extdeps.boot.serial_emit
+
+import extdeps.boot.emit { emit_freestanding_elf64, freestanding_load_vaddr }
+import extdeps.boot.freestanding_payload {
+  EmittedPayload,
+  FreestandingPayloadRef,
+  HollowPrebuiltInit,
+  PrebuiltPayload,
+}
+import extdeps.boot.uart {
+  com1_data_port,
+  com1_lsr_port,
+  uart_hello_char,
+  uart_thre_mask,
+}
+import extdeps.formats.elf.types { byte_at_in_bounds }
+import std.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
+
+data serial_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-serial-slice-1"
+
+// x86-64 machine code that polls COM1 LSR until THRE=1, then writes 'H', then halts.
+//
+// Byte layout (19 bytes):
+//   [  0] BA FD 03 00 00  mov edx, 0x3FD   (LSR port: com1_lsr_port = 1021 = 0x3FD)
+//   [  5] EC              in al, dx         (read LSR)
+//   [  6] A8 20           test al, 0x20     (THRE bit: uart_thre_mask = 32 = 0x20)
+//   [  8] 74 FB           jz -5             (spin back to `in al, dx` at offset 5)
+//   [ 10] BA F8 03 00 00  mov edx, 0x3F8   (data port: com1_data_port = 1016 = 0x3F8)
+//   [ 15] B0 48           mov al, 0x48      ('H': uart_hello_char = 72 = 0x48)
+//   [ 17] EE              out dx, al        (write character)
+//   [ 18] F4              hlt
+data serial_writer_code_bytes: List<Int> = [
+  186, 253, 3, 0, 0,
+  236,
+  168, 32,
+  116, 251,
+  186, 248, 3, 0, 0,
+  176, 72,
+  238,
+  244,
+]
+
+fn emit_serial_writer_elf64() -> List<Int> {
+  emit_freestanding_elf64(serial_writer_code_bytes)
+}
+
+fn emit_serial_writer_payload() -> FreestandingPayloadRef {
+  let entry = freestanding_load_vaddr
+  EmittedPayload {
+    digest: serial_writer_payload_digest_label,
+    entry: EntryPoint { virtual_address: entry },
+  }
+}
+
+// Verify the LSR port (0x3FD = 1021) is encoded at bytes [1,2] as little-endian 16-bit.
+// 1021 & 0xFF = 0xFD = 253 (low); 1021 >> 8 = 0x03 = 3 (high).
+fn witness_com1_lsr_port_fact() -> Bool {
+  com1_lsr_port == 1021
+}
+
+fn witness_com1_lsr_low_byte_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 1) == 253
+}
+
+fn witness_com1_lsr_high_byte_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 2) == 3
+}
+
+// Verify the data port (0x3F8 = 1016) is encoded at bytes [11,12] as little-endian 16-bit.
+// 1016 & 0xFF = 0xF8 = 248 (low); 1016 >> 8 = 0x03 = 3 (high).
+fn witness_com1_data_port_fact() -> Bool {
+  com1_data_port == 1016
+}
+
+fn witness_com1_data_low_byte_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 11) == 248
+}
+
+fn witness_com1_data_high_byte_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 12) == 3
+}
+
+// Verify THRE mask (0x20 = 32) appears in the TEST instruction at offset 7.
+fn witness_uart_thre_mask_fact() -> Bool {
+  uart_thre_mask == 32
+}
+
+fn witness_thre_mask_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 7) == 32
+}
+
+// Verify 'H' (0x48 = 72) is encoded in the MOV AL instruction at offset 16.
+fn witness_uart_hello_char_fact() -> Bool {
+  uart_hello_char == 72
+}
+
+fn witness_hello_char_in_code() -> Bool {
+  byte_at_in_bounds(serial_writer_code_bytes, 16) == 72
+}
+
+fn witness_serial_writer_code_length() -> Bool {
+  count(serial_writer_code_bytes) == 19
+}
+
+fn witness_serial_writer_payload_is_emitted() -> Bool {
+  match emit_serial_writer_payload() {
+    EmittedPayload { digest: d, entry: _ } => d == serial_writer_payload_digest_label
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowPrebuiltInit { digest: _, entry: _ } => false
+  }
+}
