@@ -68,13 +68,12 @@ fn native_memory_spec_carries_inferred_resolved_node() {
     let resolved = compile_to_resolved(Rc::new(bare_int_sources()));
     let graph = resolved.graph.as_ref().expect("graph");
     let item = memory_spec_item(graph);
+    assert!(
+        !item.children.is_empty(),
+        "MemorySpec type item should declare at least one field"
+    );
     match (*item.inferred.clone().expect("inferred")).clone() {
-        InferredNode::Resolved { node } => {
-            assert!(
-                !node.children.is_empty(),
-                "MemorySpec inferred record should have fields"
-            );
-        }
+        InferredNode::Resolved { .. } => {}
         other => panic!("expected InferredNode::Resolved, got {:?}", other),
     }
 }

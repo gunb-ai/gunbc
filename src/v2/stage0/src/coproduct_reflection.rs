@@ -176,7 +176,10 @@ fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpRes
     }
     Ok(node_record(
         ctx,
-        node_kind_type_node(ctx, atom_connective_variant(ctx, kernel_binding_symbol(&name))),
+        node_kind_type_node(
+            ctx,
+            atom_connective_variant(ctx, kernel_binding_symbol(&name)),
+        ),
         vec![],
     ))
 }

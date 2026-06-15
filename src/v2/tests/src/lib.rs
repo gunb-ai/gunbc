@@ -26,13 +26,13 @@ mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
-mod enforce_host_infer_native_probe_test;
-#[cfg(test)]
-mod enforce_host_marshal_probe_test;
-#[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
 mod effects;
+#[cfg(test)]
+mod enforce_host_infer_native_probe_test;
+#[cfg(test)]
+mod enforce_host_marshal_probe_test;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
