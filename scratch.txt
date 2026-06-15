@@ -2,12 +2,14 @@ CI-REWORK SCRATCH — modeling smells (temporary; delete before merge)
 
 RUBRIC: path is the discriminator; right altitude, own clear place; no catch-alls; a high concept owns a registration concept, not instances; personal inventory seeds genuine vendor models, it does not live in std/ concepts.
 
+LAYERS: extdeps = external vendors (Ampere, Hetzner, ...). std = concepts. compute_fabric = high concept; imports vendor models only if genuinely needed (probably too early now).
+
 ITEMS (verified vs branch HEAD)
-1. std/compute_fabric.dag:460-635 — concept module holds concrete srv1/srv2+Hetzner offers/provider/runner-counts/dispatch-cap; move instances out, keep concept + a registration concept.
+1. std/compute_fabric.dag:460-635 — sheds concrete srv1/srv2+Hetzner instances; stay a pure concept (keep only the general CpuFacts shape), do not import vendor models yet.
 2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; belongs in an operator/deployment layer, not std/memory.
-3. std/cpu/ampere.dag — altra_max_m12830/altra_q6430 are genuine Ampere vendor facts but sit in std/cpu; belong in an extdeps vendor model (ampere/altra/).
-4. std/cpu/types.dag:13 — AmpereCpuModel enum is narrowed to the two owned SKUs; a concept type should not equal a purchase order.
-5. std/cpu.dag — cpu_model_catalog maps only the owned models; follows once 3+4 move.
+3. std/cpu/ampere.dag — Ampere is an external dependency; move to extdeps (e.g. extdeps/cpu/ampere/ or extdeps/hardware/ampere/altra/). Blast radius = only this 4-file cluster.
+4. std/cpu/types.dag:13 — AmpereCpuModel enum is narrowed to the two owned SKUs; a concept type should not equal a purchase order. Ampere specifics follow item 3 into extdeps.
+5. std/cpu.dag — cpu_model_catalog maps only the owned models; follows once 3+4 move; std/cpu keeps the general CPU concept only.
 
 NOTES
 - verified clean (no change): std/placement_supply.dag (concept-only).
