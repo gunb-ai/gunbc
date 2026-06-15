@@ -532,6 +532,20 @@ data operator_fleet_owned_cost: CostModel = CostModel {
 
 data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open"
 
+// Operator-fleet CI runner slot counts (nodes.json commentary: srv1=20, srv2=30).
+// CF-M1 dogfood: fleet compile dispatch cap for CI throttle consumer (.github/workflows/ci.yml).
+// Dissolves onto RunnerPoolFacts when CF-M1 supply projection (#4976) lands.
+data operator_fleet_srv1_ci_runner_count: Int = 20
+data operator_fleet_srv2_ci_runner_count: Int = 30
+
+data operator_fleet_runner_slot_total: Int =
+  operator_fleet_srv1_ci_runner_count + operator_fleet_srv2_ci_runner_count
+
+// Interim GHA compile-admission shard count (K). Tuned ~ fleet cores / CARGO_BUILD_JOBS-per-job
+// (smart-hawk-763 consumer validation); NOT runner_slot_total. Queue semantics (pending, not
+// refused). Dissolves to supply-modeled WorkDemand admission (CF-M2 dogfood follow-on).
+data operator_fleet_ci_compile_dispatch_cap: Int = 16
+
 data supply_srv1_offer: ComputeOffer = ComputeOffer {
   provider: operator_fleet_provider,
   supply: ComputeSupplyFacts {
