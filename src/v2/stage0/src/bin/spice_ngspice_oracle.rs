@@ -2,6 +2,8 @@
 //!
 //! E-10 consumer for the P4 SPICE/analog ngspice oracle lane (SP-M1).
 
+#![allow(clippy::disallowed_macros)]
+
 use std::process::ExitCode;
 
 use emit_host_runner::{run_ngspice_batch_netlist, unique_work_dir};
@@ -17,10 +19,15 @@ fn main() -> ExitCode {
     match run_oracle() {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("error: {message}");
+            report_oracle_error(&message);
             ExitCode::FAILURE
         }
     }
+}
+
+#[allow(clippy::disallowed_macros)]
+fn report_oracle_error(message: &str) {
+    eprintln!("error: {message}");
 }
 
 fn run_oracle() -> Result<(), String> {
