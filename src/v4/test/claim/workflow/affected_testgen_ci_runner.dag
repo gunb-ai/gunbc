@@ -369,4 +369,3 @@ data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
 ]
 
 
-data affected_testgen_claim_run_row_count: String = "6"

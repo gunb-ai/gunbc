@@ -565,4 +565,3 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_provenance_producer_selectivity_superset_discriminates
 ]
 
-data ci_runner_node_frontier_claim_run_row_count: String = "23"
