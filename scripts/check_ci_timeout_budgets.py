@@ -69,8 +69,23 @@ CEILINGS = {
         # directly). Budget rule (documented uncontended wall x2): v2-compiler is sccache-warm from
         # the floor jobs; warm wall ~1-2m, cold-build tail ~3-4m; 4m x2 = 8. Re-derive from first green.
         "affected_timings": 8,
-        "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
+        # Claim-witness corpus, six root-aligned shards (a–e primary src/v4, f primary dsl) each
+        # running FULL per-row --perturb-check via ci-claim-gate (the monolithic spot-perturb was
+        # dropped — see claim_witness_corpus_ci_runner.dag). Budget rule (documented uncontended
+        # CI wall ×2). Measured uncontended CI walls incl. checkout + `cargo build ci_claim_gate`
+        # (run 27553556556): a 454s, b 596s, c 397s, d 533s, e 587s, f 229s. The src/v4 shards are
+        # one cold-resolve class (each adds ~3–5m of src/v4 std-closure resolve on top of build);
+        # ceiling sized to the HEAVIEST member (b≈9.9m × 2 ≈ 20), uniform across a–e — the same
+        # basis and value as v4_lens_ci_perturb (20) for the same cold-resolve contention class, and
+        # robust to row rebalancing between shards. The ×2.0–2.6 merge-wave tail is accepted rare-
+        # rerun territory (same posture as v4_lens_gate). shard f (dsl) is a cheaper class — see its
+        # ci.yml comment — ceiling 10 (229s≈3.8m ×2.6 tail ≈ 10).
+        "v4_claim_witness_corpus_a": 20,
         "v4_claim_witness_corpus_b": 20,
+        "v4_claim_witness_corpus_c": 20,
+        "v4_claim_witness_corpus_d": 20,
+        "v4_claim_witness_corpus_e": 20,
+        "v4_claim_witness_corpus_f": 10,
         "timeout_budgets": 5,
         "ci": 5,
     },

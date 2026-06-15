@@ -1816,7 +1816,7 @@ jobs:
     - name: Ensure ci-claim-gate binary (claim witness corpus shard c)
       if: steps.v4-cg-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
-    - name: claim-witness corpus enrollment gate (shard b)
+    - name: claim-witness corpus enrollment gate (shard c)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard c --perturb-check
   v4_claim_witness_corpus_d:
     runs-on: [self-hosted, linux, arm64]
@@ -1924,7 +1924,7 @@ jobs:
     - name: Ensure ci-claim-gate binary (claim witness corpus shard d)
       if: steps.v4-cg-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
-    - name: claim-witness corpus enrollment gate (shard b)
+    - name: claim-witness corpus enrollment gate (shard d)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard d --perturb-check
   v4_claim_witness_corpus_e:
     runs-on: [self-hosted, linux, arm64]
@@ -2032,11 +2032,15 @@ jobs:
     - name: Ensure ci-claim-gate binary (claim witness corpus shard e)
       if: steps.v4-cg-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
-    - name: claim-witness corpus enrollment gate (shard b)
+    - name: claim-witness corpus enrollment gate (shard e)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard e --perturb-check
   v4_claim_witness_corpus_f:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 20
+    # dsl shard: dsl std closures are tiny, so the gate run is ~3s; the wall is dominated by
+    # checkout + `cargo build ci_claim_gate`. Measured CI wall 229s (3.8m, run 27553556556);
+    # budget rule (uncontended ×2 → ~8, ×2.6 contention tail ~10): ceiling 10. Cheaper class than
+    # the src/v4 shards (a–e), which add 3–5m of src/v4 cold-resolve on top.
+    timeout-minutes: 10
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -2140,7 +2144,7 @@ jobs:
     - name: Ensure ci-claim-gate binary (claim witness corpus shard f)
       if: steps.v4-cg-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
-    - name: claim-witness corpus enrollment gate (shard b)
+    - name: claim-witness corpus enrollment gate (shard f)
       run: bash scripts/v4-claim-witness-corpus-gate.sh --shard f --perturb-check
   ci:
     if: always()
