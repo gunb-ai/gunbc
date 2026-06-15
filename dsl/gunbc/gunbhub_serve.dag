@@ -153,10 +153,23 @@ fn gunbhub_readme_page() -> ReactMarkupNode {
   }
 }
 
-fn gunbhub_compose_serialized_body(node: ReactMarkupNode) -> String {
+type GunbhubComposeResult
+  = ComposedOk { html: String }
+  | ComposeRejected { reason: String }
+
+fn gunbhub_compose_body(node: ReactMarkupNode) -> GunbhubComposeResult {
   match serialize_react_markup(node: node) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+    EmitOk { html: h } => ComposedOk { html: h }
+    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+      ComposeRejected { reason: concat("react markup rejected: ", u) }
+  }
+}
+
+// Convenience for known-safe routed pages (witness proves ComposedOk).
+fn gunbhub_compose_serialized_body(node: ReactMarkupNode) -> String {
+  match gunbhub_compose_body(node: node) {
+    ComposedOk { html: h } => h
+    ComposeRejected { reason: _ } => ""
   }
 }
 
@@ -303,22 +316,32 @@ fn gunbhub_route_table() -> List<GunbhubRouteRow> {
 }
 
 // Static table the shared host consumes. Bodies serialized at compose time.
+// ComposeRejected rows are OMITTED (fail-closed: host 404s, not empty 200).
 fn gunbhub_static_serve_table() -> GunbhubStaticServeTable {
-  GunbhubStaticServeTable {
-    routes: map(
-      xs: gunbhub_route_table(),
-      f: row =>
-        GunbhubStaticRouteBody {
-          method: row.route.method,
-          path: row.canonical_path,
-          body: gunbhub_compose_serialized_body(
-            node: match row.page {
-              ReactPage { node: n } => n
-            }
-          ),
+  let routes = fold(
+    xs: gunbhub_route_table(),
+    init: [],
+    f: (acc, row) =>
+      match gunbhub_compose_body(
+        node: match row.page {
+          ReactPage { node: n } => n
         }
-    ),
-  }
+      ) {
+        ComposedOk { html: h } =>
+          concat(
+            acc,
+            [
+              GunbhubStaticRouteBody {
+                method: row.route.method,
+                path: row.canonical_path,
+                body: h,
+              },
+            ]
+          )
+        ComposeRejected { reason: _ } => acc
+      }
+  )
+  GunbhubStaticServeTable { routes: routes }
 }
 
 fn static_row_matches_request(row: GunbhubStaticRouteBody, req: GunbhubServeRequest) -> Bool {

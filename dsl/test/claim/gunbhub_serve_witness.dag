@@ -14,6 +14,8 @@ import gunbc.gunbhub_serve {
   GunbhubServeRequest,
   GunbhubPageSource,
   ReactPage,
+  ComposedOk,
+  ComposeRejected,
   Served,
   RenderRejectedBeforeServe,
   RouteNotFound,
@@ -25,6 +27,7 @@ import gunbc.gunbhub_serve {
   gunbhub_readme_route,
   gunbhub_node_route_bindings,
   gunbhub_static_serve_table,
+  gunbhub_compose_body,
   gunbhub_compose_serialized_body,
   serve_gunbhub_request,
   serve_gunbhub_page_source,
@@ -137,6 +140,21 @@ fn witness_readme_wrong_method_not_allowed() -> Bool {
 }
 
 // Hostile javascript: href rejected before response — never reaches body.
+fn witness_hostile_compose_rejects_fail_closed() -> Bool {
+  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
+    ComposeRejected { reason: _ } => true
+    ComposedOk { html: _ } => false
+  }
+}
+
+fn witness_hostile_page_not_in_static_table() -> Bool {
+  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
+    ComposeRejected { reason: _ } =>
+      count(xs: gunbhub_static_serve_table().routes) == 2
+    ComposedOk { html: _ } => false
+  }
+}
+
 fn witness_hostile_page_rejected_before_response() -> Bool {
   match serve_gunbhub_page_source(
     source: ReactPage { node: gunbhub_hostile_page() }
@@ -194,6 +212,8 @@ fn gunbhub_serve_keystone_holds() -> Bool {
     && witness_unknown_path_not_found()
     && witness_wrong_method_not_allowed()
     && witness_readme_wrong_method_not_allowed()
+    && witness_hostile_compose_rejects_fail_closed()
+    && witness_hostile_page_not_in_static_table()
     && witness_hostile_page_rejected_before_response()
     && witness_hostile_page_not_served_via_request_path()
     && witness_browse_route_binding_declared()
