@@ -9,6 +9,7 @@ import v4.compiler.parse {
   grammar_has_left_recursion,
   grammar_lookup_production,
   grammar_validate_for_parse,
+  parse_current_position,
   parse_expr,
   parse_prov_initial,
   parse_stage_locus_port,
@@ -199,6 +200,20 @@ fn finer_parse_expr_at_position_one_terminates() -> Bool {
   }
 }
 
+fn finer_current_position_at_suffix_one_is_one() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: finer_empty_source,
+    file: compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: token_stream, diagnostics: _ } =>
+      let suffix = tokens_at_position(all_tokens: token_stream.tokens, position: 1)
+      parse_current_position(all_tokens: token_stream.tokens, tokens: suffix) == 1
+  }
+}
+
 fn finer_n_passes_at_position_one(n: Int) -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
@@ -239,6 +254,14 @@ fn list_repeat_n(n: Int) -> List<Int> {
   } else {
     Cons { head: n, tail: list_repeat_n(n: n - 1) }
   }
+}
+
+fn finer_fifteen_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 15)
+}
+
+fn finer_twenty_passes_at_position_one_terminates() -> Bool {
+  finer_n_passes_at_position_one(n: 20)
 }
 
 fn finer_five_passes_at_position_one_terminates() -> Bool {
