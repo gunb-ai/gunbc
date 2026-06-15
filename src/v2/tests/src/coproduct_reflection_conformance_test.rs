@@ -145,7 +145,8 @@ fn coproduct_reflection_connective_reflection_pairs_match_syntactic() {
     let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
     let connective = (None, Value::Str("Connective".to_string()));
     let node =
-        coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()]).expect("node");
+        coproduct_reflection::eval_resolve_type_node(&ctx, std::slice::from_ref(&connective))
+            .expect("node");
     let reflected =
         coproduct_reflection::arm_payload_pairs_from_marshaled_node(&ctx, &node).expect("pairs");
     let syntactic =
@@ -185,7 +186,8 @@ fn coproduct_reflection_path3_pair_witness_fails_on_perturbed_atom_payload_type(
     let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
     let connective = (None, Value::Str("Connective".to_string()));
     let node =
-        coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()]).expect("node");
+        coproduct_reflection::eval_resolve_type_node(&ctx, std::slice::from_ref(&connective))
+            .expect("node");
     let mut pairs =
         coproduct_reflection::arm_payload_pairs_from_marshaled_node(&ctx, &node).expect("pairs");
     pairs[0].payload_type_name = "{ identity: Int }".to_string();
@@ -233,8 +235,9 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
     let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
     let connective = (None, Value::Str("Connective".to_string()));
 
-    let reflection_node = coproduct_reflection::eval_resolve_type_node(&ctx, &[connective.clone()])
-        .expect("resolved node");
+    let reflection_node =
+        coproduct_reflection::eval_resolve_type_node(&ctx, std::slice::from_ref(&connective))
+            .expect("resolved node");
     let corrupted =
         coproduct_reflection::eval_resolve_type_node_with_dropped_last_arm(&ctx, "Connective")
             .expect("corrupted node");
