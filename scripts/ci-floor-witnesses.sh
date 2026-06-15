@@ -96,6 +96,11 @@ case "$mode" in
     witness_green_floor
     echo "all floor witnesses GREEN"
     ;;
+  --red-demo|red-demo)
+    witness_red_gate1
+    witness_red_floor
+    echo "floor RED teeth witnesses OK"
+    ;;
   red-gate1)
     witness_red_gate1
     ;;
