@@ -15,9 +15,9 @@ type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType
-  // P-CF-BYTESIZE: shared raw-Int stopgap (operator_fleet + Hetzner) — NOT a parallel
-  // representation. Dissolves when Measure value-typing lands (ByteSize, currency, thread
-  // count); converts BOTH operator_fleet and Hetzner catalog rows.
+  // extdeps fidelity: raw API integers per spec. Std-boundary projection to
+  // ByteSize / MoneyMicros / HardwareThreadCount happens in std.compute_fabric
+  // (money_micros(), placement_supply_row(), etc.) — not here.
   vcpus: Int
   memory_bytes: Int
   disk_bytes: Int
