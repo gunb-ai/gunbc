@@ -9,14 +9,13 @@ type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
 type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
 
-// Product-line variants — enum tag is stable id; model_number is catalog authority.
-type AmpereCpuModel = AltraMaxM12830 | AltraQ6430
-
-type CpuIdentity = AmpereCpu { model: AmpereCpuModel }
-
+// A vendor part identifies itself by its catalog row — std/cpu owns the SHAPE, the
+// per-vendor rows live in extdeps/cpu/<vendor>. No std-level enum of one vendor's
+// SKUs (that would make the concept a purchase order).
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
+  vendor: CpuVendor
   architecture: CpuArchitecture
   cores: Int
   threads: HardwareThreadCount
@@ -31,7 +30,9 @@ type CpuDeploymentFacts {
   sustained_per_thread_hz: Hertz
 }
 
+// CpuFacts is vendor-agnostic: it carries the catalog row (identity-by-part) plus
+// the deployment facts. Which catalog row — that's an extdeps/deployment fact.
 type CpuFacts {
-  identity: CpuIdentity
+  catalog: CpuModelCatalogRow
   deployment: CpuDeploymentFacts
 }
