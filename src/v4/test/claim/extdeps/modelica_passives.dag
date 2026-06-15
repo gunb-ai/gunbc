@@ -5,7 +5,6 @@ module v4.test.claim.extdeps.modelica_passives
 
 import v4.compiler.parse { parse }
 import v4.compiler.tokenize { tokenize }
-import v4.std.collection { Cons, Empty }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.grammar { ParseTree }
 import v4.std.logic { Bool }
@@ -75,16 +74,23 @@ fn modelica_model_statement_resistor_component_arm_holds() -> Bool {
 }
 
 fn modelica_passive_model_body_carries_model_statement_holds() -> Bool {
+  let resistor_stmt = StmtComponent {
+    component: ResistorInstance {
+      name: ^r1,
+      R: ModelicaValue { lexeme: "1000" },
+      connectors: modelica_two_pin_connector_default
+    }
+  }
+  let connect_stmt = StmtConnect {
+    equation: ConnectEquation {
+      left: PinEndpoint { instance: ^r1, pin: ^p },
+      right: PinEndpoint { instance: ^c1, pin: ^p }
+    }
+  }
   let model = ModelicaModel {
     name: ^rc,
     body: [
-      StmtComponent {
-        component: ResistorInstance {
-          name: ^r1,
-          R: ModelicaValue { lexeme: "1000" },
-          connectors: modelica_two_pin_connector_default
-        }
-      },
+      resistor_stmt,
       StmtComponent {
         component: CapacitorInstance {
           name: ^c1,
@@ -92,22 +98,18 @@ fn modelica_passive_model_body_carries_model_statement_holds() -> Bool {
           connectors: modelica_two_pin_connector_default
         }
       },
-      StmtConnect {
-        equation: ConnectEquation {
-          left: PinEndpoint { instance: ^r1, pin: ^p },
-          right: PinEndpoint { instance: ^c1, pin: ^p }
-        }
-      }
+      connect_stmt
     ]
   }
   match model {
-    ModelicaModel { name: _, body: body } => match body {
-      Cons {
-        head: StmtComponent { component: ResistorInstance { name: n, R: _, connectors: _ } },
-        tail: _
-      } => n == ^r1
-      _ => false
-    }
+    ModelicaModel { name: _, body: body } =>
+      body == [resistor_stmt, StmtComponent {
+        component: CapacitorInstance {
+          name: ^c1,
+          C: ModelicaValue { lexeme: "1e-6" },
+          connectors: modelica_two_pin_connector_default
+        }
+      }, connect_stmt]
     _ => false
   }
 }
