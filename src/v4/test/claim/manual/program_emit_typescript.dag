@@ -234,6 +234,33 @@ fn program_emit_from_tree(tree: InferredTree, target: TargetModel) -> Outcome<Ta
   emit(tree: tree, target: target)
 }
 
+fn program_emit_ts_effect_io_comma_tokens_accepts() -> Bool {
+  match target_value_expression_to_concrete_tokens(
+    expr: target_value_expression_comma_sequence(
+      operands: [
+        target_value_expression_effect_apply(
+          effect_kind_discriminant: ^WriteResource,
+          operands: [
+            target_value_expression_binding_ref(binding: ts_effect_io_binding_path),
+            target_value_expression_binding_ref(binding: ts_effect_io_binding_content)
+          ]
+        ),
+        target_value_expression_effect_apply(
+          effect_kind_discriminant: ^ReadResource,
+          operands: [
+            target_value_expression_binding_ref(binding: ts_effect_io_binding_path)
+          ]
+        )
+      ]
+    ),
+    projection: ts_value_expression_projection(),
+    catalog: ts_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn program_emit_typescript_body_tokens_accepts() -> Bool {
   match target_value_expression_projection_from_target(target: ts_program_target_model()) {
     Accepted { value: projection, diagnostics: pd } =>
