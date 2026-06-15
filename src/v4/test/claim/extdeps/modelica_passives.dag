@@ -1,27 +1,32 @@
 // src/v4/test/claim/extdeps/modelica_passives.dag
-// Scope: wave-1 Modelica acausal passive substrate compile + structural witnesses.
+// Scope: wave-1 Modelica acausal passive substrate — executed consumers (E-10).
 
 module v4.test.claim.extdeps.modelica_passives
 
+import v4.compiler.parse { parse }
+import v4.compiler.tokenize { tokenize }
+import v4.std.collection { Cons, Empty }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.grammar { ParseTree }
 import v4.std.logic { Bool }
 import v4.extdeps.formats.modelica {
   CapacitorInstance,
   ConnectEquation,
-  InductorInstance,
-  ModelicaEquationSection,
   ModelicaModel,
   ModelicaValue,
-  PassiveComponent,
+  ModelStatement,
   PinEndpoint,
   ResistorInstance,
-  TwoPinConnectorDecl,
-  modelica_format_grammar_probe,
-  modelica_two_pin_connector_default
+  StmtComponent,
+  StmtConnect,
+  modelica_two_pin_connector_default,
+  modelica_wave1_grammar,
+  modelica_wave1_lex,
+  modelica_wave1_resistor_fixture_text
 }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
-  CompilesClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -55,50 +60,74 @@ fn modelica_connect_equation_binds_pin_endpoints_holds() -> Bool {
   }
 }
 
-fn modelica_passive_model_carries_equation_section_holds() -> Bool {
-  let model = ModelicaModel {
-    name: ^rc,
-    components: [
-      ResistorInstance {
-        name: ^r1,
-        R: ModelicaValue { lexeme: "1000" },
-        connectors: modelica_two_pin_connector_default
-      },
-      CapacitorInstance {
-        name: ^c1,
-        C: ModelicaValue { lexeme: "1e-6" },
-        connectors: modelica_two_pin_connector_default
-      }
-    ],
-    equations: ModelicaEquationSection {
-      connects: [
-        ConnectEquation {
-          left: PinEndpoint { instance: ^r1, pin: ^p },
-          right: PinEndpoint { instance: ^c1, pin: ^p }
-        }
-      ]
+fn modelica_model_statement_resistor_component_arm_holds() -> Bool {
+  let stmt = StmtComponent {
+    component: ResistorInstance {
+      name: ^r1,
+      R: ModelicaValue { lexeme: "1000" },
+      connectors: modelica_two_pin_connector_default
     }
   }
-  match model {
-    ModelicaModel { name: _, components: comps, equations: eqs } =>
-      comps == [
-        ResistorInstance {
+  match stmt {
+    StmtComponent { component: ResistorInstance { name: n, R: _, connectors: _ } } => n == ^r1
+    StmtConnect { equation: _ } => false
+  }
+}
+
+fn modelica_passive_model_body_carries_model_statement_holds() -> Bool {
+  let model = ModelicaModel {
+    name: ^rc,
+    body: [
+      StmtComponent {
+        component: ResistorInstance {
           name: ^r1,
           R: ModelicaValue { lexeme: "1000" },
           connectors: modelica_two_pin_connector_default
-        },
-        CapacitorInstance {
+        }
+      },
+      StmtComponent {
+        component: CapacitorInstance {
           name: ^c1,
           C: ModelicaValue { lexeme: "1e-6" },
           connectors: modelica_two_pin_connector_default
         }
-      ] && eqs.connects == [
-        ConnectEquation {
+      },
+      StmtConnect {
+        equation: ConnectEquation {
           left: PinEndpoint { instance: ^r1, pin: ^p },
           right: PinEndpoint { instance: ^c1, pin: ^p }
         }
-      ]
+      }
+    ]
+  }
+  match model {
+    ModelicaModel { name: _, body: body } => match body {
+      Cons {
+        head: StmtComponent { component: ResistorInstance { name: n, R: _, connectors: _ } },
+        tail: _
+      } => n == ^r1
+      _ => false
+    }
     _ => false
+  }
+}
+
+fn modelica_wave1_resistor_parse_accepted() -> Bool {
+  match modelica_wave1_resistor_tokenize_and_parse() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn modelica_wave1_resistor_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: modelica_wave1_resistor_fixture_text,
+    file: ^modelica_wave1_resistor_fixture_file,
+    rules: modelica_wave1_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: modelica_wave1_grammar())
   }
 }
 
@@ -116,17 +145,23 @@ data claim_modelica_connect_equation_endpoints: TestClaim = BoolWitnessClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_modelica_passive_model_equation_section: TestClaim = BoolWitnessClaim {
-  label: "extdeps/modelica: ModelicaModel carries passive components + connect section",
+data claim_modelica_model_statement_resistor_arm: TestClaim = BoolWitnessClaim {
+  label: "extdeps/modelica: ModelStatement StmtComponent projects ResistorInstance",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: modelica_passive_model_carries_equation_section_holds() },
+  witness: BoolWitness { holds: modelica_model_statement_resistor_component_arm_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_modelica_module_compiles: TestClaim = CompilesClaim {
-  label: "extdeps/modelica: acausal passive substrate + wave-1 grammar probe compile",
+data claim_modelica_passive_model_body: TestClaim = BoolWitnessClaim {
+  label: "extdeps/modelica: ModelicaModel.body carries ModelStatement rows",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: modelica_format_grammar_probe(),
-  expected_value: modelica_format_grammar_probe(),
+  witness: BoolWitness { holds: modelica_passive_model_body_carries_model_statement_holds() },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_modelica_wave1_resistor_parses: TestClaim = BoolWitnessClaim {
+  label: "extdeps/modelica: wave-1 resistor declaration fixture tokenize+parse accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  witness: BoolWitness { holds: modelica_wave1_resistor_parse_accepted() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

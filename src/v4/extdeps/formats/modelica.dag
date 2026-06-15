@@ -108,15 +108,9 @@ type ModelStatement
   | StmtConnect { equation: ConnectEquation }
 
 
-type ModelicaEquationSection {
-  connects: List<ConnectEquation>
-}
-
-
 type ModelicaModel {
   name: Symbol
-  components: List<PassiveComponent>
-  equations: ModelicaEquationSection
+  body: List<ModelStatement>
 }
 
 
@@ -244,11 +238,14 @@ fn modelica_format_grammar_schema() -> GrammarSchema {
 }
 
 
+data modelica_wave1_resistor_fixture_text: String = "Resistor R1 ( R = 1000 ) ;"
+
+
 fn modelica_format_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: modelica_format_grammar_schema(),
     probe: GrammarSchemaProbe {
-      fixture: "Resistor R1 ( R = 1000 ) ;",
+      fixture: modelica_wave1_resistor_fixture_text,
       production: modelica_resistor_declaration_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^modelica_surface_resistor_declaration)
     }
