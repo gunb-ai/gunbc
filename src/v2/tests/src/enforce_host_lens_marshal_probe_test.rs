@@ -149,6 +149,26 @@ fn value_type_label(ctx: &InterpContext, value: &Value) -> String {
     }
 }
 
+fn is_free_monoid_carrier(ctx: &InterpContext, value: &Value) -> bool {
+    match value {
+        Value::Variant { variant_name, .. } => {
+            ctx.sym_eq(*variant_name, "Empty") || ctx.sym_eq(*variant_name, "Cons")
+        }
+        Value::List(_) => false,
+        _ => false,
+    }
+}
+
+fn free_monoid_carrier_tag(ctx: &InterpContext, value: &Value) -> &'static str {
+    match value {
+        Value::List(_) => "Value::List",
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => "Empty",
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Cons") => "Cons",
+        Value::Variant { .. } => "Variant(non-monoid)",
+        _ => "other",
+    }
+}
+
 fn free_monoid_elems<'a>(ctx: &InterpContext, value: &'a Value) -> Result<Vec<&'a Value>, String> {
     let mut out = Vec::new();
     let mut cur = value;
@@ -346,22 +366,22 @@ fn run_modeled_carrier_lens_probe(fn_name: &str, expect: bool) {
     assert_bool_probe(&ctx, fn_name, root, expect);
 }
 
-/// Bisect (snappy msg_3e3c99ad): after lens1 Accepted + first append, witnesses
-/// carrier must be substrate FreeMonoid (`Empty`/`Cons`), not a stray coproduct Variant.
+/// Bisect (snappy msg_3e3c99ad): marshaled root `Node.children` must be substrate
+/// FreeMonoid (`Empty`/`Cons`), not host `Value::List`.
 #[test]
-fn marshaled_root_witnesses_carrier_after_first_append_is_free_monoid() {
+fn marshaled_root_children_use_free_monoid_carrier() {
     let resolved = compile_probe_bundle(MODELED_CARRIER_FIXTURE);
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);
-    let value = run_probe_fn_timed(&ctx, "probe_witnesses_carrier_tag_after_first_append", root)
-        .unwrap_or_else(|e| panic!("bisect probe: {e}"));
-    let Value::Str(tag) = value else {
-        panic!("bisect probe: expected String tag, got {value:?}");
+    let Value::Record { fields, .. } = &root else {
+        unreachable!()
     };
-    assert_eq!(
-        tag, "Cons",
-        "after first append witnesses must be Cons (seed [] is Empty; first snoc yields Cons)"
+    let children = fields.get(&ctx.sym("children")).expect("children");
+    assert!(
+        is_free_monoid_carrier(&ctx, children),
+        "marshaled Node.children carrier: {}",
+        free_monoid_carrier_tag(&ctx, children)
     );
 }
 

@@ -4,11 +4,6 @@ module v4.test.claim.manual.enforce_host_lens_bridge_harness
 
 import v4.compiler.compile {
   always_required_lenses,
-  append_lens_gate_witness,
-  apply_compile_lens,
-  CompileLensEnforce,
-  empty_lens_gate_witnesses,
-  fact_density_lens,
   run_required_lens_gates
 }
 import v4.std.diagnostic { Accepted, Rejected }
@@ -53,33 +48,5 @@ fn probe_lens_accepts_from_marshaled_root(root: Node) -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-  }
-}
-
-fn probe_witnesses_carrier_tag_after_first_append(root: Node) -> String {
-  let tree = claim_inferred_tree(
-    root: root,
-    facts: claim_inferred_facts(
-      type_symbol: ^enforce_host_probe_type_sym,
-      algebra_symbol: ^enforce_host_probe_algebra_sym,
-      descent_symbol: ^enforce_host_probe_descent_sym
-    )
-  )
-  match apply_compile_lens(
-    lens: fact_density_lens,
-    inferred: tree,
-    mode: CompileLensEnforce
-  ) {
-    Rejected { diagnostics: _ } => "lens1-rejected"
-    Accepted { value: witness, diagnostics: _ } => {
-      let witnesses = append_lens_gate_witness(
-        witnesses: empty_lens_gate_witnesses(),
-        witness: witness
-      )
-      match witnesses {
-        Empty => "Empty"
-        Cons { head: _, tail: _ } => "Cons"
-      }
-    }
   }
 }
