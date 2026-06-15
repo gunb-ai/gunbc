@@ -9,7 +9,6 @@
 module std.compute_fabric
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
-import extdeps.cloud.hetzner { cax41_catalog }
 import std.os.types {
   FileSystemSemantics,
   KernelFamily,
@@ -20,18 +19,15 @@ import std.os.types {
   ProcessSemantics,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
-import std.currency { CurrencyCode, Eur }
+import std.measure { Measure, Time, DataRate, One, ByteSize, MoneyMicros }
+import std.currency { CurrencyCode }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
-  CpuDeploymentFacts,
   CpuFacts,
   CpuArchitecture,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads
 }
-import std.memory.types { HostRamSupplyFacts }
-import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram, supply_srv1_observed_ram_bytes, supply_srv2_observed_ram_bytes }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
