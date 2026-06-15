@@ -7,6 +7,7 @@
 module v4.test.claim.manual.program_emit_typescript
 
 import v4.compiler.emit { emit }
+import v4.compiler.translate { translate_project_transform_in_arrow_scope }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.extdeps.languages.dag {
