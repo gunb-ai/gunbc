@@ -32,17 +32,16 @@ module v4.extdeps.formats.spice
 import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
 import v4.std.diagnostic {
-  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   None,
   Outcome,
-  Rejected,
   Textual,
   Unavailable,
   WholeFile,
   diagnostics_singleton,
-  outcome_accepted
+  outcome_accepted,
+  outcome_rejected
 }
 import v4.std.logic { Bool }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
@@ -503,15 +502,13 @@ data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
 data spice_wave1_probe_resistor_line: String = "R1 n1 n2 1"
 
 fn spice_parse_reject_unsupported() -> SpiceParseResult {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: Diagnostic {
-        reason: ^spice_parse_wave1_unsupported,
-        at: Textual { file: spice_wave1_fixture_file, extent: WholeFile },
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    )
-  }
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^spice_parse_wave1_unsupported,
+      at: Textual { file: spice_wave1_fixture_file, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
