@@ -1,0 +1,34 @@
+// Compile-witness for std.time_affine: threads the affine TIME carrier
+// end-to-end (imports, struct-field access, fn-typed op dictionary) WITHOUT
+// value-level arithmetic (the executable lowering is the tracked deferral).
+// Proves the affine types resolve and emit against pinned std.
+//
+// Gate (from gunbc repo root, after `cargo build --release -p v2-compiler --bin gunbc`):
+//   ./target/release/gunbc compile \
+//     --source-root dsl/examples/time_affine_check \
+//     --source-root dsl/std \
+//     --output-dir /tmp/time-affine-out \
+//     --target rust \
+//   && cargo check --manifest-path /tmp/time-affine-out/Cargo.toml
+
+module examples.time_affine_check
+
+import std.time_affine { Instant, Milliseconds, DrainWindow, TimeAffine }
+
+// Field access: a DrainWindow exposes an affine coordinate ...
+fn window_first_failed(w: DrainWindow) -> Instant {
+  w.first_failed_at
+}
+
+// ... and an additive duration threshold.
+fn window_threshold(w: DrainWindow) -> Milliseconds {
+  w.min_down
+}
+
+// The torsor subtraction, applied through the op dictionary (no hand-rolled
+// body): now - first_failed_at -> Milliseconds. This is the typed core of the
+// drain predicate `(now - first_failed_at) >= min_down`; the `>=` comparison
+// is the deferred value-Measure lowering.
+fn elapsed_since_failure(ops: TimeAffine, now: Instant, w: DrainWindow) -> Milliseconds {
+  ops.difference(now, w.first_failed_at)
+}

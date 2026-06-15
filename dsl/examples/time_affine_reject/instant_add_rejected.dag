@@ -1,0 +1,25 @@
+// DISCRIMINATING NEGATIVE WITNESS for std.time_affine (snappy refinement 1):
+// the load-bearing affine law is that `instant + instant` is FORBIDDEN -- it is
+// the whole reason `Instant` is NOT a `Measure`. This file attempts exactly that
+// illegal addition. The witness PASSES when this file FAILS to type-check.
+//
+// Enforcement is STRUCTURAL, not by-convention: `Instant` carries no additive
+// structure (it emits as a payload-free `pub struct Instant;` with no `Add`
+// impl), so `a + b` cannot type-check. The two legitimate affine operations
+// (`instant - instant -> Milliseconds`, `instant + Milliseconds -> instant`)
+// are reached ONLY through the `TimeAffine` op dictionary -- never the bare `+`.
+//
+// Gate (from gunbc repo root): `gunbc compile` emits, then
+//   cargo check --manifest-path <out>/Cargo.toml
+// MUST FAIL with `error[E0369]: cannot add Instant to Instant`. If it ever
+// compiles clean, the affine law has regressed (Instant gained an Add impl) and
+// the gate fails.
+
+module examples.time_affine_reject
+
+import std.time_affine { Instant }
+
+// ILLEGAL: adding two affine coordinates. Must be rejected.
+fn instant_plus_instant_is_forbidden(a: Instant, b: Instant) -> Instant {
+  a + b
+}
