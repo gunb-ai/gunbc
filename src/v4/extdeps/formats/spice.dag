@@ -234,9 +234,7 @@ type SpiceNetlist {
   body: List<DeckStatement>
 }
 
-type SpiceParseResult = Outcome<SpiceNetlist>
-
-type SpiceParse = fn(String) -> SpiceParseResult
+type SpiceParse = fn(String) -> Outcome<SpiceNetlist>
 
 type SpiceEmit = fn(SpiceNetlist) -> String
 
@@ -501,7 +499,7 @@ data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
 
 data spice_wave1_probe_resistor_line: String = "R1 n1 n2 1"
 
-fn spice_parse_reject_unsupported() -> SpiceParseResult {
+fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
   outcome_rejected(
     d: Diagnostic {
       reason: ^spice_parse_wave1_unsupported,
@@ -516,12 +514,12 @@ fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
     || (text == spice_emit(netlist: spice_wave1_probe_resistor_netlist))
 }
 
-fn spice_parse_accept_probe() -> SpiceParseResult {
+fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
   outcome_accepted(value: spice_wave1_probe_resistor_netlist)
 }
 
 // Wave-1 parse: structural inverse of spice_emit for enrolled witness netlists only.
-fn spice_parse(text: String) -> SpiceParseResult {
+fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
   if spice_parse_is_wave1_probe_line(text: text) {
     spice_parse_accept_probe()
   } else {
