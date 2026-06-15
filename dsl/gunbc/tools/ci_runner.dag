@@ -14,13 +14,21 @@
 
 module gunbc.tools.ci_runner
 
-import gunbc.ci { ci_pipeline, CIGate, CICommand, SourceRoot }
+import gunbc.ci {
+  ci_pipeline,
+  CIGate,
+  CICommand,
+  SourceRoot,
+  ci_base_build_graph,
+  render_ci_base_build_prewarm_cargo_command,
+  ensure_ci_base_build_bins_shell
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import extdeps.shell
 import extdeps.github.log_annotations {
   LogAnnotation,
   AnnotationError, AnnotationNotice, AnnotationGroup, AnnotationEndGroup,
-  render_log_annotation, emit_line_shell
+  render_log_annotation, emit_line_shell, shell_single_quote
 }
 
 // ── Result types ────────────────────────────────────────────────────
@@ -142,11 +150,55 @@ fn with_sccache_env(script: String) -> String {
   concat("export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0; ", script)
 }
 
+// ── Sccache pre-warm (base build graph per pin) ─────────────────────
+// After modeled sccache upsert, one release cargo build warms every gate-3 binary
+// before the script fan-out. Authority: gunbc.ci `ci_base_build_graph`.
+
+fn prewarm_sccache_base_build_shell() -> String {
+  with_sccache_env(
+    concat(
+      "bash .github/ci-floor/with-sccache-retry.sh ",
+      render_ci_base_build_prewarm_cargo_command(graph: ci_base_build_graph)
+    )
+  )
+}
+
+func prewarm_sccache_base_build_graph() -> Bool {
+  let _ = emit_log_annotation(
+    AnnotationGroup { title: "Pre-warm sccache (base build graph per pin)" }
+  )
+  let result = shell.Exec.Run(script: prewarm_sccache_base_build_shell())
+  if result.success {
+    let _ = emit_log_annotation(
+      AnnotationNotice {
+        message: "[PASS] sccache pre-warm (ci_base_build_graph)",
+        file: none,
+        line: none,
+        col: none
+      }
+    )
+    let _ = emit_log_annotation(AnnotationEndGroup)
+    true
+  } else {
+    let _ = emit_log_annotation(
+      AnnotationError {
+        message: "[FAIL] sccache pre-warm (ci_base_build_graph)",
+        file: none,
+        line: none,
+        col: none
+      }
+    )
+    let _ = emit_log_annotation(AnnotationEndGroup)
+    false
+  }
+}
+
 fn dsl_compile_clean_shell(root: SourceRoot) -> String {
   with_sccache_env(
     concat(
-      ensure_gunbc_binary(), " && ",
-      "bash scripts/v2-dsl-full-tree-parse-gate.sh"
+      "V2_PARSE_SOURCE_ROOT=",
+      shell_single_quote(s: root.path),
+      " bash scripts/v2-dsl-full-tree-parse-gate.sh"
     )
   )
 }
@@ -154,10 +206,8 @@ fn dsl_compile_clean_shell(root: SourceRoot) -> String {
 fn affected_tests_shell() -> String {
   with_sccache_env(
     concat(
-      ensure_gunbc_binary(), " && ",
-      ensure_ci_claim_gate_binary(), " && ",
-      ensure_claim_batch_binary(), " && ",
-      ensure_discover_owned_data_binary(), " && ",
+      ensure_ci_base_build_bins_shell(graph: ci_base_build_graph),
+      " && ",
       run_logged_script(
         inner: "bash scripts/v4-affected-tests-gate.sh",
         log_label: "gate3"
@@ -274,7 +324,15 @@ func sccache_upsert_preflight() -> ProcessExit {
 
 func run_ci_pipeline() -> ProcessExit {
   match sccache_upsert_preflight() {
-    ExitSuccess => pipeline_to_exit(result: compute_pipeline_result())
+    ExitSuccess =>
+      if prewarm_sccache_base_build_graph() {
+        pipeline_to_exit(result: compute_pipeline_result())
+      } else {
+        ExitFailure {
+          code: exit_code_general_error,
+          reason: "CI pipeline: sccache base-build pre-warm failed"
+        }
+      }
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
   }
 }

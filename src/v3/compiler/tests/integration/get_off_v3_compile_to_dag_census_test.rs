@@ -45,9 +45,9 @@
 //!
 //! ## Where this runs
 //!
-//! This is a **CI gate** as of PR #4659: the test is wired into
-//! `ci_floor_parity` in `.github/workflows/ci.yml` (the single CI
-//! authority per INVARIANTS.md). A 477th direct `compile_to_dag(` caller
+//! This is a **CI gate** as of PR #4659: the test is wired into gate-3
+//! (`scripts/v4-affected-tests-gate.sh` via `run_ci_pipeline`). A 477th
+//! direct `compile_to_dag(` caller
 //! will fail CI. It also runs locally via `cargo test -p v3-compiler` and
 //! in review/dev runs, and emits the full per-file census as an artifact
 //! (printed under `--nocapture`, written to

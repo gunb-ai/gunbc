@@ -18,17 +18,24 @@ type ParseAllowlistEntry {
 
 data dsl_v2_parse_allowlist: List<ParseAllowlistEntry> = [
   {
-    path: { path: "dsl/gunbc/ci_emission.dag" },
+    path: "dsl/gunbc/ci_emission.dag",
     tag: V2ParserDebt {
       reason: "record-literal Workflow body after = requires v2 brace-body support",
       ref: "gunbc/ci_emission.dag gunbc_ci_emission_binary_shim_workflow"
     }
   },
   {
-    path: { path: "dsl/std/unicode.dag" },
+    path: "dsl/std/unicode.dag",
     tag: V2ParserDebt {
       reason: "fn expression body (= match) not accepted by v2 parser",
       ref: "std/unicode.dag char_in_class"
     }
   }
 ]
+
+// Gate-1 transport: one path per line for scripts/v2-dsl-full-tree-parse-gate.sh.
+fn dsl_v2_parse_allowlist_paths_tsv() -> String {
+  dsl_v2_parse_allowlist
+    |> map(e => e.path)
+    |> join(separator: "\n")
+}

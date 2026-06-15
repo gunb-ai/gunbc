@@ -34,47 +34,12 @@ from pathlib import Path
 CEILINGS = {
     "ci.yml": {
         "infra_isolation": 5,
-        "fmt": 15,
-        "doc_refs": 5,
-        # Was python-only (instant); now builds ci_claim_gate + v2-compiler +
-        # layering_imports_scan before scanner-execution gate. 15m matches fmt job
-        # shape; warm sccache from parallel floor jobs keeps uncontended wall low.
-        "layering_imports": 15,
-        "ci_floor": 60,
-        "ci_floor_parity": 60,
-        "ci_floor_emit": 60,
-        # INTERIM 35m (2026-06-13): uncontended base structurally outgrew 20m
-        # (witness-row + perturb-closure growth: ~2min/resolve over 73-source
-        # closures mid-perturb; #4792/#4785/#4786 all green-then-killed at
-        # 20m22s; reruns cannot fix a structural overrun). Budget rule:
-        # documented uncontended wall (~16m) x2 = 32, rounded to 35. The x2
-        # multiplier covers typical merge-wave DRAM-bandwidth contention
-        # (measured 1.5-2.6x, 2.5x observed twice); the 2.0-2.6x tail is
-        # accepted as rare manual-rerun territory. Dissolve-on: perturb-phase
-        # split into a parallel job and/or #4783 multi-entry claim_batch
-        # parse-cache adoption land -- both shrink the uncontended wall back
-        # under the 20m shape; re-derive the ceiling under the budget rule.
-        "v4_lens_gate": 35,
-        "v4_lens_ci": 35,
-        # Per-row PERTURB fan-out split out of v4_lens_ci into a capped parallel
-        # matrix (4 legs, max-parallel default 4 — the "perturb-phase split into a
-        # parallel job" dissolve-on named in the v4_lens_ci comment above). Budget
-        # rule (uncontended wall x2): the heaviest shard owns 4 of 15 rows; ~108s
-        # cold resolve/row + per-row src/v4 copy + checkout/setup/cache-restore
-        # ~= 8m uncontended; x2 -> 16, rounded to 20 (matches the corpus shards).
-        # Re-derive from the first on-wave per-shard receipt; ratchet against raises.
-        "v4_lens_ci_perturb": 20,
-        # Non-gating latency timing ledger: checkout + rust + the shell-free .dag github.Actions
-        # fetch (collect-affected-set-timings, which embeds v2-compiler and writes the timed receipt
-        # directly). Budget rule (documented uncontended wall x2): v2-compiler is sccache-warm from
-        # the floor jobs; warm wall ~1-2m, cold-build tail ~3-4m; 4m x2 = 8. Re-derive from first green.
-        "affected_timings": 8,
-        "v4_claim_witness_corpus_a": 20,  # ~8.4m uncontended/shard (7.4m Phase A + ~1m spot); ×2 → 20m
-        "v4_claim_witness_corpus_b": 20,
-        "timeout_budgets": 5,
-        "ci_lens_lane_class": 5,
-        "ci_fleet_shard": 2,
-        "ci": 5,
+        # One-binary bankruptcy floor (operator 2026-06-15): serializes the former
+        # parallel Wave-1 jobs (ci_floor, parity, emit, lens, corpus, doc_refs, …)
+        # into a single `run_ci_pipeline` invocation. Budget rule (uncontended wall ×2):
+        # cold pre-warm + 3 gates + witness teeth ~90–120m observed; ×2 → 240 for merge-wave
+        # contention. Re-derive from first green one-binary receipt; ratchet against raises.
+        "ci": 240,
     },
     "ci-spot-rerun.yml": {
         "rerun-once": 5,

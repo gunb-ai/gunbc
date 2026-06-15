@@ -3,7 +3,8 @@
 // Floor membership (operator bankruptcy, final): exactly 3 blocking gates —
 // dsl compile-clean (full tree minus enumerated allowlist), fmt,
 // affected-tests (fail-safe over-inclusive selector). No demote spine;
-// corpus/lens/layering are tests gate-3 runs when affected.
+// corpus/lens/layering plus retired-job consumers (doc_refs, timeout_budgets,
+// regen_stage0 --verify, get-off-v3 compile_to_dag census) are scripts gate-3 runs.
 //
 // Consumers:
 //   dsl/gunbc/tools/ci_runner.dag — runtime execution via run_ci_pipeline()
@@ -20,6 +21,89 @@ type SourceRoot {
 }
 
 data dsl_root: SourceRoot = { path: "dsl" }
+
+// ── Base build graph (sccache pre-warm) ─────────────────────────────
+// One release cargo invocation warms sccache for every gate-3 lens/host
+// binary before the script fan-out in ci_runner. Pin scope =
+// rust-toolchain.toml + Cargo.lock (toolchain-pinned; matches the ci.yml
+// cargo cache key and cache_interface ToolchainSpec invalidation).
+
+type CiBaseBuildPackage {
+  name: String
+}
+
+type CiBaseBuildBin {
+  package: String
+  name: String
+  release_path: String
+}
+
+type CiBaseBuildGraph {
+  packages: List<CiBaseBuildPackage>
+  bins: List<CiBaseBuildBin>
+  pin_paths: List<FilePath>
+}
+
+data ci_base_build_graph: CiBaseBuildGraph = {
+  packages: [
+    { name: "v2-compiler" },
+    { name: "ci_claim_gate" },
+    { name: "layering_imports_scan" }
+  ],
+  bins: [
+    { package: "v2-compiler", name: "gunbc", release_path: "gunbc" },
+    { package: "v2-compiler", name: "claim_batch", release_path: "claim_batch" },
+    { package: "v2-compiler", name: "discover_owned_data", release_path: "discover_owned_data" },
+    { package: "v2-compiler", name: "claim_executor", release_path: "claim_executor" },
+    { package: "ci_claim_gate", name: "ci-claim-gate", release_path: "ci-claim-gate" },
+    { package: "layering_imports_scan", name: "layering_imports_scan", release_path: "layering_imports_scan" }
+  ],
+  pin_paths: [
+    "rust-toolchain.toml",
+    "Cargo.lock"
+  ]
+}
+
+// ── Base build graph projection (single authority → shell transport) ───
+
+fn render_ci_base_build_package_flag(pkg: CiBaseBuildPackage) -> String {
+  concat("-p ", pkg.name)
+}
+
+fn render_ci_base_build_package_flags(graph: CiBaseBuildGraph) -> String {
+  graph.packages
+    |> map(pkg => render_ci_base_build_package_flag(pkg: pkg))
+    |> join(separator: " ")
+}
+
+fn render_ci_base_build_bin_flag(bin: CiBaseBuildBin) -> String {
+  concat("--bin ", bin.name)
+}
+
+fn render_ci_base_build_bin_flags(graph: CiBaseBuildGraph) -> String {
+  graph.bins
+    |> map(bin => render_ci_base_build_bin_flag(bin: bin))
+    |> join(separator: " ")
+}
+
+fn render_ci_base_build_prewarm_cargo_command(graph: CiBaseBuildGraph) -> String {
+  concat(
+    "cargo build --release ",
+    render_ci_base_build_package_flags(graph: graph),
+    " ",
+    render_ci_base_build_bin_flags(graph: graph)
+  )
+}
+
+fn ensure_ci_base_build_bin_release(bin: CiBaseBuildBin) -> String {
+  concat("test -x target/release/", bin.release_path)
+}
+
+fn ensure_ci_base_build_bins_shell(graph: CiBaseBuildGraph) -> String {
+  graph.bins
+    |> map(bin => ensure_ci_base_build_bin_release(bin: bin))
+    |> join(separator: " && ")
+}
 
 // ── Gate kind ───────────────────────────────────────────────────────
 

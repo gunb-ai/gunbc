@@ -23,6 +23,7 @@ data annotation_notice_prefix: String = "::notice "
 data annotation_group_prefix: String = "::group::"
 data annotation_endgroup: String = "::endgroup::"
 data annotation_set_output_prefix: String = "::set-output name="
+data annotation_set_output_separator: String = "::"
 data annotation_add_mask_prefix: String = "::add-mask::"
 data annotation_stop_commands_prefix: String = "::stop-commands::"
 
@@ -36,20 +37,97 @@ fn emit_line_shell(line: String) -> String {
   concat("printf '%s\\n' ", shell_single_quote(s: line))
 }
 
+// Property-form openers use `cmd + " "` (e.g. `::error file=…`); simple form is `cmd + "::" + message`.
+fn annotation_prefix_to_simple_op(prefix: String) -> String {
+  replace(prefix, " ", "")
+}
+
+fn render_annotation_col_part(col: Int?) -> String {
+  match col {
+    Present { value: c } => concat(",col=", to_string(value: c))
+    Absent => ""
+  }
+}
+
+fn render_located_diagnostic(
+  cmd_prefix: String,
+  message: String,
+  file: String,
+  line: Int,
+  col: Int?
+) -> String {
+  concat(
+    cmd_prefix,
+    "file=", file,
+    ",line=", to_string(value: line),
+    render_annotation_col_part(col: col),
+    "::",
+    message
+  )
+}
+
+fn render_simple_diagnostic(cmd_prefix: String, message: String) -> String {
+  concat(annotation_prefix_to_simple_op(prefix: cmd_prefix), "::", message)
+}
+
+fn render_diagnostic_annotation(
+  cmd_prefix: String,
+  message: String,
+  file: String?,
+  line: Int?,
+  col: Int?
+) -> String {
+  match file {
+    Present { value: f } =>
+      match line {
+        Present { value: ln } =>
+          render_located_diagnostic(
+            cmd_prefix: cmd_prefix,
+            message: message,
+            file: f,
+            line: ln,
+            col: col
+          )
+        Absent =>
+          render_simple_diagnostic(cmd_prefix: cmd_prefix, message: message)
+      }
+    Absent =>
+      render_simple_diagnostic(cmd_prefix: cmd_prefix, message: message)
+  }
+}
+
 fn render_log_annotation(annotation: LogAnnotation) -> String {
   match annotation {
-    AnnotationError { message: m, file: _, line: _, col: _ } =>
-      concat("::error::", m)
-    AnnotationWarning { message: m, file: _, line: _, col: _ } =>
-      concat("::warning::", m)
-    AnnotationNotice { message: m, file: _, line: _, col: _ } =>
-      concat("::notice::", m)
+    AnnotationError { message: m, file: f, line: ln, col: c } =>
+      render_diagnostic_annotation(
+        cmd_prefix: annotation_error_prefix,
+        message: m,
+        file: f,
+        line: ln,
+        col: c
+      )
+    AnnotationWarning { message: m, file: f, line: ln, col: c } =>
+      render_diagnostic_annotation(
+        cmd_prefix: annotation_warning_prefix,
+        message: m,
+        file: f,
+        line: ln,
+        col: c
+      )
+    AnnotationNotice { message: m, file: f, line: ln, col: c } =>
+      render_diagnostic_annotation(
+        cmd_prefix: annotation_notice_prefix,
+        message: m,
+        file: f,
+        line: ln,
+        col: c
+      )
     AnnotationGroup { title: t } =>
       concat(annotation_group_prefix, t)
     AnnotationEndGroup =>
       annotation_endgroup
     SetOutput { name: n, value: v } =>
-      concat(annotation_set_output_prefix, n, "::", v)
+      concat(annotation_set_output_prefix, n, annotation_set_output_separator, v)
     AddMask { value: v } =>
       concat(annotation_add_mask_prefix, v)
     StopCommands { token: t } =>

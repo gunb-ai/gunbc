@@ -1104,3 +1104,153 @@ fn ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell() {
 fn ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell_body() {
     assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(gate57_bootstrap_dag());
 }
+
+const GUNBC_CI_RUNNER_SOURCE: &str = include_str!("../../../dsl/gunbc/tools/ci_runner.dag");
+const GUNBC_LOG_ANNOTATIONS_SOURCE: &str =
+    include_str!("../../../dsl/extdeps/github/log_annotations.dag");
+const V2_DSL_PARSE_GATE_SCRIPT: &str =
+    include_str!("../../../scripts/v2-dsl-full-tree-parse-gate.sh");
+const V4_AFFECTED_TESTS_GATE_SCRIPT: &str =
+    include_str!("../../../scripts/v4-affected-tests-gate.sh");
+const GUNBC_PARSE_ALLOWLIST_SOURCE: &str = include_str!("../../../dsl/gunbc/parse_allowlist.dag");
+
+/// `ci_base_build_graph` is the sole authority; ci_runner projects prewarm + ensure paths.
+#[test]
+fn ci_base_build_graph_prewarm_projects_from_modeled_authority() {
+    assert!(
+        GUNBC_CI_LINKED_COMPILE_SOURCE.contains("fn render_ci_base_build_prewarm_cargo_command"),
+        "{GUNBC_CI_LINKED_COMPILE_FILE} must project ci_base_build_graph to cargo"
+    );
+    assert!(
+        GUNBC_CI_RUNNER_SOURCE
+            .contains("render_ci_base_build_prewarm_cargo_command(graph: ci_base_build_graph)"),
+        "ci_runner must invoke modeled prewarm projection"
+    );
+    assert!(
+        GUNBC_CI_RUNNER_SOURCE
+            .contains("ensure_ci_base_build_bins_shell(graph: ci_base_build_graph)"),
+        "ci_runner must assert prewarmed bins via modeled release_path rows"
+    );
+    assert!(
+        !GUNBC_CI_RUNNER_SOURCE.contains("ensure_gunbc_binary(), \" && \",\n      \"bash scripts/v2-dsl"),
+        "gate-1 must not cargo-build gunbc after pre-warm (modeled graph authority)"
+    );
+    assert!(
+        !GUNBC_CI_RUNNER_SOURCE.contains("ensure_gunbc_binary(), \" && \",\n      ensure_ci_claim_gate_binary"),
+        "gate-3 shell must not duplicate per-binary cargo build helpers"
+    );
+    for pkg in ["v2-compiler", "ci_claim_gate", "layering_imports_scan"] {
+        assert!(
+            GUNBC_CI_LINKED_COMPILE_SOURCE.contains(&format!("name: \"{pkg}\"")),
+            "ci_base_build_graph must list package `{pkg}`"
+        );
+    }
+    for bin in [
+        "gunbc",
+        "claim_batch",
+        "discover_owned_data",
+        "claim_executor",
+        "ci-claim-gate",
+        "layering_imports_scan",
+    ] {
+        assert!(
+            GUNBC_CI_LINKED_COMPILE_SOURCE.contains(&format!("name: \"{bin}\"")),
+            "ci_base_build_graph must list bin `{bin}`"
+        );
+    }
+}
+
+/// `SetOutput` must use GHA's `name=foo::bar` separator, not `}`.
+#[test]
+fn log_annotations_set_output_uses_double_colon_separator() {
+    assert!(
+        GUNBC_LOG_ANNOTATIONS_SOURCE.contains("annotation_set_output_separator"),
+        "log_annotations.dag must declare the set-output value separator"
+    );
+    assert!(
+        !GUNBC_LOG_ANNOTATIONS_SOURCE
+            .contains(r#"concat(annotation_set_output_prefix, n, "}", v)"#),
+        "SetOutput must not render with a brace separator"
+    );
+}
+
+/// Diagnostic annotations must consume prefix constants and project file/line/col when set.
+#[test]
+fn log_annotations_diagnostic_projects_location_fields() {
+    assert!(
+        GUNBC_LOG_ANNOTATIONS_SOURCE.contains("render_diagnostic_annotation"),
+        "log_annotations.dag must route Error/Warning/Notice through shared diagnostic renderer"
+    );
+    assert!(
+        GUNBC_LOG_ANNOTATIONS_SOURCE.contains("cmd_prefix: annotation_error_prefix"),
+        "render_log_annotation must consume annotation_error_prefix"
+    );
+    assert!(
+        GUNBC_LOG_ANNOTATIONS_SOURCE.contains("file=",),
+        "located diagnostics must project file= into workflow-command output"
+    );
+    assert!(
+        !GUNBC_LOG_ANNOTATIONS_SOURCE.contains("file: _, line: _, col: _"),
+        "render_log_annotation must not discard file/line/col fields"
+    );
+}
+
+/// Gate-1 allowlist transport must read modeled paths, not a parallel bash array.
+#[test]
+fn parse_allowlist_gate_script_reads_modeled_paths_tsv() {
+    assert!(
+        GUNBC_PARSE_ALLOWLIST_SOURCE.contains("fn dsl_v2_parse_allowlist_paths_tsv"),
+        "parse_allowlist.dag must expose dsl_v2_parse_allowlist_paths_tsv"
+    );
+    assert!(
+        V2_DSL_PARSE_GATE_SCRIPT.contains("dsl_v2_parse_allowlist_paths_tsv"),
+        "v2-dsl-full-tree-parse-gate.sh must project the modeled allowlist"
+    );
+    assert!(
+        V2_DSL_PARSE_GATE_SCRIPT.contains("V2_PARSE_SOURCE_ROOT"),
+        "v2-dsl-full-tree-parse-gate.sh must consume modeled SourceRoot from ci_runner"
+    );
+    assert!(
+        !V2_DSL_PARSE_GATE_SCRIPT.contains("allowlist=("),
+        "v2-dsl-full-tree-parse-gate.sh must not hardcode a parallel allowlist array"
+    );
+}
+
+/// Gate-3 must re-home bootstrap consumers retired from ci_floor / ci_floor_parity (E-10).
+#[test]
+fn affected_tests_gate_script_includes_bootstrap_consumers() {
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("regen_stage0 -- --verify"),
+        "gate-3 must run stage0 freshness (former ci_floor)"
+    );
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT
+            .contains("get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling"),
+        "gate-3 must run get-off-v3 caller census ratchet (former ci_floor_parity / PR #4659)"
+    );
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("with-sccache-retry.sh"),
+        "gate-3 bootstrap cargo steps must use sccache retry transport"
+    );
+}
+
+/// Gate-3 must re-home doc_refs and timeout_budgets retired from the collapsed workflow.
+#[test]
+fn affected_tests_gate_script_includes_doc_and_timeout_consumers() {
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("check_doc_refs.py --changed origin/main"),
+        "gate-3 must run diff-scoped doc reference gate (former doc_refs job)"
+    );
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("check_doc_refs.py --check-graph"),
+        "gate-3 must run doc-chain drift gate"
+    );
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("check_ci_timeout_budgets.py"),
+        "gate-3 must run timeout ceiling ratchet (former timeout_budgets job)"
+    );
+    assert!(
+        V4_AFFECTED_TESTS_GATE_SCRIPT.contains("check_ci_timeout_budgets.py --perturb-check"),
+        "gate-3 must run timeout budget perturb witness"
+    );
+}

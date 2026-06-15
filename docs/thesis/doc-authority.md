@@ -267,8 +267,8 @@ flowchart LR
 - **Standing detection:** [`scripts/check_doc_refs.py`](../../scripts/check_doc_refs.py)
   — every Markdown reference must resolve. `--all` produces the full census;
   CI runs `--changed origin/main` so a touched doc with a dangling reference fails
-  review `[live]` — the `doc_refs` job is wired into the `ci` aggregator (fail-closed),
-  operator-authorized. Diff-scoped by design: no repo-wide sweep, no ratchet baseline —
+  review `[live]` — gate-3 (`scripts/v4-affected-tests-gate.sh` via `run_ci_pipeline`)
+  enforces this fail-closed. Diff-scoped by design: no repo-wide sweep, no ratchet baseline —
   you fix a doc's references when you touch it.
 - A new or touched doc that **restates** a fact owned elsewhere, instead of linking,
   fails review.
