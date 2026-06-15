@@ -288,6 +288,18 @@ fn finer_pass14_fill_first_n_productions(n: Int) -> Bool {
   }
 }
 
+fn finer_pass14_fill_first_25_productions_terminates() -> Bool {
+  finer_pass14_fill_first_n_productions(n: 25)
+}
+
+fn finer_pass14_fill_first_30_productions_terminates() -> Bool {
+  finer_pass14_fill_first_n_productions(n: 30)
+}
+
+fn finer_pass14_fill_first_34_productions_terminates() -> Bool {
+  finer_pass14_fill_first_n_productions(n: 34)
+}
+
 fn finer_pass14_fill_first_20_productions_terminates() -> Bool {
   finer_pass14_fill_first_n_productions(n: 20)
 }
