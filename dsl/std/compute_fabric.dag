@@ -538,7 +538,8 @@ data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open
 data operator_fleet_srv1_ci_runner_count: Int = 20
 data operator_fleet_srv2_ci_runner_count: Int = 30
 
-data operator_fleet_runner_slot_total: Int = operator_fleet_srv1_ci_runner_count + operator_fleet_srv2_ci_runner_count
+data operator_fleet_runner_slot_total: Int =
+  operator_fleet_srv1_ci_runner_count + operator_fleet_srv2_ci_runner_count
 
 // Interim GHA compile-admission shard count (K). Tuned ~ fleet cores / CARGO_BUILD_JOBS-per-job
 // (smart-hawk-763 consumer validation); NOT runner_slot_total. Queue semantics (pending, not
