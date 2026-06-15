@@ -31,17 +31,25 @@ fn validate_source_roots() -> Vec<String> {
     ]
 }
 
-fn compile_probe_bundle(entry_path: &str) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
+fn entry_path(relative: &str) -> String {
+    workspace_root()
+        .join(relative)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn compile_probe_bundle(
+    relative_entry: &str,
+) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
     let roots = validate_source_roots();
-    let harness_sources = cli_run::load_sources_for_entry(&roots, HARNESS_ENTRY)
-        .unwrap_or_else(|e| panic!("load harness {HARNESS_ENTRY}: {e}"));
-    let subject_sources = cli_run::load_sources_for_entry(&roots, entry_path)
-        .unwrap_or_else(|e| panic!("load subject {entry_path}: {e}"));
+    let harness_entry = entry_path(HARNESS_ENTRY);
+    let subject_entry = entry_path(relative_entry);
+    let harness_sources = cli_run::load_sources_for_entry(&roots, &harness_entry)
+        .unwrap_or_else(|e| panic!("load harness {harness_entry}: {e}"));
+    let subject_sources = cli_run::load_sources_for_entry(&roots, &subject_entry)
+        .unwrap_or_else(|e| panic!("load subject {subject_entry}: {e}"));
     let mut by_path: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    for source in harness_sources
-        .iter()
-        .chain(subject_sources.iter())
-    {
+    for source in harness_sources.iter().chain(subject_sources.iter()) {
         by_path.insert(source.path.clone(), source.clone());
     }
     compile_to_resolved(Rc::new(by_path.into_values().collect()))

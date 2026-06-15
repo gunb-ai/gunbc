@@ -1,6 +1,8 @@
-module stage0.real_source.unit_modeling.accept
+module v4.test.fixtures.enforce_host.modeled_carrier_memory_spec
 
-import std.measure { ByteSize }
+// Self-contained modeled carrier (no dsl/std.measure import): compiles under
+// ci_floor_emit's src/v4-only closure while still discriminating ByteSize vs Int.
+type ByteSize
 
 type MemorySpec {
   ram_bytes: ByteSize

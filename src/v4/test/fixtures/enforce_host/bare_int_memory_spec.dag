@@ -1,4 +1,4 @@
-module stage0.real_source.unit_modeling.reject
+module v4.test.fixtures.enforce_host.bare_int_memory_spec
 
 type MemorySpec {
   ram_bytes: Int

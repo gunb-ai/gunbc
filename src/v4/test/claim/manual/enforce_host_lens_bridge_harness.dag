@@ -4,7 +4,7 @@ module v4.test.claim.manual.enforce_host_lens_bridge_harness
 
 import v4.compiler.compile {
   always_required_lenses,
-  run_required_lens_gates_on_subtree
+  run_required_lens_gates
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
@@ -23,7 +23,7 @@ fn probe_lens_rejects_unit_modeling_from_marshaled_root(root: Node) -> Bool {
       descent_symbol: ^enforce_host_probe_descent_sym
     )
   )
-  match run_required_lens_gates_on_subtree(
+  match run_required_lens_gates(
     inferred: tree,
     lenses: always_required_lenses()
   ) {
@@ -42,7 +42,7 @@ fn probe_lens_accepts_from_marshaled_root(root: Node) -> Bool {
       descent_symbol: ^enforce_host_probe_descent_sym
     )
   )
-  match run_required_lens_gates_on_subtree(
+  match run_required_lens_gates(
     inferred: tree,
     lenses: always_required_lenses()
   ) {
