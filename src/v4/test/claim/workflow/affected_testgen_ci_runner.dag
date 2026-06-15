@@ -367,6 +367,3 @@ data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
   affected_testgen_gate_row_generated_claim_runs,
   affected_testgen_gate_row_fusion
 ]
-
-
-data affected_testgen_claim_run_row_count: String = "6"
