@@ -33,12 +33,9 @@ from pathlib import Path
 # table -- state the root-cause analysis in the PR, not just the new number.
 CEILINGS = {
     "ci.yml": {
-        "infra_isolation": 5,
-        # One-binary bankruptcy floor (operator 2026-06-15): serializes the former
-        # parallel Wave-1 jobs (ci_floor, parity, emit, lens, corpus, doc_refs, …)
-        # into a single `run_ci_pipeline` invocation. Budget rule (uncontended wall ×2):
-        # cold pre-warm + 3 gates + witness teeth ~90–120m observed; ×2 → 240 for merge-wave
-        # contention. Re-derive from first green one-binary receipt; ratchet against raises.
+        # One-binary bankruptcy floor (#4960 + pre-warm): single `run_ci_pipeline` job.
+        # Budget rule (uncontended wall ×2): cold pre-warm + 3 gates + witness teeth
+        # ~90–120m observed; ×2 → 240 for merge-wave contention.
         "ci": 240,
     },
     "ci-spot-rerun.yml": {

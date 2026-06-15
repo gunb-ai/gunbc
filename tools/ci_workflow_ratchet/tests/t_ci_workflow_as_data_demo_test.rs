@@ -1132,11 +1132,13 @@ fn ci_base_build_graph_prewarm_projects_from_modeled_authority() {
         "ci_runner must assert prewarmed bins via modeled release_path rows"
     );
     assert!(
-        !GUNBC_CI_RUNNER_SOURCE.contains("ensure_gunbc_binary(), \" && \",\n      \"bash scripts/v2-dsl"),
+        !GUNBC_CI_RUNNER_SOURCE
+            .contains("ensure_gunbc_binary(), \" && \",\n      \"bash scripts/v2-dsl"),
         "gate-1 must not cargo-build gunbc after pre-warm (modeled graph authority)"
     );
     assert!(
-        !GUNBC_CI_RUNNER_SOURCE.contains("ensure_gunbc_binary(), \" && \",\n      ensure_ci_claim_gate_binary"),
+        !GUNBC_CI_RUNNER_SOURCE
+            .contains("ensure_gunbc_binary(), \" && \",\n      ensure_ci_claim_gate_binary"),
         "gate-3 shell must not duplicate per-binary cargo build helpers"
     );
     for pkg in ["v2-compiler", "ci_claim_gate", "layering_imports_scan"] {
