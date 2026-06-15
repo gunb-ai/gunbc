@@ -300,7 +300,7 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
 }
 
 // dsl/-root parametric gate probe — permanent self-owned fixture proving the corpus gate
-// can host dsl/-rooted witnesses end-to-end (--source-root dsl, shard b).
+// can host dsl/-rooted witnesses end-to-end (--source-root dsl).
 // NOT a domain model; lives here to prove the gate infrastructure, not to model facts.
 data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "dsl root parametric gate probe",
@@ -310,10 +310,10 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
 
 // P-PROBE-CF-IMPORT — resolved: `import std.compute_fabric` now resolves a real
 // supply offer (Option gap dissolved #4887 + Nat-mul algebra resolution landed in
-// this PR), so the ExpectFail pin (adhoc-20b17ff7-932) retires to a genuine
-// ExpectPass on the real dsl/-rooted repro (--source-root dsl, like the dsl-root
-// probe above). The old hardcoded falsifier proxy + its bound resolve-fail script
-// are removed in the same PR.
+// #4887), so the former expected-fail pin (adhoc-20b17ff7-932) is now enrolled
+// directly as a passing witness on the real dsl/-rooted repro (--source-root dsl,
+// like the dsl-root probe above). The old hardcoded falsifier proxy + its bound
+// resolve-fail script were removed when it converted.
 data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "probe-selector compute_fabric import resolves",
   entry: "dsl/test/claim/probe_selector_compute_fabric_import_repro.dag",
@@ -323,7 +323,7 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
 // Fragment-IR markup serializer (dsl/std/markup.dag) — class-2 emit-correctness.
 // One keystone row ANDs by-execution-per-escaping-context + full-tree serialize +
 // CoC=1 one-fold-serves-both + emit->parse round-trip + perturb-discrimination.
-// dsl/-rooted (--source-root dsl), shard b alongside the dsl probes.
+// dsl/-rooted (--source-root dsl).
 data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markup fragment-ir serializer keystone",
   entry: "dsl/test/claim/markup_serializer_witness.dag",
@@ -332,7 +332,7 @@ data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRo
 
 // gunbhub HTML consumer XSS reject-witness (dsl/std/html_markup.dag) — fail-closed
 // scheme allowlist + perturb-discrimination (escape_url passes javascript:, consumer
-// rejects). dsl/-rooted, shard b alongside markup_serializer_keystone.
+// rejects). dsl/-rooted.
 data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html markup xss reject keystone",
   entry: "dsl/test/claim/html_markup_xss_witness.dag",
@@ -354,7 +354,7 @@ data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRu
   function: "gunbhub_browse_keystone_holds"
 }
 
-// Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
+// Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted) — the CI consumer
 // that breaks on regression of the magnitude generalization (gunbc#4929): GATE0 M=Nat,
 // GATE1 signed M=Int, and the two-hop alias-chain `.count` round-trip (G3 + multi-hop).
 data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
@@ -375,7 +375,7 @@ data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpu
   function: "measure_two_hop_alias_count_roundtrip_holds"
 }
 
-// SPICE S1 Measure remodel witnesses (v4-rooted, shard b) — R/L/C map/fold step operators
+// SPICE S1 Measure remodel witnesses (v4-rooted) — R/L/C map/fold step operators
 // with Measure-attached magnitudes (post-#4929 GATE1 signed Int + electrical Quantity).
 data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 resistor map v=R*i",
