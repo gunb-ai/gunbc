@@ -29,7 +29,7 @@
 module v4.extdeps.formats.spice
 
 
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -335,20 +335,21 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
 
 data spice_format_grammar_probe_authority: GrammarSchemaProbeBinding = spice_format_grammar_probe()
 
-// wave-1 emit: project value lexeme from a Resistor arm.
+// wave-1 emit: project value lexeme from value-bearing Component arms.
+// Non-value-bearing arms (Diode, Bjt, Mosfet, SubcircuitCall) return Rejected.
 // Symbol→String conversion (name, node labels) is wave-2 scope.
 // 🟡 needs-more-work — feature:spice-emit-full-line — dissolve-on: Symbol→String carrier in std/ (T-3 string substrate) unlocks full-line resistor emit · ledger: T-4
-fn spice_emit_resistor_value_lexeme(c: Component) -> String {
+fn spice_emit_resistor_value_lexeme(c: Component) -> Outcome<String> {
   match c {
-    Resistor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
-    Capacitor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
-    Inductor { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
-    VoltageSource { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
-    CurrentSource { name: _, n_plus: _, n_minus: _, value: v } => v.lexeme
-    Diode { name: _, anode: _, cathode: _, model: _ } => ""
-    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => ""
-    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => ""
-    MutualInductance { name: _, l1: _, l2: _, coupling: v } => v.lexeme
-    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => ""
+    Resistor { name: _, n_plus: _, n_minus: _, value: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    Capacitor { name: _, n_plus: _, n_minus: _, value: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    Inductor { name: _, n_plus: _, n_minus: _, value: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    VoltageSource { name: _, n_plus: _, n_minus: _, value: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    CurrentSource { name: _, n_plus: _, n_minus: _, value: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    Diode { name: _, anode: _, cathode: _, model: _ } => Rejected { diagnostics: [] }
+    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => Rejected { diagnostics: [] }
+    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => Rejected { diagnostics: [] }
+    MutualInductance { name: _, l1: _, l2: _, coupling: v } => Accepted { value: v.lexeme, diagnostics: [] }
+    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => Rejected { diagnostics: [] }
   }
 }
