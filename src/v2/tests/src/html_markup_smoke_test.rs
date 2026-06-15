@@ -1,7 +1,7 @@
 //! Executable consumer receipt for `dsl/std/html_markup.dag`.
 //!
 //! Invoked from the always-on ci_floor_parity receipt so CI proves
-//! `serialize_markup_node` runs green without a new workflow step.
+//! `serialize_html_node` runs green without a new workflow step.
 
 use crate::helpers::workspace_root;
 
