@@ -106,11 +106,12 @@ data ci_runner_fixture_roster: List<TestClaim> = [
   ci_runner_claim_other
 ]
 
+// Narrow Produced rerun frontier: [touched] only (strict subset of wide below).
 data ci_runner_narrow_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
   nodes: [ci_runner_touched_node]
 }
 
-// Strict subset of ci_runner_wide_rerun_nodes: touched-only frontier vs touched+other.
+// Wide superset of narrow: [touched, other].
 data ci_runner_wide_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
   nodes: [ci_runner_touched_node, ci_runner_other_node]
 }
