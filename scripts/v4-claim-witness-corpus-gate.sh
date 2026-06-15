@@ -130,6 +130,26 @@ run_row() {
   "$bin" run --source-root "$source_root" --entry "$entry" --function "$function" --claim-run
 }
 
+is_gunbc_validate_function() {
+  [[ "$1" == gunbc_validate:* ]]
+}
+
+run_validate_row() {
+  local subject="$1" arm="$2"
+  set +e
+  "$bin" validate --source-root src/v4 --source-root dsl --subject "$subject"
+  local rc=$?
+  set -e
+  case "$arm" in
+    accept) [[ "$rc" -eq 0 ]] ;;
+    reject) [[ "$rc" -eq 1 ]] ;;
+    *)
+      echo "error: unknown gunbc_validate arm '${arm}' (expected accept|reject)" >&2
+      return 2
+      ;;
+  esac
+}
+
 # Derives the --source-root for an entry path by matching its prefix.
 # Fails hard on an unrecognized prefix so new roots must be added explicitly.
 derive_source_root() {
@@ -285,6 +305,8 @@ pick_spot_perturb_indices() {
 all_rows=()
 pass_rows=()
 fail_rows=()
+validate_pass_rows=()
+claim_pass_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
   row="$(project_list_member_row "$member")"
@@ -296,6 +318,11 @@ while IFS= read -r member; do
   IFS=$'\t' read -r _label _entry _function expect bind_anchor <<< "$row"
   if [[ "$expect" == pass ]]; then
     pass_rows+=("$row")
+    if is_gunbc_validate_function "$_function"; then
+      validate_pass_rows+=("$row")
+    else
+      claim_pass_rows+=("$row")
+    fi
   elif [[ "$expect" == fail ]]; then
     if [[ -z "$bind_anchor" ]]; then
       echo "error: ExpectFail row $member missing bind_anchor in $gate_model" >&2
@@ -313,11 +340,24 @@ if [[ "${#all_rows[@]}" -eq 0 ]]; then
   exit 2
 fi
 
-if [[ "${#pass_rows[@]}" -gt 0 ]]; then
-  printf '%s\n' "${pass_rows[@]}" | cut -f2,3 | batch_green_pass "claim witness corpus"
+failures=0
+for row in "${validate_pass_rows[@]}"; do
+  IFS=$'\t' read -r label entry function _expect _bind <<< "$row"
+  arm="${function#gunbc_validate:}"
+  echo "::group::claim witness corpus (gunbc validate): ${label}"
+  if run_validate_row "$entry" "$arm"; then
+    echo "gunbc validate ok (arm=${arm}, subject=${entry})"
+  else
+    failures=$((failures + 1))
+    echo "::error::claim witness ${label}: gunbc validate arm ${arm} failed for ${entry}"
+  fi
+  echo "::endgroup::"
+done
+
+if [[ "${#claim_pass_rows[@]}" -gt 0 ]]; then
+  printf '%s\n' "${claim_pass_rows[@]}" | cut -f2,3 | batch_green_pass "claim witness corpus"
 fi
 
-failures=0
 for row in "${fail_rows[@]}"; do
   IFS=$'\t' read -r label entry function _expect bind_anchor <<< "$row"
   echo "::group::claim witness corpus (ExpectFail): ${label}"
@@ -358,7 +398,7 @@ fi
 row_count="${#all_rows[@]}"
 
 if [[ "$failures" -ne 0 ]]; then
-  echo "error: $failures ExpectFail row(s) drifted from manifest" >&2
+  echo "error: $failures claim witness corpus row(s) failed" >&2
   exit 1
 fi
 

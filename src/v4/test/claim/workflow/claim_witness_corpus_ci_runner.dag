@@ -511,6 +511,23 @@ data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+// Enforce-host marshal→lens discriminating pair (Gate 3): production `gunbc validate`
+// transport via shared helper with Gate-1 probes. function `gunbc_validate:*` arms are
+// executed by scripts/v4-claim-witness-corpus-gate.sh (not claim_batch).
+data corpus_ci_gate_row_enforce_host_modeled_carrier_validate: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "enforce-host marshal lens accepts modeled ByteSize carrier",
+  entry: "src/v4/test/fixtures/enforce_host/modeled_carrier_memory_spec.dag",
+  function: "gunbc_validate:accept",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_enforce_host_bare_int_validate: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "enforce-host marshal lens rejects bare-Int unit modeling",
+  entry: "src/v4/test/fixtures/enforce_host/bare_int_memory_spec.dag",
+  function: "gunbc_validate:reject",
+  expected: ExpectPass
+}
+
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -578,5 +595,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_self_host_stage_emission_equality_violates,
   corpus_ci_gate_row_spice_rc_ngspice_op,
   corpus_ci_gate_row_spice_rc_ngspice_nonempty,
-  corpus_ci_gate_row_spice_rc_passive_deck_authority
+  corpus_ci_gate_row_spice_rc_passive_deck_authority,
+  corpus_ci_gate_row_enforce_host_modeled_carrier_validate,
+  corpus_ci_gate_row_enforce_host_bare_int_validate
 ]

@@ -2,23 +2,20 @@
 //! `compile_to_resolved` output directly into v4 `InferredTree` and run
 //! `run_required_lens_gates_on_subtree`. Marshaled `Value`s are interned in the
 //! marshal `InterpContext`; lens evaluation must use that same context.
+//!
+//! Production transport: `gunbc validate` + `enforce_host_validate` (shared helper).
 
-use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
-use v2_compiler::cli_run::{self, make_eval_context};
 use v2_compiler::coproduct_reflection::marshal_conj_type_item;
-use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
-use v2_compiler::v2_compiler_infer_items::{ItemKind, ResolvedGraph};
-use v2_compiler::v2_interpreter::{run_in_context_with_args, InterpContext, InterpResult, Value};
+use v2_compiler::enforce_host_validate::{validate_marshal_lens, MarshalLensVerdict, ValidateOutcome};
+use v2_compiler::v2_compiler_compile;
+use v2_compiler::v2_interpreter::{InterpContext, Value};
 use v2_compiler::v2_std_core::Node;
 
 use crate::helpers::workspace_root;
 
-const LENS_PROBE_TIMEOUT: Duration = Duration::from_secs(90);
-
-const HARNESS_ENTRY: &str = "src/v4/test/claim/manual/enforce_host_lens_bridge_harness.dag";
+const HARNESS_ENTRY: &str = v2_compiler::enforce_host_validate::DEFAULT_HARNESS_ENTRY;
 const BARE_INT_FIXTURE: &str = "src/v4/test/fixtures/enforce_host/bare_int_memory_spec.dag";
 const MODELED_CARRIER_FIXTURE: &str =
     "src/v4/test/fixtures/enforce_host/modeled_carrier_memory_spec.dag";
@@ -31,28 +28,29 @@ fn validate_source_roots() -> Vec<String> {
     ]
 }
 
-fn entry_path(relative: &str) -> String {
-    workspace_root()
-        .join(relative)
-        .to_string_lossy()
-        .to_string()
-}
-
 fn compile_probe_bundle(
     relative_entry: &str,
 ) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
     let roots = validate_source_roots();
-    let harness_entry = entry_path(HARNESS_ENTRY);
-    let subject_entry = entry_path(relative_entry);
-    let harness_sources = cli_run::load_sources_for_entry(&roots, &harness_entry)
-        .unwrap_or_else(|e| panic!("load harness {harness_entry}: {e}"));
-    let subject_sources = cli_run::load_sources_for_entry(&roots, &subject_entry)
-        .unwrap_or_else(|e| panic!("load subject {subject_entry}: {e}"));
-    let mut by_path: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let ws = workspace_root();
+    let harness_path = ws.join(HARNESS_ENTRY).to_string_lossy().to_string();
+    let subject_path = ws.join(relative_entry).to_string_lossy().to_string();
+    let harness_sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &harness_path)
+        .unwrap_or_else(|e| panic!("load harness: {e}"));
+    let subject_sources = v2_compiler::cli_run::load_sources_for_entry(&roots, &subject_path)
+        .unwrap_or_else(|e| panic!("load subject: {e}"));
+    let mut by_path = std::collections::HashMap::new();
     for source in harness_sources.iter().chain(subject_sources.iter()) {
         by_path.insert(source.path.clone(), source.clone());
     }
-    compile_to_resolved(Rc::new(by_path.into_values().collect()))
+    v2_compiler_compile::compile_to_resolved(Rc::new(by_path.into_values().collect()))
+}
+
+fn probe_eval_context(
+    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
+) -> InterpContext {
+    let graph = resolved.graph.as_ref().expect("probe graph");
+    v2_compiler::cli_run::make_eval_context(graph, resolved.source_indices.clone())
 }
 
 fn memory_spec_root_value(
@@ -64,32 +62,11 @@ fn memory_spec_root_value(
     marshal_conj_type_item(ctx, item).expect("marshal MemorySpec to v4 Node Value")
 }
 
-fn run_probe_fn(ctx: &InterpContext, fn_name: &str, root: Value) -> InterpResult<Value> {
-    let args = [(Some("root".to_string()), root)];
-    run_in_context_with_args(ctx, fn_name, &args, false)
-}
-
-fn run_probe_fn_timed(ctx: &InterpContext, fn_name: &str, root: Value) -> Result<Value, String> {
-    let start = Instant::now();
-    let result = run_probe_fn(ctx, fn_name, root);
-    let elapsed = start.elapsed();
-    if elapsed > LENS_PROBE_TIMEOUT {
-        return Err(format!(
-            "HANG: {fn_name} exceeded {:?} (elapsed {:?})",
-            LENS_PROBE_TIMEOUT, elapsed
-        ));
-    }
-    result.map_err(|e| format!("{e}"))
-}
-
-fn probe_eval_context(
-    resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult>,
-) -> InterpContext {
-    let graph = resolved.graph.as_ref().expect("probe graph");
-    make_eval_context(graph, resolved.source_indices.clone())
-}
-
-fn find_type_item<'a>(graph: &'a ResolvedGraph, type_name: &str) -> &'a Rc<Node> {
+fn find_type_item<'a>(
+    graph: &'a v2_compiler::v2_compiler_compile::ResolvedGraph,
+    type_name: &str,
+) -> &'a Rc<Node> {
+    use v2_compiler::v2_compiler_infer_items::ItemKind;
     let info = graph
         .item_registry
         .values()
@@ -119,15 +96,6 @@ fn assert_resolved_ok(resolved: &Rc<v2_compiler::v2_compiler_compile::ResolvedPi
         msgs.is_empty() && resolved.graph.is_some(),
         "expected resolved probe graph, diagnostics: {msgs:?}"
     );
-}
-
-fn assert_bool_probe(ctx: &InterpContext, fn_name: &str, root: Value, expect: bool) {
-    let value =
-        run_probe_fn_timed(ctx, fn_name, root).unwrap_or_else(|e| panic!("probe {fn_name}: {e}"));
-    match value {
-        Value::Bool(v) if v == expect => {}
-        other => panic!("probe {fn_name}: expected Bool({expect}), got {other:?}"),
-    }
 }
 
 fn value_type_label(ctx: &InterpContext, value: &Value) -> String {
@@ -204,8 +172,6 @@ fn free_monoid_elems<'a>(ctx: &InterpContext, value: &'a Value) -> Result<Vec<&'
     }
 }
 
-/// Walk marshaled host `Value`s and assert the v4 `Node`/`Edge` skeleton the lens
-/// roster expects (TypeNode kind + `List<Edge>` children, each target a `Node`).
 fn assert_v4_node_tree(ctx: &InterpContext, value: &Value, path: &str) {
     let Value::Record { type_name, fields } = value else {
         panic!(
@@ -260,6 +226,15 @@ fn assert_v4_edge(ctx: &InterpContext, value: &Value, path: &str) {
         .get(&ctx.sym("target"))
         .unwrap_or_else(|| panic!("{path}: missing target"));
     assert_v4_node_tree(ctx, target, &format!("{path}.target"));
+}
+
+fn run_shared_validate(fixture: &str, expect: MarshalLensVerdict) {
+    let ws = workspace_root();
+    let roots = validate_source_roots();
+    match validate_marshal_lens(&ws, &roots, HARNESS_ENTRY, fixture) {
+        ValidateOutcome::Pass(verdict) => assert_eq!(verdict, expect),
+        ValidateOutcome::Fail { reason } => panic!("validate failed: {reason}"),
+    }
 }
 
 #[test]
@@ -343,27 +318,11 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
     );
 }
 
-fn run_bare_int_lens_probe(fn_name: &str, expect: bool) {
-    let resolved = compile_probe_bundle(BARE_INT_FIXTURE);
-    assert_resolved_ok(&resolved);
-    let ctx = probe_eval_context(&resolved);
-    let root = memory_spec_root_value(&ctx, &resolved);
-    assert_bool_probe(&ctx, fn_name, root, expect);
-}
-
 /// Decisive PASS arm: bare-Int MemorySpec → `Rejected` with unit-modeling reason
 /// through host-only marshal (no v4 `infer()`).
 #[test]
 fn bare_int_marshaled_inferred_tree_lens_rejects_unit_modeling() {
-    run_bare_int_lens_probe("probe_lens_rejects_unit_modeling_from_marshaled_root", true);
-}
-
-fn run_modeled_carrier_lens_probe(fn_name: &str, expect: bool) {
-    let resolved = compile_probe_bundle(MODELED_CARRIER_FIXTURE);
-    assert_resolved_ok(&resolved);
-    let ctx = probe_eval_context(&resolved);
-    let root = memory_spec_root_value(&ctx, &resolved);
-    assert_bool_probe(&ctx, fn_name, root, expect);
+    run_shared_validate(BARE_INT_FIXTURE, MarshalLensVerdict::Rejected);
 }
 
 /// Bisect (snappy msg_3e3c99ad): marshaled root `Node.children` must be substrate
@@ -389,5 +348,5 @@ fn marshaled_root_children_use_free_monoid_carrier() {
 /// host-only marshal (no v4 `infer()`).
 #[test]
 fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
-    run_modeled_carrier_lens_probe("probe_lens_accepts_from_marshaled_root", true);
+    run_shared_validate(MODELED_CARRIER_FIXTURE, MarshalLensVerdict::Accepted);
 }
