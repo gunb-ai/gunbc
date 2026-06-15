@@ -10,6 +10,7 @@ import extdeps.boot.framebuffer { vga_text_mode_base }
 import extdeps.boot.freestanding_payload {
   EmittedPayload,
   FreestandingPayloadRef,
+  HollowInitPayload,
   PrebuiltPayload,
 }
 import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr }
@@ -29,7 +30,7 @@ import extdeps.formats.elf.primitives {
   pf_x,
 }
 import extdeps.formats.elf.segments { Elf64Phdr }
-import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent }
+import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
 import std.exec_format { EntryPoint }
 
 // Slice-0.5 content label — structural digest defers to hash primitive when dsl bootstrap exports it.
@@ -131,13 +132,6 @@ fn witness_pixel_writer_code_uses_vga_base() -> Bool {
     && byte_at_in_bounds(pixel_writer_code_bytes, 4) == 11
 }
 
-fn byte_at_in_bounds(bytes: List<Int>, offset: Int) -> Int {
-  match bytes |> get(offset) {
-    null => 0
-    other => other
-  }
-}
-
 fn witness_emitted_file_size() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   count(bytes) == freestanding_code_file_offset + count(pixel_writer_code_bytes)
@@ -145,7 +139,8 @@ fn witness_emitted_file_size() -> Bool {
 
 fn witness_emitted_digest_non_empty() -> Bool {
   match emit_pixel_writer_payload() {
-    EmittedPayload { digest: d, entry: _ } => d != ""
-    PrebuiltPayload { digest: _, entry: _, hollow: _ } => false
+    EmittedPayload { digest: _, entry: _ } => true
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowInitPayload { entry: _ } => false
   }
 }

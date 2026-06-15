@@ -16,9 +16,8 @@ import extdeps.boot.emit {
   witness_emitted_file_size,
   witness_pixel_writer_code_uses_vga_base,
   witness_vga_base_matches_framebuffer_fact,
-  byte_at_in_bounds,
 }
-import extdeps.boot.freestanding_payload { EmittedPayload, PrebuiltPayload }
+import extdeps.boot.freestanding_payload { EmittedPayload, HollowInitPayload, PrebuiltPayload }
 import extdeps.boot.linux_x86_boot {
   BootImageAccepted,
   BootImageRejected,
@@ -54,6 +53,7 @@ import extdeps.formats.elf.segments {
 import extdeps.formats.elf.types {
   ElfDecoded,
   ElfRejected,
+  byte_at_in_bounds,
   decode_elf64_ehdr,
   elf64_ehdr_entry_point,
 }
@@ -167,7 +167,8 @@ fn witness_emitted_payload_entry_matches_ehdr() -> Bool {
   match emit_pixel_writer_payload() {
     EmittedPayload { digest: _, entry: EntryPoint { virtual_address: entry } } =>
       entry == freestanding_load_vaddr
-    PrebuiltPayload { digest: _, entry: _, hollow: _ } => false
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowInitPayload { entry: _ } => false
   }
 }
 
@@ -182,7 +183,8 @@ fn witness_boot_image_accepts_emitted_init() -> Bool {
         BootImageAccepted { value: _ } => true
         BootImageRejected { reason: _ } => false
       }
-    PrebuiltPayload { digest: _, entry: _, hollow: _ } => false
+    PrebuiltPayload { digest: _, entry: _ } => false
+    HollowInitPayload { entry: _ } => false
   }
 }
 

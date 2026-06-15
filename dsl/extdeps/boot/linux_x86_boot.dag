@@ -8,11 +8,13 @@ module extdeps.boot.linux_x86_boot
 import extdeps.boot.freestanding_payload {
   EmittedPayload,
   FreestandingPayloadRef,
+  HollowInitPayload,
   PrebuiltPayload,
 }
+import std.types { NonEmptyStr }
 
 type LinuxX86BootImage {
-  kernel_digest: String,
+  kernel_digest: NonEmptyStr,
   cmdline: List<String>,
   init: FreestandingPayloadRef,
 }
@@ -22,26 +24,16 @@ type BootImageOutcome
   | BootImageRejected { reason: BootImageRejectReason }
 
 type BootImageRejectReason
-  = EmptyKernelDigest
-  | EmptyInitPayload
+  = HollowInitNotAccepted
+  | InvalidPayloadRef
 
 fn accept_linux_x86_boot_image(img: LinuxX86BootImage) -> BootImageOutcome {
-  if img.kernel_digest == "" {
-    BootImageRejected { reason: EmptyKernelDigest }
-  } else {
-    match img.init {
-      PrebuiltPayload { digest: d, entry: _, hollow: _ } =>
-        if d == "" {
-          BootImageRejected { reason: EmptyInitPayload }
-        } else {
-          BootImageAccepted { value: img }
-        }
-      EmittedPayload { digest: d, entry: _ } =>
-        if d == "" {
-          BootImageRejected { reason: EmptyInitPayload }
-        } else {
-          BootImageAccepted { value: img }
-        }
-    }
+  match img.init {
+    HollowInitPayload { entry: _ } =>
+      BootImageRejected { reason: HollowInitNotAccepted }
+    EmittedPayload { digest: _, entry: _ } =>
+      BootImageAccepted { value: img }
+    PrebuiltPayload { digest: _, entry: _ } =>
+      BootImageAccepted { value: img }
   }
 }
