@@ -2,16 +2,20 @@ CI-REWORK SCRATCH — modeling smells (temporary; delete before merge)
 
 RUBRIC: path is the discriminator; right altitude, own clear place; no catch-alls; a high concept owns a registration concept, not instances; personal inventory seeds genuine vendor models, it does not live in std/ concepts.
 
-LAYERS: extdeps = external vendors (Ampere, Hetzner). std = concepts. operator's ACTUAL instantiation (srv1/srv2 real machines) = private repo (ctrl/), out of gunbc. compute_fabric = high concept; imports vendor models only if genuinely needed (probably too early now).
+LAYERS: std = standard library (universal primitives). extdeps = external vendors (Ampere, Hetzner). compute_fabric = a PRODUCT domain model (not std). operator's ACTUAL instantiation (srv1/srv2 real machines) = private repo (ctrl), out of gunbc.
 
-ITEMS (verified vs branch HEAD;  [x]=done  [~]=partial  [ ]=todo)
-[~] 1. std/compute_fabric.dag — shed concrete instances, stay pure concept. DONE: dead operator-fleet CI-throttle constants removed (also cleared gate-1 :541). LEFT: srv1/srv2+Hetzner offers + 3 grounded witnesses -> re-ground on generic SharedHostHome/Vm fixtures.
-[ ] 2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; gunbc-side of item 6 (leaves to ctrl/).
-[ ] 3. std/cpu/ampere.dag — Ampere vendor facts -> extdeps (extdeps/cpu/ampere/ or extdeps/hardware/ampere/altra/). Blast radius = this 4-file cluster.
-[ ] 4. std/cpu/types.dag:13 — AmpereCpuModel enum narrowed to the two owned SKUs; follows item 3 into extdeps.
-[ ] 5. std/cpu.dag — cpu_model_catalog maps only the owned models; std/cpu keeps the general CPU concept only.
-[ ] 6. operator-fleet actual config (srv1/srv2 = my real instantiation of extdeps) -> private repo (ctrl/), out of gunbc entirely. gunbc just sheds them (items 1,2).
+ITEMS ([x]=done  [~]=partial  [ ]=todo)
+[~] 1. compute_fabric owns the exact computers. DONE: dead throttle constants removed (cleared gate-1 :541); srv1/srv2+Hetzner instances shed -> generic example_shared_host/example_vm fixtures; wrong-direction `import extdeps.cloud.hetzner` removed; repro witness repointed. LEFT: real instances re-land in ctrl (item 6); memory/operator_fleet delete (item 2).
+[ ] 2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; delete from gunbc once item 6 lands them in ctrl.
+[ ] 3. std/cpu/ampere.dag — Ampere vendor facts -> extdeps (extdeps/cpu/ampere/). Blast radius = cpu cluster only.
+[ ] 4. std/cpu/types.dag:13 — AmpereCpuModel narrowed to owned SKUs; dissolve CpuIdentity, CpuFacts carries a CpuModelCatalogRow (with vendor field); vendor rows move with item 3.
+[ ] 5. std/cpu.dag — cpu_catalog_row dispatches on owned models; std/cpu keeps the general CPU concept only.
+[ ] 6. operator fleet actual config (srv1/srv2 real machines, source-of-truth ctrl nodes.json) -> ctrl PR at plans/models/fabric/operator_fleet.dag, importing gunbc concept + extdeps vendor models.
+[ ] 7. compute_fabric does not belong in std/. std is a standard library; the fabric is a product. Move out of std/ into a product/ layer (folder + module rename).
+[ ] 8. hand-maintained corpus/test row LISTS + COUNT constants (claim_witness_corpus_*). COUNTS already unconsumed (gate folds the typed List; #4959 retired the cross-check) -> delete now. LISTS blocked only on wiring existing discovery (discover_owned_data / src/v4/compiler/discovery_enumeration.dag) as the enrollment source instead of a hand-typed List literal.
+[ ] 9. LENS: error on unused / consumerless ANYTHING — unused imports (v2 is silent today), dead data/types/concepts. A "no consumerless concept" gate.
 
 NOTES
 - verified clean (no change): std/placement_supply.dag (concept-only).
-- gate-1 blocker RESOLVED by item-1 partial (was compute_fabric.dag:541).
+- ctrl cloned at .ctrl-fleet-work (git-excluded); nodes.json is the fleet source-of-truth.
+- stale doc-comment ref to hetzner_cax41_cost_quote in dsl/examples/cost_estimate/cost_estimate.dag (cosmetic).
