@@ -1,0 +1,14 @@
+// extdeps/container/oci/media_types.dag — OCI Image/Media type constants.
+//
+// Spec: https://github.com/opencontainers/image-spec/blob/main/media-types.md
+// Version: image-spec v1.1.0 (schemaVersion 2)
+
+module extdeps.container.oci.media_types
+
+data oci_image_schema_version: Int = 2
+
+data media_type_oci_image_manifest_v1: String = "application/vnd.oci.image.manifest.v1+json"
+data media_type_oci_image_config_v1: String = "application/vnd.oci.image.config.v1+json"
+data media_type_oci_image_layer_v1_tar_gzip: String = "application/vnd.oci.image.layer.v1.tar+gzip"
+data media_type_oci_image_index_v1: String = "application/vnd.oci.image.index.v1+json"
+data media_type_oci_descriptor_v1: String = "application/vnd.oci.descriptor.v1+json"
