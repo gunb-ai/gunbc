@@ -1,0 +1,44 @@
+// gunbc/gunbhub_serve_html.dag — Html consumer arm for gunbhub serve (isolated
+// import to avoid ElementNode variant collision with std.react_markup).
+
+module gunbc.gunbhub_serve_html
+
+import std.html_markup {
+  HtmlAttr,
+  HtmlNode,
+  ElementNode,
+  TextNode,
+  Serialized,
+  Rejected,
+  try_serialize_html_node,
+}
+
+type HtmlPageRender
+  = HtmlRendered { html: String }
+  | HtmlRenderRejected { reason: String }
+
+fn render_html_gunbhub_page(node: HtmlNode) -> HtmlPageRender {
+  match try_serialize_html_node(node: node) {
+    Serialized { html: h } => HtmlRendered { html: h }
+    Rejected { reason: r } => HtmlRenderRejected { reason: r }
+  }
+}
+
+fn sample_html_page() -> HtmlNode {
+  ElementNode {
+    tag: "p",
+    attrs: [],
+    children: [ TextNode { text: "gunbhub" } ],
+  }
+}
+
+fn witness_html_consumer_serializes() -> Bool {
+  match render_html_gunbhub_page(node: sample_html_page()) {
+    HtmlRendered { html: h } => h == "<p>gunbhub</p>"
+    HtmlRenderRejected { reason: _ } => false
+  }
+}
+
+fn gunbhub_html_render_keystone_holds() -> Bool {
+  witness_html_consumer_serializes()
+}

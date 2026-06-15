@@ -1,0 +1,123 @@
+// dsl/test/claim/gunbhub_serve_witness.dag
+//
+// gunbhub M2 served render surface keystone: request → serialized-page
+// round-trip through extdeps.http.server route bindings and canonical
+// std.markup consumers. Hostile href is rejected before any response body.
+//
+// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
+
+module test.claim.gunbhub_serve_witness
+
+import gunbc.gunbhub_serve {
+  GunbhubServeRequest,
+  GunbhubPageSource,
+  ReactPage,
+  Served,
+  RenderRejectedBeforeServe,
+  RouteNotFound,
+  MethodNotAllowed,
+  gunbhub_browse_page,
+  gunbhub_hostile_page,
+  gunbhub_browse_route,
+  gunbhub_server_emission_target,
+  serve_gunbhub_request,
+  serve_gunbhub_page_source,
+}
+import std.react_markup {
+  EmitOk,
+  EmitRejected,
+  serialize_react_markup,
+}
+import std.types { GET, POST }
+
+fn expected_browse_html() -> String {
+  match serialize_react_markup(node: gunbhub_browse_page()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+// End-to-end: served response body == consumer serialization.
+fn witness_browse_served_body_matches_consumer() -> Bool {
+  let expected = expected_browse_html()
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/" }
+  ) {
+    Served { response: r } => r.body == expected
+    _ => false
+  }
+}
+
+fn witness_browse_empty_path_also_matches() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "" }
+  ) {
+    Served { response: r } => r.body == expected_browse_html()
+    _ => false
+  }
+}
+
+fn witness_unknown_path_not_found() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/missing" }
+  ) {
+    RouteNotFound => true
+    _ => false
+  }
+}
+
+fn witness_wrong_method_not_allowed() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: POST, path: "/" }
+  ) {
+    MethodNotAllowed => true
+    _ => false
+  }
+}
+
+// Hostile javascript: href rejected before response — never reaches body.
+fn witness_hostile_page_rejected_before_response() -> Bool {
+  match serve_gunbhub_page_source(
+    source: ReactPage { node: gunbhub_hostile_page() }
+  ) {
+    RenderRejectedBeforeServe { reason: _ } => true
+    Served { response: _ } => false
+    RouteNotFound => false
+    MethodNotAllowed => false
+  }
+}
+
+fn witness_hostile_page_not_served_via_request_path() -> Bool {
+  // Hostile content is not on a routed page; direct page-source serve is the
+  // spine check that rejection happens before response assembly.
+  witness_hostile_page_rejected_before_response()
+}
+
+// Route metadata binds to extdeps.http.server NodeHttpCreateServer*.
+fn witness_emission_target_has_browse_route_binding() -> Bool {
+  let target = gunbhub_server_emission_target()
+  let browse = gunbhub_browse_route()
+  fold(
+    xs: target.effects.serve.route_bindings,
+    init: false,
+    f: (acc, binding) =>
+      if acc {
+        acc
+      } else {
+        binding.route.operation_name == browse.operation_name
+          && binding.route.method == browse.method
+          && binding.listener.handler_name == "gunbhub_handle_browseRoot"
+      }
+  )
+}
+
+fn gunbhub_serve_keystone_holds() -> Bool {
+  witness_browse_served_body_matches_consumer()
+    && witness_browse_empty_path_also_matches()
+    && witness_unknown_path_not_found()
+    && witness_wrong_method_not_allowed()
+    && witness_hostile_page_rejected_before_response()
+    && witness_hostile_page_not_served_via_request_path()
+    && witness_emission_target_has_browse_route_binding()
+    && gunbhub_html_render_keystone_holds()
+}

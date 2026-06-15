@@ -1,0 +1,279 @@
+// gunbc/gunbhub_serve.dag — gunbhub M2 served render surface.
+//
+// Binds an incoming HTTP request to a serialized HTML page through the
+// already-merged canonical std.markup consumers (std.react_markup /
+// std.html_markup). Route metadata projects to extdeps.http.server
+// NodeHttpCreateServer* emission targets.
+//
+// Placement: gunbc-owned product surface (ctrl README §Conventions).
+// HTTP wire facts stay in extdeps.http.server; page composition and
+// request→response binding live here.
+
+module gunbc.gunbhub_serve
+
+import std.types { HttpMethod, HttpStatus, GET }
+import std.http_path {
+  PathTemplate,
+  PathTemplateParseResult,
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+  parse_path_template,
+}
+import std.react_markup {
+  ElementNode,
+  ReactTextNode,
+  ReactAttr,
+  ReactMarkupNode,
+  EmitOk,
+  EmitRejected,
+  UntrustedUrlScheme,
+  serialize_react_markup,
+}
+import gunbc.gunbhub_serve_html {
+  gunbhub_html_render_keystone_holds,
+}
+import extdeps.http.server {
+  HttpServerRoute,
+  HttpStatusResponse,
+  HttpRequestBodyKind,
+  NoRequestBody,
+  TextRequestBody,
+  NodeHttpServerRouteBinding,
+  NodeHttpRequestListener,
+  NodeHttpCreateServerServe,
+  NodeHttpCreateServerEffectChain,
+  NodeHttpCreateServerEmissionTarget,
+  HttpServerListenConfig,
+}
+
+// --- Request / response carriers -------------------------------------------
+
+type GunbhubServeRequest {
+  method: HttpMethod
+  path: String
+}
+
+type GunbhubHttpResponse {
+  status: HttpStatus
+  body: String
+}
+
+// 🟢 TERMINAL — closed serve outcome for the M2 literal-route surface.
+// Extension trigger (M3): forge-backed NotFound when object lookup fails.
+type GunbhubServeResult
+  = Served { response: GunbhubHttpResponse }
+  | RenderRejectedBeforeServe { reason: String }
+  | RouteNotFound
+  | MethodNotAllowed
+
+// 🟢 TERMINAL — React consumer page source (M2 browse route).
+type GunbhubPageSource = ReactPage { node: ReactMarkupNode }
+
+type GunbhubRenderResult
+  = RenderedHtml { html: String }
+  | RenderRejected { reason: String }
+
+// --- Browse page (R1 structural compose; M3 replaces hardcoded entries) ----
+
+fn gunbhub_browse_entry(name: String) -> ReactMarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [],
+        children: [ ReactTextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ ReactTextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "ul",
+        attrs: [],
+        children: [
+          gunbhub_browse_entry(name: "dsl"),
+          gunbhub_browse_entry(name: "src"),
+          gunbhub_browse_entry(name: "ROADMAP.md"),
+        ],
+      },
+    ],
+  }
+}
+
+// Hostile fixture — javascript: href must be rejected before any response body.
+fn gunbhub_hostile_page() -> ReactMarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ ReactTextNode { text: "x" } ],
+  }
+}
+
+// --- Path matching (literal templates; M3 extends for path params) ---------
+
+fn request_path_segments(path: String) -> List<String> {
+  let path_only = match split(s: path, delimiter: "?") |> first {
+    Present { value: p } => p
+    Absent => path
+  }
+  filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+}
+
+type PathMatchState {
+  seg_idx: Int
+  ok: Bool
+}
+
+fn literal_path_matches_template(template: PathTemplate, path: String) -> Bool {
+  let segs = request_path_segments(path: path)
+  let st = fold(
+    xs: template.tokens,
+    init: PathMatchState { seg_idx: 0, ok: true },
+    f: (acc, tok) =>
+      if !acc.ok {
+        acc
+      } else {
+        match tok {
+          ParamToken => PathMatchState { seg_idx: acc.seg_idx, ok: false }
+          LiteralToken { text: lit } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: seg } =>
+                if seg == lit {
+                  PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+                } else {
+                  PathMatchState { seg_idx: acc.seg_idx, ok: false }
+                }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+        }
+      }
+  )
+  st.ok && st.seg_idx == count(xs: segs)
+}
+
+fn gunbhub_browse_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [] }
+  }
+}
+
+// --- Render through canonical consumers ------------------------------------
+
+fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
+  match source {
+    ReactPage { node } =>
+      match serialize_react_markup(node: node) {
+        EmitOk { html: h } => RenderedHtml { html: h }
+        EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+          RenderRejected { reason: concat("react markup rejected: ", u) }
+      }
+  }
+}
+
+fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
+  match render_gunbhub_page(source: source) {
+    RenderedHtml { html: h } =>
+      Served {
+        response: GunbhubHttpResponse {
+          status: 200,
+          body: h,
+        }
+      }
+    RenderRejected { reason: r } => RenderRejectedBeforeServe { reason: r }
+  }
+}
+
+// --- Route table + request dispatch ----------------------------------------
+
+type GunbhubRouteRow {
+  route: HttpServerRoute
+  page: GunbhubPageSource
+}
+
+fn gunbhub_browse_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "browseRoot",
+    method: GET,
+    path_template: gunbhub_browse_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
+fn gunbhub_route_table() -> List<GunbhubRouteRow> {
+  [
+    GunbhubRouteRow {
+      route: gunbhub_browse_route(),
+      page: ReactPage { node: gunbhub_browse_page() },
+    },
+  ]
+}
+
+fn request_matches_route(req: GunbhubServeRequest, route: HttpServerRoute) -> Bool {
+  req.method == route.method
+    && literal_path_matches_template(template: route.path_template, path: req.path)
+}
+
+fn path_matches_any_route(path: String, route: HttpServerRoute) -> Bool {
+  literal_path_matches_template(template: route.path_template, path: path)
+}
+
+fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
+  if request_matches_route(req: req, route: gunbhub_browse_route()) {
+    serve_gunbhub_page_source(
+      source: ReactPage { node: gunbhub_browse_page() }
+    )
+  } else if path_matches_any_route(path: req.path, route: gunbhub_browse_route()) {
+    MethodNotAllowed
+  } else {
+    RouteNotFound
+  }
+}
+
+// --- extdeps.http.server emission target projection ------------------------
+
+fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
+  map(
+    xs: gunbhub_route_table(),
+    f: row =>
+      NodeHttpServerRouteBinding {
+        route: row.route,
+        listener: NodeHttpRequestListener {
+          handler_name: concat("gunbhub_handle_", row.route.operation_name),
+        },
+      }
+  )
+}
+
+fn gunbhub_server_emission_target() -> NodeHttpCreateServerEmissionTarget {
+  NodeHttpCreateServerEmissionTarget {
+    service_name: "gunbhub",
+    effects: NodeHttpCreateServerEffectChain {
+      serve: NodeHttpCreateServerServe {
+        route_bindings: gunbhub_node_route_bindings(),
+      },
+      listen: HttpServerListenConfig {
+        host: "127.0.0.1",
+        port: 8080,
+      },
+    },
+  }
+}
