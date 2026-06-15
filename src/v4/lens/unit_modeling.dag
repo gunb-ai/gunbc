@@ -1,35 +1,37 @@
 // src/v4/lens/unit_modeling.dag
-// Scope: universal .dag unit-modeling discipline lens — flags a flat-scalar
-//        leaf field whose authored NAME carries unit/scale semantics yet whose
-//        declared type resolves to a bare kernel scalar instead of attaching to
-//        the `Measure<Quantity, Scale>` carrier (dsl/std/measure.dag) or an
-//        existing alias (ByteSize, Hertz, Duration, Milliseconds, MoneyMicros,
-//        Bandwidth, HardwareThreadCount, CoreCount, …). MODELING.md M12 /
-//        modeling-discipline.md Practice 13 (JIT modeling) — a domain quantity
-//        may not ship as a raw scalar.
+// Scope: universal .dag unit-modeling discipline lens — flags a bare-scalar leaf
+//        field that carries a quantity but is NOT attached to the
+//        `Measure<Quantity, Scale>` carrier (dsl/std/measure.dag) or an alias.
+//        MODELING.md M12 / modeling-discipline.md Practice 13 (JIT modeling) — a
+//        domain quantity may not ship as a raw scalar.
 //
-// Mode: ADVISORY lens (CompileLensIntrospect). Modeled structurally on
-//       fact_density.dag — a per-node gate `node: Node -> Outcome<Witness<Node>>`
-//       that self-traverses the resolved typed subtree. The `InferredTree`
-//       compile-gate wrapper + registration in `always_required_lenses()`
-//       (00_compile.dag) is the deliberately-HELD wiring — see 🟡 at the foot.
+// Mode: ADVISORY lens (CompileLensIntrospect). Per-node gate
+//       `node: Node -> Outcome<Witness<Node>>` (fact_density.dag shape) that
+//       self-traverses the resolved typed subtree. The `InferredTree` compile-gate
+//       wrapper + `always_required_lenses()` registration (00_compile.dag) is the
+//       deliberately-HELD wiring — see 🟡 at the foot.
 //
-// First slice (deliberately narrow, zero-false-positive):
-//   - LEAF TYPE: `Int` only — `^dag_binding_type_int` is the one confirmed
-//     resolved kernel-scalar binding symbol. `Nat` / `Float` / `Real` leaves are
-//     a 🟡 follow-up pending their canonical resolved symbols (snappy).
-//   - DETECTION + EXEMPTION: exact-Symbol-keyed token map, NOT substring — so
-//     `discount`/`recount` (contain "count") and `matrix_index` (contains
-//     "index") never misfire. The membership test follows the additive-
-//     cardinality rule (zesty/snappy): a value is unit-bearing iff ADDITION and
-//     a UNIT are meaningful on it; it stays bare `Int` iff it is a LABEL
-//     (enum tag / opcode / status code / version / id) or a COORDINATE (array
-//     index / offset / positional ordinal). Structural counts (queue depth,
-//     retry attempts, child arity) ARE additive cardinalities → in scope.
-//   - SCOPE: only quantities whose `Quantity` is already in the catalog
-//     (Frequency, Memory/Information, DataRate, Time, Currency, Count). Electrical
-//     quantities (volts/amps/ohms/watts) are GATE-2-pending and are deliberately
-//     EXCLUDED from this table — flagging them as "fixable now" would be wrong.
+// PREDICATE — INVERTED (flag-by-default, exempt-the-non-additive):
+//   - FLAG every bare-scalar leaf in a Named modeled position, EXCEPT those
+//     positively classified as one of the two closed non-additive kinds — LABELS
+//     (version / opcode / id / enum-discriminant / status / code) and COORDINATES
+//     (index / ordinal / position / offset / line / column). The additive-
+//     cardinality test IS the exemption predicate: flag-unless-provably-non-
+//     additive. This is high-recall — a NOVEL unit name (throughput, spin_rate) is
+//     flagged because the default is flag; the token-keyed predecessor silently
+//     MISSED those (the false-negative this inversion exists to kill). Counts
+//     (thread_count, queue_depth) ARE additive → flagged.
+//   - The old name⇄carrier token map DEGRADES from the flag-predicate to an
+//     advisory HINT + the carrier-exists ORACLE that splits the two-class
+//     diagnostic (fixable-now vs blocked-pending-carrier).
+//   - DETECTION: bare `Int` (`^dag_binding_type_int`, the one confirmed resolved
+//     kernel-scalar binding). `Float` (GATE-1 keystone) + `Nat` are disclosed
+//     blind-spots — see `type_is_flat_scalar` (Float routed to snappy).
+//   - EXEMPTION recognition is exact-Symbol (no substring primitive in-substrate);
+//     compound names (matrix_index) are a disclosed limitation that PHASE-2
+//     brand-types dissolve (type-based exemption). See `name_is_exempt`.
+//   - Diff-scope grandfathering (in the harness) bounds flag-all to CHANGED
+//     regions, so reviewer load ∝ new code.
 
 module v4.lens.unit_modeling
 
@@ -52,6 +54,7 @@ import v4.std.collection {
   Absent,
   optional_present,
   optional_absent,
+  optional_prefer_first_present,
   empty_map,
   map_insert,
   map_get
@@ -68,10 +71,11 @@ import v4.std.diagnostic {
 }
 import v4.std.witness { Holds, Witness }
 
-// One authored unit-bearing field name → the canonical carrier it should attach
-// to. The `carrier` is advisory guidance only (it names the alias a fix would
-// reach for); detection turns purely on key membership. Every key is an EXACT
-// authored field Symbol — never a substring — per the exact-Symbol-keyed ruling.
+// One known unit-bearing field name → the canonical carrier it should attach to.
+// Post-inversion this is NOT the flag predicate (default is flag-all) — it is the
+// advisory HINT (names the alias a fix reaches for) + the carrier-exists ORACLE
+// that splits the two-class diagnostic: a hit ⇒ fixable-now, a miss ⇒
+// blocked-pending-carrier. Every key is an EXACT authored field Symbol.
 //
 // 🟡 dissolve-on-arrival — feature:unit-token-carrier-registry-derivation —
 // dissolve-direction: this name⇄carrier table is a hand-curated parallel ledger
@@ -87,11 +91,11 @@ type UnitFieldRow {
   carrier: Symbol
 }
 
-// 🟢 First-slice token rows. High-confidence exact field Symbols drawn from the
-// frozen ctrl/gunbc census (placement / host-shape / cpu / branch-review decls),
-// aligned to the Layer-0 scanner stems in
-// ctrl scripts/lib/dag_unit_modeling_review.mjs. Quantity-catalog members only;
-// electrical (GATE-2) excluded by construction.
+// 🟢 Carrier-hint rows. Field Symbols with a KNOWN catalog carrier (high
+// confidence, from the frozen ctrl/gunbc census). A name here ⇒ the flag is the
+// fixable-now class with this carrier as the hint; a name ABSENT here is still
+// flagged (default flag-all) but as the blocked-pending-carrier class — so
+// electrical (no carrier yet) and novel names are flagged-pending, not excluded.
 data unit_field_rows: List<UnitFieldRow> = [
   // Frequency (Hertz)
   UnitFieldRow { field: ^clock_hz, carrier: ^Hertz },
@@ -124,6 +128,15 @@ data unit_field_rows: List<UnitFieldRow> = [
   // DataRate. Carrier is compute_fabric.Bandwidth = Measure<DataRate, One>
   // (compute_fabric.dag:75) — it lives in compute_fabric, not measure.dag.
   UnitFieldRow { field: ^bandwidth_bps, carrier: ^Bandwidth },
+  // Information (BitWidth = Measure<Information, One>, measure.dag:192). Word /
+  // pointer / bit widths. Operator ruled pointer/word-width IN scope
+  // (2026-06-14); bit_width was already settled. A SEPARATE quantity from
+  // ByteSize (Measure<Memory, One>): byte<->bit is x8, non-decimal and not an SI
+  // scale (measure.dag:188-190) — do NOT conflate the two carriers. No mint:
+  // BitWidth landed via #4889.
+  UnitFieldRow { field: ^bit_width, carrier: ^BitWidth },
+  UnitFieldRow { field: ^pointer_width, carrier: ^BitWidth },
+  UnitFieldRow { field: ^word_width, carrier: ^BitWidth },
   // Count (additive cardinality — Measure<Count, One> aliases). These pass the
   // additive-cardinality test (2 threads + 3 threads = 5 threads); they are NOT
   // labels or coordinates, so they are in scope per the snappy/zesty ruling.
@@ -144,11 +157,51 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
   })
 }
 
-// Exact-key membership: is this authored field name a known unit-bearing token?
-// `map_get` returns `Accepted { value: Present { .. } }` on a hit. Anything else
-// (Absent, or the empty/never-Rejected map) is a miss — no substring match.
-fn field_name_is_unit_token(name: Symbol) -> Bool {
+// Carrier-exists ORACLE (post-inversion role). The token map no longer decides
+// WHETHER to flag — it decides the diagnostic CLASS: a hit means a known carrier
+// exists for this field name (the violation is fixable now), a miss means no
+// carrier is known yet (novel name, or a GATE-N-pending quantity). `map_get`
+// returns `Accepted { value: Present { .. } }` on a hit — exact-key, no substring.
+fn field_name_has_known_carrier(name: Symbol) -> Bool {
   match map_get(m: unit_field_token_map(), key: name) {
+    Accepted { value: Present { value: _ } } => true
+    _ => false
+  }
+}
+
+// EXEMPTION — the two closed non-additive kinds. Under the inverted predicate a
+// bare-scalar leaf is flagged BY DEFAULT and exempt (not flagged) only if its
+// authored name is positively a LABEL or a COORDINATE: the additive-cardinality
+// test (addition + a unit must be meaningful) IS the exemption predicate. This is
+// CATEGORICAL — two closed kinds — NOT a per-field acknowledged-exempt ledger: a
+// novel unit name is flagged by default, so the exemption set never grows per
+// new field (bold-crane / operator / CLAUDE.md, non-negotiable).
+//
+// 🟡 DISCLOSED LIMITATION (no silent cap) — exact-Symbol match only; the v4 lens
+// substrate has NO substring/suffix primitive. This recognizes BARE markers
+// (version / index / offset); COMPOUND forms (matrix_index, schema_version,
+// byte_offset) are NOT recognized and will false-positive-flag. The robust
+// dissolution is PHASE-2 brand-types (Index / Version / Ordinal in dsl/std) →
+// exemption becomes TYPE-based (matrix_index: Index is no longer a bare scalar),
+// dissolving name-recognition entirely. Until then this exact set is the interim
+// bridge; advisory + diff-scoped bounds the blast radius. Forbidden: growing it
+// into a per-field ledger of specific blessed names. (Routed to smart-hawk.)
+data exemption_marker_rows: List<Symbol> = [
+  // LABELS — identity / categorical tags (version 2 + version 3 is nonsense).
+  ^version, ^opcode, ^id, ^kind, ^tag, ^discriminant, ^status, ^code, ^enum,
+  // COORDINATES — positions / ordinals (index 2 + index 3 is not position 5).
+  ^index, ^idx, ^ordinal, ^position, ^pos, ^offset, ^line, ^column, ^col
+]
+
+// Membership-only Symbol set (value = the marker itself; unused).
+fn exemption_marker_set() -> Map<Symbol, Symbol> {
+  fold(exemption_marker_rows, init: empty_map(), f: fn(acc, mk) {
+    map_insert(m: acc, key: mk, value: mk)
+  })
+}
+
+fn name_is_exempt(name: Symbol) -> Bool {
+  match map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -168,39 +221,38 @@ fn field_name_is_unit_token(name: Symbol) -> Bool {
 //     Nat-node-resolution increment, not a one-symbol add. The real violators in
 //     the tree today are bare `Int` (e.g. types.dag `Duration = Int` /
 //     `Milliseconds = Int` brands), which this slice does catch.
-//   - `Float` is excluded — it rides the M=Float keystone, a later increment.
-// The danger direction for an advisory lint is over-flagging a legitimate bare
-// Int, not under-flagging a Nat; Int-only avoids the former. (snappy 2026-06-14.)
+//   - `Float` is NOT caught — there is no resolvable `^dag_binding_type_float`
+//     binding symbol the lens can match (only Int has one). This is the GATE-1
+//     signed/continuous keystone blind-spot (M=Float quantities: signal samples,
+//     fractional readings). ROUTED to snappy as a lens-introspection substrate
+//     gap (the path to a Float binding symbol is his carrier/inferencer call);
+//     disclosed here, not silently capped. (2026-06-14.)
 fn type_is_flat_scalar(target: Node) -> Bool {
   edge_field_type_name(target: target) == ^dag_binding_type_int
 }
 
-// First-present combiner — keep the earliest violation found in a fold over a
-// list of `Optional<Diagnostic>`s (left-biased).
-fn first_present(a: Optional<Diagnostic>, b: Optional<Diagnostic>) -> Optional<Diagnostic> {
-  match a {
-    Present { value: _ } => a
-    Absent => b
-  }
-}
+// (Left-biased first-present fold over Optionals uses the std combinator
+// `optional_prefer_first_present` — no hand-rolled duplicate, INVARIANTS.md P1 /
+// Practice 10.)
 
-// One field edge → an Optional violation. A flat-scalar unit leaf is exactly a
-// Named field whose name is a unit token AND whose target resolves to bare Int.
-// Positional edges have no authored name to carry a unit token, so they never
-// violate.
+// One field edge → an Optional violation under the INVERTED predicate: a bare
+// scalar leaf is flagged BY DEFAULT and exempt ONLY if its name is a categorical
+// label/coordinate. This is the high-recall direction — a NOVEL unit name
+// (throughput, spin_rate) is flagged because the default is flag, which is the
+// false-negative the token-keyed approach silently missed. (Positional edges have
+// no authored name, so they are never flagged.)
+//
+// Typed `optional_*` constructors (each `-> Optional<T>`) are used rather than
+// bare `Present {..}` / `Absent` literals: a bare record-literal in an `if` branch
+// does not widen to its parent coproduct.
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Named { name: nm } =>
-      // Use the typed `optional_*` constructors (each `-> Optional<T>`) rather
-      // than bare `Present {..}` / `Absent` literals: a bare record-literal in
-      // an `if` branch does not widen to its parent coproduct, so the branches
-      // would type as Diagnostic vs Optional. The helpers carry the Optional
-      // type explicitly and unify cleanly.
-      if field_name_is_unit_token(name: nm) {
-        if type_is_flat_scalar(target: edge.target) {
-          optional_present(value: unit_modeling_diagnostic(carrier: carrier))
-        } else {
+      if type_is_flat_scalar(target: edge.target) {
+        if name_is_exempt(name: nm) {
           optional_absent()
+        } else {
+          optional_present(value: unit_modeling_diagnostic(carrier: carrier, name: nm))
         }
       } else {
         optional_absent()
@@ -215,7 +267,7 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
       fold(carrier.children, init: Absent, f: fn(acc, edge) {
-        first_present(a: acc, b: field_unit_violation(carrier: carrier, edge: edge))
+        optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
       })
     ComputationNode { behavior: _ } => Absent
   }
@@ -227,19 +279,38 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
 // follow-up once the introspect harvest needs every site at once.
 fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
   fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
-    first_present(a: acc, b: carrier_first_unit_violation(carrier: n))
+    optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
   })
 }
 
-// The advisory diagnostic for a flat-scalar unit leaf. `correction` is
-// `Unavailable { ExternalContractUnknown }` — the fix (attach Measure<Q,S>) is
-// prose-known but not a mechanical rewrite the lens can synthesize, matching the
-// fact_density precedent.
-fn unit_modeling_diagnostic(carrier: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^unit_modeling_flat_scalar_unit_leaf,
-    at: node_locus(node: carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+// The advisory diagnostic for a flagged bare-scalar leaf, in TWO CLASSES so the
+// §4 census can derive the drain-dependency graph straight from the lens output:
+//   - FIXABLE-NOW (`^unit_modeling_flat_scalar_unit_leaf_fixable`): the field name
+//     maps to a KNOWN carrier (token-map hit — ram_bytes→ByteSize,
+//     pointer_width→BitWidth). Drainable now: attach the carrier.
+//   - BLOCKED-PENDING-CARRIER (`^unit_modeling_flat_scalar_blocked_pending_carrier`):
+//     a quantity with NO known carrier — a novel name (throughput) or a
+//     GATE-N-pending quantity (tdp_watts → Power, not in the catalog). The flag
+//     STILL fires (no false-negative; a quantity is a quantity regardless of
+//     whether its carrier exists yet), but there is no fix-suggestion — the honest
+//     reconciliation is to escalate the upstream carrier gate (M12 / Practice 13),
+//     not to suppress the flag.
+// The token map (degraded from flag-predicate to advisory hint) doubles as the
+// carrier-exists oracle that splits the two classes. `correction` is `Unavailable`
+// in both — the lens cannot synthesize the rewrite (fact_density precedent).
+fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
+  if field_name_has_known_carrier(name: name) {
+    Diagnostic {
+      reason: ^unit_modeling_flat_scalar_unit_leaf_fixable,
+      at: node_locus(node: carrier),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  } else {
+    Diagnostic {
+      reason: ^unit_modeling_flat_scalar_blocked_pending_carrier,
+      at: node_locus(node: carrier),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
