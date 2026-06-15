@@ -1,0 +1,319 @@
+// src/v4/std/circuit.dag
+// Scope: analog circuit stream operators — S1 passives as map/fold over time-series signals.
+// Anchor: SPICE3 passive element constitutive relations (Ohm / capacitor / inductor)
+//         via v4.extdeps.formats.spice Component variants.
+// Status: S1 — TimeSeriesSignal carrier + R/L/C step operators; affine voltage types;
+//         per-tick KCL/KVL solve deferred to S2 (SolveStep named, not inhabited).
+// M9 receipt: attaches to v4.std.algebra (fold_list / fold_list_right),
+//             v4.std.integer (int_add/int_mul/int_div), v4.std.collection (List);
+//             consumes spice.dag topology — does not fork netlist syntax.
+
+
+module v4.std.circuit
+
+
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_right, FreeMonoid }
+import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
+import v4.std.integer { Int, int_add, int_div, int_mul, int_negate }
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+import v4.extdeps.formats.spice {
+  Component,
+  Capacitor,
+  Inductor,
+  NodeRef,
+  Resistor,
+  SpiceApproxVoltage,
+  SpiceValue
+}
+
+data circuit_passive_fold_step_locus: Symbol = ^circuit_passive_fold_step
+
+
+// --- Affine voltage (gauge discipline) --------------------------------------
+//
+// Absolute potential is meaningful only against a chosen reference node.
+// Potential difference is gauge-free. Adding two absolutes is ill-typed by
+// construction (no binary add on AbsolutePotential).
+
+type PotentialReference {
+  node: Symbol
+}
+
+// 🟡 needs-more-work — feature:circuit-exact-volt-measure — dissolve-on: Measure<Volt, _>
+// exact carrier + snappy-stag value-Measure v2 resolution.
+type AbsolutePotential {
+  reference: PotentialReference
+  microvolts: Int
+}
+
+// 🟢 grounded — gauge-free vector (potential difference across two nodes).
+type PotentialDifference {
+  microvolts: Int
+}
+
+type NamedAffineVoltage {
+  reference: PotentialReference
+  approx: SpiceApproxVoltage
+}
+
+fn potential_difference_from(
+  high: AbsolutePotential,
+  low: AbsolutePotential,
+) -> PotentialDifference {
+  PotentialDifference {
+    microvolts: int_add(a: high.microvolts, b: int_negate(a: low.microvolts))
+  }
+}
+
+type BranchCurrent {
+  microamperes: Int
+}
+
+type BranchVoltage {
+  difference: PotentialDifference
+}
+
+// --- Time-series signal carrier ---------------------------------------------
+
+type TimeSeriesSample {
+  tick: Nat
+  microvolts: Int
+}
+
+type TimeSeriesSignal = List<TimeSeriesSample>
+
+fn time_series_append(
+  signal: TimeSeriesSignal,
+  sample: TimeSeriesSample,
+) -> TimeSeriesSignal {
+  fold_list_right(
+    xs: signal,
+    empty: Cons { head: sample, tail: Empty },
+    snoc: fn(acc, item) { Cons { head: item, tail: acc } }
+  )
+}
+
+// --- Primitive kind tags (map / fold / solve investigation) -----------------
+
+// 🟢 TERMINAL at S1 scope — declares the three-axis decomposition; SolveStep is
+// named for S2 but has no discharge inhabitant until execution proves need.
+type CircuitPrimitiveKind
+  = MapStep
+  | FoldStep
+  | SolveStep
+
+type TimeStep {
+  dt_microseconds: Int
+}
+
+// --- MAP: Resistor (stateless v = R·i) --------------------------------------
+
+type ResistorRating {
+  microohms: Int
+}
+
+type ResistorMap {
+  kind: MapStep
+  rating: ResistorRating
+}
+
+fn resistor_map_voltage(
+  element: ResistorMap,
+  current: BranchCurrent,
+) -> BranchVoltage {
+  BranchVoltage {
+    difference: PotentialDifference {
+      microvolts: int_mul(a: element.rating.microohms, b: current.microamperes)
+    }
+  }
+}
+
+// --- FOLD: Capacitor (state = charge / voltage; opposes dV/dt) --------------
+
+type CapacitorRating {
+  microfarads: Int
+}
+
+type CapacitorState {
+  voltage: PotentialDifference
+  charge_microcoulombs: Int
+}
+
+type CapacitorFold {
+  kind: FoldStep
+  rating: CapacitorRating
+}
+
+// v[t] = v[t-1] + (i·dt)/C — micro-unit fixed point; divide-by-zero is fail-closed via int_div.
+fn capacitor_fold_step(
+  element: CapacitorFold,
+  state: CapacitorState,
+  current: BranchCurrent,
+  dt: TimeStep,
+) -> Outcome<CapacitorState> {
+  let charge_delta = int_mul(a: current.microamperes, b: dt.dt_microseconds)
+  let new_charge = int_add(a: state.charge_microcoulombs, b: charge_delta)
+  match int_div(
+    a: charge_delta,
+    b: element.rating.microfarads,
+    at: port_locus(port: circuit_passive_fold_step_locus),
+  ) {
+    Accepted { value: dv, diagnostics: _ } =>
+      Accepted {
+        value: CapacitorState {
+          voltage: PotentialDifference {
+            microvolts: int_add(a: state.voltage.microvolts, b: dv)
+          }
+          charge_microcoulombs: new_charge
+        }
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn fold_capacitor_transient(
+  element: CapacitorFold,
+  initial: CapacitorState,
+  currents: List<BranchCurrent>,
+  dt: TimeStep,
+) -> Outcome<CapacitorState> {
+  fold_list(
+    xs: currents,
+    empty: Accepted { value: initial, diagnostics: None },
+    cons: fn(acc, current) {
+      match acc {
+        Accepted { value: state, diagnostics: _ } =>
+          capacitor_fold_step(
+            element: element,
+            state: state,
+            current: current,
+            dt: dt,
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    }
+  )
+}
+
+// --- FOLD: Inductor (dual — state = flux / current; opposes dI/dt) ----------
+
+type InductorRating {
+  microhenries: Int
+}
+
+type InductorState {
+  current: BranchCurrent
+  flux_microwebers: Int
+}
+
+type InductorFold {
+  kind: FoldStep
+  rating: InductorRating
+}
+
+fn inductor_fold_step(
+  element: InductorFold,
+  state: InductorState,
+  voltage: BranchVoltage,
+  dt: TimeStep,
+) -> Outcome<InductorState> {
+  let flux_delta = int_mul(a: voltage.difference.microvolts, b: dt.dt_microseconds)
+  let new_flux = int_add(a: state.flux_microwebers, b: flux_delta)
+  match int_div(
+    a: flux_delta,
+    b: element.rating.microhenries,
+    at: port_locus(port: circuit_passive_fold_step_locus),
+  ) {
+    Accepted { value: di, diagnostics: _ } =>
+      Accepted {
+        value: InductorState {
+          current: BranchCurrent {
+            microamperes: int_add(a: state.current.microamperes, b: di)
+          }
+          flux_microwebers: new_flux
+        }
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+// --- spice.dag structural consumption --------------------------------------
+//
+// Lexeme→scalar parsing is a named kernel; this slice wires passive topology only.
+
+type ResistorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+type CapacitorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+type InductorSpec {
+  name: Symbol
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value: SpiceValue
+}
+
+// 🟢 coproduct dissolution — passive-only projection from spice Component.
+type PassiveComponentSpec
+  = ResistorPassive { spec: ResistorSpec }
+  | CapacitorPassive { spec: CapacitorSpec }
+  | InductorPassive { spec: InductorSpec }
+
+fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } => Present {
+      value: ResistorPassive {
+        spec: ResistorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    Capacitor { name, n_plus, n_minus, value } => Present {
+      value: CapacitorPassive {
+        spec: CapacitorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    Inductor { name, n_plus, n_minus, value } => Present {
+      value: InductorPassive {
+        spec: InductorSpec {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      }
+    }
+    _ => Absent
+  }
+}
+
+fn named_affine_voltage(
+  reference: PotentialReference,
+  approx: SpiceApproxVoltage
+) -> NamedAffineVoltage {
+  NamedAffineVoltage {
+    reference: reference,
+    approx: approx
+  }
+}
