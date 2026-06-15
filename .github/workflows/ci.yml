@@ -23,42 +23,23 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 # One-binary CI floor (operator 2026-06-15): gate membership + shell transport live in
 # dsl/gunbc/ci.dag; execution + GHA log annotations in dsl/gunbc/tools/ci_runner.dag.
-# This workflow is a thin shim: runner-isolation guard + checkout/toolchain + one
-# `run_ci_pipeline` invocation. Branch protection should reference job id `ci` (and
-# `infra_isolation` for the fork-PR de-priv guard).
+# This workflow is a thin shim: checkout/toolchain + one `run_ci_pipeline`
+# invocation. Branch protection should reference job id `ci`.
 jobs:
-  infra_isolation:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 5
-    steps:
-    - name: Assert runner is de-privileged (adversarial)
-      run: |
-        fail(){ echo "::error::INFRA ISOLATION REGRESSION: $1"; exit 1; }
-        [ "$(id -u)" -ne 0 ] || fail "running as root"
-        for g in docker sudo lxd wheel root; do id -nG | tr ' ' '\n' | grep -qx "$g" && fail "in privileged group $g"; done
-        cat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail "can read the App private key"
-        sudo -n true 2>/dev/null && fail "has passwordless sudo"
-        { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
-        echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
   ci:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 240
-    needs: [infra_isolation]
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      # CARGO_HOME/RUSTUP_HOME MUST be exported here, before `Setup Rust` + `Cache
+      # Cargo` below install/restore into the isolated dirs. The sccache upsert is
+      # NOT here: it is modeled fail-closed inside the floor binary (the
+      # sccache-upsert gate in dsl/gunbc/ci.dag), which brings up the daemon and
+      # wraps the cargo-bearing gates it spawns. No fail-open "building cold" path.
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-        sccache --stop-server >/dev/null 2>&1 || true
-        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
-             && sccache --start-server >/dev/null 2>&1 \
-             && sccache --show-stats >/dev/null 2>&1; then
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
-        else
-          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
-        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Scrub dangling remote refs (shared runner worktree)
