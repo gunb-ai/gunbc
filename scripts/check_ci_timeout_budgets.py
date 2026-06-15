@@ -36,7 +36,10 @@ CEILINGS = {
         "infra_isolation": 5,
         "fmt": 15,
         "doc_refs": 5,
-        "layering_imports": 5,
+        # Was python-only (instant); now builds ci_claim_gate + v2-compiler +
+        # layering_imports_scan before scanner-execution gate. 15m matches fmt job
+        # shape; warm sccache from parallel floor jobs keeps uncontended wall low.
+        "layering_imports": 15,
         "ci_floor": 60,
         "ci_floor_parity": 60,
         "ci_floor_emit": 60,

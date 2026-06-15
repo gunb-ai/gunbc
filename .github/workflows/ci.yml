@@ -233,8 +233,21 @@ jobs:
   # manifest -> witness RED on detection, clean_tree green on removal) per root×form.
   layering_imports:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        sccache --stop-server >/dev/null 2>&1 || true
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     # Shared srv1/srv2 runners persist $RUNNER_WORKSPACE/gunbc between jobs; shallow fetch +
@@ -281,12 +294,17 @@ jobs:
       uses: actions/checkout@v5
       with:
         fetch-depth: 1
-    - name: Ensure ci-claim-gate binary (layering imports)
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate --release
-    - name: Ensure gunbc binary (layering imports scanner-execution witnesses)
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-    - name: Ensure layering_imports_scan binary (layering imports)
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p layering_imports_scan --release
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Ensure layering imports gate binaries
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p ci_claim_gate -p v2-compiler -p layering_imports_scan --release
     - name: Cross-layer import gate (clean tree + perturb receipts)
       run: bash scripts/v4-layering-imports-gate.sh --perturb-check
   # CI wall-time budget gate -- every timeout-minutes in .github/workflows/ must stay
