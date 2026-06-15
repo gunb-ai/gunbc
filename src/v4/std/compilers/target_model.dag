@@ -526,6 +526,7 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  | TargetValueExprCommaSequence
   | TargetValueExprConditional
   | TargetValueExprBindLet
   | TargetValueExprLoop
@@ -547,6 +548,7 @@ type TargetValueTemplateKind
   | ValueBindingRef
   | ValuePrimitiveApply
   | ValueEffectApply
+  | ValueCommaSequence
   | ValueConditional
   | ValueBindLet
   | ValueLoop
@@ -2944,6 +2946,211 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
   )
 }
 
+// Comma-sequence expression — `(operand0, operand1, …)` for target-language comma-operator
+// grouping (e.g. TS effect-IO roundtrip then-arm: write then read).
+fn target_value_expression_comma_sequence(
+  operands: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprCommaSequence,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_comma_sequence_atom }
+      },
+      children: target_value_expr_primitive_apply_operand_edges(operands: operands),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+fn target_value_expr_comma_sequence_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_comma_sequence_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } => n == target_value_expr_field_operand
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true =>
+            if count(wire.children) >= 2 {
+              outcome_accepted(true)
+            } else {
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+            }
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_comma_sequence_operands_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExpression>> {
+  bind_outcome(
+    o: target_value_expr_comma_sequence_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      fold_list(
+        xs: wire.children,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              match edge.label {
+                Named { name: n } =>
+                  if n == target_value_expr_field_operand {
+                    bind_outcome(
+                      o: target_value_expression_reify_from_wire(wire: edge.target),
+                      f: fn(operand) {
+                        Accepted {
+                          value: list_snoc_item(xs: partial, item: operand),
+                          diagnostics: ad
+                        }
+                      }
+                    )
+                  } else {
+                    Accepted { value: partial, diagnostics: ad }
+                  }
+                Positional =>
+                  Accepted { value: partial, diagnostics: ad }
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_comma_sequence_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_comma_sequence_operands_from_wire(wire: expr.node),
+    f: fn(operands) {
+      bind_outcome(
+        o: target_value_expression_list_to_concrete_tokens(
+          operands: operands,
+          projection: projection,
+          catalog: catalog
+        ),
+        f: fn(operand_tokens) {
+          outcome_accepted(
+            list_append(
+              left: list_append(
+                left: Cons {
+                  head: FixedToken {
+                    token_class: projection.effect_apply_form.open
+                  },
+                  tail: Empty
+                },
+                right: target_value_expression_token_lists_intersperse_separator(
+                  token_lists: operand_tokens,
+                  separator: projection.effect_apply_form.separator
+                )
+              ),
+              right: Cons {
+                head: FixedToken { token_class: projection.effect_apply_form.close },
+                tail: Empty
+              }
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_list_to_concrete_tokens(
+  operands: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<List<ConcreteSyntaxToken>>> {
+  fold_list(
+    xs: operands,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, operand) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: operand,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(tokens) {
+              Accepted {
+                value: list_snoc_item(xs: partial, item: tokens),
+                diagnostics: ad
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expression_token_lists_intersperse_separator(
+  token_lists: List<List<ConcreteSyntaxToken>>,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  match fold_list(
+    xs: token_lists,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, tokens) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: partial, diagnostics: ad } =>
+          if count(partial) == 0 {
+            Accepted { value: tokens, diagnostics: ad }
+          } else {
+            Accepted {
+              value: list_append(
+                left: list_append(
+                  left: partial,
+                  right: Cons {
+                    head: FixedToken { token_class: separator },
+                    tail: Empty
+                  }
+                ),
+                right: tokens
+              ),
+              diagnostics: ad
+            }
+          }
+      }
+    }
+  ) {
+    Accepted { value: out, diagnostics: _ } => out
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
 fn target_value_expression_conditional(
   condition: TargetValueExpression,
   then_arm: TargetValueExpression,
@@ -3470,6 +3677,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_comma_sequence_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprCommaSequence,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_bind_let_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -3926,6 +4140,12 @@ fn target_value_expression_to_concrete_tokens(
       target_value_expression_effect_apply_to_concrete_tokens(
         expr: expr,
         projection: projection
+      )
+    TargetValueExprCommaSequence =>
+      target_value_expression_comma_sequence_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
       )
     TargetValueExprSymbolIdentity =>
       target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
