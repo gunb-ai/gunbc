@@ -19,7 +19,7 @@ import v4.std.verification {
 
 // Single-authority expected string. Shell oracle (scripts/v4-spice-ngspice-rc-oracle.sh)
 // carries a copy of this heredoc; keep them in sync.
-data spice_rc_tran_ngspice_expected: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nprint v(n2)\n.endc\n.end"
+data spice_rc_tran_ngspice_expected: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nprint v(n2)\nquit\n.endc\n.end"
 
 fn spice_rc_tran_emit_ngspice_matches_expected_holds() -> Bool {
   spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_ngspice_expected
