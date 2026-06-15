@@ -141,8 +141,3 @@ fn witness_windows_component_boundaries_preserved() -> Bool {
   windows_nt_kernel32_boundary.exports == windows_nt_kernel32_exports
     && windows_ntdll_boundary.exports == windows_ntdll_exports
 }
-
-// Cited spec fact: NT syscall numbers are not a stable public ABI across Windows builds.
-fn witness_nt_syscall_numbers_unstable_across_builds() -> Bool {
-  true
-}
