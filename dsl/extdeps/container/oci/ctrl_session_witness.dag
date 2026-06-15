@@ -4,7 +4,9 @@
 // Anchors: image-spec manifest.md + config.md; runtime-spec config.md + config-linux.md.
 //
 // Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
+// ✅ CI-enrolled: claim-witness corpus gate shard b (src/v4/test/claim/workflow/
+//    claim_witness_corpus_ci_runner.dag → corpus_ci_gate_row_oci_ctrl_session_witness),
+//    run dsl/-rooted via scripts/v4-claim-witness-corpus-gate.sh. main() is the keystone.
 
 module extdeps.container.oci.ctrl_session_witness
 

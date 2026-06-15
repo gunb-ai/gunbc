@@ -461,6 +461,20 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+// OCI Slice-0 ctrl-session witness (dsl/extdeps/container/oci/ctrl_session_witness.dag) —
+// decodes the real ctrl-session:latest export and ANDs ten by-execution checks: image-spec
+// manifest/config/layer-consistency accept + reject, runtime-spec config.json accept,
+// linux.namespaces count + resources.memory limit + duplicate-namespace reject. dsl/-rooted
+// (--source-root dsl), shard b alongside the other dsl/-rooted domain witnesses. Authored
+// un-enrolled (waiting on the dsl-rooted claim-run corpus gate); that gate has since landed
+// (dsl_root_probe + markup/html/react/measure rows below), so this enrolls main() now.
+data corpus_ci_gate_row_oci_ctrl_session_witness: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "oci ctrl-session image+runtime spec witness",
+  entry: "dsl/extdeps/container/oci/ctrl_session_witness.dag",
+  function: "main",
+  expected: ExpectPass
+}
+
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -522,5 +536,6 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_oci_ctrl_session_witness
 ]
