@@ -1,0 +1,70 @@
+// src/v4/extdeps/formats/modelica.dag
+//
+// Scope: Modelica passive analog circuit model — acausal, equation-based.
+//        Components, port connections, model declarations. NO control flow.
+// Anchor: Modelica Language Specification 3.5 (Modelica Association, 2012).
+//         Modelica Standard Library (MSL 4.0) — Electrical.Analog.{Basic,Sources}.
+// Stress (T-4.10 paradigm-challenger): the SAME .dag RC circuit fixture → a Modelica
+//   acausal model. Acausal paradigm: components carry port connectors, equations are
+//   undirected; `connect(A.p, B.p)` is a pair of equalities (potential + flow), not a
+//   directed wire. No node-voltage annotation on components — that is SPICE's causal
+//   topology. If the format data-model requires causal annotation to represent a passive
+//   circuit, that is a substrate-design signal to surface immediately (stop + escalate).
+// Splitting this file requires explicit operator ratification.
+
+module v4.extdeps.formats.modelica
+
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Symbol }
+
+
+// Modelica instance name or port name (variable-like identifier).
+type ModelicaIdentifier { name: Symbol }
+
+
+// Port reference in a connect() equation: <component>.<port>
+// The connector pair carries equal potential and summed flow — the acausal contract.
+type ModelicaPortRef {
+  component: ModelicaIdentifier
+  port: ModelicaIdentifier
+}
+
+
+// Undirected connection equation: connect(left, right).
+// Semantics: left.potential = right.potential ∧ left.flow + right.flow = 0.
+// This is the paradigm difference from SPICE node-voltage reference: no direction.
+type ModelicaConnection {
+  left: ModelicaPortRef
+  right: ModelicaPortRef
+}
+
+
+// 🟢 coproduct dissolution — passive analog circuit component variants.
+// Variant field names follow MSL 4.0 Electrical.Analog parameter conventions
+// (R for resistance in Ω, C for capacitance in F, V for voltage in V).
+// Value lexemes are String (same carrier as SpiceValue.lexeme) to support the
+// paradigm-comparison witnesses; an exact-quantity carrier defers to T-3 Dimension/Volt.
+type ModelicaPassiveComponent
+  = ModelicaResistor        { name: ModelicaIdentifier, r: String }
+  | ModelicaCapacitor       { name: ModelicaIdentifier, c: String }
+  | ModelicaConstantVoltage { name: ModelicaIdentifier, v: String }
+  | ModelicaGround          { name: ModelicaIdentifier }
+
+
+// A Modelica circuit model — name, component declarations, connection equations.
+type ModelicaCircuitModel {
+  name: ModelicaIdentifier
+  components: List<ModelicaPassiveComponent>
+  connections: List<ModelicaConnection>
+}
+
+
+type ModelicaParseResult = Outcome<ModelicaCircuitModel>
+
+type ModelicaParse = fn(String) -> ModelicaParseResult
+
+type ModelicaEmit = fn(ModelicaCircuitModel) -> String
+
+type ModelicaIoContract {
+  emit: ModelicaEmit
+}
