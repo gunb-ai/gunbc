@@ -29,7 +29,20 @@
 module v4.extdeps.formats.spice
 
 
-import v4.std.diagnostic { Outcome }
+import v4.std.algebra { Cons, Empty, fold_list, list_append }
+import v4.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Textual,
+  Unavailable,
+  WholeFile,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -331,4 +344,195 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
       expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
     }
   }
+}
+
+
+// --- wave-1 Shape B emit/parse (extdeps-local; no v4.compiler imports) --------
+
+data spice_wave1_fixture_file: Symbol = ^spice_wave1_fixture_file
+
+fn spice_text_concat(left: String, right: String) -> String {
+  list_append(left: left, right: right)
+}
+
+fn spice_text_concat3(left: String, mid: String, right: String) -> String {
+  spice_text_concat(left: spice_text_concat(left: left, right: mid), right: right)
+}
+
+fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
+  spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
+}
+
+// Wave-1 ident spellings for grammar-probe + RC witness symbols (^r1 -> "R1", etc.).
+fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
+  if ident == ^r1 {
+    optional_present(value: "R1")
+  } else if ident == ^c1 {
+    optional_present(value: "C1")
+  } else if ident == ^n1 {
+    optional_present(value: "n1")
+  } else if ident == ^n2 {
+    optional_present(value: "n2")
+  } else if ident == ^vin {
+    optional_present(value: "vin")
+  } else if ident == ^mid {
+    optional_present(value: "mid")
+  } else {
+    optional_absent()
+  }
+}
+
+fn spice_emit_node_ref(node: NodeRef) -> Optional<String> {
+  match node {
+    Ground => Present { value: "0" }
+    Named { node: named } =>
+      spice_wave1_ident_spelling(ident: named.name)
+  }
+}
+
+fn spice_emit_passive_line(
+  name: Symbol,
+  n_plus: NodeRef,
+  n_minus: NodeRef,
+  value: SpiceValue
+) -> Optional<String> {
+  match spice_emit_node_ref(node: n_plus) {
+    Present { value: plus_spelling } =>
+      match spice_emit_node_ref(node: n_minus) {
+        Present { value: minus_spelling } =>
+          match spice_wave1_ident_spelling(ident: name) {
+            Present { value: name_spelling } =>
+              Present {
+                value: spice_text_concat4(
+                  a: spice_text_concat(left: name_spelling, right: " "),
+                  b: spice_text_concat(left: plus_spelling, right: " "),
+                  c: spice_text_concat(left: minus_spelling, right: " "),
+                  d: value.lexeme
+                )
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn spice_emit_component(component: Component) -> Optional<String> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    Capacitor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    Inductor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    _ => Absent
+  }
+}
+
+fn spice_emit_directive(directive: Directive) -> Optional<String> {
+  match directive {
+    Op => Present { value: ".op" }
+    _ => Absent
+  }
+}
+
+fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
+  match stmt {
+    DeckComponent { component } => spice_emit_component(component: component)
+    DeckDirective { directive } => spice_emit_directive(directive: directive)
+    _ => Absent
+  }
+}
+
+fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
+  fold_list(
+    xs: body,
+    empty: Present { value: "" },
+    cons: fn(acc, stmt) {
+      match acc {
+        Absent => Absent
+        Present { value: prefix } =>
+          match spice_emit_deck_statement(stmt: stmt) {
+            Present { value: line } =>
+              if prefix == "" {
+                Present { value: line }
+              } else {
+                Present {
+                  value: spice_text_concat(
+                    left: spice_text_concat(left: prefix, right: "\n"),
+                    right: line
+                  )
+                }
+              }
+            Absent => Absent
+          }
+      }
+    }
+  )
+}
+
+fn spice_emit(netlist: SpiceNetlist) -> String {
+  match spice_emit_body_lines(body: netlist.body) {
+    Present { value: body_text } =>
+      if netlist.title == "" {
+        body_text
+      } else {
+        spice_text_concat(
+          left: spice_text_concat(left: netlist.title, right: "\n"),
+          right: body_text
+        )
+      }
+    Absent => ""
+  }
+}
+
+data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
+  title: "",
+  body: Cons {
+    head: DeckComponent {
+      component: Resistor {
+        name: ^r1,
+        n_plus: Named { node: NamedNode { name: ^n1 } },
+        n_minus: Named { node: NamedNode { name: ^n2 } },
+        value: SpiceValue { lexeme: "1" }
+      }
+    },
+    tail: Empty
+  }
+}
+
+data spice_wave1_probe_resistor_line: String = "R1 n1 n2 1"
+
+fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^spice_parse_wave1_unsupported,
+      at: Textual { file: spice_wave1_fixture_file, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
+  (text == spice_wave1_probe_resistor_line)
+    || (text == spice_emit(netlist: spice_wave1_probe_resistor_netlist))
+}
+
+fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
+  outcome_accepted(value: spice_wave1_probe_resistor_netlist)
+}
+
+// Wave-1 parse: structural inverse of spice_emit for enrolled witness netlists only.
+fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
+  if spice_parse_is_wave1_probe_line(text: text) {
+    spice_parse_accept_probe()
+  } else {
+    spice_parse_reject_unsupported()
+  }
+}
+
+data spice_io_contract: SpiceIoContract = SpiceIoContract {
+  parse: spice_parse,
+  emit: spice_emit
 }

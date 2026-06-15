@@ -1,0 +1,57 @@
+// src/v4/test/fixture/spice_rc_passive_deck.dag
+// Scope: canonical SpiceNetlist fixture — R in series with C to ground, .op directive.
+// Shared by ngspice (runnable oracle) and Modelica (acausal paradigm-challenger) emitters.
+// Status: P4 SPICE/analog lane fixture authority (#4967); import boundary is spice.dag types only.
+
+module v4.test.fixture.spice_rc_passive_deck
+
+import v4.std.algebra { Cons, Empty }
+import v4.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  DeckStatement,
+  Ground,
+  Named,
+  NamedNode,
+  Op,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  spice_emit
+}
+
+// Topology: vin --[R1 1k]-- mid --[C1 1u]-- ground; .op for DC operating-point analysis.
+data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
+  title: "RC passive series deck",
+  body: Cons {
+    head: DeckComponent {
+      component: Resistor {
+        name: ^r1,
+        n_plus: Named { node: NamedNode { name: ^vin } },
+        n_minus: Named { node: NamedNode { name: ^mid } },
+        value: SpiceValue { lexeme: "1k" }
+      }
+    },
+    tail: Cons {
+      head: DeckComponent {
+        component: Capacitor {
+          name: ^c1,
+          n_plus: Named { node: NamedNode { name: ^mid } },
+          n_minus: Ground,
+          value: SpiceValue { lexeme: "1u" }
+        }
+      },
+      tail: Cons {
+        head: DeckDirective { directive: Op },
+        tail: Empty
+      }
+    }
+  }
+}
+
+data spice_rc_passive_deck_emitted: String = spice_emit(netlist: spice_rc_passive_deck)
+
+fn spice_rc_passive_deck_cir_text() -> String {
+  spice_emit(netlist: spice_rc_passive_deck)
+}
