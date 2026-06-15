@@ -1,11 +1,18 @@
-// std/memory/sk_hynix.dag — SK hynix DDR4 module catalog (data authority).
+// extdeps/memory/sk_hynix.dag — SK Hynix DDR4 module catalog (vendor data authority).
+//
+// SK Hynix's published DDR4 modules, as std.memory DramModuleCatalogRow values.
+// Vendor hardware is an external dependency: it lives in extdeps/, importing the
+// catalog SHAPE from std/memory. std/memory owns only the shape + the manufacturer
+// taxonomy; it does not enumerate any one vendor's parts. Which specific modules a
+// given host is populated with is an operator deployment fact (ctrl), not a fact
+// about SK Hynix.
 //
 // Operator DIMMs: HMA82GR7AFR4N-VK 16GB PC4-21300 @ 2666 MT/s.
 
-module std.memory.sk_hynix
+module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size }
-import std.memory.types { DramManufacturer, DramModuleCatalogRow, SkHynixDdr4Module }
+import std.memory.types { DramModuleCatalogRow }
 
 // 16 GiB per stick (1×16GB).
 data stick_capacity_bytes: ByteSize = byte_size(17179869184)
@@ -32,11 +39,4 @@ data hma82gr7afr4n_vk_ecc_reg_single_rank_catalog: DramModuleCatalogRow = DramMo
   ecc: true,
   registered: true,
   rank_label: "ecc_reg_single_rank",
-}
-
-fn sk_hynix_catalog_row(dimm: SkHynixDdr4Module) -> DramModuleCatalogRow {
-  match dimm {
-    Hma82gr7afr4nVkServer => hma82gr7afr4n_vk_server_catalog
-    Hma82gr7afr4nVkEccRegSingleRank => hma82gr7afr4n_vk_ecc_reg_single_rank_catalog
-  }
 }

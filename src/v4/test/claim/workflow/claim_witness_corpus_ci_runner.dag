@@ -359,6 +359,16 @@ data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
+// gunbhub M2 served render surface — request→serialized-page round-trip via
+// extdeps.http.server route bindings + canonical markup consumers; hostile href
+// rejected before response body.
+data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "gunbhub serve render surface keystone",
+  entry: "dsl/test/claim/gunbhub_serve_witness.dag",
+  function: "gunbhub_serve_keystone_holds",
+  expected: ExpectPass
+}
+
 // gunbhub R1 browse-page structural compose + serialize receipt.
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
@@ -472,69 +482,6 @@ data corpus_ci_gate_row_spice_dual_emission_same_deck: ClaimWitnessCorpusClaimRu
   expected: ExpectPass
 }
 
-data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
-  corpus_ci_gate_row_mvp1_emit_matches_serialize,
-  corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
-  corpus_ci_gate_row_english_emit_ingest_round_trip,
-  corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
-  corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
-  corpus_ci_gate_row_comprep_eval_keystone,
-  corpus_ci_gate_row_comprep_branch_eval_keystone,
-  corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
-  corpus_ci_gate_row_branch_if_then_else_emit_keystone,
-  corpus_ci_gate_row_comprep_bind_eval_keystone,
-  corpus_ci_gate_row_comprep_bind_emit_keystone,
-  corpus_ci_gate_row_comprep_bind_round_trip_keystone,
-  corpus_ci_gate_row_comprep_loop_eval_keystone,
-  corpus_ci_gate_row_comprep_loop_emit_keystone,
-  corpus_ci_gate_row_comprep_loop_round_trip_keystone,
-  corpus_ci_gate_row_bind_demand_driven_eval_keystone,
-  corpus_ci_gate_row_loop_demand_driven_eval_keystone,
-  corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus,
-  corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog,
-  corpus_ci_gate_row_program_partition_body_emit_keystone,
-  corpus_ci_gate_row_program_partition_whole_program_parity,
-  corpus_ci_gate_row_program_partition_section_adapter_fail_closed,
-  corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free,
-  corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold,
-  corpus_ci_gate_row_witness_sg2_arrow,
-  corpus_ci_gate_row_witness_sg2_projection_falsification,
-  corpus_ci_gate_row_witness_sg2_fold_row_delimiter,
-  corpus_ci_gate_row_effect_io_pure_file,
-  corpus_ci_gate_row_effect_io_pure_http,
-  corpus_ci_gate_row_effect_io_pure_storage,
-  corpus_ci_gate_row_effect_io_host_read_fail_closed,
-  corpus_ci_gate_row_effect_io_host_http_backend,
-  corpus_ci_gate_row_ts_effect_io_emit,
-  corpus_ci_gate_row_effect_io_eval_roundtrip,
-  corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
-  corpus_ci_gate_row_dsl_root_probe,
-  corpus_ci_gate_row_probe_selector_cf_import_resolves,
-  corpus_ci_gate_row_markup_serializer_keystone,
-  corpus_ci_gate_row_html_markup_xss_keystone,
-  corpus_ci_gate_row_react_markup_keystone,
-  corpus_ci_gate_row_gunbhub_react_browse_keystone,
-  corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
-  corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
-  corpus_ci_gate_row_timeseries_resistor_map,
-  corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map,
-  corpus_ci_gate_row_timeseries_signed_magnitude_capacitor_fold,
-  corpus_ci_gate_row_timeseries_capacitor_fold,
-  corpus_ci_gate_row_timeseries_inductor_fold,
-  corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
-  corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology,
-  corpus_ci_gate_row_spice_resistor_emit_parse_round_trip,
-  corpus_ci_gate_row_spice_resistor_tokenize_parse,
-  corpus_ci_gate_row_spice_dual_emission_same_deck
-]
-
-data claim_witness_corpus_claim_run_row_count: String = "57"
-
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -559,8 +506,6 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_projection_falsification,
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
-
-data claim_witness_corpus_shard_a_row_count: String = "20"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
@@ -587,6 +532,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
+  corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
@@ -602,5 +548,3 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_tokenize_parse,
   corpus_ci_gate_row_spice_dual_emission_same_deck
 ]
-
-data claim_witness_corpus_shard_b_row_count: String = "38"

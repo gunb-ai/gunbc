@@ -1,21 +1,19 @@
-// std/memory.dag — DRAM catalog dispatch and population projections.
+// std/memory.dag — DRAM population projections over a vendor-agnostic catalog row.
+//
+// std/memory owns only the general DRAM concept; per-vendor catalog data lives in
+// extdeps/memory/<vendor>. A populated row carries its own catalog module, so this
+// module never dispatches on an owned SKU set and never imports a vendor catalog.
 
 module std.memory
 
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.memory.types { DramModuleCatalogRow, DramModuleIdentity, HostMemoryPopulation, MemoryPopulationRow }
-import std.memory.sk_hynix { sk_hynix_catalog_row }
+import std.memory.types { HostMemoryPopulation, MemoryPopulationRow }
 import std.types { Int }
 
-fn dram_module_catalog_row(dimm_identity: DramModuleIdentity) -> DramModuleCatalogRow {
-  match dimm_identity {
-    SkHynix { dimm: m } => sk_hynix_catalog_row(m)
-  }
-}
-
+// nominal bytes for one populated row = per-module capacity × stick count.
 fn memory_population_row_bytes(row: MemoryPopulationRow) -> ByteSize {
   byte_size(
-    byte_size_count(dram_module_catalog_row(row.dimm_identity).capacity_bytes) * row.stick_count,
+    byte_size_count(row.module.capacity_bytes) * row.stick_count,
   )
 }
 

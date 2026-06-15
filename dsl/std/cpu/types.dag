@@ -9,29 +9,43 @@ type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
 type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
 
-// Product-line variants — enum tag is stable id; model_number is catalog authority.
-type AmpereCpuModel = AltraMaxM12830 | AltraQ6430
+// CpuSocket — the physical CPU mount, decomposed from the marketing string (e.g.
+// "LGA4926" = a Land Grid Array package with 4926 contacts/lands). `package` is the
+// contact technology (a closed set); `contact_count` is the number of electrical
+// contacts (lands for LGA, pins for PGA, balls for BGA) — so the string's trailing
+// number is a grounded Int, not an opaque token.
+// Anchor: https://en.wikipedia.org/wiki/CPU_socket  (land grid array vs pin grid array)
+type SocketPackage = LandGridArray | PinGridArray | BallGridArray
 
-type CpuIdentity = AmpereCpu { model: AmpereCpuModel }
+type CpuSocket {
+  package: SocketPackage
+  contact_count: Int
+}
 
+// A vendor part identifies itself by its catalog row — std/cpu owns the SHAPE, the
+// per-vendor rows live in extdeps/cpu/<vendor>. No std-level enum of one vendor's
+// SKUs (that would make the concept a purchase order).
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
+  vendor: CpuVendor
   architecture: CpuArchitecture
   cores: Int
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
-  socket: NonEmptyStr
+  socket: CpuSocket
   tdp_watts: Int
   // TODO(P-CF-ISA): populate instruction_sets when InstructionSet dissolves
-  // from Node in std.compute_fabric (Neoverse-N1 extension set for Altra Max).
+  // from Node in product.compute_fabric (Neoverse-N1 extension set for Altra Max).
 }
 
 type CpuDeploymentFacts {
   sustained_per_thread_hz: Hertz
 }
 
+// CpuFacts is vendor-agnostic: it carries the catalog row (identity-by-part) plus
+// the deployment facts. Which catalog row — that's an extdeps/deployment fact.
 type CpuFacts {
-  identity: CpuIdentity
+  catalog: CpuModelCatalogRow
   deployment: CpuDeploymentFacts
 }
