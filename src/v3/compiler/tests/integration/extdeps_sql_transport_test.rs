@@ -86,6 +86,7 @@ fn http_server_target_fields_are_authoritative_substrate_edges() {
         "path_template",
         "request_body",
         "parameters",
+        "handler",
         "responses",
     ] {
         assert!(
@@ -93,6 +94,26 @@ fn http_server_target_fields_are_authoritative_substrate_edges() {
             "HttpServerRoute must carry field-sensitive emission target input `{field}`"
         );
     }
+
+    assert_eq!(
+        conj_field_ty(&dag, "HttpServerRoute", "handler"),
+        decl_id_by_name(&dag, "HttpServerHandler"),
+        "HTTP route handlers must use HttpServerHandler, not a parallel string authority"
+    );
+
+    let effect_variants = disj_variant_labels(&dag, "HttpServerEffectPhase");
+    for variant in ["ServeEffect", "ListenEffect", "RespondEffect"] {
+        assert!(
+            effect_variants.contains(variant),
+            "HttpServerEffectPhase must carry Node http.createServer effect `{variant}`"
+        );
+    }
+
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpCreateServerEmissionTarget", "listen"),
+        decl_id_by_name(&dag, "HttpServerListenConfig"),
+        "Node HTTP server listen config must use HttpServerListenConfig"
+    );
 }
 
 #[test]

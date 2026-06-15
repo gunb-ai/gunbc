@@ -7,6 +7,10 @@
 //     https://www.rfc-editor.org/rfc/rfc3986
 //   OpenAPI 3.1 path templating convention
 //     https://spec.openapis.org/oas/v3.1.0
+//   Node.js http module (gunbhub-A serve/listen/respond effect chain)
+//     https://nodejs.org/api/http.html#httpcreateserveroptions-requestlistener
+//     https://nodejs.org/api/http.html#serverlisten
+//     https://nodejs.org/api/http.html#responseenddata-encoding-callback
 //
 // Ctrl-Migration Phase 3 authority for generated HTTP server surfaces.
 // This file models the emitted server artifact shape, not a runtime framework
@@ -16,7 +20,7 @@
 module extdeps.http.server
 
 import std.http_path { PathTemplate }
-import std.types { HttpMethod, HttpStatus }
+import std.types { HttpMethod, HttpStatus, Port }
 
 // Coproduct dissolution classification (modeling-discipline.md Practice 4):
 // GREEN (terminal). These are distinct HTTP request-body media families
@@ -50,13 +54,36 @@ type HttpStatusResponse {
   body_kind: HttpRequestBodyKind
 }
 
+// Request handler callable bound to a route. The handler_name is the emission
+// symbol for the Node requestListener arm that serves matched requests.
+type HttpServerHandler {
+  handler_name: String
+}
+
+// Route metadata + handler + declared response contract (route→handler→response).
 type HttpServerRoute {
   operation_name: String
   method: HttpMethod
   path_template: PathTemplate
   request_body: HttpRequestBodyKind
   parameters: List<HttpServerParameter>
+  handler: HttpServerHandler
   responses: List<HttpStatusResponse>
+}
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// GREEN (terminal). Node http.createServer exposes three distinct runtime
+// effect boundaries — registering the request listener (Serve), binding the
+// socket (Listen), and completing ServerResponse (Respond) — not aliases
+// for one opaque "handle HTTP" step.
+type HttpServerEffectPhase
+  = ServeEffect
+  | ListenEffect
+  | RespondEffect
+
+type HttpServerListenConfig {
+  host: String
+  port: Port
 }
 
 // STAGED. This is the Phase 3 emission target contract a ctrl subsystem
@@ -64,5 +91,16 @@ type HttpServerRoute {
 // deployment policy; those are subsystem/runtime decisions, not HTTP facts.
 type HttpServerEmissionTarget {
   service_name: String
+  routes: List<HttpServerRoute>
+}
+
+// STAGED. Node http.createServer emission target for gunbhub web surfaces.
+// Projects ServeEffect+ListenEffect to createServer/listen and binds each
+// route.handler to RespondEffect completion against route.responses inside
+// the requestListener callback.
+type NodeHttpCreateServerEmissionTarget {
+  service_name: String
+  listen: HttpServerListenConfig
+  effect_phases: List<HttpServerEffectPhase>
   routes: List<HttpServerRoute>
 }
