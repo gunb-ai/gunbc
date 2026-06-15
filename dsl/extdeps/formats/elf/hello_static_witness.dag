@@ -24,9 +24,9 @@ import extdeps.formats.elf.primitives {
 import extdeps.formats.elf.encode {
   encode_elf64_ehdr,
   encode_elf64_phdr,
-  int_lists_equal,
   witness_encode_decode_roundtrip_ehdr,
 }
+import std.types { int_list_equal }
 import extdeps.formats.elf.segments {
   PhdrDecoded,
   PhdrRejected,
@@ -243,7 +243,7 @@ fn witness_phdr_encode_decode_roundtrip() -> Bool {
     PhdrDecoded { value: phdr } =>
       let out = encode_elf64_phdr(phdr)
       count(out) == elf64_phdr_size
-        && int_lists_equal(static_hello_first_phdr_bytes, out)
+        && int_list_equal(static_hello_first_phdr_bytes, out)
     PhdrRejected { reason: _ } => false
   }
 }

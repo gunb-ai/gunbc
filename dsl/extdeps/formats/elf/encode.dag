@@ -50,10 +50,9 @@ import extdeps.formats.elf.types {
   ElfDecodeOutcome,
   ElfDecoded,
   ElfIdent,
-  byte_at_in_bounds,
   decode_elf64_ehdr,
 }
-import std.types { Bool }
+import std.types { Bool, int_list_equal }
 
 data elf_ident_padding_zeros: List<Int> = [0, 0, 0, 0, 0, 0, 0]
 
@@ -216,26 +215,11 @@ fn encode_elf64_phdr(phdr: Elf64Phdr) -> List<Int> {
   )
 }
 
-fn int_lists_equal_at(left: List<Int>, right: List<Int>, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else if byte_at_in_bounds(left, i) != byte_at_in_bounds(right, i) {
-    false
-  } else {
-    int_lists_equal_at(left, right, i: i + 1, n: n)
-  }
-}
-
-fn int_lists_equal(left: List<Int>, right: List<Int>) -> Bool {
-  count(left) == count(right)
-    && int_lists_equal_at(left, right, i: 0, n: count(left))
-}
-
 fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
   match decode_elf64_ehdr(hdr_bytes) {
     ElfDecoded { value: hdr } =>
       let out = encode_elf64_ehdr(hdr)
-      count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)
+      count(out) == elf64_ehdr_size && int_list_equal(hdr_bytes, out)
     _ => false
   }
 }
