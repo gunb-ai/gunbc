@@ -54,7 +54,10 @@ CEILINGS = {
         # split into a parallel job and/or #4783 multi-entry claim_batch
         # parse-cache adoption land -- both shrink the uncontended wall back
         # under the 20m shape; re-derive the ceiling under the budget rule.
-        "v4_lens_gate": 35,
+        # 2026-06-15: merge-wave contention receipt (run 27567579571) killed
+        # lens analysis at 35m29s before C9; uncontended main ~13.7m, ~4x lens
+        # step under load -> 45m ceiling (13.7m x3.5 rounded).
+        "v4_lens_gate": 45,
         "v4_lens_ci": 35,
         # Per-row PERTURB fan-out split out of v4_lens_ci into a capped parallel
         # matrix (4 legs, max-parallel default 4 — the "perturb-phase split into a
