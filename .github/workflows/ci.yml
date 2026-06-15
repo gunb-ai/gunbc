@@ -1339,9 +1339,12 @@ jobs:
       run: bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
     # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
     # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
-    # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
-    # host CONSUMES the .dag (drop a dependency -> rebatch) and that the
-    # executor's ordering gates execution (false gating claim -> batch 2 skipped).
+    # claim suite batch-by-batch, claims-in-parallel. --perturb-check splits along
+    # the model-vs-orchestration line: the batching AUTHORITY (deps drive batch
+    # count) is asserted as pure .dag witnesses via ci-claim-gate's uniform perturb
+    # (bre_authority_rows_tsv), and the run-loop WALK-halt (false gating claim ->
+    # fail closed + batch 2 skipped) is a claim_executor --perturb-check receipt.
+    # Both claim_executor and ci-claim-gate are already built above for this job.
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   # §11.7.1 Class A safety floor (parallel matrix lane) -- the per-row PERTURB
