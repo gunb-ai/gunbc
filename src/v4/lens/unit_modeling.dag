@@ -337,12 +337,14 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
-// 🟡 HELD WIRING (00_compile.dag, infra-gated — do NOT land in this slice):
-//   fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-//     unit_modeling_gate(node: tree.root)
-//   }
-//   data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
-//   // register in always_required_lenses() ALONGSIDE fact_density_lens, run via
-//   // apply_compile_lens_introspect (advisory: Rejected demoted to Accepted +
-//   // diagnostics). Held until the build-infra (rustc-spawn EAGAIN / sccache
-//   // WouldBlock) recovers so the wiring can be compile-verified before landing.
+// LANDED WIRING (build-infra recovered): the
+// `unit_modeling_compile_gate(tree) = unit_modeling_gate(node: tree.root)` adapter +
+// `unit_modeling_lens` are wired in 00_compile.dag and REGISTERED in
+// always_required_lenses() alongside fact_density_lens. validate_then_compile runs the
+// always-required lenses fail-closed (CompileLensEnforce), so a unit violation rejects
+// the gated compile — the M12 / Practice 13 unmodeled-unit discipline made executable.
+// (The earlier "advisory/introspect" plan was the pre-infra-recovery wiring caution;
+// the always-required roster is enforce-only, which is the intended soundness posture.
+// validate_then_compile is not on the `gunbc compile` emit path — compile() runs no
+// lens gates — so the enforce registration cannot break full-tree emit; it is
+// exercised by the lens_unit_modeling compile-gate + always-required witnesses.)

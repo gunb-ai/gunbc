@@ -93,6 +93,46 @@ fn http_server_target_fields_are_authoritative_substrate_edges() {
             "HttpServerRoute must carry field-sensitive emission target input `{field}`"
         );
     }
+    assert!(
+        !route_fields.contains("handler"),
+        "HttpServerRoute must stay framework-agnostic — Node handler binding belongs on NodeHttpServerRouteBinding"
+    );
+
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpServerRouteBinding", "route"),
+        decl_id_by_name(&dag, "HttpServerRoute"),
+        "Node route bindings must reuse the shared HttpServerRoute authority"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpServerRouteBinding", "listener"),
+        decl_id_by_name(&dag, "NodeHttpRequestListener"),
+        "Node route bindings must use NodeHttpRequestListener, not a parallel handler authority"
+    );
+
+    let chain_fields: HashSet<String> = conj_field_labels(&dag, "NodeHttpCreateServerEffectChain")
+        .into_iter()
+        .collect();
+    for field in ["serve", "listen"] {
+        assert!(
+            chain_fields.contains(field),
+            "Node HTTP server effect chain must structurally encode `{field}` before emission"
+        );
+    }
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpCreateServerEffectChain", "serve"),
+        decl_id_by_name(&dag, "NodeHttpCreateServerServe"),
+        "Node serve step must use NodeHttpCreateServerServe"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpCreateServerEffectChain", "listen"),
+        decl_id_by_name(&dag, "HttpServerListenConfig"),
+        "Node listen step must use HttpServerListenConfig"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "NodeHttpCreateServerEmissionTarget", "effects"),
+        decl_id_by_name(&dag, "NodeHttpCreateServerEffectChain"),
+        "Node HTTP server emission must project through the fixed serve→listen chain"
+    );
 }
 
 #[test]
