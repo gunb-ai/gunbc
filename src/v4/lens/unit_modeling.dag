@@ -96,13 +96,17 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^monthly_cap_eur_micros, carrier: ^MoneyMicros },
   // Time. Carrier is compute_fabric.Duration = Measure<Time, One>
   // (compute_fabric.dag:76) — NOT the legacy types.dag:321 `Duration = Int`
-  // brand, which is itself a form-1 violator (pointing remediation at a bare-Int
-  // brand would be circular). The `^Duration` advisory symbol names the Measure
-  // carrier; the diagnostic guidance is the dimensioned one only. Millisecond
-  // fields (timeout_ms/duration_ms) are DROPPED from this slice: their carrier
-  // would be Measure<Time, Milli> and no named alias exists yet (types.dag:322
-  // `Milliseconds = Int` is a bare-Int brand, not a carrier) — re-add once that
-  // alias is minted (snappy 2026-06-14).
+  // brand. That brand is itself a violator of the scale+quantity-conflated
+  // flat-scalar form (a Time quantity carried as bare Int with the unit only
+  // implied — snappy's form (c)); pointing remediation at it would be circular.
+  // Its fix is dissolve-and-repoint-consumers onto compute_fabric.Duration
+  // (which already exists), NOT a mint. The `^Duration` advisory symbol names
+  // the Measure carrier; the diagnostic guidance is the dimensioned one only.
+  // Millisecond fields (timeout_ms/duration_ms) are DROPPED from this slice:
+  // their carrier would be Measure<Time, Milli> and no named alias exists yet.
+  // types.dag:322 `Milliseconds = Int` is the SAME conflated flat-scalar form,
+  // but genuinely needs Measure<Time, Milli> MINTED first — re-add those fields
+  // once that alias is minted (snappy 2026-06-14).
   UnitFieldRow { field: ^timeout_seconds, carrier: ^Duration },
   UnitFieldRow { field: ^lifetime_seconds, carrier: ^Duration },
   // DataRate. Carrier is compute_fabric.Bandwidth = Measure<DataRate, One>
