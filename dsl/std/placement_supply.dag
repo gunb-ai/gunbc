@@ -5,8 +5,9 @@
 // absence: only schedulable hosts appear in the supply list — no stored
 // healthy: Bool flag.
 //
-// Authority for ComputeHost remains std.compute_fabric; CpuFacts / CpuIdentity
-// is std.cpu; DIMM populations std.memory.operator_fleet. Thin projection
+// Authority for ComputeHost remains std.compute_fabric; CpuFacts / the CPU
+// concept is std.cpu (vendor catalogs in extdeps.cpu); DIMM populations
+// std.memory.operator_fleet. Thin projection
 // surface importable without pulling the full fabric graph.
 
 module std.placement_supply

@@ -7,9 +7,9 @@ LAYERS: std = standard library (universal primitives). extdeps = external vendor
 ITEMS ([x]=done  [~]=partial  [ ]=todo)
 [~] 1. compute_fabric owns the exact computers. DONE: dead throttle constants removed (cleared gate-1 :541); srv1/srv2+Hetzner instances shed -> generic example_shared_host/example_vm fixtures; wrong-direction `import extdeps.cloud.hetzner` removed; repro witness repointed. LEFT: real instances re-land in ctrl (item 6); memory/operator_fleet delete (item 2).
 [ ] 2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; delete from gunbc once item 6 lands them in ctrl.
-[ ] 3. std/cpu/ampere.dag — Ampere vendor facts -> extdeps (extdeps/cpu/ampere/). Blast radius = cpu cluster only.
-[ ] 4. std/cpu/types.dag:13 — AmpereCpuModel narrowed to owned SKUs; dissolve CpuIdentity, CpuFacts carries a CpuModelCatalogRow (with vendor field); vendor rows move with item 3.
-[ ] 5. std/cpu.dag — cpu_catalog_row dispatches on owned models; std/cpu keeps the general CPU concept only.
+[x] 3. std/cpu/ampere.dag -> extdeps/cpu/ampere.dag (vendor catalog as CpuModelCatalogRow values; imports std.cpu shape). std file deleted; integration.rs include_str repointed.
+[x] 4. std/cpu/types.dag — AmpereCpuModel + CpuIdentity DISSOLVED; CpuModelCatalogRow gains `vendor: CpuVendor`; CpuFacts now { catalog: CpuModelCatalogRow, deployment }.
+[x] 5. std/cpu.dag — cpu_catalog_row dispatch removed; cpu_vendor(cpu)=cpu.catalog.vendor, cpu_facts_* read cpu.catalog.*; std/cpu is the general CPU concept only. gate-1 PASS.
 [ ] 6. operator fleet actual config (srv1/srv2 real machines, source-of-truth ctrl nodes.json) -> ctrl PR at plans/models/fabric/operator_fleet.dag, importing gunbc concept + extdeps vendor models.
 [ ] 7. compute_fabric does not belong in std/. std is a standard library; the fabric is a product. Move out of std/ into a product/ layer (folder + module rename).
 [ ] 8. hand-maintained corpus/test row LISTS + COUNT constants (claim_witness_corpus_*). COUNTS already unconsumed (gate folds the typed List; #4959 retired the cross-check) -> delete now. LISTS blocked only on wiring existing discovery (discover_owned_data / src/v4/compiler/discovery_enumeration.dag) as the enrollment source instead of a hand-typed List literal.

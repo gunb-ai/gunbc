@@ -1,38 +1,28 @@
-// std/cpu.dag — CPU catalog dispatch and deployment projections.
+// std/cpu.dag — CPU concept projections over a vendor-agnostic catalog row.
 //
-// Types: std.cpu.types. Per-vendor catalog data: std.cpu.<vendor>.
+// Types: std.cpu.types. Per-vendor catalog data: extdeps.cpu.<vendor>.
+// std/cpu owns only the general CPU concept; it does not enumerate any one
+// vendor's parts, so it does NOT dispatch on owned SKUs.
 
 module std.cpu
 
-import std.cpu.types { AmpereCpuModel, CpuArchitecture, CpuDeploymentFacts, CpuFacts, CpuIdentity, CpuModelCatalogRow, CpuVendor }
-import std.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
+import std.cpu.types { CpuArchitecture, CpuFacts, CpuVendor }
 import std.measure { HardwareThreadCount, Hertz }
 
-fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
-  match identity {
-    AmpereCpu { model: _ } => Ampere
-  }
-}
-
-fn cpu_catalog_row(identity: CpuIdentity) -> CpuModelCatalogRow {
-  match identity {
-    AmpereCpu { model: m } => match m {
-      AltraMaxM12830 => altra_max_m12830_catalog
-      AltraQ6430 => altra_q6430_catalog
-    }
-  }
+fn cpu_vendor(cpu: CpuFacts) -> CpuVendor {
+  cpu.catalog.vendor
 }
 
 fn cpu_facts_cores(cpu: CpuFacts) -> Int {
-  cpu_catalog_row(cpu.identity).cores
+  cpu.catalog.cores
 }
 
 fn cpu_facts_threads(cpu: CpuFacts) -> HardwareThreadCount {
-  cpu_catalog_row(cpu.identity).threads
+  cpu.catalog.threads
 }
 
 fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
-  cpu_catalog_row(cpu.identity).architecture
+  cpu.catalog.architecture
 }
 
 fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Hertz {

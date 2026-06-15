@@ -1149,7 +1149,7 @@ mod parse_stage4_prep {
         // **P5 receipt (INVARIANTS.md §P5 — Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
         // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cpu` /
-        // `std.cpu.types` / `std.cpu.ampere` (operator CPU taxonomy; P-CF supply authority)
+        // `std.cpu.types` / `extdeps.cpu.ampere` (CPU concept + vendor catalog; P-CF supply authority)
         // until T-PB-B hand-Rust test floor reaches zero.
         // Self-Generation-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
         // `self_gen0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
@@ -1164,8 +1164,8 @@ mod parse_stage4_prep {
             "dsl/std/cpu/types.dag",
         );
         parse_file(
-            include_str!("../../../../dsl/std/cpu/ampere.dag"),
-            "dsl/std/cpu/ampere.dag",
+            include_str!("../../../../dsl/extdeps/cpu/ampere.dag"),
+            "dsl/extdeps/cpu/ampere.dag",
         );
     }
 
