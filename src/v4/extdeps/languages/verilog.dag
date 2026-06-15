@@ -13,7 +13,6 @@ import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 import v4.std.logic { Bool }
 import v4.std.circuit_step { CircuitPrimitiveKind, FoldStep, MapStep }
-import v4.std.collection { List }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -805,7 +804,9 @@ type VerilogCost {
 // Structural body_lexeme carriers remain parse-scaffold; step operators model
 // executable digital physics for mixed-signal composition with timeseries_signal.
 
-// 🟢 coproduct dissolution — SP-M3 digital logic level.
+// 🟡 gated — feature:verilog-4state-logic-level — bind SP-M3+ Verilog 4-state (0/1/X/Z);
+// dissolve-on-arrival: extend beyond 2-state when X/Z witnesses enroll. Until then, 2-state
+// only; do not alias to Bool without disposition (distinct carrier for future 4-state).
 type LogicLevel
   = LogicLow
   | LogicHigh
@@ -819,15 +820,6 @@ type LogicInput {
 type LogicOutput {
   level: LogicLevel
 }
-
-
-type DigitalSample {
-  tick: Nat
-  level: LogicLevel
-}
-
-
-type DigitalSignal = List<DigitalSample>
 
 
 type RegisterState {
@@ -883,40 +875,7 @@ fn d_flipflop_fold_step(
 
 
 fn logic_level_eq(left: LogicLevel, right: LogicLevel) -> Bool {
-  match left {
-    LogicLow => match right {
-      LogicLow => true
-      LogicHigh => false
-    }
-    LogicHigh => match right {
-      LogicLow => false
-      LogicHigh => true
-    }
-  }
-}
-
-
-fn circuit_primitive_kind_eq(
-  left: CircuitPrimitiveKind,
-  right: CircuitPrimitiveKind,
-) -> Bool {
-  match left {
-    MapStep => match right {
-      MapStep => true
-      FoldStep => false
-      SolveStep => false
-    }
-    FoldStep => match right {
-      MapStep => false
-      FoldStep => true
-      SolveStep => false
-    }
-    SolveStep => match right {
-      MapStep => false
-      FoldStep => false
-      SolveStep => true
-    }
-  }
+  discriminant(v: left) == discriminant(v: right)
 }
 
 

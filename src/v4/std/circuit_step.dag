@@ -7,8 +7,17 @@
 
 module v4.std.circuit_step
 
+import v4.std.logic { Bool }
+
 // 🟢 TERMINAL at S1 — declares map/fold/solve decomposition; SolveStep uninhabited until S2.
 type CircuitPrimitiveKind
   = MapStep
   | FoldStep
   | SolveStep
+
+fn circuit_primitive_kind_eq(
+  left: CircuitPrimitiveKind,
+  right: CircuitPrimitiveKind,
+) -> Bool {
+  discriminant(v: left) == discriminant(v: right)
+}

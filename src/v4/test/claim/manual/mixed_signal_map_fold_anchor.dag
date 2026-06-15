@@ -13,11 +13,10 @@ import v4.extdeps.languages.verilog {
   LogicLow,
   RegisterState,
   and_combinational_map_step,
-  circuit_primitive_kind_eq,
   d_flipflop_fold_step,
   logic_level_eq,
 }
-import v4.std.circuit_step { FoldStep, MapStep }
+import v4.std.circuit_step { FoldStep, MapStep, circuit_primitive_kind_eq }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.timeseries_signal {
