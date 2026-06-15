@@ -10,11 +10,8 @@
 #     exit code is the authority (exit 0 = true, exit 1 = false). A broken
 #     spice_emit_ngspice exits 1 here before ngspice ever runs.
 #
-#   Step 2 — ngspice execution: the step-1 claim proves
-#     spice_emit_ngspice(rc_tran_deck) == spice_rc_tran_ngspice_expected
-#     so the literal below is NOT a parallel authority — it is a consequence
-#     of step 1 passing. P2 does not apply: a single claim gates the equality;
-#     the literal is the same bytes under a different binding site.
+#   Step 2 — ngspice execution: reads spice_rc_tran_deck_ngspice_golden from the
+#     fixture .dag (single string authority). Step 1 must pass before ngspice runs.
 #
 # Exit codes:
 #   0  — emit correct + ngspice simulated to completion
@@ -63,26 +60,27 @@ if ! "$gunbc_bin" run \
   echo "oracle: FAIL — spice_rc_ngspice_op_holds returned false (emit/sim deck mismatch)." >&2
   exit 1
 fi
-echo "oracle: step 1 PASS — spice_emit_ngspice output matches spice_rc_tran_ngspice_expected."
+echo "oracle: step 1 PASS — spice_emit_ngspice output matches spice_rc_tran_deck_ngspice_golden."
 
-# Step 2: ngspice execution.
-# The literal below matches spice_rc_tran_ngspice_expected in spice_rc_ngspice_oracle.dag.
-# Step 1 passing proves they are equal to spice_emit_ngspice(rc_tran_deck); this is not
-# a parallel authority but a consequence of step 1.
-netlist="$(cat <<'NETLIST'
-* rc tran witness
-V1 n1 0 DC 5
-R1 n1 n2 1000
-C1 n2 0 1e-6
-.ic v(n2)=0
-.tran 1us 10ms
-.control
-run
-print v(n2)
-quit
-.endc
-.end
-NETLIST
+fixture_dag="$root/src/v4/test/fixture/spice_rc_tran_deck.dag"
+
+# Step 2: ngspice execution — netlist bytes from the single golden authority in fixture.
+netlist="$(python3 - "$fixture_dag" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1]).read_text()
+match = re.search(
+    r'data spice_rc_tran_deck_ngspice_golden: String = "((?:\\.|[^"\\])*)"',
+    src,
+    re.DOTALL,
+)
+if match is None:
+    sys.stderr.write("oracle: FAIL — spice_rc_tran_deck_ngspice_golden not found in fixture\n")
+    sys.exit(1)
+print(bytes(match.group(1), "utf-8").decode("unicode_escape"), end="")
+PY
 )"
 
 tmpdir="$(mktemp -d)"
