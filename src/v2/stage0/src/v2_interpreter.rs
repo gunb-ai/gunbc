@@ -2217,6 +2217,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         };
     }
 
+    // std/algebra list folds: the interpreted recursive .dag bodies are correct but
+    // pathological under the table-build hot loop (O(n) interpreter frames per element).
+    // Native iterators preserve FreeMonoid semantics via `free_monoid_to_vec`.
+    match func_name.as_str() {
+        "fold_list" => return eval_fold_list_native(&args, env, ctx),
+        "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
+        _ => {}
+    }
+
     // Check for built-in runtime functions
     if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
         return Ok(result);
@@ -2259,6 +2268,54 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
     call_function(ctx, &fn_node, &args, env)
+}
+
+fn eval_fold_list_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    let (xs, empty, cons) = match positional.as_slice() {
+        [xs, empty, cons] => (xs, empty, cons),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: "fold_list requires (xs, empty, cons)".to_string(),
+            })
+        }
+    };
+    let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
+        msg: format!("fold_list expects a list, got {}", xs.type_label()),
+    })?;
+    let mut acc = (*empty).clone();
+    for item in items {
+        acc = apply_closure(*cons, &[acc, item], env, ctx)?;
+    }
+    Ok(acc)
+}
+
+fn eval_fold_list_right_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    let (xs, empty, snoc) = match positional.as_slice() {
+        [xs, empty, snoc] => (xs, empty, snoc),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: "fold_list_right requires (xs, empty, snoc)".to_string(),
+            })
+        }
+    };
+    let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
+        msg: format!("fold_list_right expects a list, got {}", xs.type_label()),
+    })?;
+    let mut acc = (*empty).clone();
+    for item in items.into_iter().rev() {
+        acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
+    }
+    Ok(acc)
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
