@@ -1,15 +1,14 @@
-CI-REWORK SCRATCH — modeling smells to work through (temporary; delete before merge)
+CI-REWORK SCRATCH — modeling smells (temporary; delete before merge)
 
-RUBRIC (tight): the path is the discriminator. Each concept lives at its right
-altitude, in its own clearly-named place. No catch-all files. A high-level concept
-owns a *registration* concept, not concrete instances. Personal/operator inventory
-is a fine SEED for genuine vendor modeling — the smell is misplacement, not existence.
+RUBRIC: path is the discriminator; right altitude, own clear place; no catch-alls; a high concept owns a registration concept, not instances; personal inventory seeds genuine vendor models, it does not live in std/ concepts.
 
-ITEMS
-1. compute_fabric owns the exact computers.
-   std/compute_fabric (high-level concept) bakes in srv1/srv2/Hetzner machines.
-   Fleet inventory also smeared across std/cpu, std/cpu/ampere, std/cpu/types,
-   std/memory/operator_fleet, std/placement_supply.
-   want: vendor hardware -> extdeps/.../ampere/altra/ ; compute_fabric keeps a
-   registration concept ; concrete srv1/srv2 -> operator/deployment layer.
-   (also the proximate gate-1 parse blocker: compute_fabric.dag:541 multi-line `data =`)
+ITEMS (verified vs branch HEAD)
+1. std/compute_fabric.dag:460-635 — concept module holds concrete srv1/srv2+Hetzner offers/provider/runner-counts/dispatch-cap; move instances out, keep concept + a registration concept.
+2. std/memory/operator_fleet.dag — whole file is srv1/srv2 DIMM+RAM instances; belongs in an operator/deployment layer, not std/memory.
+3. std/cpu/ampere.dag — altra_max_m12830/altra_q6430 are genuine Ampere vendor facts but sit in std/cpu; belong in an extdeps vendor model (ampere/altra/).
+4. std/cpu/types.dag:13 — AmpereCpuModel enum is narrowed to the two owned SKUs; a concept type should not equal a purchase order.
+5. std/cpu.dag — cpu_model_catalog maps only the owned models; follows once 3+4 move.
+
+NOTES
+- verified clean (no change): std/placement_supply.dag (concept-only).
+- live CI blocker: compute_fabric.dag:541 multi-line `data =` fails gate-1 parse (decide: one-line now vs fix as part of item 1).
