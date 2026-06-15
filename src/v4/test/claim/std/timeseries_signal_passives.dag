@@ -1,5 +1,5 @@
 // src/v4/test/claim/std/timeseries_signal_passives.dag
-// Scope: spice passive projection witness (compile-safe slice; map/fold in #4894).
+// Scope: canonical S1 witnesses — spice passive projection + torsor carriers.
 
 module v4.test.claim.std.timeseries_signal_passives
 
@@ -49,7 +49,7 @@ data claim_spice_resistor_passive_spec: TestClaim = BoolWitnessClaim {
 }
 
 data claim_timeseries_signal_module_compiles: TestClaim = CompilesClaim {
-  label: "std/timeseries_signal: affine voltage + spice projection compiles",
+  label: "std/timeseries_signal: AbsolutePotential torsor + spice projection compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: GroundReference,
   expected_value: GroundReference,

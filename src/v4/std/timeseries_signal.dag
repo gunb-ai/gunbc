@@ -1,10 +1,10 @@
 // src/v4/std/timeseries_signal.dag
 //
-// Scope: affine voltage carriers + spice passive projection (compile-safe S1 slice).
-// Stream map/fold operators live in canonical v4.std.circuit (#4894); this module
-// retains spice.dag consumption and NamedAffineVoltage bridge pending reconcile.
+// Scope: CANONICAL S1 — analog passive stream substrate (ctrl#1615 / gentle-lynx-177).
+// Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
+// spice.dag passive projection; map/fold step operators land in follow-on slices.
 // Anchor: SPICE3 passive element topology via v4.extdeps.formats.spice Component.
-// Status: S1 partial — valiant-ram-713 CI fix; absorb into v4.std.circuit per ctrl#1624.
+// Status: S1 canonical PR #4895 (valiant-ram-713).
 
 module v4.std.timeseries_signal
 
@@ -21,31 +21,46 @@ import v4.extdeps.formats.spice {
   SpiceValue
 }
 
-// --- Affine named voltage carriers -----------------------------------------
+// --- Affine voltage torsor (two distinct types) -----------------------------
+//
+// AbsolutePotential is meaningful only against an explicit reference node.
+// PotentialDifference is gauge-free. Adding two absolutes is ill-typed by
+// construction (no binary add across AbsolutePotential).
 
-type AffineVoltageReference
+// 🟢 coproduct dissolution — reference node for gauge-dependent potential samples.
+type PotentialReference
   = GroundReference
   | NodeReference { name: Symbol }
 
-type AffineVoltage {
-  reference: AffineVoltageReference
+// 🟢 grounded — gauge-dependent absolute potential sample.
+type AbsolutePotential {
+  reference: PotentialReference
   magnitude: Float
 }
 
+// 🟢 grounded — gauge-free potential difference (torsor vector).
+type PotentialDifference {
+  magnitude: Float
+}
+
+// 🟢 grounded — branch current sample at this slice.
+type BranchCurrent {
+  magnitude: Float
+}
+
+// 🟢 grounded — spice approximate carrier bridge to AbsolutePotential reference.
 type NamedAffineVoltage {
-  reference: AffineVoltageReference
+  reference: PotentialReference
   approx: SpiceApproxVoltage
 }
 
-type AffineCurrent {
-  magnitude: Float
-}
-
-type AffineVoltageDelta {
-  magnitude: Float
-}
-
-// --- Passive element parameters (Float kernel deferred) --------------------
+// --- Passive element parameters (interim local dimension types) ------------
+//
+// 🟡 INTERIM — dissolve-on: (a) snappy-stag Quantity-extension governance
+// coordination (gentle-lynx-177) lands a ratified Quantity arm for passive
+// elements; (b) Measure.count : Nat carrier reconciles with v4 Float magnitudes
+// here (Nat-vs-Float representational gap — do NOT touch measure.dag in this PR).
+// Forbidden: ossifying these bare Float wrappers as a parallel quantity ledger.
 
 type Resistance {
   ohms: Float
@@ -124,11 +139,21 @@ fn passive_spec_from_component(component: Component) -> Optional<PassiveComponen
 }
 
 fn named_affine_voltage(
-  reference: AffineVoltageReference,
+  reference: PotentialReference,
   approx: SpiceApproxVoltage
 ) -> NamedAffineVoltage {
   NamedAffineVoltage {
     reference: reference,
     approx: approx
+  }
+}
+
+fn absolute_potential_from_named(
+  named: NamedAffineVoltage,
+  magnitude: Float
+) -> AbsolutePotential {
+  AbsolutePotential {
+    reference: named.reference,
+    magnitude: magnitude
   }
 }
