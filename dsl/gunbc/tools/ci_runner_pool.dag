@@ -29,6 +29,25 @@ fn ci_runner_pool_offer_matches_authority(
   && pool.host == host
 }
 
+// Ratchet pool→constraint wiring: caps/fifo/token on the offer must match the canonical row.
+fn ci_runner_pool_offer_constraints_match_pool(
+  offer: ComputeOffer,
+  pool: RunnerPoolFacts
+) -> Bool {
+  contains(
+    offer.constraints,
+    item: MaxConcurrentRunners { cap: pool.runner_count }
+  )
+  && contains(
+    offer.constraints,
+    item: HostJobserverFifo {
+      fifo_path: pool.jobserver_fifo,
+      token_cap: pool.jobserver_token_cap
+    }
+  )
+  && length(xs: offer.constraints) == 2
+}
+
 // Recover canonical pool for an inhabited offer — fail-closed on unknown HostIdentity.
 fn ci_runner_pool_from_offer(offer: ComputeOffer) -> RunnerPoolFacts? {
   if offer.supply.physical.identity == supply_srv1_host_identity {
@@ -40,7 +59,8 @@ fn ci_runner_pool_from_offer(offer: ComputeOffer) -> RunnerPoolFacts? {
   }
 }
 
-// Fail-closed witness: pools recovered from offers match canonical supply rows field-wise.
+// Fail-closed witness: pools recovered from offers match canonical supply rows field-wise
+// and offer constraints are projected from those same rows.
 fn ci_runner_pool_offer_projection_holds() -> Bool {
   ci_runner_pool_offer_matches_authority(
     offer: supply_srv1_offer,
@@ -51,6 +71,14 @@ fn ci_runner_pool_offer_projection_holds() -> Bool {
     offer: supply_srv2_offer,
     pool: supply_srv2_ci_runner_pool,
     host: supply_srv2_host_identity
+  )
+  && ci_runner_pool_offer_constraints_match_pool(
+    offer: supply_srv1_offer,
+    pool: supply_srv1_ci_runner_pool
+  )
+  && ci_runner_pool_offer_constraints_match_pool(
+    offer: supply_srv2_offer,
+    pool: supply_srv2_ci_runner_pool
   )
   && (match ci_runner_pool_from_offer(offer: supply_srv1_offer) {
     Present { value: pool1 } =>
