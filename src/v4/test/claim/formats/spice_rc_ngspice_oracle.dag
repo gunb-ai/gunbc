@@ -1,15 +1,16 @@
 // src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag
-// Scope: ngspice oracle structural witness — spice_emit_ngspice(rc_tran_deck) produces the
-//        exact netlist string that ngspice -b accepts and simulates to exit 0.
-// Anchor: ngspice User's Manual §3 batch mode; scripts/v4-spice-ngspice-rc-oracle.sh
-//         is the execution oracle that runs the emitted string through ngspice when available.
-// Consumer chain: BoolWitnessClaim (evaluate by execution) → shell oracle (ngspice execution).
+// Scope: ngspice oracle structural witness — spice_emit_ngspice(rc_tran_deck) matches the
+//        single golden netlist in spice_rc_tran_deck.dag; scripts/v4-spice-ngspice-rc-oracle.sh
+//        is the E-10 execution consumer (ngspice -b) that reads the same golden bytes.
 // Clear win receipt: T-4.10 — ONE .dag circuit declaration → simulating ngspice netlist.
 
 module v4.test.claim.formats.spice_rc_ngspice_oracle
 
 import v4.extdeps.formats.spice { spice_emit_ngspice }
-import v4.test.fixture.spice_rc_tran_deck { spice_rc_tran_deck }
+import v4.test.fixture.spice_rc_tran_deck {
+  spice_rc_tran_deck,
+  spice_rc_tran_deck_ngspice_golden
+}
 import v4.std.logic { Bool }
 import v4.std.verification {
   BoolWitness,
@@ -17,12 +18,8 @@ import v4.std.verification {
   UnifiedTestClaim
 }
 
-// Single-authority expected string. Shell oracle (scripts/v4-spice-ngspice-rc-oracle.sh)
-// carries a copy of this heredoc; keep them in sync.
-data spice_rc_tran_ngspice_expected: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nprint v(n2)\nquit\n.endc\n.end"
-
 fn spice_rc_tran_emit_ngspice_matches_expected_holds() -> Bool {
-  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_ngspice_expected
+  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
 }
 
 fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
@@ -32,13 +29,12 @@ fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
 
 fn spice_rc_tran_emit_ngspice_ends_with_end_holds() -> Bool {
   let text = spice_emit_ngspice(netlist: spice_rc_tran_deck)
-  text == spice_rc_tran_ngspice_expected
+  text == spice_rc_tran_deck_ngspice_golden
 }
 
-// SP-M1 closed-loop witness: the emitted ngspice-ready deck (including batch control
-// trailer) is exactly the string the shell oracle feeds to ngspice -b.
+// SP-M1 closed-loop witness: emitted deck equals the single golden authority.
 fn spice_rc_ngspice_op_holds() -> Bool {
-  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_ngspice_expected
+  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
 }
 
 data unified_claim_spice_rc_tran_emit_ngspice_matches: UnifiedTestClaim = BoolWitnessClaim {
