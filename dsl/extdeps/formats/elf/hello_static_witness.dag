@@ -22,8 +22,6 @@ import extdeps.formats.elf.primitives {
   pf_r,
 }
 import extdeps.formats.elf.encode {
-  ElfEncoded,
-  ElfEncodeRejected,
   encode_elf64_ehdr,
   encode_elf64_phdr,
   int_lists_equal,
@@ -243,12 +241,9 @@ fn witness_ehdr_encode_decode_roundtrip() -> Bool {
 fn witness_phdr_encode_decode_roundtrip() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     PhdrDecoded { value: phdr } =>
-      match encode_elf64_phdr(phdr) {
-        ElfEncoded { bytes: out } =>
-          count(out) == elf64_phdr_size
-            && int_lists_equal(static_hello_first_phdr_bytes, out)
-        ElfEncodeRejected { reason: _ } => false
-      }
+      let out = encode_elf64_phdr(phdr)
+      count(out) == elf64_phdr_size
+        && int_lists_equal(static_hello_first_phdr_bytes, out)
     PhdrRejected { reason: _ } => false
   }
 }
@@ -256,17 +251,13 @@ fn witness_phdr_encode_decode_roundtrip() -> Bool {
 fn witness_ehdr_reencode_preserves_decode() -> Bool {
   match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } =>
-      match encode_elf64_ehdr(hdr) {
-        ElfEncoded { bytes: out } =>
-          match decode_elf64_ehdr(out) {
-            ElfDecoded { value: hdr2 } =>
-              hdr2.entry == hdr.entry
-                && hdr2.phoff == hdr.phoff
-                && hdr2.shoff == hdr.shoff
-                && hdr2.phnum == hdr.phnum
-            ElfRejected { reason: _ } => false
-          }
-        ElfEncodeRejected { reason: _ } => false
+      match decode_elf64_ehdr(encode_elf64_ehdr(hdr)) {
+        ElfDecoded { value: hdr2 } =>
+          hdr2.entry == hdr.entry
+            && hdr2.phoff == hdr.phoff
+            && hdr2.shoff == hdr.shoff
+            && hdr2.phnum == hdr.phnum
+        ElfRejected { reason: _ } => false
       }
     ElfRejected { reason: _ } => false
   }

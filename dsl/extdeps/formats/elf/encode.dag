@@ -55,13 +55,6 @@ import extdeps.formats.elf.types {
 }
 import std.types { Bool }
 
-type ElfEncodeOutcome
-  = ElfEncoded { bytes: List<Int> }
-  | ElfEncodeRejected { reason: ElfEncodeReason }
-
-type ElfEncodeReason
-  = EncodeRoundTripMismatch { offset: Int }
-
 data elf_ident_padding_zeros: List<Int> = [0, 0, 0, 0, 0, 0, 0]
 
 fn u8_le_byte(value: Int) -> Int {
@@ -159,7 +152,7 @@ fn encode_elf_ident(ident: ElfIdent) -> List<Int> {
   )
 }
 
-fn encode_elf64_ehdr(hdr: Elf64Ehdr) -> ElfEncodeOutcome {
+fn encode_elf64_ehdr(hdr: Elf64Ehdr) -> List<Int> {
   let body = append(
     append(
       append(
@@ -192,18 +185,17 @@ fn encode_elf64_ehdr(hdr: Elf64Ehdr) -> ElfEncodeOutcome {
     ),
     items: u16_le_bytes(hdr.phnum),
   )
-  let bytes = append(
+  append(
     append(
       append(body2, items: u16_le_bytes(hdr.shentsize)),
       items: u16_le_bytes(hdr.shnum),
     ),
     items: u16_le_bytes(hdr.shstrndx),
   )
-  ElfEncoded { bytes: bytes }
 }
 
-fn encode_elf64_phdr(phdr: Elf64Phdr) -> ElfEncodeOutcome {
-  let bytes = append(
+fn encode_elf64_phdr(phdr: Elf64Phdr) -> List<Int> {
+  append(
     append(
       append(
         append(
@@ -222,7 +214,6 @@ fn encode_elf64_phdr(phdr: Elf64Phdr) -> ElfEncodeOutcome {
     ),
     items: append(u64_le_bytes(phdr.memsz), items: u64_le_bytes(phdr.align)),
   )
-  ElfEncoded { bytes: bytes }
 }
 
 fn int_lists_equal_at(left: List<Int>, right: List<Int>, i: Int, n: Int) -> Bool {
@@ -243,11 +234,8 @@ fn int_lists_equal(left: List<Int>, right: List<Int>) -> Bool {
 fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
   match decode_elf64_ehdr(hdr_bytes) {
     ElfDecoded { value: hdr } =>
-      match encode_elf64_ehdr(hdr) {
-        ElfEncoded { bytes: out } =>
-          count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)
-        ElfEncodeRejected { reason: _ } => false
-      }
+      let out = encode_elf64_ehdr(hdr)
+      count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)
     _ => false
   }
 }
