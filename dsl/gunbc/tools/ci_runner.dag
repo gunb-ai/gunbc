@@ -55,8 +55,10 @@ fn ensure_discover_owned_data_binary() -> String {
 }
 
 fn run_logged_script(inner: String, log_label: String) -> String {
+  // Avoid ${VAR:-default} in DSL strings — v2 parser treats `:` as syntax.
   concat(
-    "LOG=${RUNNER_TEMP:-/tmp}/gunbc-", log_label, ".log; ",
+    "[ -n \"$RUNNER_TEMP\" ] || RUNNER_TEMP=/tmp; ",
+    "LOG=$RUNNER_TEMP/gunbc-", log_label, ".log; ",
     inner, " >\"$LOG\" 2>&1; ec=$?; tail -n 120 \"$LOG\"; exit $ec"
   )
 }
