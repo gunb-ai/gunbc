@@ -2,6 +2,8 @@
 // Scope: ngspice oracle structural witness — spice_emit_ngspice(rc_tran_deck) matches the
 //        single golden netlist in spice_rc_tran_deck.dag; scripts/v4-spice-ngspice-rc-oracle.sh
 //        is the E-10 execution consumer (ngspice -b) that reads the same golden bytes.
+// SP-M1 closed: emitted tran deck runs `ngspice -b` exit 0 AS-EMITTED (.control run/quit trailer).
+//        RC charge curve v(n2): 0V@t=0 → 3.15V@1ms (63% of 5V, τ=RC=1ms) → 5V@10ms.
 // Clear win receipt: T-4.10 — ONE .dag circuit declaration → simulating ngspice netlist.
 
 module v4.test.claim.formats.spice_rc_ngspice_oracle
