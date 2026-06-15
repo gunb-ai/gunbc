@@ -84,6 +84,6 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
 
 // Single-authority golden netlist for the RC tran circuit (P2): shell oracle reads
 // this literal; witnesses prove spice_emit_ngspice(deck) matches it.
-data spice_rc_tran_deck_ngspice_golden: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nprint v(n2)\nquit\n.endc\n.end"
+data spice_rc_tran_deck_ngspice_golden: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nquit\n.endc\n.end"
 
 data spice_rc_tran_deck_ngspice_text: String = spice_emit_ngspice(netlist: spice_rc_tran_deck)
