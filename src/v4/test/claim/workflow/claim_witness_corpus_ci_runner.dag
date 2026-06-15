@@ -511,6 +511,73 @@ data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+// SP-M3 dual-emission witnesses — T-4.10 paradigm-falsification gate.
+// Groups A+B: structural coproduct checks (SPICE causal, Modelica acausal).
+// Group C: cross-paradigm discriminating — same value lexeme in both projections.
+
+data corpus_ci_gate_row_rc_spice_r1_is_resistor: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: SPICE R1 is Resistor variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_spice_r1_is_resistor",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_spice_c1_is_capacitor: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: SPICE C1 is Capacitor variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_spice_c1_is_capacitor",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_spice_v1_is_voltage_source: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: SPICE V1 is VoltageSource variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_spice_v1_is_voltage_source",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_modelica_r1_is_resistor: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: Modelica R1 is ModelicaResistor variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_modelica_r1_is_resistor",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_modelica_c1_is_capacitor: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: Modelica C1 is ModelicaCapacitor variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_modelica_c1_is_capacitor",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_modelica_v1_is_voltage_source: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 RC fixture: Modelica V1 is ModelicaConstantVoltage variant",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_modelica_v1_is_voltage_source",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_cross_paradigm_r1_resistance_equal: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 dual-emission: R1 resistance lexeme equal across SPICE and Modelica",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_cross_paradigm_r1_resistance_equal",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_cross_paradigm_c1_capacitance_equal: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 dual-emission: C1 capacitance lexeme equal across SPICE and Modelica",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_cross_paradigm_c1_capacitance_equal",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_rc_cross_paradigm_v1_voltage_equal: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M3 dual-emission: V1 supply voltage lexeme equal across SPICE and Modelica",
+  entry: "src/v4/test/claim/extdeps/spice_rc_modelica_claims.dag",
+  function: "rc_cross_paradigm_v1_voltage_equal",
+  expected: ExpectPass
+}
+
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -578,5 +645,14 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_self_host_stage_emission_equality_violates,
   corpus_ci_gate_row_spice_rc_ngspice_op,
   corpus_ci_gate_row_spice_rc_ngspice_nonempty,
-  corpus_ci_gate_row_spice_rc_passive_deck_authority
+  corpus_ci_gate_row_spice_rc_passive_deck_authority,
+  corpus_ci_gate_row_rc_spice_r1_is_resistor,
+  corpus_ci_gate_row_rc_spice_c1_is_capacitor,
+  corpus_ci_gate_row_rc_spice_v1_is_voltage_source,
+  corpus_ci_gate_row_rc_modelica_r1_is_resistor,
+  corpus_ci_gate_row_rc_modelica_c1_is_capacitor,
+  corpus_ci_gate_row_rc_modelica_v1_is_voltage_source,
+  corpus_ci_gate_row_rc_cross_paradigm_r1_resistance_equal,
+  corpus_ci_gate_row_rc_cross_paradigm_c1_capacitance_equal,
+  corpus_ci_gate_row_rc_cross_paradigm_v1_voltage_equal
 ]
