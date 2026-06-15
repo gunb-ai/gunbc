@@ -54,6 +54,13 @@ fn ensure_discover_owned_data_binary() -> String {
   "test -x target/release/discover_owned_data || cargo build -p v2-compiler --release --bin discover_owned_data"
 }
 
+fn run_logged_script(inner: String, log_label: String) -> String {
+  concat(
+    "LOG=${RUNNER_TEMP:-/tmp}/gunbc-", log_label, ".log; ",
+    inner, " >\"$LOG\" 2>&1; ec=$?; tail -n 120 \"$LOG\"; exit $ec"
+  )
+}
+
 fn dsl_compile_clean_shell(root: SourceRoot) -> String {
   concat(
     ensure_gunbc_binary(), "; ",
@@ -61,17 +68,24 @@ fn dsl_compile_clean_shell(root: SourceRoot) -> String {
   )
 }
 
+fn affected_tests_shell() -> String {
+  concat(
+    ensure_gunbc_binary(), "; ",
+    ensure_ci_claim_gate_binary(), "; ",
+    ensure_claim_batch_binary(), "; ",
+    ensure_discover_owned_data_binary(), "; ",
+    run_logged_script(
+      inner: "bash scripts/v4-affected-tests-gate.sh",
+      log_label: "gate3"
+    )
+  )
+}
+
 fn render_ci_command(cmd: CICommand) -> String {
   match cmd {
     DslCompileCleanCommand { root: r } => dsl_compile_clean_shell(root: r)
     FmtCommand => "cargo fmt --all --check"
-    AffectedTestsCommand => concat(
-      ensure_gunbc_binary(), "; ",
-      ensure_ci_claim_gate_binary(), "; ",
-      ensure_claim_batch_binary(), "; ",
-      ensure_discover_owned_data_binary(), "; ",
-      "bash scripts/v4-affected-tests-gate.sh"
-    )
+    AffectedTestsCommand => affected_tests_shell()
   }
 }
 
@@ -100,6 +114,7 @@ func run_gate(gate: CIGate) -> GateOutcome {
     let _ = emit_log_annotation(AnnotationEndGroup)
     { name: gate.name, passed: true, blocking: gate.blocking, output: result.stdout }
   } else {
+    let detail = if result.stdout != "" { result.stdout } else { result.stderr }
     let _ = emit_log_annotation(
       AnnotationError {
         message: concat("[FAIL] ", gate.name),
@@ -108,8 +123,11 @@ func run_gate(gate: CIGate) -> GateOutcome {
         col: none
       }
     )
+    if detail != "" {
+      let _ = shell.Exec.Run(script: concat("printf '%s\\n' ", detail))
+    }
     let _ = emit_log_annotation(AnnotationEndGroup)
-    { name: gate.name, passed: false, blocking: gate.blocking, output: result.stderr }
+    { name: gate.name, passed: false, blocking: gate.blocking, output: detail }
   }
 }
 
