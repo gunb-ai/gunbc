@@ -75,6 +75,17 @@ type Quantity =
   | Frequency
   | Count
   | Currency
+  // Electrical dimensions (Q-Unit-5 inhabitant: std.spice R/L/C passive map/fold,
+  // gunbc#4895/#4913). These five are consumed by EVERY form of the passive fold
+  // (v and i are always derived), so they are form-independent. ElectricCharge +
+  // MagneticFlux are pre-approved (carrier authority) to land WITH the fold that
+  // reads them (#4913 Form B: Q+=i*dt → v=Q/C; Φ+=v*dt → i=Φ/L) — minted with their
+  // inhabitant per Q-Unit-5, not speculatively here.
+  | ElectricPotential
+  | ElectricCurrent
+  | Resistance
+  | Capacitance
+  | Inductance
 
 // --- Scale: SI decimal scale exponent -------------------------------------
 //
@@ -139,8 +150,10 @@ fn scale_exponent(s: Scale) -> Int {
 //
 // PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE
 // Parametric dimensional carrier: phantom `<Q>` / `<S>` tag semantics;
-// `count` holds magnitude at the declared scale. Widening adds Quantity /
-// Scale values, not new Measure variants.
+// non-phantom `<M>` carries the magnitude type (see the MAGNITUDE
+// GENERALIZATION note at the type decl below). `count` holds the magnitude
+// at the declared scale. Widening adds Quantity / Scale values (or a new `<M>`
+// instantiation), not new Measure variants.
 // Per-target representation (Rust `std::time::Duration`, Python
 // `datetime.timedelta`, Go `time.Duration`, etc.) is Grounding's job
 // per Q-Unit-4 RATIFIED.
@@ -175,12 +188,24 @@ fn scale_exponent(s: Scale) -> Int {
 //     field access (G2) now resolve on the v2 interpreter; parametric record
 //     literals (G3) and multi-hop alias field-access chains remain gated.
 //     Consumers use the constructor/projection fns below until G3 lands.
-type Measure<Q, S> {
-  count: Nat
+// MAGNITUDE GENERALIZATION (`<M>`): the `count` field now carries its magnitude at
+// type `<M>` rather than a hardwired `Nat`. `<M>` ranges over the std numeric tower
+// (`Nat` / `Int` / `Rational` / `Real`) so a single carrier spans the magnitude
+// migration frame: GATE0 (non-negative integer magnitudes) instantiates `<M> = Nat`
+// (every existing alias below); GATE1 (signed or fractional magnitudes — e.g. SPICE
+// electrical potentials/currents, which are signed) instantiates `<M> = Int` (or
+// `Rational`/`Real` for fractional consumers, a later consumer-specific rung). `<M>`
+// is a NON-phantom parameter: unlike `<Q>`/`<S>` it appears in the `count` field. The
+// param-dependent field through the alias chains below (`ByteSize.count : Nat`,
+// `Measure<ElectricPotential, Micro, Int>.count : Int`) resolves + evaluates on the v2
+// interpreter today (verified by execution post-#4885 G3; M=Nat, signed M=Int, and
+// two-hop alias chains all round-trip).
+type Measure<Q, S, M> {
+  count: M
 }
 
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
-type ByteSize = Measure<Memory, One>
+type ByteSize = Measure<Memory, One, Nat>
 
 // PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
 // carrier; Information's FIRST inhabitant — sets precedent: Information = digital
@@ -189,13 +214,13 @@ type ByteSize = Measure<Memory, One>
 // consumer needing Memory <-> Information (byte <-> bit x8). x8 is non-decimal so
 // it will NOT be an SI Scale; lands as a separate sub-unit authority (same pattern
 // as currency ISO minor-unit at lines 205-209). Dissolve-on: first consumer.
-type BitWidth = Measure<Information, One>
+type BitWidth = Measure<Information, One, Nat>
 
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
-type Hertz = Measure<Frequency, One>
+type Hertz = Measure<Frequency, One, Nat>
 
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
-type HardwareThreadCount = Measure<Count, One>
+type HardwareThreadCount = Measure<Count, One, Nat>
 
 // --- MoneyAmount<S>: price magnitude carrier ------------------------------
 //
@@ -225,7 +250,7 @@ type HardwareThreadCount = Measure<Count, One>
 // but reading its `.count` is the multi-hop alias field-access case that the
 // single-hop G2 does not yet cover -- the money VALUE on v2 lands with the G3
 // follow-up. `std.currency` (a plain enum) evaluates on v2 today.
-type MoneyAmount<S> = Measure<Currency, S>
+type MoneyAmount<S> = Measure<Currency, S, Nat>
 
 // Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
 // Demanded by Hetzner cost quotes, whose source data is `*_eur_micros`
@@ -240,7 +265,7 @@ fn money_micros(count: Nat) -> MoneyMicros {
 // 🟡 consumer:G3-multi-hop-alias-field-access — bind gunbc#4885 (G3 flip lane).
 // Inline `Measure<Currency, Micro>` dodges v2 multi-hop `.count` on `MoneyMicros` pre-flip.
 // Dissolve-on: #4885 merge — repoint param to `MoneyMicros`; coordinate with snappy-stag-903.
-fn money_micros_count(m: Measure<Currency, Micro>) -> Nat {
+fn money_micros_count(m: Measure<Currency, Micro, Nat>) -> Nat {
   m.count
 }
 
