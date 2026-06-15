@@ -16,11 +16,11 @@ import v4.std.change {
   AffectedSetReason,
   ChangeSet
 }
-import v4.std.algebra { count_equal, filter, length }
+import v4.std.algebra { count_equal, filter, fold_list_right, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v4.std.text { String }
+import v4.std.text { concat, String }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -564,3 +564,23 @@ data ci_runner_node_frontier_claim_run_rows: List<AffectedSetNodeFrontierClaimRu
   ci_runner_gate_row_provenance_producer_selectivity_superset,
   ci_runner_gate_row_provenance_producer_selectivity_superset_discriminates
 ]
+
+// Modeled roster projection (label\tentry\tfunction TSV) consumed by the
+// `ci-claim-gate` host — the gate model owns the row list; the host no longer
+// awk/grep-scrapes this file. `row.entry` resolves `ci_runner_gate_entry` natively
+// (the bash scraper had to special-case that constant). Mirror of
+// `probe_selector_ci_runner_rows_tsv`.
+fn affected_set_node_frontier_rows_tsv() -> String {
+  fold_list_right(
+    xs: ci_runner_node_frontier_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
