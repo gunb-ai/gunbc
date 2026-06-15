@@ -6,11 +6,11 @@
 # the same row to fail, so every wired green has a red-under-perturb receipt.
 #
 # Modes:
-#   (no arg) / --green-only   GREEN batch pass + modeled row-count checks only
-#                             (the must-pass witnesses; no perturb). Used by the
-#                             v4_lens_ci job — the perturb fan-out lives in the
-#                             parallel v4_lens_ci_perturb matrix (see below).
-#   --perturb-check           GREEN + the FULL per-row perturb fan-out + counts.
+#   (no arg) / --green-only   GREEN batch pass only (the must-pass witnesses; no
+#                             perturb). Used by the v4_lens_ci job — the perturb
+#                             fan-out lives in the parallel v4_lens_ci_perturb
+#                             matrix (see below).
+#   --perturb-check           GREEN + the FULL per-row perturb fan-out.
 #                             Local full run (and any non-sharded caller).
 #   --perturb-shard K N       PERTURB ONLY the rows of the combined
 #                             node-frontier++testgen list (deterministic order)
