@@ -184,10 +184,13 @@ fn scale_exponent(s: Scale) -> Int {
 //   - No `Refined<Measure<…>, predicate>` at this layer per option (c).
 //   - No mechanical Measure-witness derivation declared here -- same
 //     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
-//   - v2 claim-run: phantom type-arg resolution (G1) and single-hop alias
-//     field access (G2) now resolve on the v2 interpreter; parametric record
-//     literals (G3) and multi-hop alias field-access chains remain gated.
-//     Consumers use the constructor/projection fns below until G3 lands.
+//   - v2 claim-run: phantom type-arg resolution (G1), single-hop alias field
+//     access (G2), parametric record literals (G3), and multi-hop alias
+//     field-access chains all now resolve on the v2 interpreter (G3 + multi-hop
+//     landed in gunbc#4885, alias-chain peel / fail-closed). The carrier
+//     witnesses in dsl/test/claim/measure_magnitude_carrier.dag exercise each
+//     path by execution; the constructor/projection fns below remain the
+//     ergonomic surface, no longer a pre-flip workaround.
 // MAGNITUDE GENERALIZATION (`<M>`): the `count` field now carries its magnitude at
 // type `<M>` rather than a hardwired `Nat`. `<M>` ranges over the std numeric tower
 // (`Nat` / `Int` / `Rational` / `Real`) so a single carrier spans the magnitude
@@ -198,8 +201,10 @@ fn scale_exponent(s: Scale) -> Int {
 // is a NON-phantom parameter: unlike `<Q>`/`<S>` it appears in the `count` field. The
 // param-dependent field through the alias chains below (`ByteSize.count : Nat`,
 // `Measure<ElectricPotential, Micro, Int>.count : Int`) resolves + evaluates on the v2
-// interpreter today (verified by execution post-#4885 G3; M=Nat, signed M=Int, and
-// two-hop alias chains all round-trip).
+// interpreter today (verified by execution post-#4885 G3 + multi-hop): M=Nat via the
+// single-hop alias projection, signed M=Int via a direct record literal, and a two-hop
+// alias chain (`MoneyMicros.count`) all round-trip — each backed by an enrolled witness
+// in dsl/test/claim/measure_magnitude_carrier.dag.
 type Measure<Q, S, M> {
   count: M
 }
@@ -262,10 +267,10 @@ fn money_micros(count: Nat) -> MoneyMicros {
   MoneyMicros { count: count }
 }
 
-// 🟡 consumer:G3-multi-hop-alias-field-access — bind gunbc#4885 (G3 flip lane).
-// Inline `Measure<Currency, Micro>` dodges v2 multi-hop `.count` on `MoneyMicros` pre-flip.
-// Dissolve-on: #4885 merge — repoint param to `MoneyMicros`; coordinate with snappy-stag-903.
-fn money_micros_count(m: Measure<Currency, Micro, Nat>) -> Nat {
+// Dissolved gunbc#4885 (G3 + multi-hop alias field-access landed, alias-chain peel):
+// the param is the `MoneyMicros` alias directly; v2 resolves the two-hop `.count`
+// (verified by execution — see measure_two_hop_alias_count_roundtrip_holds).
+fn money_micros_count(m: MoneyMicros) -> Nat {
   m.count
 }
 
