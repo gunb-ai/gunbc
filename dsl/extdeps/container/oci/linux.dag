@@ -1,0 +1,142 @@
+// extdeps/container/oci/linux.dag — Linux platform config (runtime-spec config-linux.md).
+//
+// Spec: https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md
+// Version: runtime-spec v1.2.0
+
+module extdeps.container.oci.linux
+
+import std.types { Bool }
+
+type LinuxNamespaceType
+  = LinuxNsPid
+  | LinuxNsNetwork
+  | LinuxNsMount
+  | LinuxNsIpc
+  | LinuxNsUts
+  | LinuxNsUser
+  | LinuxNsCgroup
+  | LinuxNsTime
+  | LinuxNsUnknown { raw: String }
+
+type LinuxNamespace {
+  namespace_type: LinuxNamespaceType
+  path: String?
+}
+
+type LinuxMemoryResources {
+  limit: Int?
+  reservation: Int?
+}
+
+type LinuxResources {
+  memory: LinuxMemoryResources?
+}
+
+type LinuxPlatform {
+  namespaces: List<LinuxNamespace>?
+  resources: LinuxResources?
+}
+
+type LinuxPlatformRejectReason
+  = DuplicateNamespaceType { ns_type: String }
+
+type LinuxPlatformOutcome
+  = LinuxPlatformAccepted { value: LinuxPlatform }
+  | LinuxPlatformRejected { reason: LinuxPlatformRejectReason }
+
+data linux_ns_pid: String = "pid"
+data linux_ns_network: String = "network"
+data linux_ns_mount: String = "mount"
+data linux_ns_ipc: String = "ipc"
+data linux_ns_uts: String = "uts"
+data linux_ns_user: String = "user"
+data linux_ns_cgroup: String = "cgroup"
+data linux_ns_time: String = "time"
+
+fn parse_linux_namespace_type(raw: String) -> LinuxNamespaceType {
+  if raw == linux_ns_pid { LinuxNsPid }
+  else if raw == linux_ns_network { LinuxNsNetwork }
+  else if raw == linux_ns_mount { LinuxNsMount }
+  else if raw == linux_ns_ipc { LinuxNsIpc }
+  else if raw == linux_ns_uts { LinuxNsUts }
+  else if raw == linux_ns_user { LinuxNsUser }
+  else if raw == linux_ns_cgroup { LinuxNsCgroup }
+  else if raw == linux_ns_time { LinuxNsTime }
+  else { LinuxNsUnknown { raw: raw } }
+}
+
+fn linux_namespace_type_label(ns: LinuxNamespaceType) -> String {
+  match ns {
+    LinuxNsPid => linux_ns_pid
+    LinuxNsNetwork => linux_ns_network
+    LinuxNsMount => linux_ns_mount
+    LinuxNsIpc => linux_ns_ipc
+    LinuxNsUts => linux_ns_uts
+    LinuxNsUser => linux_ns_user
+    LinuxNsCgroup => linux_ns_cgroup
+    LinuxNsTime => linux_ns_time
+    LinuxNsUnknown { raw: r } => r
+  }
+}
+
+fn accept_linux_platform(p: LinuxPlatform) -> LinuxPlatformOutcome {
+  match p.namespaces {
+    null => LinuxPlatformAccepted { value: p }
+    namespaces =>
+      match duplicate_namespace_label(namespaces, index: 0, seen: []) {
+        Present { value: label } =>
+          LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: label } }
+        Absent => LinuxPlatformAccepted { value: p }
+      }
+  }
+}
+
+fn namespace_at(namespaces: List<LinuxNamespace>, index: Int) -> LinuxNamespace? {
+  match namespaces |> get(index) {
+    null => null
+    other => other
+  }
+}
+
+fn duplicate_namespace_label(
+  namespaces: List<LinuxNamespace>,
+  index: Int,
+  seen: List<String>,
+) -> String? {
+  if index >= count(namespaces) {
+    Absent
+  } else {
+    match namespace_at(namespaces, index) {
+      null => Absent
+      ns =>
+        let label = linux_namespace_type_label(ns.namespace_type)
+        if contains(seen, label) {
+          Present { value: label }
+        } else {
+          duplicate_namespace_label(
+            namespaces,
+            index: index + 1,
+            seen: append(seen, items: [label]),
+          )
+        }
+    }
+  }
+}
+
+fn linux_namespace_count(p: LinuxPlatform) -> Int {
+  match p.namespaces {
+    null => 0
+    namespaces => count(namespaces)
+  }
+}
+
+fn linux_memory_limit(p: LinuxPlatform) -> Int? {
+  match p.resources {
+    null => null
+    resources =>
+      match resources.memory {
+        null => null
+        memory => memory.limit
+      }
+  }
+}

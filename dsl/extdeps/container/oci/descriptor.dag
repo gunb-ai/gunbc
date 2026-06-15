@@ -1,0 +1,32 @@
+// extdeps/container/oci/descriptor.dag — OCI Content Descriptor (image-spec descriptor.md).
+//
+// Spec: https://github.com/opencontainers/image-spec/blob/main/descriptor.md
+// Version: image-spec v1.1.0
+
+module extdeps.container.oci.descriptor
+
+import std.types { Bool }
+
+type OciDescriptor {
+  mediaType: String
+  digest: String
+  size: Int
+}
+
+type DescriptorRejectReason
+  = NegativeSize { size: Int }
+  | EmptyDigest
+
+type DescriptorOutcome
+  = DescriptorAccepted { value: OciDescriptor }
+  | DescriptorRejected { reason: DescriptorRejectReason }
+
+fn accept_descriptor(d: OciDescriptor) -> DescriptorOutcome {
+  if d.size < 0 {
+    DescriptorRejected { reason: NegativeSize { size: d.size } }
+  } else if d.digest == "" {
+    DescriptorRejected { reason: EmptyDigest }
+  } else {
+    DescriptorAccepted { value: d }
+  }
+}
