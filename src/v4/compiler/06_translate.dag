@@ -82,7 +82,6 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Value,
   arrow_body_edge,
   fold_node,
   node_rebuild,
