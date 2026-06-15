@@ -23,6 +23,7 @@ import v4.extdeps.formats.spice {
   Resistor,
   SpiceNetlist,
   SpiceValue,
+  VoltageSource,
   spice_wave1_ident_spelling
 }
 
@@ -106,10 +107,33 @@ fn modelica_passive_from_capacitor(component: Component) -> Optional<ModelicaPas
   }
 }
 
+fn modelica_passive_from_voltage_source(component: Component) -> Optional<ModelicaPassiveInstance> {
+  match component {
+    VoltageSource { name, n_plus: _, n_minus: _, value } =>
+      match spice_wave1_ident_spelling(ident: name) {
+        Present { value: name_spelling } =>
+          Present {
+            value: ModelicaPassiveInstance {
+              model: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
+              name: ModelicaIdent { spelling: name_spelling },
+              param_name: "V",
+              parameter_lexeme: value.lexeme
+            }
+          }
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
 fn modelica_passive_from_component(component: Component) -> Optional<ModelicaPassiveInstance> {
   match modelica_passive_from_resistor(component: component) {
     Present { value: p } => Present { value: p }
-    Absent => modelica_passive_from_capacitor(component: component)
+    Absent =>
+      match modelica_passive_from_capacitor(component: component) {
+        Present { value: p } => Present { value: p }
+        Absent => modelica_passive_from_voltage_source(component: component)
+      }
   }
 }
 
@@ -168,16 +192,40 @@ fn modelica_emit_passives(passives: List<ModelicaPassiveInstance>) -> String {
 
 fn modelica_model_from_spice_netlist(netlist: SpiceNetlist) -> ModelicaModel {
   ModelicaModel {
-    name: "RcPassiveWitness",
+    name: "RcTranWitness",
     passives: modelica_passives_from_body(body: netlist.body),
     equations: Cons {
       head: EqConnect {
         connect: ModelicaConnect {
-          left: ModelicaIdent { spelling: "R1.p" },
-          right: ModelicaIdent { spelling: "C1.p" }
+          left: ModelicaIdent { spelling: "V1.p" },
+          right: ModelicaIdent { spelling: "R1.p" }
         }
       },
-      tail: Empty
+      tail: Cons {
+        head: EqConnect {
+          connect: ModelicaConnect {
+            left: ModelicaIdent { spelling: "R1.n" },
+            right: ModelicaIdent { spelling: "C1.p" }
+          }
+        },
+        tail: Cons {
+          head: EqConnect {
+            connect: ModelicaConnect {
+              left: ModelicaIdent { spelling: "C1.n" },
+              right: ModelicaIdent { spelling: "GND.p" }
+            }
+          },
+          tail: Cons {
+            head: EqConnect {
+              connect: ModelicaConnect {
+                left: ModelicaIdent { spelling: "V1.n" },
+                right: ModelicaIdent { spelling: "GND.p" }
+              }
+            },
+            tail: Empty
+          }
+        }
+      }
     }
   }
 }
