@@ -3,6 +3,7 @@
 // Scope: CANONICAL S1 — analog passive stream substrate + R/L/C map/fold step operators.
 // Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
 // spice.dag passive projection; Resistor=map (v=R·i), Capacitor/Inductor=fold over dt.
+// Shared CircuitPrimitiveKind lives in v4.std.circuit_step (SP-M3 mixed-signal substrate).
 // Anchor: SPICE3 passive element topology via v4.extdeps.formats.spice Component.
 // M9 receipt: v4.std.algebra {fold_list}, v4.std.integer {int_add,int_mul,int_div};
 //             v4.std.measure {Measure, Quantity, Scale} — domain aliases below.

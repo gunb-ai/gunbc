@@ -5,6 +5,7 @@
 module v4.test.claim.manual.timeseries_passive_map_fold_anchor
 
 import v4.std.algebra { Cons, Empty }
+import v4.std.circuit_step { FoldStep, MapStep }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
@@ -13,11 +14,9 @@ import v4.std.timeseries_signal {
   CapacitorFold,
   CapacitorRating,
   CapacitorState,
-  FoldStep,
   InductorFold,
   InductorRating,
   InductorState,
-  MapStep,
   ResistorMap,
   ResistorRating,
   StepBranchVoltage,

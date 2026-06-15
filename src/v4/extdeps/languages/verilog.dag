@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/verilog.dag
-// Scope: IEEE 1364-2005 Verilog structural carriers.
-// Consumes: std/node.dag; std/nat.dag (Nat).
-// Status: import v4.std.node Symbol; v4.std.nat Nat.
+// Scope: IEEE 1364-2005 Verilog structural carriers + SP-M3 digital map/fold step operators.
+// Consumes: std/node.dag; std/nat.dag (Nat); std/circuit_step.dag (MapStep/FoldStep).
+// Status: import v4.std.node Symbol; v4.std.nat Nat; digital step operators S1 (SP-M3).
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
 // Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERILOG-CONSTEXPR-TERMINAL, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
 // 🟡
