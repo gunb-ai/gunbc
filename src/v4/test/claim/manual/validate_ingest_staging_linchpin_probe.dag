@@ -1,0 +1,46 @@
+// src/v4/test/claim/manual/validate_ingest_staging_linchpin_probe.dag
+// Scope: enforce-host linchpin (a) — validate_ingest_staging on trivial bare-Int Source;
+//        terminates without TranslateTo emit. NOT CI-enrolled; diagnostic only.
+// Status: additive manual probe for node://adhoc-99eb67ab-480.
+
+module v4.test.claim.manual.validate_ingest_staging_linchpin_probe
+
+import v4.compiler.compile {
+  LensGateWitness,
+  Source,
+  validate_ingest_staging
+}
+import v4.std.collection { List }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.logic { Bool }
+
+data linchpin_bare_int_source: Source = "module stage0.linchpin.reject\n\ntype MemorySpec {\n  ram_bytes: Int\n}\n"
+
+data linchpin_empty_module_source: Source = "module stage0.linchpin.empty\n"
+
+fn anchor_linchpin_bare_int_validate() -> Outcome<List<LensGateWitness>> {
+  validate_ingest_staging(source: linchpin_bare_int_source)
+}
+
+fn anchor_linchpin_empty_validate() -> Outcome<List<LensGateWitness>> {
+  validate_ingest_staging(source: linchpin_empty_module_source)
+}
+
+data linchpin_bare_int_receipt: Outcome<List<LensGateWitness>> = anchor_linchpin_bare_int_validate()
+
+data linchpin_empty_receipt: Outcome<List<LensGateWitness>> = anchor_linchpin_empty_validate()
+
+fn linchpin_bare_int_rejects_unit_modeling_reason() -> Bool {
+  match linchpin_bare_int_receipt {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn linchpin_empty_module_admits() -> Bool {
+  match linchpin_empty_receipt {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

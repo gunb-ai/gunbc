@@ -368,6 +368,65 @@ fn validate_then_compile(
 }
 
 
+// Validate-only ingest: tokenize → parse → normalize → resolve → infer →
+// always_required_lenses (subtree + root roster). No TranslateTo emit — enforce-host
+// path for lens verdict without rust codegen.
+fn validate_ingest_staging(source: Source) -> Outcome<List<LensGateWitness>> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              bind_outcome(
+                o: resolve(tree: normalized, lm: lm),
+                f: fn(resolved) {
+                  bind_outcome(
+                    o: infer(tree: resolved),
+                    f: fn(inferred) {
+                      bind_outcome(
+                        o: run_required_lens_gates_on_subtree(
+                          inferred: inferred,
+                          lenses: always_required_lenses()
+                        ),
+                        f: fn(required_lens_witnesses) {
+                          bind_outcome(
+                            o: run_required_lens_gates(
+                              inferred: inferred,
+                              lenses: []
+                            ),
+                            f: fn(caller_lens_witnesses) {
+                              outcome_accepted(
+                                value: list_append(
+                                  left: required_lens_witnesses,
+                                  right: caller_lens_witnesses
+                                )
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
