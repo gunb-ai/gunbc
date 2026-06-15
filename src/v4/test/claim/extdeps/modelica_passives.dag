@@ -15,8 +15,12 @@ import v4.extdeps.formats.modelica {
   PinEndpoint,
   ResistorInstance,
   TwoPinConnectorDecl,
+  modelica_emit_resistor_line,
   modelica_format_grammar_probe,
-  modelica_two_pin_connector_default
+  modelica_two_pin_connector_default,
+  modelica_wave1_emit_matches_fixture_holds,
+  modelica_wave1_string_eq,
+  modelica_wave1_witness_resistor
 }
 import v4.std.verification {
   BoolWitness,
@@ -128,5 +132,12 @@ data claim_modelica_module_compiles: TestClaim = CompilesClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: modelica_format_grammar_probe(),
   expected_value: modelica_format_grammar_probe(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_modelica_wave1_emit_matches_fixture: TestClaim = BoolWitnessClaim {
+  label: "extdeps/modelica: wave-1 resistor emit matches grammar fixture",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  witness: BoolWitness { holds: modelica_wave1_emit_matches_fixture_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

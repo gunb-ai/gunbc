@@ -479,6 +479,13 @@ data corpus_ci_gate_row_modelica_passive_model_equation_section: ClaimWitnessCor
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_modelica_wave1_emit_matches_fixture: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "extdeps/modelica: wave-1 resistor emit matches grammar fixture",
+  entry: "src/v4/test/claim/extdeps/modelica_passives.dag",
+  function: "modelica_wave1_emit_matches_fixture_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_dual_emission_spice_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "extdeps/dual-emission: R1 SPICE emit → ngspice netlist line",
   entry: "src/v4/test/claim/extdeps/spice_modelica_dual_emission.dag",
@@ -560,10 +567,13 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_modelica_resistor_two_pin_connectors,
   corpus_ci_gate_row_modelica_connect_equation_endpoints,
   corpus_ci_gate_row_modelica_passive_model_equation_section,
+  corpus_ci_gate_row_modelica_wave1_emit_matches_fixture,
+  corpus_ci_gate_row_dual_emission_spice_emit,
+  corpus_ci_gate_row_dual_emission_modelica_emit,
   corpus_ci_gate_row_dual_emission_keystone
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "59"
+data claim_witness_corpus_claim_run_row_count: String = "62"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -632,7 +642,10 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_modelica_resistor_two_pin_connectors,
   corpus_ci_gate_row_modelica_connect_equation_endpoints,
   corpus_ci_gate_row_modelica_passive_model_equation_section,
+  corpus_ci_gate_row_modelica_wave1_emit_matches_fixture,
+  corpus_ci_gate_row_dual_emission_spice_emit,
+  corpus_ci_gate_row_dual_emission_modelica_emit,
   corpus_ci_gate_row_dual_emission_keystone
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "40"
+data claim_witness_corpus_shard_b_row_count: String = "43"
