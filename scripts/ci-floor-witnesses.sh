@@ -36,7 +36,7 @@ witness_red_gate1() {
     echo "error: expected compile failure on planted top-level let" >&2
     return 1
   fi
-  if ! rg -q 'error\[dsl/gunbc/ci\.dag' "$tmp/log"; then
+  if ! rg -q 'planted_gate1_red_witness' "$tmp/log"; then
     echo "error: planted break did not surface as expected" >&2
     cat "$tmp/log" >&2
     return 1
