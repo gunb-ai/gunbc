@@ -536,7 +536,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
-data claim_witness_corpus_shard_a_row_count: String = "19"
+data claim_witness_corpus_shard_a_row_count: String = "20"
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
