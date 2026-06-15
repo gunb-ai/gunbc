@@ -1,0 +1,69 @@
+// dsl/test/claim/gunbhub_react_browse_witness.dag
+//
+// gunbhub R1 browse-page receipt: structurally compose a repo-browse page as a
+// ReactMarkupNode tree and serialize through canonical std.markup.Fragment.
+// Mirrors the v4 ReactElement probe (#4934) on the dsl consumer surface.
+
+module test.claim.gunbhub_react_browse_witness
+
+import std.react_markup {
+  ElementNode,
+  ReactTextNode,
+  ReactMarkupNode,
+  EmitOk,
+  EmitRejected,
+  serialize_react_markup,
+}
+
+fn browse_entry_element(name: String) -> ReactMarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [],
+        children: [ ReactTextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn browse_page_html() -> String {
+  let h1 = match serialize_react_markup(
+    node: ElementNode {
+      tag: "h1",
+      attrs: [],
+      children: [ ReactTextNode { text: "gunbc" } ],
+    }
+  ) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+  let ul = match serialize_react_markup(
+    node: ElementNode {
+      tag: "ul",
+      attrs: [],
+      children: [
+        browse_entry_element(name: "dsl"),
+        browse_entry_element(name: "src"),
+        browse_entry_element(name: "ROADMAP.md"),
+      ],
+    }
+  ) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+  concat(h1, ul)
+}
+
+data gunbhub_browse_html: String = browse_page_html()
+
+fn gunbhub_browse_page_serializes_holds() -> Bool {
+  gunbhub_browse_html ==
+    "<h1>gunbc</h1><ul><li><a>dsl</a></li><li><a>src</a></li><li><a>ROADMAP.md</a></li></ul>"
+}
+
+fn gunbhub_browse_keystone_holds() -> Bool {
+  gunbhub_browse_page_serializes_holds()
+}

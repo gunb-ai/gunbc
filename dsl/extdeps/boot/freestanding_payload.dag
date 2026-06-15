@@ -1,0 +1,17 @@
+// extdeps/boot/freestanding_payload.dag — freestanding init/payload reference (Slice-0 / 0.5).
+//
+// Slice-0: HollowPrebuiltInit boot vehicle (not emit proof) — separate coproduct arm.
+// Slice-0.5: EmittedPayload from OUR ELF encode + exec-contract pipeline.
+
+module extdeps.boot.freestanding_payload
+
+import std.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
+
+type FreestandingPayloadRef
+  = EmittedPayload { digest: NonEmptyStr, entry: EntryPoint }
+  | PrebuiltPayload { digest: NonEmptyStr, entry: EntryPoint }
+  | HollowPrebuiltInit { digest: NonEmptyStr, entry: EntryPoint }
+
+// 🟡 feature:hollow-prebuilt-init — Slice-0 boot vehicle; not an emit proof.
+// dissolve-on: delete HollowPrebuiltInit when all boot paths consume EmittedPayload (Slice-0.5+).

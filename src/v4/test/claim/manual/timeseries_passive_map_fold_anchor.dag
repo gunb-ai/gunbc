@@ -26,10 +26,23 @@ import v4.std.timeseries_signal {
   TimeSeriesSample,
   TimeSeriesSignal,
   TimeStep,
+  capacitance_micro,
+  capacitance_micro_count,
   capacitor_fold_step,
+  charge_micro,
+  charge_micro_count,
+  current,
+  current_count,
+  duration_micro,
   fold_capacitor_transient,
+  flux_micro,
+  flux_micro_count,
+  inductance_micro,
   inductor_fold_step,
+  resistance_micro,
   resistor_map_voltage,
+  voltage,
+  voltage_count,
 }
 import v4.std.verification {
   BoolWitness,
@@ -45,40 +58,44 @@ import v4.std.verification {
 
 data timeseries_anchor_resistor: ResistorMap = ResistorMap {
   kind: MapStep
-  rating: ResistorRating { microohms: 1000 }
+  rating: ResistorRating { microohms: resistance_micro(1000) }
 }
 
-data timeseries_anchor_current: StepCurrent = StepCurrent { microamperes: 2 }
+data timeseries_anchor_current: StepCurrent = StepCurrent {
+  microamperes: current(2)
+}
 
 data timeseries_anchor_capacitor: CapacitorFold = CapacitorFold {
   kind: FoldStep
-  rating: CapacitorRating { microfarads: 2 }
+  rating: CapacitorRating { microfarads: capacitance_micro(2) }
 }
 
 data timeseries_anchor_cap_initial: CapacitorState = CapacitorState {
-  voltage: StepPotentialDifference { microvolts: 0 }
-  charge_microcoulombs: 0
+  voltage: StepPotentialDifference { microvolts: voltage(0) }
+  charge_microcoulombs: charge_micro(0)
 }
 
 data timeseries_anchor_inductor: InductorFold = InductorFold {
   kind: FoldStep
-  rating: InductorRating { microhenries: 2 }
+  rating: InductorRating { microhenries: inductance_micro(2) }
 }
 
 data timeseries_anchor_ind_initial: InductorState = InductorState {
-  current: StepCurrent { microamperes: 0 }
-  flux_microwebers: 0
+  current: StepCurrent { microamperes: current(0) }
+  flux_microwebers: flux_micro(0)
 }
 
 data timeseries_anchor_voltage: StepBranchVoltage = StepBranchVoltage {
-  difference: StepPotentialDifference { microvolts: 4 }
+  difference: StepPotentialDifference { microvolts: voltage(4) }
 }
 
-data timeseries_anchor_dt: TimeStep = TimeStep { dt_microseconds: 1000 }
+data timeseries_anchor_dt: TimeStep = TimeStep {
+  dt_microseconds: duration_micro(1000)
+}
 
 data timeseries_anchor_tick0: TimeSeriesSample = TimeSeriesSample {
   tick: Zero
-  microvolts: 0
+  microvolts: voltage(0)
 }
 
 data timeseries_anchor_signal: TimeSeriesSignal = Cons {
@@ -91,7 +108,42 @@ fn timeseries_anchor_resistor_map_holds() -> Bool {
     element: timeseries_anchor_resistor,
     current: timeseries_anchor_current,
   )
-  mapped.difference.microvolts == 2000
+  voltage_count(mapped.difference.microvolts) == 2000
+}
+
+// GATE1 signed-magnitude execution (zesty class-4): negative Current through resistor
+// map must yield negative Voltage count on v2 — value asserted, not just type-resolve.
+fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
+  let mapped = resistor_map_voltage(
+    element: ResistorMap {
+      kind: MapStep
+      rating: ResistorRating { microohms: resistance_micro(1000) }
+    },
+    current: StepCurrent { microamperes: current(-3) },
+  )
+  voltage_count(mapped.difference.microvolts) == -3000
+}
+
+// GATE1 signed-magnitude Form-B fold (zesty class-4): positive initial charge +
+// negative current through capacitor_fold_step (signed int_mul + int_add crossing zero,
+// then int_div v=Q/C). Broken Nat-as-signed would yield wrong charge/voltage counts.
+data timeseries_signed_cap_initial_positive: CapacitorState = CapacitorState {
+  voltage: StepPotentialDifference { microvolts: voltage(500) }
+  charge_microcoulombs: charge_micro(1000)
+}
+
+fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
+  match capacitor_fold_step(
+    element: timeseries_anchor_capacitor,
+    state: timeseries_signed_cap_initial_positive,
+    current: StepCurrent { microamperes: current(-2) },
+    dt: timeseries_anchor_dt,
+  ) {
+    Accepted { value: stepped, diagnostics: _ } =>
+      charge_micro_count(stepped.charge_microcoulombs) == -1000
+        && voltage_count(stepped.voltage.microvolts) == -500
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn timeseries_anchor_capacitor_fold_holds() -> Bool {
@@ -102,15 +154,19 @@ fn timeseries_anchor_capacitor_fold_holds() -> Bool {
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
-      stepped.charge_microcoulombs == 2000
-        && stepped.voltage.microvolts == 1000
+      charge_micro_count(stepped.charge_microcoulombs) == 2000
+        && voltage_count(stepped.voltage.microvolts) == 1000
     Rejected { diagnostics: _ } => false
   }
 }
 
-data timeseries_anchor_current_low: StepCurrent = StepCurrent { microamperes: 2 }
+data timeseries_anchor_current_low: StepCurrent = StepCurrent {
+  microamperes: current(2)
+}
 
-data timeseries_anchor_current_high: StepCurrent = StepCurrent { microamperes: 4 }
+data timeseries_anchor_current_high: StepCurrent = StepCurrent {
+  microamperes: current(4)
+}
 
 data timeseries_anchor_current_pair: List<StepCurrent> = Cons {
   head: timeseries_anchor_current_low,
@@ -125,14 +181,14 @@ fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
-      stepped.voltage.microvolts == 3000
+      voltage_count(stepped.voltage.microvolts) == 3000
     Rejected { diagnostics: _ } => false
   }
 }
 
 data timeseries_anchor_cap_zero_rating: CapacitorFold = CapacitorFold {
   kind: FoldStep
-  rating: CapacitorRating { microfarads: 0 }
+  rating: CapacitorRating { microfarads: capacitance_micro(0) }
 }
 
 fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
@@ -155,8 +211,8 @@ fn timeseries_anchor_inductor_fold_holds() -> Bool {
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
-      stepped.flux_microwebers == 4000
-        && stepped.current.microamperes == 2000
+      flux_micro_count(stepped.flux_microwebers) == 4000
+        && current_count(stepped.current.microamperes) == 2000
     Rejected { diagnostics: _ } => false
   }
 }
@@ -165,6 +221,20 @@ data claim_timeseries_resistor_map: TestClaim = BoolWitnessClaim {
   label: "manual/timeseries_passive_map_fold_anchor: resistor map v=R·i",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   witness: BoolWitness { holds: timeseries_anchor_resistor_map_holds() },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_timeseries_signed_magnitude_resistor_map: TestClaim = BoolWitnessClaim {
+  label: "manual/timeseries_passive_map_fold_anchor: signed negative current map v=R·i",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  witness: BoolWitness { holds: timeseries_signed_magnitude_resistor_map_holds() },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_timeseries_signed_magnitude_capacitor_fold: TestClaim = BoolWitnessClaim {
+  label: "manual/timeseries_passive_map_fold_anchor: signed negative current Form-B capacitor fold",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  witness: BoolWitness { holds: timeseries_signed_magnitude_capacitor_fold_holds() },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
