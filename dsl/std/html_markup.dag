@@ -1,0 +1,127 @@
+// std/html_markup.dag — HtmlNode HTML surface + thin consumer of std.markup.
+//
+// gunbhub builds HtmlNode trees structurally; try_serialize_html_node adapts to
+// std.markup.Fragment and delegates to the ONE convergent serialize_fragment
+// fold (cost-of-change = 1 with React #4934 and other markup consumers).
+//
+// XSS: std.markup escape_url is character-escaping only — javascript:/data:
+// schemes pass through intact. This consumer scheme-allowlists href values
+// fail-closed BEFORE they reach serialize_fragment.
+
+module std.html_markup
+
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+  EscapeContext,
+  serialize_fragment,
+  escape_text,
+}
+
+// --- HtmlNode HTML surface (consumer-facing IR) -----------------------------
+
+type HtmlAttr {
+  name: String
+  value: String
+}
+
+type HtmlNode
+  = ElementNode { tag: String, attrs: List<HtmlAttr>, children: List<HtmlNode> }
+  | TextNode { text: String }
+
+// --- href scheme allowlist (consumer XSS gate) ------------------------------
+
+type DangerousUrlScheme
+  = JavascriptScheme
+  | DataScheme
+  | VbscriptScheme
+
+type HrefValidation
+  = SafeHref { url: String }
+  | RejectedHref { scheme: DangerousUrlScheme }
+
+fn validate_href(url: String) -> HrefValidation {
+  let normalized = trim(url) |> to_lower
+  if starts_with(normalized, prefix: "javascript:") {
+    RejectedHref { scheme: JavascriptScheme }
+  } else if starts_with(normalized, prefix: "data:") {
+    RejectedHref { scheme: DataScheme }
+  } else if starts_with(normalized, prefix: "vbscript:") {
+    RejectedHref { scheme: VbscriptScheme }
+  } else {
+    SafeHref { url: url }
+  }
+}
+
+fn href_is_safe(url: String) -> Bool {
+  match validate_href(url: url) {
+    SafeHref { url: _ } => true
+    RejectedHref { scheme: _ } => false
+  }
+}
+
+fn html_node_has_unsafe_href(node: HtmlNode) -> Bool {
+  match node {
+    TextNode { text: _ } => false
+    ElementNode { tag: _, attrs, children } =>
+      any(attrs, a => a.name == "href" && !href_is_safe(url: a.value))
+        || any(children, c => html_node_has_unsafe_href(node: c))
+  }
+}
+
+type HtmlSerializeResult
+  = Serialized { html: String }
+  | Rejected { reason: String }
+
+// --- HtmlNode -> Fragment adapter -------------------------------------------
+
+fn html_attr_escape_context(name: String) -> EscapeContext {
+  if name == "href" {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn html_attr_to_fragment(attr: HtmlAttr) -> Attribute {
+  Attribute {
+    name: attr.name,
+    ctx: html_attr_escape_context(name: attr.name),
+    value: attr.value,
+  }
+}
+
+fn html_node_to_fragment(node: HtmlNode) -> Fragment {
+  match node {
+    TextNode { text } =>
+      TextNode { content: text }
+    ElementNode { tag, attrs, children } =>
+      Element {
+        tag: tag,
+        attributes: map(attrs, a => html_attr_to_fragment(attr: a)),
+        children: map(children, c => html_node_to_fragment(node: c)),
+      }
+  }
+}
+
+// --- thin consumer entry ----------------------------------------------------
+
+fn serialize_html_node(node: HtmlNode) -> String {
+  serialize_fragment(frag: html_node_to_fragment(node: node))
+}
+
+fn try_serialize_html_node(node: HtmlNode) -> HtmlSerializeResult {
+  if html_node_has_unsafe_href(node: node) {
+    Rejected { reason: "dangerous URL scheme in href" }
+  } else {
+    Serialized { html: serialize_html_node(node: node) }
+  }
+}
+
+fn escape_text_content(s: String) -> String {
+  escape_text(s: s)
+}

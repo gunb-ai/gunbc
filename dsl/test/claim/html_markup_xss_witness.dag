@@ -1,0 +1,92 @@
+// dsl/test/claim/html_markup_xss_witness.dag
+//
+// By-execution witnesses for std.html_markup href scheme allowlisting.
+// std.markup escape_url is character-escaping only; the HTML consumer must
+// reject dangerous schemes fail-closed before they reach serialize_fragment.
+//
+// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
+
+module test.claim.html_markup_xss_witness
+
+import std.html_markup {
+  HtmlAttr,
+  HtmlNode,
+  ElementNode,
+  TextNode,
+  SafeHref,
+  RejectedHref,
+  JavascriptScheme,
+  DataScheme,
+  VbscriptScheme,
+  Serialized,
+  Rejected,
+  validate_href,
+  try_serialize_html_node,
+}
+
+fn witness_javascript_href_rejects() -> Bool {
+  match validate_href(url: "javascript:alert(1)") {
+    RejectedHref { scheme: JavascriptScheme } => true
+    _ => false
+  }
+}
+
+fn witness_javascript_href_case_insensitive_rejects() -> Bool {
+  match validate_href(url: "  JAVASCRIPT:alert(1)") {
+    RejectedHref { scheme: JavascriptScheme } => true
+    _ => false
+  }
+}
+
+fn witness_data_href_rejects() -> Bool {
+  match validate_href(url: "data:text/html,<script>alert(1)</script>") {
+    RejectedHref { scheme: DataScheme } => true
+    _ => false
+  }
+}
+
+fn witness_vbscript_href_rejects() -> Bool {
+  match validate_href(url: "vbscript:msgbox(1)") {
+    RejectedHref { scheme: VbscriptScheme } => true
+    _ => false
+  }
+}
+
+fn witness_relative_href_accepted() -> Bool {
+  match validate_href(url: "/safe/path") {
+    SafeHref { url: u } => u == "/safe/path"
+    _ => false
+  }
+}
+
+fn witness_https_href_accepted() -> Bool {
+  match validate_href(url: "https://example.com") {
+    SafeHref { url: u } => u == "https://example.com"
+    _ => false
+  }
+}
+
+fn javascript_link_node() -> HtmlNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ HtmlAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ TextNode { text: "x" } ],
+  }
+}
+
+fn witness_unsafe_href_blocks_serialization() -> Bool {
+  match try_serialize_html_node(node: javascript_link_node()) {
+    Rejected { reason: _ } => true
+    Serialized { html: _ } => false
+  }
+}
+
+fn html_markup_xss_keystone_holds() -> Bool {
+  witness_javascript_href_rejects()
+    && witness_javascript_href_case_insensitive_rejects()
+    && witness_data_href_rejects()
+    && witness_vbscript_href_rejects()
+    && witness_relative_href_accepted()
+    && witness_https_href_accepted()
+    && witness_unsafe_href_blocks_serialization()
+}
