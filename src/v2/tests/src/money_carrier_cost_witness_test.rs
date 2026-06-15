@@ -5,7 +5,7 @@
 //! projection) and the ISO 4217 `CurrencyCode` enum RESOLVE and EVALUATE on the
 //! v2 interpreter end-to-end.
 //!
-//! Interim scope: the real `std.compute_fabric.CostEstimate` claim-run is gated
+//! Interim scope: the real `product.compute_fabric.CostEstimate` claim-run is gated
 //! on #4831 (Option-in-v2) + #4826 (G1 identifier-variant type args for Measure
 //! value eval); see `dsl/examples/cost_estimate/cost_estimate.dag`. This witness
 //! is the interim Float-in-v2 proof until those land.

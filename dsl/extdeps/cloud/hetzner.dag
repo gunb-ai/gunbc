@@ -4,7 +4,7 @@
 // Pricing: https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
 //   (GE-D9256; Germany/Finland CAX rows effective 2026-04-01, ex-VAT)
 //
-// Consumers: std.compute_fabric supply rows (cross-provider isolation witnesses).
+// Consumers: product.compute_fabric supply rows (cross-provider isolation witnesses).
 
 module extdeps.cloud.hetzner
 

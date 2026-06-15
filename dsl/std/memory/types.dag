@@ -7,12 +7,11 @@ import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
 
-// Module identity: same JEDEC part number can appear under distinct product
-// listings (server vs ECC REG single-rank) — variant tag is the authority.
-type SkHynixDdr4Module = Hma82gr7afr4nVkServer | Hma82gr7afr4nVkEccRegSingleRank
-
-type DramModuleIdentity = SkHynix { dimm: SkHynixDdr4Module }
-
+// A populated DIMM identifies itself by its catalog row — std/memory owns the SHAPE
+// + the manufacturer taxonomy; the per-vendor rows live in extdeps/memory/<vendor>.
+// No std-level enum of one vendor's SKUs (that would make the taxonomy a purchase
+// order); the same JEDEC part under distinct product listings is just distinct
+// catalog rows (e.g. server vs ECC REG single-rank rank_label).
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
@@ -25,7 +24,7 @@ type DramModuleCatalogRow {
 }
 
 type MemoryPopulationRow {
-  dimm_identity: DramModuleIdentity
+  module: DramModuleCatalogRow
   stick_count: Int
 }
 
