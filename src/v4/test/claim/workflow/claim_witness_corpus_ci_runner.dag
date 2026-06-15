@@ -359,6 +359,16 @@ data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
+// gunbhub M2 served render surface — request→serialized-page round-trip via
+// extdeps.http.server route bindings + canonical markup consumers; hostile href
+// rejected before response body.
+data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "gunbhub serve render surface keystone",
+  entry: "dsl/test/claim/gunbhub_serve_witness.dag",
+  function: "gunbhub_serve_keystone_holds",
+  expected: ExpectPass
+}
+
 // gunbhub R1 browse-page structural compose + serialize receipt.
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
@@ -516,6 +526,7 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
+  corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
@@ -530,6 +541,8 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_self_host_stage_emission_equality_holds,
   corpus_ci_gate_row_self_host_stage_emission_equality_violates
 ]
+
+data claim_witness_corpus_claim_run_row_count: String = "58"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -556,6 +569,8 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_sg2_fold_row_delimiter
 ]
 
+data claim_witness_corpus_shard_a_row_count: String = "20"
+
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
   corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
@@ -581,6 +596,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
+  corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,
   corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip,
@@ -595,3 +611,5 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_self_host_stage_emission_equality_holds,
   corpus_ci_gate_row_self_host_stage_emission_equality_violates
 ]
+
+data claim_witness_corpus_shard_b_row_count: String = "38"
