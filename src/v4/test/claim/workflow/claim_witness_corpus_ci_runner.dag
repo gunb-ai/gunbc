@@ -451,6 +451,20 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_spice_resistor_emit_value: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice wave-1: Resistor SpiceValue.lexeme survives emit projection",
+  entry: "src/v4/test/claim/formats/spice_resistor_roundtrip.dag",
+  function: "spice_resistor_emit_value_lexeme_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_spice_grammar_fixture_parses: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice wave-1: grammar fixture 'R1 n1 n2 1' tokenises and parses",
+  entry: "src/v4/test/claim/formats/spice_resistor_roundtrip.dag",
+  function: "spice_grammar_fixture_parses",
+  expected: ExpectPass
+}
+
 data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,
@@ -506,10 +520,12 @@ data claim_witness_corpus_claim_run_rows: List<ClaimWitnessCorpusClaimRunRow> = 
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_spice_resistor_emit_value,
+  corpus_ci_gate_row_spice_grammar_fixture_parses
 ]
 
-data claim_witness_corpus_claim_run_row_count: String = "54"
+data claim_witness_corpus_claim_run_row_count: String = "56"
 
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
@@ -573,7 +589,9 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_timeseries_inductor_fold,
   corpus_ci_gate_row_timeseries_capacitor_fold_chronological,
   corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects,
-  corpus_ci_gate_row_spice_resistor_passive_topology
+  corpus_ci_gate_row_spice_resistor_passive_topology,
+  corpus_ci_gate_row_spice_resistor_emit_value,
+  corpus_ci_gate_row_spice_grammar_fixture_parses
 ]
 
-data claim_witness_corpus_shard_b_row_count: String = "35"
+data claim_witness_corpus_shard_b_row_count: String = "37"

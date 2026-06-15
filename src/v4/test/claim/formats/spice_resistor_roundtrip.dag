@@ -3,28 +3,32 @@
 // Scope: wave-1 SPICE emit+parse resistor-line round-trip witnesses.
 //
 // Wave-1 round-trip axes:
-//   parse ← grammar probe fixture "R1 n1 n2 1" tokenises + maps to
-//            ^spice_surface_resistor_statement (proven by grammar probe authority);
+//   parse ← grammar probe fixture "R1 n1 n2 1" tokenises and parses via
+//            spice_wave1_lex() + spice_wave1_grammar() (proven by fn witness below);
 //   emit  ← SpiceValue.lexeme survives the wave-1 structural emit projection
 //            (Symbol→String for name / node labels is wave-2 scope, deferred to
 //            T-3 string-substrate dissolution).
 //
-// Claim class: Tier1 / Unit — no interpreter pipeline required; structural
-// projection + field-equality over spice.dag types only.
+// Execution: both fn witnesses are registered in claim_witness_corpus_ci_runner.dag.
 
 module v4.test.claim.formats.spice_resistor_roundtrip
 
 import v4.extdeps.formats.spice {
   Component,
-  Ground,
-  Named,
-  NamedNode,
   Resistor,
   SpiceValue,
+  Named,
+  NamedNode,
   spice_emit_resistor_value_lexeme,
   spice_format_grammar_probe,
-  spice_format_grammar_probe_authority
+  spice_format_grammar_probe_authority,
+  spice_wave1_lex,
+  spice_wave1_grammar
 }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.grammar { ParseTree }
+import v4.compiler.tokenize { tokenize }
+import v4.compiler.parse { parse }
 import v4.std.logic { Bool }
 import v4.std.verification {
   BoolWitness,
@@ -35,6 +39,7 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
+  UnifiedTestClaim,
   manual_claim_anchor
 }
 
@@ -49,56 +54,51 @@ data sample_resistor: Component = Resistor {
 }
 
 // ── wave-1 emit witness ──────────────────────────────────────────────────────
-// spice_emit_resistor_value_lexeme projects the SpiceValue.lexeme from the
-// Resistor arm; proves the numeric value survives the wave-1 emit projection.
 
 fn spice_resistor_emit_value_lexeme_holds() -> Bool {
-  spice_emit_resistor_value_lexeme(c: sample_resistor) == "1"
+  match spice_emit_resistor_value_lexeme(c: sample_resistor) {
+    Accepted { value: lex, diagnostics: _ } => lex == "1"
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // ── wave-1 parse witness ─────────────────────────────────────────────────────
-// The grammar probe fixture IS the canonical emitted form; its field value
-// matches the fixture string used in the probe.
+// Tokenises and parses the canonical fixture "R1 n1 n2 1" using the wave-1
+// lex rules and grammar. Accepted iff the grammar accepts the fixture.
 
-fn spice_grammar_probe_fixture_matches() -> Bool {
-  spice_format_grammar_probe().probe.fixture == "R1 n1 n2 1"
+fn spice_wave1_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: "R1 n1 n2 1",
+    file: ^spice_wave1_fixture_file,
+    rules: spice_wave1_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: spice_wave1_grammar())
+  }
 }
 
-// ── round-trip coherence: emit value == parse fixture value token ────────────
-// The last token in "R1 n1 n2 1" is "1"; the emit projection of sample_resistor
-// also yields "1". This links emit and parse at the value-token level.
-
-fn spice_resistor_emit_parse_value_coherent() -> Bool {
-  spice_emit_resistor_value_lexeme(c: sample_resistor) ==
-    spice_emit_resistor_value_lexeme(c: Resistor {
-      name: ^r1_parsed,
-      n_plus: Named { node: NamedNode { name: ^n1_parsed } },
-      n_minus: Named { node: NamedNode { name: ^n2_parsed } },
-      value: SpiceValue { lexeme: "1" }
-    })
+fn spice_grammar_fixture_parses() -> Bool {
+  match spice_wave1_tokenize_and_parse() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // ── claims ───────────────────────────────────────────────────────────────────
 
-data claim_spice_resistor_emit_value_lexeme_wave1: TestClaim = BoolWitnessClaim {
-  label: "spice emit wave-1: Resistor SpiceValue.lexeme survives emit projection",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_resistor_emit_value_lexeme_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+data claim_spice_resistor_emit_value_lexeme_wave1: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_resistor_roundtrip.dag",
+    function: spice_resistor_emit_value_lexeme_holds
+  }
 }
 
-data claim_spice_grammar_probe_fixture_wave1: TestClaim = BoolWitnessClaim {
-  label: "spice parse wave-1: grammar probe fixture is the canonical resistor line",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_grammar_probe_fixture_matches() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_spice_resistor_roundtrip_value_coherence_wave1: TestClaim = BoolWitnessClaim {
-  label: "spice round-trip wave-1: emit value-token equals parse fixture value-token",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_resistor_emit_parse_value_coherent() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+data claim_spice_grammar_fixture_parses_wave1: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_resistor_roundtrip.dag",
+    function: spice_grammar_fixture_parses
+  }
 }
 
 data claim_spice_probe_authority_structural: TestClaim = StructuralEqualsClaim {
