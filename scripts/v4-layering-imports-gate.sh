@@ -132,11 +132,12 @@ run_scanner_perturb_case() {
 #       layering_imports_scan binary, proves the scanner WALKS each root (the
 #       filesystem-scope axis the python rglob covers);
 #   (b) the planted forms collectively exercise EACH of the 4 target-forms;
-#   (c) the form-check is ROOT-INDEPENDENT by lens construction — both
-#       is_layering_violation arms (LayerStd, LayerExtdeps) call the same
-#       is_forbidden_compiler_import on the import_module string
-#       (src/v4/lens/layering_imports.dag) — so per-root x per-form coverage
-#       entails all 5x4 classes; no class is left unwitnessed.
+#   (c) the form-check is ROOT-INDEPENDENT by lens construction —
+#       is_layering_violation applies is_forbidden_compiler_import(import_module)
+#       UNCONDITIONALLY, with no per-layer branching
+#       (src/v4/lens/layering_imports.dag) — detection does not depend on which
+#       root a file lives under, so per-root x per-form coverage entails all 5x4
+#       classes; no class is left unwitnessed.
 #   (d) the parse_level case plants a forbidden import alongside an unrelated
 #       resolve error and is still flagged, matching the python pre-resolve TEXT
 #       scan (IMPORT_RE over raw lines) — the phase axis.
