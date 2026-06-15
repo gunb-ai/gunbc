@@ -570,8 +570,8 @@ data supply_srv2_ci_runner_pool: CiRunnerPoolFacts = CiRunnerPoolFacts {
 
 fn ci_runner_pool_from_offer(offer: ComputeOffer) -> CiRunnerPoolFacts? {
   match offer.supply.physical.identity {
-    supply_srv1_host_identity => Some { value: supply_srv1_ci_runner_pool }
-    supply_srv2_host_identity => Some { value: supply_srv2_ci_runner_pool }
+    "srv1" => Some { value: supply_srv1_ci_runner_pool }
+    "srv2" => Some { value: supply_srv2_ci_runner_pool }
     _ => none
   }
 }

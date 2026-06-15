@@ -1,7 +1,14 @@
-//! Structural mirror of the self-hosted runner pool spec in `.github/workflows/ci.yml`.
-//! Lives outside `v3-compiler` (same crate as affected-set host transport).
+//! Host transport projection of the operator-fleet CI runner pool.
+//!
+//! **Authority:** `dsl/std/compute_fabric.dag` (`CiRunnerPoolFacts`, `supply_srv{1,2}_ci_runner_pool`,
+//! `supply_srv{1,2}_offer.constraints`). This module is the Rust host mirror for tools that have
+//! not yet routed gate-3 dispatch through compute-fabric eval (CF-M1). Dissolve when the
+//! one-binary CI runner consumes `gunbc.tools.ci_runner_pool` via v2 eval instead of these
+//! constants.
+//!
+//! Parity witness: `dsl/test/claim/ci_runner_pool_compute_fabric_projection.dag`.
 
-/// Structural mirror of the srv1/srv2 runner pool capacities wired in ci.yml.
+/// Host-side mirror of `std.compute_fabric::CiRunnerPoolFacts` for srv1/srv2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelfHostedRunnerPool {
     pub host: &'static str,
@@ -13,6 +20,7 @@ pub struct SelfHostedRunnerPool {
 
 pub const CI_RUNNER_ARCH_ARM64: &str = "arm64";
 
+/// Projected from `supply_srv1_ci_runner_pool` in `dsl/std/compute_fabric.dag`.
 pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv1",
     arch: CI_RUNNER_ARCH_ARM64,
@@ -21,6 +29,7 @@ pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     jobserver_token_cap: 25,
 };
 
+/// Projected from `supply_srv2_ci_runner_pool` in `dsl/std/compute_fabric.dag`.
 pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv2",
     arch: CI_RUNNER_ARCH_ARM64,
@@ -52,13 +61,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn srv_pools_match_operator_spec() {
+    fn srv_pools_match_compute_fabric_supply_projection() {
+        // Numeric facts must stay aligned with supply_srv{1,2}_ci_runner_pool in compute_fabric.dag.
         assert_eq!(CI_SRV1_POOL.arch, CI_RUNNER_ARCH_ARM64);
         assert_eq!(CI_SRV2_POOL.arch, CI_RUNNER_ARCH_ARM64);
         assert_eq!(CI_SRV1_POOL.runner_count, 20);
         assert_eq!(CI_SRV1_POOL.jobserver_token_cap, 25);
         assert_eq!(CI_SRV2_POOL.runner_count, 30);
         assert_eq!(CI_SRV2_POOL.jobserver_token_cap, 36);
+        assert_eq!(CI_SRV1_POOL.core_count, 128);
+        assert_eq!(CI_SRV2_POOL.core_count, 128);
     }
 
     #[test]
