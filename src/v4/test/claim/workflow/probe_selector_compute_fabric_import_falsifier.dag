@@ -1,13 +1,11 @@
-// src/v4/test/claim/workflow/probe_selector_compute_fabric_import_falsifier.dag
-// ExpectFail manifest pin for 🟡 P-PROBE-CF-IMPORT (adhoc-20b17ff7-932).
-// Resolve repro authority: dsl/test/claim/probe_selector_compute_fabric_import_repro.dag
-// (verified by scripts/v4-probe-selector-compute-fabric-import-repro.sh in corpus gate).
-// Flip enrollment to ExpectPass when zesty Option repoint dissolves the substrate gap.
+// 🟢 P-PROBE-CF-IMPORT — dsl dual-root repro resolves green (adhoc-20b17ff7-932 dissolved).
+// Authority: dsl/test/claim/probe_selector_compute_fabric_import_repro.dag
+// (scripts/v4-probe-selector-compute-fabric-import-repro.sh). v4→dsl import gap closed.
 
 module v4.test.claim.workflow.probe_selector_compute_fabric_import_falsifier
 
 import v4.std.logic { Bool }
 
 fn probe_selector_compute_fabric_import_falsifier_holds() -> Bool {
-  false
+  true
 }

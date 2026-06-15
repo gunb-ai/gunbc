@@ -267,12 +267,12 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
   expected: ExpectPass
 }
 
-// 🟡 P-PROBE-CF-IMPORT — ExpectFail pin + resolve repro (adhoc-20b17ff7-932).
+// 🟢 P-PROBE-CF-IMPORT — ExpectPass (adhoc-20b17ff7-932 dissolved; dsl repro green).
 data corpus_ci_gate_row_probe_selector_cf_import_falsifier: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "probe-selector compute_fabric import falsifier",
+  label: "probe-selector compute_fabric import holds",
   entry: "src/v4/test/claim/workflow/probe_selector_compute_fabric_import_falsifier.dag",
   function: "probe_selector_compute_fabric_import_falsifier_holds",
-  expected: ExpectFail { bind_anchor: "adhoc-20b17ff7-932" }
+  expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
