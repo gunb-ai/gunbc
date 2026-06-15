@@ -1,0 +1,218 @@
+// src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag
+// Scope: gunbhub Slice-0 / R1 emit probe — structurally compose a React repo-browse page
+//   from BrowseEntry data and land on the emit wall (no templating, no hand-written TS).
+// Status: model-first wall receipt — proves ReactElement IR composes; names missing serializer.
+//
+// R0 (ctrl workflows/gunbhub_html_sketch.dag): HtmlNode element tree → static HTML text.
+// R1 (this file): ReactElement component tree → React/TS repo-browse app source.
+//
+// WHAT COMPILES (the model half):
+//   - BrowseEntry domain + structural map to ReactElement list items (no JSX string concat).
+//   - React extdeps carriers (v4.extdeps.frameworks.react) as the IR authority.
+//
+// THE WALL (encountered, not pre-solved):
+//   Shape A TS emit (#4778 effect-IO path, ts_mvp1/comprep witnesses) serializes
+//   InferredTree language constructs (functions, types, effect call expressions) to
+//   TargetSource — NOT framework markup trees.
+//   Shape B (Branch D §2.3.1 GUARD) requires user .dag projection over
+//   v4.extdeps.frameworks.react facts → artifact, but there is NO reintroduced
+//   Fragment/markup serializer (dsl/std/render.dag deleted RenderDocument at :284)
+//   and no JSX/TSX fold-to-text primitive in extdeps or compiler stages.
+//   The ONLY escape today is hand-rolled `fn render(ReactElement)->String` string concat —
+//   forbidden by operator constraint (same cheat R0 names for HtmlNode).
+//
+// SPECIFIC MISSING EMIT PRIMITIVE (the next Shape-B ask):
+//   `ReactMarkupSerializer` (JSX/TSX surface) — parameterized structured-tree → text:
+//     1. ReactElement / ReactHostElement / ReactCreateElementChild fold → JSX source,
+//     2. cross-decl ref resolution for tag names, props, and text operands,
+//     3. context-correct escaping (text vs attribute-value vs URL),
+//     4. optional pairing with Shape A TS emit for typed component/function scaffolding
+//        (BrowseEntry interfaces via ts_mvp1) — two receipts, not conflated TargetSource.
+//   R0's missing `HtmlMarkupSerializer` is the same primitive one layer down (HTML not JSX).
+
+module v4.test.claim.manual.gunbhub_react_ts_emit_probe
+
+import v4.extdeps.frameworks.react {
+  Element,
+  Fragment,
+  Host,
+  KeyAbsent,
+  KeyPresent,
+  ReactCrossDeclRef,
+  ReactElement,
+  ReactHostElement,
+  ReactPropsSite,
+  RefAbsent,
+  Text
+}
+import v4.std.algebra { Cons, Empty, length }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data gunbhub_tag_h1: ReactCrossDeclRef = gunbhub_tag_h1
+data gunbhub_tag_ul: ReactCrossDeclRef = gunbhub_tag_ul
+data gunbhub_tag_li: ReactCrossDeclRef = gunbhub_tag_li
+data gunbhub_tag_a: ReactCrossDeclRef = gunbhub_tag_a
+data gunbhub_props_empty: ReactCrossDeclRef = gunbhub_props_empty
+data gunbhub_repo_title: ReactCrossDeclRef = gunbhub_repo_title
+data gunbhub_name_dsl: ReactCrossDeclRef = gunbhub_name_dsl
+data gunbhub_name_src: ReactCrossDeclRef = gunbhub_name_src
+data gunbhub_name_roadmap: ReactCrossDeclRef = gunbhub_name_roadmap
+
+fn gunbhub_empty_props() -> ReactPropsSite {
+  ReactPropsSite {
+    props_type_ref: gunbhub_props_empty,
+    props_value_ref: gunbhub_props_empty
+  }
+}
+
+type BrowseEntry {
+  name_ref: ReactCrossDeclRef
+}
+
+data gunbhub_entry_dsl: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_dsl }
+data gunbhub_entry_src: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_src }
+data gunbhub_entry_roadmap: BrowseEntry = BrowseEntry { name_ref: gunbhub_name_roadmap }
+
+fn browse_entry_element(entry: BrowseEntry) -> ReactElement {
+  Host {
+    host: ReactHostElement {
+      tag_ref: gunbhub_tag_li,
+      key: KeyAbsent,
+      ref: RefAbsent,
+      props: gunbhub_empty_props(),
+      children: Cons {
+        head: Element {
+          element: Host {
+            host: ReactHostElement {
+              tag_ref: gunbhub_tag_a,
+              key: KeyAbsent,
+              ref: RefAbsent,
+              props: gunbhub_empty_props(),
+              children: Cons {
+                head: Text { text_value_ref: entry.name_ref },
+                tail: Empty
+              }
+            }
+          }
+        },
+        tail: Empty
+      }
+    }
+  }
+}
+
+data gunbhub_li_dsl: ReactElement = browse_entry_element(entry: gunbhub_entry_dsl)
+data gunbhub_li_src: ReactElement = browse_entry_element(entry: gunbhub_entry_src)
+data gunbhub_li_roadmap: ReactElement = browse_entry_element(entry: gunbhub_entry_roadmap)
+
+fn browse_page() -> ReactElement {
+  Fragment {
+    key: KeyAbsent,
+    children: Cons {
+      head: Element {
+        element: Host {
+          host: ReactHostElement {
+            tag_ref: gunbhub_tag_h1,
+            key: KeyAbsent,
+            ref: RefAbsent,
+            props: gunbhub_empty_props(),
+            children: Cons {
+              head: Text { text_value_ref: gunbhub_repo_title },
+              tail: Empty
+            }
+          }
+        }
+      },
+      tail: Cons {
+        head: Element {
+          element: Host {
+            host: ReactHostElement {
+              tag_ref: gunbhub_tag_ul,
+              key: KeyAbsent,
+              ref: RefAbsent,
+              props: gunbhub_empty_props(),
+              children: Cons {
+                head: Element { element: gunbhub_li_dsl },
+                tail: Cons {
+                  head: Element { element: gunbhub_li_src },
+                  tail: Cons {
+                    head: Element { element: gunbhub_li_roadmap },
+                    tail: Empty
+                  }
+                }
+              }
+            }
+          }
+        },
+        tail: Empty
+      }
+    }
+  }
+}
+
+data gunbhub_example_page: ReactElement = browse_page()
+
+fn gunbhub_browse_page_root_is_fragment_with_h1_and_ul_holds() -> Bool {
+  match gunbhub_example_page {
+    Fragment { key: k, children: ch } =>
+      match k {
+        KeyAbsent => length(xs: ch) == 2
+        KeyPresent { key_ref: _ } => false
+      }
+    Host { host: _ } => false
+    Composite { composite: _ } => false
+  }
+}
+
+fn gunbhub_browse_entry_list_has_three_items_holds() -> Bool {
+  match gunbhub_li_dsl {
+    Host { host: _ } =>
+      match gunbhub_li_src {
+        Host { host: _ } =>
+          match gunbhub_li_roadmap {
+            Host { host: _ } => true
+            Composite { composite: _ } => false
+            Fragment { key: _, children: _ } => false
+          }
+        Composite { composite: _ } => false
+        Fragment { key: _, children: _ } => false
+      }
+    Composite { composite: _ } => false
+    Fragment { key: _, children: _ } => false
+  }
+}
+
+fn gunbhub_browse_entry_element_wraps_anchor_and_text_holds() -> Bool {
+  match gunbhub_li_dsl {
+    Host { host: ReactHostElement { tag_ref: tr, key: _, ref: _, props: _, children: li_children } } =>
+      tr == gunbhub_tag_li && length(xs: li_children) == 1
+    Composite { composite: _ } => false
+    Fragment { key: _, children: _ } => false
+  }
+}
+
+data unified_claim_gunbhub_browse_page_root: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_page_root_is_fragment_with_h1_and_ul_holds
+  }
+}
+
+data unified_claim_gunbhub_browse_entry_list: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_entry_list_has_three_items_holds
+  }
+}
+
+data unified_claim_gunbhub_browse_entry_text_child: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/gunbhub_react_ts_emit_probe.dag",
+    function: gunbhub_browse_entry_element_wraps_anchor_and_text_holds
+  }
+}
