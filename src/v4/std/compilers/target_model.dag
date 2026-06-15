@@ -2296,6 +2296,8 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValueEffectApply =>
       optional_absent()
+    ValueCommaSequence =>
+      optional_absent()
     ValueConditional =>
       optional_absent()
     ValueBindLet =>
@@ -3012,12 +3014,12 @@ fn target_value_expr_comma_sequence_operands_from_wire(
   bind_outcome(
     o: target_value_expr_comma_sequence_wire_schema_valid(wire: wire),
     f: fn(_) {
-      fold_list(
-        xs: wire.children,
-        empty: Accepted { value: Empty, diagnostics: None },
-        cons: fn(acc, edge) {
+      match fold(
+        wire.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
           match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => acc
             Accepted { value: partial, diagnostics: ad } =>
               match edge.label {
                 Named { name: n } =>
@@ -3025,10 +3027,9 @@ fn target_value_expr_comma_sequence_operands_from_wire(
                     bind_outcome(
                       o: target_value_expression_reify_from_wire(wire: edge.target),
                       f: fn(operand) {
-                        Accepted {
-                          value: list_snoc_item(xs: partial, item: operand),
-                          diagnostics: ad
-                        }
+                        outcome_accepted(
+                          list_snoc_item(xs: partial, item: operand)
+                        )
                       }
                     )
                   } else {
@@ -3039,7 +3040,11 @@ fn target_value_expr_comma_sequence_operands_from_wire(
               }
           }
         }
-      )
+      ) {
+        Accepted { value: operands, diagnostics: d } =>
+          Accepted { value: operands, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
     }
   )
 }

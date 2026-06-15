@@ -124,13 +124,15 @@ fn program_emit_typescript_receipt_runs_on_node_with_effect_io_roundtrip() {
     let receipt = run_host_process(
         TS_HOST_TRANSPORT_PROGRAM_IDENTITY,
         &source,
-        &EmitHostTransportInputs::default(),
+        &EmitHostTransportInputs {
+            claim_input_root: String::new(),
+        },
         Path::new(&work_dir),
     )
     .unwrap_or_else(|e| panic!("run_host_process failed: {e:?}"));
 
     assert!(
-        receipt.exit.success(),
+        receipt.exit.exit_holds(),
         "program emit host run failed: exit={:?} stderr={}",
         receipt.exit,
         String::from_utf8_lossy(&receipt.stderr_bytes)

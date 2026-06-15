@@ -44,6 +44,7 @@ import v4.std.node {
   SyntheticOccurrence,
   arrow_body_edge
 }
+import v4.std.text { String }
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,

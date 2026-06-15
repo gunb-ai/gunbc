@@ -82,6 +82,8 @@ mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;
 #[cfg(test)]
+mod program_emit_typescript_receipt_test;
+#[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v2_compiler_lib_test;
