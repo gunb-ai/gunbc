@@ -4,7 +4,7 @@
 // render.dag (see render.dag §Fragment IR) as an HTML-specific markup IR
 // with a single fold-to-text serializer — not per-app string concatenation.
 //
-// Consumers build HtmlNode trees structurally; serialize_html_node folds the
+// Consumers build HtmlNode trees structurally; serialize_markup_node folds the
 // tree to wire text with context-correct escaping.
 
 module std.html_markup
@@ -56,10 +56,21 @@ fn escape_markup(s: String, ctx: MarkupEscapeContext) -> String {
   }
 }
 
+fn attr_escape_context(name: String) -> MarkupEscapeContext {
+  if name == "href" {
+    UrlPath
+  } else {
+    AttributeValue
+  }
+}
+
 // --- fold-to-text serializer (the emit primitive) ---------------------------
 
 fn serialize_html_attr(attr: HtmlAttr) -> String {
-  let escaped = escape_markup(s: attr.value, ctx: AttributeValue)
+  let escaped = escape_markup(
+    s: attr.value,
+    ctx: attr_escape_context(name: attr.name)
+  )
   concat(
     concat(concat(concat(" ", attr.name), "=\""), escaped),
     "\""
@@ -81,11 +92,11 @@ fn serialize_html_close_tag(tag: String) -> String {
 fn serialize_html_children(children: List<HtmlNode>) -> String {
   fold(children,
     init: "",
-    f: (acc, child) => concat(acc, serialize_html_node(node: child))
+    f: (acc, child) => concat(acc, serialize_html_node_body(node: child))
   )
 }
 
-fn serialize_html_node(node: HtmlNode) -> String {
+fn serialize_html_node_body(node: HtmlNode) -> String {
   match node {
     TextNode { text } =>
       escape_markup(s: text, ctx: TextContent)
@@ -98,4 +109,15 @@ fn serialize_html_node(node: HtmlNode) -> String {
         serialize_html_close_tag(tag: tag)
       )
   }
+}
+
+fn serialize_markup_node(node: HtmlNode, format: MarkupFormat) -> String {
+  match format.id {
+    "html" => serialize_html_node_body(node: node)
+    _ => ""
+  }
+}
+
+fn serialize_html_node(node: HtmlNode) -> String {
+  serialize_markup_node(node: node, format: markup_emit_format)
 }
