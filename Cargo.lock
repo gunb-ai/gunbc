@@ -1413,6 +1413,7 @@ dependencies = [
 name = "v2-compiler-tests"
 version = "0.1.0"
 dependencies = [
+ "emit_host_runner",
  "serde",
  "serde_json",
  "v2-compiler",

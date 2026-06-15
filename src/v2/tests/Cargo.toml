@@ -12,3 +12,4 @@ v2-compiler = { path = "../stage0", features = ["text_lookup_work_counter"] }
 [dev-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+emit_host_runner = { path = "../../../tools/emit_host_runner" }
