@@ -6,6 +6,7 @@ module extdeps.formats.elf.types
 
 import extdeps.formats.elf.primitives {
   ElfClass,
+  ElfClass64,
   ElfDataEncoding,
   ElfFileType,
   ElfMachine,
@@ -62,6 +63,8 @@ type Elf64Ehdr {
 
 type ElfDecodeReason
   = Truncated { required_bytes: Int, available_bytes: Int }
+  | InvalidElfMagic { mag0: Int, mag1: Int, mag2: Int, mag3: Int }
+  | ElfClassNotElf64 { class: ElfClass }
   | UnsupportedElfClass { raw: Int }
   | UnsupportedElfData { raw: Int }
   | UnsupportedElfFileType { raw: Int }
@@ -120,6 +123,47 @@ fn decode_elf_machine(raw: Int) -> ElfDecodeOutcome<ElfMachine> {
   else { ElfRejected { reason: UnsupportedElfMachine { raw: raw } } }
 }
 
+fn elf_ident_has_valid_magic(ident: ElfIdent) -> Bool {
+  ident.mag0 == elf_mag0 && ident.mag1 == elf_mag1 && ident.mag2 == elf_mag2 && ident.mag3 == elf_mag3
+}
+
+fn validate_elf64_ident(ident: ElfIdent) -> ElfDecodeOutcome<ElfIdent> {
+  if elf_ident_has_valid_magic(ident) == false { ElfRejected { reason: InvalidElfMagic { mag0: ident.mag0, mag1: ident.mag1, mag2: ident.mag2, mag3: ident.mag3 } } }
+  else {
+    match ident.class {
+      ElfClass64 => ElfDecoded { value: ident }
+      _ => ElfRejected { reason: ElfClassNotElf64 { class: ident.class } }
+    }
+  }
+}
+
+fn decode_elf64_ehdr_fields(bytes: List<Int>, ident: ElfIdent) -> ElfDecodeOutcome<Elf64Ehdr> {
+  match decode_elf_type(read_u16_le_in_bounds(bytes, 16)) {
+    ElfDecoded { value: file_type } => match decode_elf_machine(read_u16_le_in_bounds(bytes, 18)) {
+      ElfDecoded { value: machine } => ElfDecoded {
+        value: Elf64Ehdr {
+          ident: ident,
+          file_type: file_type,
+          machine: machine,
+          version: read_u32_le_in_bounds(bytes, 20),
+          entry: read_u64_le_in_bounds(bytes, 24),
+          phoff: read_u64_le_in_bounds(bytes, 32),
+          shoff: read_u64_le_in_bounds(bytes, 40),
+          flags: read_u32_le_in_bounds(bytes, 48),
+          ehsize: read_u16_le_in_bounds(bytes, 52),
+          phentsize: read_u16_le_in_bounds(bytes, 54),
+          phnum: read_u16_le_in_bounds(bytes, 56),
+          shentsize: read_u16_le_in_bounds(bytes, 58),
+          shnum: read_u16_le_in_bounds(bytes, 60),
+          shstrndx: read_u16_le_in_bounds(bytes, 62),
+        },
+      }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
+    }
+    ElfRejected { reason: r } => ElfRejected { reason: r }
+  }
+}
+
 fn decode_elf_ident(bytes: List<Int>) -> ElfDecodeOutcome<ElfIdent> {
   match decode_elf_class(byte_at_in_bounds(bytes, 4)) {
     ElfDecoded { value: class } => match decode_elf_data(byte_at_in_bounds(bytes, 5)) {
@@ -147,28 +191,8 @@ fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
     ElfRejected { reason: Truncated { required_bytes: elf64_ehdr_size, available_bytes: count(bytes) } }
   } else {
     match decode_elf_ident(bytes) {
-      ElfDecoded { value: ident } => match decode_elf_type(read_u16_le_in_bounds(bytes, 16)) {
-        ElfDecoded { value: file_type } => match decode_elf_machine(read_u16_le_in_bounds(bytes, 18)) {
-          ElfDecoded { value: machine } => ElfDecoded {
-            value: Elf64Ehdr {
-              ident: ident,
-              file_type: file_type,
-              machine: machine,
-              version: read_u32_le_in_bounds(bytes, 20),
-              entry: read_u64_le_in_bounds(bytes, 24),
-              phoff: read_u64_le_in_bounds(bytes, 32),
-              shoff: read_u64_le_in_bounds(bytes, 40),
-              flags: read_u32_le_in_bounds(bytes, 48),
-              ehsize: read_u16_le_in_bounds(bytes, 52),
-              phentsize: read_u16_le_in_bounds(bytes, 54),
-              phnum: read_u16_le_in_bounds(bytes, 56),
-              shentsize: read_u16_le_in_bounds(bytes, 58),
-              shnum: read_u16_le_in_bounds(bytes, 60),
-              shstrndx: read_u16_le_in_bounds(bytes, 62),
-            },
-          }
-          ElfRejected { reason: r } => ElfRejected { reason: r }
-        }
+      ElfDecoded { value: ident } => match validate_elf64_ident(ident) {
+        ElfDecoded { value: validated_ident } => decode_elf64_ehdr_fields(bytes, validated_ident)
         ElfRejected { reason: r } => ElfRejected { reason: r }
       }
       ElfRejected { reason: r } => ElfRejected { reason: r }
@@ -178,8 +202,4 @@ fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
 
 fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
   EntryPoint { virtual_address: hdr.entry }
-}
-
-fn elf_ident_has_valid_magic(ident: ElfIdent) -> Bool {
-  ident.mag0 == elf_mag0 && ident.mag1 == elf_mag1 && ident.mag2 == elf_mag2 && ident.mag3 == elf_mag3
 }

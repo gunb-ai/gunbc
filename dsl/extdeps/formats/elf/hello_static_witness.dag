@@ -10,6 +10,7 @@
 module extdeps.formats.elf.hello_static_witness
 
 import extdeps.formats.elf.primitives {
+  ElfClass32,
   ElfClass64,
   ElfData2Lsb,
   EtExec,
@@ -60,6 +61,20 @@ data static_hello_bad_class_ehdr_bytes: List<Int> = [
   0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
 ]
 
+data static_hello_bad_magic_ehdr_bytes: List<Int> = [
+  0, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
+data static_hello_elf32_class_ehdr_bytes: List<Int> = [
+  127, 69, 76, 70, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
+  64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
+]
+
 // Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
 // 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 
@@ -77,6 +92,20 @@ fn witness_truncated_ehdr_rejects() -> Bool {
 fn witness_unknown_class_rejects() -> Bool {
   match decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
     ElfRejected { reason: UnsupportedElfClass { raw: 99 } } => true
+    _ => false
+  }
+}
+
+fn witness_invalid_magic_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_bad_magic_ehdr_bytes) {
+    ElfRejected { reason: InvalidElfMagic { mag0: 0, mag1: 69, mag2: 76, mag3: 70 } } => true
+    _ => false
+  }
+}
+
+fn witness_elf32_class_rejects() -> Bool {
+  match decode_elf64_ehdr(static_hello_elf32_class_ehdr_bytes) {
+    ElfRejected { reason: ElfClassNotElf64 { class: ElfClass32 } } => true
     _ => false
   }
 }
@@ -203,6 +232,8 @@ fn main() -> Bool {
   witness_format_atom_is_elf()
     && witness_truncated_ehdr_rejects()
     && witness_unknown_class_rejects()
+    && witness_invalid_magic_rejects()
+    && witness_elf32_class_rejects()
     && witness_ident_magic()
     && witness_ident_class_is_elf64()
     && witness_ident_data_is_little_endian()
