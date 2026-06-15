@@ -16,6 +16,7 @@ module v4.test.fixture.rc_circuit
 
 import v4.extdeps.formats.spice {
   Capacitor,
+  Component,
   DeckComponent,
   DeckDirective,
   DeckStatement,
