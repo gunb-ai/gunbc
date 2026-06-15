@@ -3,111 +3,48 @@
 //! `run_required_lens_gates_on_subtree`. Marshaled `Value`s are interned in the
 //! marshal `InterpContext`; lens evaluation must use that same context.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use v2_compiler::cli_run::make_eval_context;
+use v2_compiler::cli_run::{self, make_eval_context};
 use v2_compiler::coproduct_reflection::marshal_conj_type_item;
-use v2_compiler::v2_compiler_compile::compile_to_resolved;
+use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
 use v2_compiler::v2_compiler_infer_items::{ItemKind, ResolvedGraph};
 use v2_compiler::v2_interpreter::{run_in_context_with_args, InterpContext, InterpResult, Value};
 use v2_compiler::v2_std_core::Node;
 
-use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
+use crate::helpers::workspace_root;
 
 const LENS_PROBE_TIMEOUT: Duration = Duration::from_secs(90);
 
-const LENS_PROBE_HARNESS: &str = r#"module test.enforce_host_lens_marshal_probe
+const HARNESS_ENTRY: &str = "src/v4/test/claim/manual/enforce_host_lens_bridge_harness.dag";
+const BARE_INT_FIXTURE: &str = "src/v4/test/fixtures/enforce_host/bare_int_memory_spec.dag";
+const MODELED_CARRIER_FIXTURE: &str =
+    "src/v4/test/fixtures/enforce_host/modeled_carrier_memory_spec.dag";
 
-import v4.compiler.compile {
-  always_required_lenses,
-  run_required_lens_gates_on_subtree
-}
-import v4.std.diagnostic { Accepted, Rejected }
-import v4.std.logic { Bool }
-import v4.std.node { Node }
-import v4.test.claim.lens_common.infer_fixture {
-  claim_inferred_facts,
-  claim_inferred_tree
-}
-
-fn probe_lens_rejects_unit_modeling_from_marshaled_root(root: Node) -> Bool {
-  let tree = claim_inferred_tree(
-    root: root,
-    facts: claim_inferred_facts(
-      type_symbol: ^enforce_host_probe_type_sym,
-      algebra_symbol: ^enforce_host_probe_algebra_sym,
-      descent_symbol: ^enforce_host_probe_descent_sym
-    )
-  )
-  match run_required_lens_gates_on_subtree(
-    inferred: tree,
-    lenses: always_required_lenses()
-  ) {
-    Rejected { diagnostics: r } =>
-      r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
-    Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
-fn probe_lens_accepts_from_marshaled_root(root: Node) -> Bool {
-  let tree = claim_inferred_tree(
-    root: root,
-    facts: claim_inferred_facts(
-      type_symbol: ^enforce_host_probe_type_sym,
-      algebra_symbol: ^enforce_host_probe_algebra_sym,
-      descent_symbol: ^enforce_host_probe_descent_sym
-    )
-  )
-  match run_required_lens_gates_on_subtree(
-    inferred: tree,
-    lenses: always_required_lenses()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-"#;
-
-const BARE_INT_SOURCE: &str = r#"module stage0.real_source.unit_modeling.reject
-
-type MemorySpec {
-  ram_bytes: Int
-}
-"#;
-
-const MODELED_CARRIER_SOURCE: &str = r#"module stage0.real_source.unit_modeling.accept
-
-import std.measure { ByteSize }
-
-type MemorySpec {
-  ram_bytes: ByteSize
-}
-"#;
-
-fn probe_source_roots() -> Vec<std::path::PathBuf> {
+fn validate_source_roots() -> Vec<String> {
     let ws = workspace_root();
-    vec![ws.join("src/v4"), ws.join("dsl")]
+    vec![
+        ws.join("src/v4").to_string_lossy().to_string(),
+        ws.join("dsl").to_string_lossy().to_string(),
+    ]
 }
 
-fn compile_probe_bundle(
-    subject_path: &str,
-    subject_content: &str,
-) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
-    let roots = probe_source_roots();
-    let mut sources = resolve_imports_transitively_with_source_roots(
-        "test/enforce_host_lens_marshal_probe.dag",
-        LENS_PROBE_HARNESS,
-        &roots,
-    );
-    for source in
-        resolve_imports_transitively_with_source_roots(subject_path, subject_content, &roots)
+fn compile_probe_bundle(entry_path: &str) -> Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
+    let roots = validate_source_roots();
+    let harness_sources = cli_run::load_sources_for_entry(&roots, HARNESS_ENTRY)
+        .unwrap_or_else(|e| panic!("load harness {HARNESS_ENTRY}: {e}"));
+    let subject_sources = cli_run::load_sources_for_entry(&roots, entry_path)
+        .unwrap_or_else(|e| panic!("load subject {entry_path}: {e}"));
+    let mut by_path: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    for source in harness_sources
+        .iter()
+        .chain(subject_sources.iter())
     {
-        if !sources.iter().any(|existing| existing.path == source.path) {
-            sources.push(source);
-        }
+        by_path.insert(source.path.clone(), source.clone());
     }
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Rc::new(by_path.into_values().collect()))
 }
 
 fn memory_spec_root_value(
@@ -264,7 +201,7 @@ fn assert_v4_edge(ctx: &InterpContext, value: &Value, path: &str) {
 
 #[test]
 fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
-    let resolved = compile_probe_bundle("stage0/memory_spec_reject.dag", BARE_INT_SOURCE);
+    let resolved = compile_probe_bundle(BARE_INT_FIXTURE);
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);
@@ -346,7 +283,7 @@ fn marshaled_memory_spec_has_v4_node_edge_skeleton() {
 }
 
 fn run_bare_int_lens_probe(fn_name: &str, expect: bool) {
-    let resolved = compile_probe_bundle("stage0/memory_spec_reject.dag", BARE_INT_SOURCE);
+    let resolved = compile_probe_bundle(BARE_INT_FIXTURE);
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);
@@ -361,9 +298,8 @@ fn bare_int_marshaled_inferred_tree_lens_rejects_unit_modeling() {
 }
 
 #[test]
-#[ignore = "modeled-carrier subject pulls dsl/measure closure; run after bare-Int arm locks"]
 fn modeled_carrier_marshaled_inferred_tree_lens_accepts() {
-    let resolved = compile_probe_bundle("stage0/memory_spec_accept.dag", MODELED_CARRIER_SOURCE);
+    let resolved = compile_probe_bundle(MODELED_CARRIER_FIXTURE);
     assert_resolved_ok(&resolved);
     let ctx = probe_eval_context(&resolved);
     let root = memory_spec_root_value(&ctx, &resolved);

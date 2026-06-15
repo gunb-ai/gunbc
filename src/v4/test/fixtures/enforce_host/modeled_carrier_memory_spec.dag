@@ -1,0 +1,7 @@
+module stage0.real_source.unit_modeling.accept
+
+import std.measure { ByteSize }
+
+type MemorySpec {
+  ram_bytes: ByteSize
+}

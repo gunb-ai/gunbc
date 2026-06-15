@@ -1,0 +1,5 @@
+module stage0.real_source.unit_modeling.reject
+
+type MemorySpec {
+  ram_bytes: Int
+}

@@ -1,0 +1,52 @@
+// Host bridge harness for enforce-over-external-.dag (X-viability): marshal native
+// v2 resolved type → v4 InferredTree → run_required_lens_gates_on_subtree.
+module v4.test.claim.manual.enforce_host_lens_bridge_harness
+
+import v4.compiler.compile {
+  always_required_lenses,
+  run_required_lens_gates_on_subtree
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+fn probe_lens_rejects_unit_modeling_from_marshaled_root(root: Node) -> Bool {
+  let tree = claim_inferred_tree(
+    root: root,
+    facts: claim_inferred_facts(
+      type_symbol: ^enforce_host_probe_type_sym,
+      algebra_symbol: ^enforce_host_probe_algebra_sym,
+      descent_symbol: ^enforce_host_probe_descent_sym
+    )
+  )
+  match run_required_lens_gates_on_subtree(
+    inferred: tree,
+    lenses: always_required_lenses()
+  ) {
+    Rejected { diagnostics: r } =>
+      r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn probe_lens_accepts_from_marshaled_root(root: Node) -> Bool {
+  let tree = claim_inferred_tree(
+    root: root,
+    facts: claim_inferred_facts(
+      type_symbol: ^enforce_host_probe_type_sym,
+      algebra_symbol: ^enforce_host_probe_algebra_sym,
+      descent_symbol: ^enforce_host_probe_descent_sym
+    )
+  )
+  match run_required_lens_gates_on_subtree(
+    inferred: tree,
+    lenses: always_required_lenses()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
