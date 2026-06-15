@@ -1,0 +1,13 @@
+// dsl/std/list.dag — v2 CI / `dag run --source-root dsl` facade for `List<T>`.
+//
+// Canonical list algebra lives in `src/v3/std/list.dag` (v3 compiler). v2 indexes
+// only `--source-root dsl` and aliases `List<T>` through `FreeMonoid<T>` in
+// `dsl/std/types.dag`. This module exists so `import std.list { List }` resolves
+// under the dsl tree without pulling v3-only syntax.
+//
+// **🟡 Scaffold — dissolution trigger:** delete when v2 retires or `dag run` can
+// index `src/v3/std/list.dag` without parse failures.
+
+module std.list
+
+import std.types { List }

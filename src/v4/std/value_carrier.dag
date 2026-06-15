@@ -26,7 +26,7 @@ import v4.std.node { Symbol }
 // shares unchanged substructure with its predecessor); an Ephemeral carrier
 // invalidates the prior version, so an immutable-value host must copy it in
 // full before updating — the quadratic-allocation term ctrl#1533 measured.
-// Distinct concept from std.compute_fabric.PersistenceKind (storage
+// Distinct concept from product.compute_fabric.PersistenceKind (storage
 // durability across restarts): same word, different DAG-ancestor — this one
 // hangs off value-update semantics, not infrastructure lifecycle.
 // 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the distinction
