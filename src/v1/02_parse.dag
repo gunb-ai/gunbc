@@ -329,6 +329,7 @@ fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow =>
 // =========================================================================
 // Minimal-information token inspectors: take Token?, not List<Token>.
 // Callers extract the token explicitly — no ambiguity about which list.
+// See INVARIANTS.md "Minimal information per interface".
 // =========================================================================
 
 fn tok_is_keyword(tok: Token?, kw: String) -> Bool {
@@ -1810,7 +1811,7 @@ fn parse_optional_from_key(tokens: List<Token>, ctx: ParseContext) -> FromKeyRes
 }
 
 // =========================================================================
-// 8. parse_fn_def: fn name(params) -> ReturnType { body }
+// 8. parse_fn_def: fn name(params) -> ReturnType = expr | { body }
 // =========================================================================
 
 fn parse_fn_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
@@ -1874,16 +1875,26 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let body = r.expr
+  let tokens = skip_newlines(tokens: prefix.tokens)
+  let body_result = if tok_is_eq(tok: tokens |> first) {
+    let r = expect(tokens: tokens, expected: ExpectEq)
+    if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+    parse_expr(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+  } else if tok_is_lbrace(tok: tokens |> first) {
+    parse_block(tokens: tokens, ctx: ctx)
+  } else {
+    let span = token_span(tok: tokens |> first)
+    ExprResult { expr: parse_recovery_placeholder(), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected '=' or '{' after fn return type", span: span) } }
+  }
+  if has_err(err: body_result.err) { return ItemResult { item: named_dummy, tokens: body_result.tokens, ctx: body_result.ctx, err: body_result.err } }
+  let body = body_result.expr
 
   let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
+  ItemResult { item: item, tokens: skip_newlines(tokens: body_result.tokens), ctx: body_result.ctx, err: none }
 }
 
 // =========================================================================

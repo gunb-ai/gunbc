@@ -38,14 +38,6 @@ fn full_dsl_compiles() {
     );
 
     // Complexity violations are non-blocking. Only fail on hard errors.
-    for d in dsl_result.diagnostics.iter() {
-        let msg = v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone());
-        if msg.starts_with("complexity: ") {
-            continue;
-        }
-        let span = v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
-        eprintln!("DIAG_LOC file={} start={} end={} :: {}", span.file, span.start, span.end, msg);
-    }
     let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))

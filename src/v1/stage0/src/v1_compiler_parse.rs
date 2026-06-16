@@ -5418,16 +5418,47 @@ pub fn parse_fn_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx);
-        if has_err(r.err.clone()) {
+        let tokens = skip_newlines(prefix.tokens.clone());
+        let body_result = if tok_is_eq(tokens.clone().first().cloned()) {
+            {
+                let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+                if has_err(r.err.clone()) {
+                    return Rc::new(ItemResult {
+                        item: named_dummy.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                parse_expr(skip_newlines(r.tokens.clone()), ctx.clone())
+            }
+        } else {
+            if tok_is_lbrace(tokens.clone().first().cloned()) {
+                parse_block(tokens.clone(), ctx.clone())
+            } else {
+                {
+                    let span = token_span(tokens.clone().first().cloned());
+                    Rc::new(ExprResult {
+                        expr: parse_recovery_placeholder(),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            "expected '=' or '{' after fn return type".to_string(),
+                            span,
+                        )),
+                    })
+                }
+            }
+        };
+        if has_err(body_result.err.clone()) {
             return Rc::new(ItemResult {
-                item: named_dummy,
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
+                item: named_dummy.clone(),
+                tokens: body_result.tokens.clone(),
+                ctx: body_result.ctx.clone(),
+                err: body_result.err.clone(),
             });
         }
-        let body = r.expr.clone();
+        let body = body_result.expr.clone();
         let item = Rc::new(Node {
             name: name.clone(),
             span: start_span.clone(),
@@ -5450,8 +5481,8 @@ pub fn parse_fn_body_from_prefix(
         });
         Rc::new(ItemResult {
             item: item,
-            tokens: skip_newlines(r.tokens.clone()),
-            ctx: r.ctx.clone(),
+            tokens: skip_newlines(body_result.tokens.clone()),
+            ctx: body_result.ctx.clone(),
             err: None,
         })
     }
