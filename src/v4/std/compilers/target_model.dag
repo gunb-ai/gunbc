@@ -155,6 +155,10 @@ data grammar_relation_field_emitted: Symbol = grammar_relation_field_emitted
 data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
 data grammar_relation_field_bodied_scaffold: Symbol = grammar_relation_field_bodied_scaffold
 data grammar_relation_bodied_scaffold_missing: Symbol = grammar_relation_bodied_scaffold_missing
+// Target-independent operand binding keys for effect-IO roundtrip emit (M1 §4); spellings live in
+// target.binding_spellings per TargetModel (typescript.dag ioPath/ioContent today).
+data effect_io_roundtrip_operand_path_binding: Symbol = effect_io_roundtrip_operand_path_binding
+data effect_io_roundtrip_operand_content_binding: Symbol = effect_io_roundtrip_operand_content_binding
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding

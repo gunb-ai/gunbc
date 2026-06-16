@@ -13,10 +13,6 @@ module v4.compiler.translate
 
 
 import v4.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
-import v4.extdeps.languages.typescript {
-  ts_effect_io_binding_content,
-  ts_effect_io_binding_path
-}
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.compilers.target_model {
   CanonicalOperation,
@@ -81,7 +77,9 @@ import v4.std.node {
   NodeFold,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
+  Value,
   arrow_body_edge,
   fold_node,
   node_rebuild,
@@ -157,6 +155,8 @@ import v4.std.compilers.target_model {
   token_spelling_from_model,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
+  effect_io_roundtrip_operand_content_binding,
+  effect_io_roundtrip_operand_path_binding,
   serialize_type_expr_arrow_param_spelling,
   target_collection_repr_from_node,
   target_collection_witness_from_node,
@@ -939,10 +939,45 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
-// Callee-free 2-arg Transform — mirrors `eval_node_is_effect_io_roundtrip` shape gate (05_eval.dag).
+// Callee-free effect-IO roundtrip Transform — mirrors eval_node_is_effect_io_roundtrip (05_eval.dag)
+// but gates on canonical AST shape (Transform + callee-free + two Value leaf operands), not runtime
+// marker atoms. 🟡 dissolve-on: dedicated EffectIoRoundtrip behavior variant (bind gunbc#4757).
+fn translate_node_is_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn translate_transform_has_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: child } => translate_node_is_callee_reference(node: child)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn translate_node_is_value_leaf(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Value } => length(xs: node.children) == 0
+    _ => false
+  }
+}
+
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Transform } => length(xs: node.children) == 2
+    ComputationNode { behavior: Transform } =>
+      !translate_transform_has_callee_reference(node: node)
+        && length(xs: node.children) == 2
+        && fold(
+          node_positional_child_targets(node: node),
+          init: true,
+          f: fn(acc, child) { acc && translate_node_is_value_leaf(node: child) }
+        )
     _ => false
   }
 }
@@ -950,26 +985,48 @@ fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
 fn translate_project_effect_io_roundtrip_in_arrow_scope(
   _arrow: Node,
   _body: Node,
-  _target: TargetModel
+  target: TargetModel
 ) -> Outcome<TargetValueExpression> {
-  outcome_accepted(
-    target_value_expression_comma_sequence(
-      operands: [
-        target_value_expression_effect_apply(
-          effect_kind_discriminant: ^WriteResource,
-          operands: [
-            target_value_expression_binding_ref(binding: ts_effect_io_binding_path),
-            target_value_expression_binding_ref(binding: ts_effect_io_binding_content)
-          ]
+  bind_outcome(
+    o: target_binding_spelling_lookup(
+      target: target,
+      binding: effect_io_roundtrip_operand_path_binding
+    ),
+    f: fn(_) {
+      bind_outcome(
+        o: target_binding_spelling_lookup(
+          target: target,
+          binding: effect_io_roundtrip_operand_content_binding
         ),
-        target_value_expression_effect_apply(
-          effect_kind_discriminant: ^ReadResource,
-          operands: [
-            target_value_expression_binding_ref(binding: ts_effect_io_binding_path)
-          ]
-        )
-      ]
-    )
+        f: fn(_) {
+          outcome_accepted(
+            target_value_expression_comma_sequence(
+              operands: [
+                target_value_expression_effect_apply(
+                  effect_kind_discriminant: ^WriteResource,
+                  operands: [
+                    target_value_expression_binding_ref(
+                      binding: effect_io_roundtrip_operand_path_binding
+                    ),
+                    target_value_expression_binding_ref(
+                      binding: effect_io_roundtrip_operand_content_binding
+                    )
+                  ]
+                ),
+                target_value_expression_effect_apply(
+                  effect_kind_discriminant: ^ReadResource,
+                  operands: [
+                    target_value_expression_binding_ref(
+                      binding: effect_io_roundtrip_operand_path_binding
+                    )
+                  ]
+                )
+              ]
+            )
+          )
+        }
+      )
+    }
   )
 }
 

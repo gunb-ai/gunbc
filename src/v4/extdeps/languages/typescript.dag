@@ -113,6 +113,10 @@ import v4.std.node_query { find_named_child }
 import v4.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.compilers.target_model { TargetModel }
 import v4.std.compilers.target_model {
+  effect_io_roundtrip_operand_content_binding,
+  effect_io_roundtrip_operand_path_binding
+}
+import v4.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
@@ -1503,19 +1507,19 @@ fn ts_mvp1_target_model() -> TargetModel {
   }
 }
 
-// Effect-IO operand binding sites — shared by translate effect-roundtrip projection and host harness.
-data ts_effect_io_binding_path: Symbol = ts_effect_io_binding_path
-data ts_effect_io_binding_content: Symbol = ts_effect_io_binding_content
+// Effect-IO operand binding sites — alias std target-model keys for backward-compatible imports.
+data ts_effect_io_binding_path: Symbol = effect_io_roundtrip_operand_path_binding
+data ts_effect_io_binding_content: Symbol = effect_io_roundtrip_operand_content_binding
 
 fn ts_program_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
         ts_mvp1_binding_spellings(),
-        ts_effect_io_binding_path,
+        effect_io_roundtrip_operand_path_binding,
         "ioPath"
       ),
-      ts_effect_io_binding_content,
+      effect_io_roundtrip_operand_content_binding,
       "ioContent"
     ),
     ^ts_binding_fn_program,
