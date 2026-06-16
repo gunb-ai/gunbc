@@ -106,7 +106,7 @@ import std.bit { Bit, Byte, Word16, Word32, Word64, Word128 }
 //     SemiringAlgebra     <-> std.algebra.Semiring<C>       (unsigned integers)
 //
 //   NonIntegerAlgebra
-//     ApproximateFieldAlgebra<-> v3.std.approximate_field.ApproximateField<F> (Float)
+//     ApproximateFieldAlgebra<-> std.approximate_field.ApproximateField<F> (Float)
 //     BooleanAlgebraAlgebra  <-> std.algebra.BooleanAlgebra<C> (Bool)
 //     TerminalAlgebra        <-> single-inhabitant terminal    (Unit; DB-11)
 //

@@ -3,7 +3,7 @@
 //
 // Canonical substrate: `src/v3/std/approximate_field.dag` (v3 compiler). The v2 interpreter
 // indexes only `--source-root` trees and cannot parse full v3 std syntax, so this file
-// supplies a v2-parseable `module v3.std.approximate_field` when dsl sources import it
+// supplies a v2-parseable `module std.approximate_field` when dsl sources import it
 // (notably `dsl/std/float.dag` → `type Real = ApproximateField<FieldOfFractions<Int>>`).
 //
 // Keep variant tags and field names aligned with the canonical module so drift is obvious
@@ -13,7 +13,7 @@
 // index `src/v3/std/approximate_field.dag` without v2 parse failures, or when
 // `v3.std.approximate_field` no longer needs to resolve under `--source-root dsl` alone.
 
-module v3.std.approximate_field
+module std.approximate_field
 
 import std.algebra { Field }
 import std.integer { PositiveInt }

@@ -19,7 +19,7 @@ module std.float
 import std.algebra { Field, FieldOfFractions }
 import std.integer { Int }
 import std.machine_constraints { Compose, MachineWidth }
-import v3.std.approximate_field { ApproximateField }
+import std.approximate_field { ApproximateField }
 
 // Opaque compatibility carrier for older Float<N> receipts. The construction
 // chain authority below is `Real`; fixed-width public aliases route through
