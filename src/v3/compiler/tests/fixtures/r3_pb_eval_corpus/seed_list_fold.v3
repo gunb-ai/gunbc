@@ -1,8 +1,0 @@
-// Program authority for `pb_eval_corpus_seed_list_fold_deferred`.
-module user.pb_eval_seed_list_fold
-
-import std.list { List, cons, empty, fold }
-
-let pb_eval_seed_list_values: List<Int> = cons(1, cons(2, cons(3, empty())))
-let pb_eval_seed_list_fold_out: Int =
-  fold(pb_eval_seed_list_values, 0, |acc, x| acc + x)

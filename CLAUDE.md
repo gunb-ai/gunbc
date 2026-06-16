@@ -13,7 +13,6 @@ Read these docs before working:
 
 ```bash
 cargo test --workspace                     # all workspace crates (hand-written + integration)
-cargo test -p v3-compiler                  # v3 compiler — NOTE: most tests here are dormant in CI; the one exception is get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling (wired into ci_floor_parity via PR #4659). New tests added to this crate are NOT automatically CI-gated
 cargo clippy --all-targets -- -D warnings  # lint
 cargo fmt --all --check                    # format check (also runs via pre-push hook)
 ```

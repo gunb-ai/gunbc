@@ -1,9 +1,0 @@
-// TC3 strict-fire - strong-normalization scaffold over typed `.dag` programs.
-// Vacuity guard: evaluation has nontrivial step structure (function application
-// + arithmetic) so baseline eval-step and termination-evidence projections do
-// not collapse to a single trivial trace before producers land.
-module user.tc3_strong_normalization_executable
-
-fn succ(n: Int) -> Int = n + 1
-
-let _: Int = succ(succ(0))

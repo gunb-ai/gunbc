@@ -1,9 +1,0 @@
-// std.t_las_parallelism_iteration_gate95_fixture — T-LAS gate #95 companion.
-//
-// Pins `parallelism_enforceable` (`src/v3/lenses/parallelism.dag`) for Self-Generation-0 / integration
-// discovery. Executable `apply_lens(parallelism, NodeScope { … })` authoring remains deferred —
-// receipts exercise the host consumer (`check_enforced_lens_applications`) in
-// `enforced_lens_application.rs`.
-module std.t_las_parallelism_iteration_gate95_fixture
-
-import lenses.parallelism { parallelism_enforceable }

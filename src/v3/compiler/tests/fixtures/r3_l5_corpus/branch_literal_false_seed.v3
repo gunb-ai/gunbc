@@ -1,9 +1,0 @@
-// R3 L4 - second W1 Rust/Int receipt inside the #1499 surface: false Bool branch, signed Int output, one named output bind.
-
-let l4_pick: Bool = false
-
-let l4_false_out: Int =
-  match l4_pick {
-    True => 0
-    False => -4
-  }

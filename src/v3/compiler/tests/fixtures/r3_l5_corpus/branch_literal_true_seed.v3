@@ -1,9 +1,0 @@
-// R3 L4 - branch-only claim program on the current eager PR-B spine (no Callable / fold lambdas) so `dag_eval_output` can use `evaluate_body` while Callable remains fail-closed.
-
-let l4_pick: Bool = true
-
-let l4_out: Int =
-  match l4_pick {
-    True => 3
-    False => 0
-  }
