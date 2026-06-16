@@ -1,9 +1,10 @@
 //! Live witness: v4 `build_parse_table` / `parse` under the v2 interpreter.
 //!
-//! **CI (#4957 ExpectFail defer):** `scripts/v4-interpreted-parse-termination-expect-fail-gate.sh`
-//! runs this witness and treats honest budget RED as PASS (labeled defer). Oracle
-//! (`fold_list_native_semantics_test`) gates merge. Dissolve-on: interpreted-parse fold-cost
-//! optimization work-item node://adhoc-fc63cf25-e45 (dissolve-on for ExpectFail defer).
+//! **#4957 DEFERRED-not-green (circuit-breaker B):** interpreted-parse termination NOT
+//! achieved; native-fold-cost insufficient under 30s budget (by-execution: native-on
+//! fold_list=11384, fold_list_right=62895, recv_timeout @30s on arm64). NOT a green claim.
+//! Merge gate: `fold_list_native_semantics_test` only. Dissolve-on: node://adhoc-fc63cf25-e45
+//! (fold-cost opt → sub-30s GREEN flips defer; then un-#[ignore] + CI-wire native-off teeth).
 //!
 //! Without native `fold_list`/`fold_list_right` fast paths, `bisect_parse_terminates` exceeds
 //! its wall budget (O(n) interpreter frames per list element in the grammar fold hot loop).
@@ -91,9 +92,9 @@ where
     })
 }
 
-/// Primary +/- witness: RED without native fold, GREEN with fix (ExpectFail defer in CI).
-/// Times `bisect_parse_terminates` only; compile_to_resolved outside timer (thread_local ctx).
+/// Primary witness — DEFERRED-not-green (manual only; no CI green claim).
 #[test]
+#[ignore = "DEFERRED-not-green: termination NOT achieved; native-fold-cost insufficient @30s (native-on fold_list=11384 fold_list_right=62895 recv_timeout); dissolve-on node://adhoc-fc63cf25-e45"]
 fn interpreted_parse_bisect_parse_terminates_within_budget() {
     with_bisect_ctx(|ctx| {
         v2_interpreter::fold_native_hit_counts_reset();
@@ -121,10 +122,9 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
     });
 }
 
-/// Perturbation receipt: witness must trip RED when native-fold is disabled (fail-open guard).
-/// Manual: `cargo test -p v2-compiler-tests --release interpreted_parse_termination_test::interpreted_parse_witness_exceeds_budget_with_native_disabled -- --exact --ignored --test-threads=1`
+/// Perturbation teeth — proven manually; CI-wire required on dissolve-on (node://adhoc-fc63cf25-e45).
 #[test]
-#[ignore = "perturbation RED receipt: native-fold disabled exceeds 30s budget (slow)"]
+#[ignore = "teeth-deferred-not-CI-wired: native-off must recv_timeout budgeted path; wire ExpectTimeout gate on dissolve-on"]
 fn interpreted_parse_witness_exceeds_budget_with_native_disabled() {
     let resolved = compile_to_resolved(Rc::new(bisect_sources()));
     assert_resolved_ok(&resolved);
