@@ -13,7 +13,7 @@ import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDi
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //
-// Practice 4 — Worksheet B §1.6 dimension axes (case 16 orthogonal grid; no CacheKind):
+// Worksheet B §1.6 dimension axes (case 16 orthogonal grid; no CacheKind):
 // 🟡 STAGED on ValueShape, PersistenceLocality, EvictionPolicy, AtomicityModel, AuthScope,
 // ReadLatencyClass, ConsistencyModel, CacheLookupSemantics, CacheWriteSemantics,
 // CacheMissSemantics, KeyDerivationClass, InputSurface, VisibilityScope, InvalidationTrigger.

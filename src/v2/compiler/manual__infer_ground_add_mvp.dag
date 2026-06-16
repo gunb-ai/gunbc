@@ -1,4 +1,4 @@
-// Anchor: design-v2-compiler-homomorphism.md MVP add(x,y)=x+y
+// Anchor: MVP add(x,y)=x+y
 
 
 module v2.test.manual.infer_ground_add_mvp
@@ -78,7 +78,7 @@ import v2.std.runtime {
 import v2.std.witness { Holds, Violates }
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 type InferReceiptCase
-// 🟡 coproduct dissolution — LB-P4-3212
+// 🟡 coproduct dissolution
   = InferDiagnosticReceiptCase {
       label: String
       input_symbol: Symbol

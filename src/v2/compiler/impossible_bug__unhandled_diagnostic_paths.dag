@@ -1,5 +1,5 @@
 // Scope: TestClaim — unhandled diagnostic paths impossible-bug class (R2+). Tier 2 runtime-safety proofs make division-by-zero, OOB, force-unwrap either proven safe or made total — never partial.
-// Anchor: THESIS.md "Enumerable impossible-bug classes" §390-393 R2+ + std/integer.dag Tier-2 totalization
+// Anchor: enumerable impossible-bug class R2+ (DESIGN.md §5 fail-closed) + std/integer.dag Tier-2 totalization
 
 
 module v2.test.impossible_bug.unhandled_diagnostic_paths

@@ -22,7 +22,7 @@ module extdeps.http.server
 import std.http_path { PathTemplate }
 import std.types { HttpMethod, HttpStatus, Port }
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // GREEN (terminal). These are distinct HTTP request-body media families
 // with externally specified wire behavior. A variant payload would erase the
 // parser/serializer selection carried by the media type itself.
@@ -33,7 +33,7 @@ type HttpRequestBodyKind
   | BinaryRequestBody
   | FormRequestBody
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // GREEN (terminal). Route parameters are externally visible in different
 // request locations; server emitters must bind them from different request
 // components, so the variants are not aliases for one unstructured map.

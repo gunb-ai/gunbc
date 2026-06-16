@@ -4,10 +4,9 @@
 // alias from the legacy 64-bit storage carrier to the honest construction-
 // chain form. Authority chain:
 //
-//   - `docs/design-numeric-construction.md` §3 (construction-chain layer 3).
-//   - `docs/audit/t-numeric-construction-group-completion-6q.md` (Q6
-//     single-authority resolution: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
-//     not the rejected compact form `type Int = GroupCompletion<Nat>`).
+//   - construction-chain layer 3.
+//   - Q6 single-authority resolution: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
+//     not the rejected compact form `type Int = GroupCompletion<Nat>`.
 //   - GroupCompletion<M> substrate-introduction (#1448, merged).
 //   - Director ratifications on inbox #1288 (#4360232423 substrate-split,
 //     #4362239705 Slice 3 alias-pivot dispatch).
@@ -27,7 +26,7 @@
 // refinements** of the abstract carriers `Int` / `UInt` via
 // `Compose<Algebra, MachineWidth<N>>` with literal-Nat `N` in slot-2 for every
 // fixed width including 8-bit (`MachineWidth<8>`), matching parser-lowered
-// `Int<8>` / `UInt<8>` / `Nat<8>` (R3 gate #60 Slice Z; INVARIANTS P2 single
+// `Int<8>` / `UInt<8>` / `Nat<8>` (R3 gate #60 Slice Z; DESIGN.md §3 single
 // slot-2 authority). Gate #19 `numeric_aliases_align_to_refinements` — not
 // parallel `OrderedRing<Word*>` / `Semiring<Word*>` substrate. Grounding still
 // maps each pair to the same Rust `i*` / `u*` primitives as before (`Byte` at
@@ -64,7 +63,7 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 //
 // Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
 // `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
-// per #1818 / Codex P2 framing) — NOT bare witness shape (Q-MC sub-decision
+// per #1818 / single-authority framing) — NOT bare witness shape (Q-MC sub-decision
 // 3 critical correction: witness shape doesn't go in slot-1; the named
 // concept does).
 //
@@ -81,8 +80,7 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 // `std.algebra`) is the opaque atom denoting "the abelian-group carrier
 // derived from Nat via the Grothendieck construction"; `AbelianGroup<T>`
 // over that carrier is the standard algebra witness. This is the canonical
-// Q6 single-authority form per the audit at
-// `docs/audit/t-numeric-construction-group-completion-6q.md`; the compact
+// Q6 single-authority form; the compact
 // alternative `type Int = GroupCompletion<Nat>` was explicitly rejected.
 //
 // Fixed-width `Int8`..`Int128` names refine this abstract `Int` via Compose
@@ -95,7 +93,7 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 // IS the unsigned-integer algebra surface. Wrapping `Nat` in
 // `CommutativeMonoid<Nat>` (or `Monoid<Nat>`) would project out the
 // multiplicative structure and the multiplicative identity `1`,
-// violating P2 facts-flow-forward — the substrate cannot structurally
+// violating facts-flow-forward (DESIGN.md §3 single authority) — the substrate cannot structurally
 // name "the additive monoid projection of Nat" without dropping
 // Nat's other monoid. The brief's `CommutativeMonoid<Nat>` shorthand
 // is anemic for the same reason `Int = AbelianGroup<Nat>` would be
@@ -120,7 +118,7 @@ type UInt = Nat
 // `IntPlatform`/`UIntPlatform` stay verbatim (Q1 RATIFIED). Inner substrate
 // token is `PointerWidth` to avoid collision with pre-existing
 // `Platform = Linux | Macos | Windows` (OS-identity axis) at
-// `dsl/std/types.dag:356`; per `feedback_reason_not_label`, pointer-width
+// `dsl/std/types.dag:356`; per reason-not-label, pointer-width
 // is the structural reason and OS-identity vs pointer-width are
 // orthogonal axes (32-bit Linux vs 64-bit Linux are different pointer
 // widths but same OS).
@@ -138,7 +136,7 @@ type UInt = Nat
 // precision `int`, etc.) handle ground-time projection via target-
 // conditioned **lowering** — substrate stays clean (Grounding-lane work).
 //
-// Practice 4: N/A — type aliases over existing `Compose<...>` carrier;
+// Decomposition (DESIGN.md §2): N/A — type aliases over existing `Compose<...>` carrier;
 // no new sum types or coproducts introduced here.
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>

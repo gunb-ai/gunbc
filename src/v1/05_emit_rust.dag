@@ -1262,7 +1262,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   )
   // Hand-maintained modules: interpreter, CLI run handler, REST transport
   // facts (bootstrap-only; dissolution when facts are graph-exported — see
-  // rest_transport_facts.rs and INVARIANTS bounded substrate seed).
+  // rest_transport_facts.rs bounded substrate seed).
   // These are not generated — they survive regen as non-generated files.
   let hand_maintained_mods = if has_compiler_tests {
     "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;"
@@ -1896,7 +1896,7 @@ fn alias_rhs_rust_qualify_module_filename(name: String, alias_module: String, im
 }
 
 // Parametric alias RHS bases must not use bare global registry homonym lookup when the
-// spelling is declared via import — import_module is the authority (P2 boundary discipline).
+// spelling is declared via import — import_module is the authority (boundary discipline, DESIGN.md §3).
 fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> String {
   let local_mod = module_to_filename(name: alias_module)
   match lookup_item(registry: scope.item_registry, name: name) {
@@ -1995,7 +1995,7 @@ fn is_phantom_unit_variant_type_arg(env: TypeEnv, variant_name: String) -> Bool 
 
 // Parametric alias emission (F3/F4): only real `type Foo<T> = Bar<T>` shapes — not opaque
 // carriers (`type GroupCompletion<M>`) or container-lowering stubs as invalid Rust aliases.
-// Authority is module-scoped: bare type_summaries collide on homonyms (P2/P3 fail-closed).
+// Authority is module-scoped: bare type_summaries collide on homonyms (fail-closed).
 fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename: String, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
   if is_phantom_unit_variant_type_arg(env: scope.type_env, variant_name: rhs_name) {
     true
@@ -2052,7 +2052,7 @@ fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename
 }
 
 // Every applied nominal shell in alias RHS must have Rust type authority in its
-// defining module (P2/P3) — matches recursive render_rust_alias_rhs_type emission.
+// defining module — matches recursive render_rust_alias_rhs_type emission.
 fn alias_rhs_nominal_shell_has_rust_authority(n: Node, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
   if n.connective == NoConnective && n.children |> count > 0 {
     let name = authored_name_at(source_indices: source_indices, node: n)
@@ -2737,7 +2737,7 @@ fn function_value_params(params: List<Node>) -> List<Node> {
 // with a declared type param. Both params satisfy is_function_type_param
 // (name == type_expr.name AND type_expr.inferred is TypeVariable, because
 // resolve_item_types registered T as a TypeVariable binding). The emit-time
-// splitter can't tell them apart — that's the P1 shape flagged by the
+// splitter can't tell them apart — that's the shape flagged by the
 // dissolution target (partition Node.params into type/value, or add
 // ParamKind).
 //
@@ -3357,7 +3357,6 @@ fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_typ
 //   ordinary variable references (`emit_var_ref`). Do not remove `+ Clone`
 //   here and "compensate" only in the emitter: that splits clone authority
 //   between the type signature and ownership analysis and breaks fixed-point.
-//   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
 fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let type_node = resolved_type(n: param)
   if generic_param_names |> count > 0 {
@@ -7183,7 +7182,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
-  // P2: shared-type data accessors return Rc<T> when body stores Rc::new(...) (e.g. TestClaim via call).
+  // shared-type data accessors return Rc<T> when body stores Rc::new(...) (e.g. TestClaim via call).
   let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
     wrap_shared_type(target: Rust, inner: ty_str)
   } else {

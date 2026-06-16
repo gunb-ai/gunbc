@@ -1,6 +1,6 @@
 // src/v2/std/find_witness.dag
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
-// Anchor: docs/design-v2-compiler-homomorphism.md (Pass B unification row); docs/modeling-discipline.md Practice 11.
+// Anchor: Pass B unification row.
 // Status: W-T-10 — T-25-tail predicate prover for constraint_satisfaction + exact_structural_equality_zip_fold.
 
 
@@ -115,7 +115,7 @@ fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// P2: enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
+// enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
 // declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
 // `predicate` is retained for call-site symmetry; realized rules only (see find_witness entry match).
 fn enumeration_candidate_list(

@@ -4,7 +4,7 @@
 // sugar.dag relabels a surface atom's connective, this reshapes a surface body expression into
 // its Behavior sub-DAG, so body_producer downstream is a thin validate+attach over the result
 // instead of index-reading fixed flat-token positions.
-// M9 concept-DAG home: std/compilers/ (compiler-pipeline transformation models); the produced
+// concept-DAG home: std/compilers/ (compiler-pipeline transformation models); the produced
 // carriers (ComputationNode{Transform}, Positional edges) and the Symbol type are owned by
 // node.dag — this module introduces NO new node/symbol notion, only the transformation.
 // Status: T-8 modeled — binary-infix row landed (add: a + b → Transform[+, a, b]); if/loop/let
@@ -112,7 +112,7 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
 // is `[left, operator, right]`. A residual/unsupported shape is the malformed-body case.
 // 🟡 gated — binary-infix is the only dispatched body row; the control-flow keyword rows route to
 // the lower_branch/lower_loop/lower_bind primitives above, and brace-region isolation from the full
-// flat parse sequence is unwired (docs/modeling-discipline.md Practice 4 / INVARIANTS P5) —
+// flat parse sequence is unwired —
 // feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 — dissolve-on: the
 // normalize fold isolates the brace-delimited body atoms and routes each surface form (infix /
 // if / loop / let) to its lowering primitive here — forbidden: index-reading fixed token positions

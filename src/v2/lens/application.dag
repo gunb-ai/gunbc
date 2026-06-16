@@ -1,10 +1,10 @@
 // src/v2/lens/application.dag
 //
 // Scope: lens-application surface — how a user attaches a lens to a program section (declaration / module / expression scope) with configurable enforcement. THE opt-in-depth mechanism + user-defined-dimensions surface + the ONLY advisory→fail-closed bridge. Referenced by report.dag/synthesis.dag's apply_lens(Enforce) — this file is its substrate home.
-// Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
+// Anchor: user-defined dimensions + audience duality / opt-in depth + v3 T-Lens-Application-Surface precedent.
 //
 // Status: carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
-// P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
+// Boundary discipline (DESIGN.md §3): THIS module is the single authority for section-scoped `Lens<Output>.read`,
 // `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
 // `v2.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
 // `CompileLensMode`, `apply_compile_lens` over `InferredTree`); adapter wiring is follow-on.
@@ -63,25 +63,25 @@ type NodeId {
 }
 type SourceSpan
 
-// 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
+// 🟢 TERMINAL — disjoint sum over section shapes.
 type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// 🟢 TERMINAL — C-8 fail-closed: only Error is admitted steady state (design §3 nominal).
+// 🟢 TERMINAL — C-8 fail-closed: only Error is admitted steady state.
 // v2 substrate: unit variant (v3 `Error` tag is not a v2 type name).
 type DiagnosticSeverity
   = SeverityError {}
 
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
-// violates first argument is full Output (v3 lens_application.dag / design §2) so
+// violates first argument is full Output (v3 lens_application.dag) so
 // per-lens relations can discriminate sum variants before budget comparison.
 type LensEnforcement<Output, Budget, Projected> {
   project: fn(Output) -> Projected
   violates: fn(Output, Budget) -> Bool
 }
 
-// 🟢 TERMINAL — bundled lens + canonical enforcement (P2 single authority).
+// 🟢 TERMINAL — bundled lens + canonical enforcement (single authority).
 type EnforceableLens<Output, Budget, Projected> {
   lens: Lens<Output>
   enforcement: LensEnforcement<Output, Budget, Projected>
@@ -106,7 +106,7 @@ type LensApplicationConfig<Output, Budget, Projected>
       diagnostic_severity: DiagnosticSeverity
     }
 
-// 🟢 TERMINAL — enforce-mode application carrier (design-lens-application-surface §2).
+// 🟢 TERMINAL — enforce-mode application carrier.
 type EnforcedApplication<Output, Budget, Projected> {
   enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
@@ -132,7 +132,7 @@ type LensEnforcementViolationInput<Projected, Budget> {
   declared: Budget
 }
 
-// 🟢 TERMINAL — introspect-mode application carrier (design-lens-application-surface §2).
+// 🟢 TERMINAL — introspect-mode application carrier.
 type IntrospectApplication<Output> {
   lens: Lens<Output>
   section: SectionRef
@@ -381,7 +381,7 @@ fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
   )
 }
 
-// All-or-nothing sequential rewrite program (P2 finding 2 / PR #3162).
+// All-or-nothing sequential rewrite program (PR #3162).
 fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
@@ -420,7 +420,7 @@ fn lens_enforcement_result<Output, Budget, Projected>(
   }
 }
 
-// Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
+// Introspect substrate entry — Lens<Output> only.
 // 🟡 gated — feature:section-ref-identity-evidence — `section` selects the lens read subject via `section_subject`; Path-backed DeclarationId/NodeId handles are the bounded bridge (see gate on `section_subject` above).
 fn apply_lens<Output>(
   lens: Lens<Output>,
@@ -435,7 +435,7 @@ fn apply_lens<Output>(
   )
 }
 
-// Enforce substrate entry — EnforceableLens + declared budget (design §2 EnforcedApplication).
+// Enforce substrate entry — EnforceableLens + declared budget (EnforcedApplication).
 // 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,

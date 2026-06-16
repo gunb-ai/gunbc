@@ -29,11 +29,11 @@ import v2.std.node { Symbol }
 // Distinct concept from product.compute_fabric.PersistenceKind (storage
 // durability across restarts): same word, different DAG-ancestor — this one
 // hangs off value-update semantics, not infrastructure lifecycle.
-// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the distinction
+// 🟢 terminal — decompress→map→reduce (DESIGN.md §2) — the distinction
 // is grounded in external authority (Driscoll–Sarnak–Sleator–Tarjan 1989's
 // definition of a persistent structure), not an interim of ours. Step-2: the
 // arms are mutually exclusive properties of one carrier under update, not
-// coordinates over another axis. Patterns 1–5 N/A: no payloads to unify, no
+// coordinates over another axis. No payloads to unify, no
 // richer named source; the carrier itself is an external structure referenced
 // by Symbol, so there is nothing here to dissolve into.
 type PersistenceKind = Ephemeral | Persistent
@@ -91,7 +91,7 @@ data list_carrier: CarrierDeclaration = {
 // The law is declared as EXECUTABLE WITNESSES, not a data type
 // (v2.test.std_grounding.value_carrier_laws): a sharing-receipt type
 // would have no constructor until the phase-2 swap lands, and dead vocabulary
-// is the Practice-4 failure mode. If phase 2 needs a receipt, it lands with
+// is the no-code-without-a-consumer failure mode (DESIGN.md §5). If phase 2 needs a receipt, it lands with
 // its first producer.
 
 // ── Name interning (ctrl#1533 M-D) ─────────────────────────────────────────
@@ -108,10 +108,10 @@ data list_carrier: CarrierDeclaration = {
 // of Record sharing hits, 31.8K un-interned Strings) — DERIVES from this
 // fact; it is not a hand-rolled optimization.
 
-// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the three name
+// 🟢 terminal — decompress→map→reduce (DESIGN.md §2) — the three name
 // domains of a value representation are a closed set fixed by the value
 // model itself (a value names its type, its variant, and its fields —
-// nothing else); M4 grounds enum-not-string. Patterns 1–5 N/A: no payloads
+// nothing else); M4 grounds enum-not-string. No payloads
 // to unify, no richer named source.
 type NameDomain = TypeNames | VariantNames | FieldNames
 

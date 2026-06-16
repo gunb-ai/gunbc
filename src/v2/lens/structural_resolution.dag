@@ -6,7 +6,7 @@
 // Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via
 //   parametric `ClassifiedDependencyView<StructuralResolutionStatus>`; per-node
 //   `InferredFacts` read at classify time via `tree.facts.lookup(usage_site)`, not
-//   stored on the row (Practice 11 / INVARIANTS P2 parallel-payload dissolution).
+//   stored on the row (parallel-payload dissolution).
 
 
 module v2.lens.structural_resolution
@@ -33,8 +33,8 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
 
-// 🟢 projection carrier — Practice 11: binding status is computed from
-// `dependency.kind` + `usage_site` `Witness<InferredFacts>` (P2/P3); not
+// 🟢 projection carrier: binding status is computed from
+// `dependency.kind` + `usage_site` `Witness<InferredFacts>`; not
 // authored as a parallel substrate tag. Variants are irreducible use-site
 // outcomes (`BindingResolved` / `UnboundSymbolAtUse` / lookup-miss /
 // fail-closed infer witness / out-of-scope dependency kind for this lens).
@@ -59,7 +59,7 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
 }
 
 // 🟡 staged — dissolve-on: resolve→infer witness bridge lands resolve Violates on fact table.
-// BindsTo status reads infer/resolve witnesses at the use site (P3), not declaration facts.
+// BindsTo status reads infer/resolve witnesses at the use site, not declaration facts.
 // BindingResolved on `Holds` means use-site infer succeeded structurally only — not that resolve
 // stamped the symbol; until inline resolve stamps, treat as staged posture not load-bearing.
 fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {

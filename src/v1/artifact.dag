@@ -102,7 +102,7 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
 // DAG artifact substrate (post-infer typed graph JSON, --target dag)
 // =========================================================================
 
-// 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v2 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md Practice 11).
+// 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v2 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md).
 type DagNodeId = String
 
 // 🟡 needs-more-work — feature:v2-dag-typed-inferred-record — dissolve-on: emit_dag_artifact constructs DagInferredRecord instead of inferred JSON strings.

@@ -1,7 +1,6 @@
 // src/v2/compiler/07_target_carriers.dag
 // Scope: Shared compile-stage language/source aliases — breaks compile ↔ emit import cycle.
 // Status: Wave-5-A — TargetModel authority lives in v2.std.compilers.target_model.
-// Anchor: docs/design-v2-compiler-homomorphism.md
 
 
 module v2.compiler.target_carriers

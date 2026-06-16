@@ -99,7 +99,7 @@ type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnviron
 // distinguish step-vs-job-vs-workflow secret scopes), which is why the
 // carrier folds into actions.dag rather than std.
 //
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟡 SCAFFOLD. The three-way step/job/workflow scope split mirrors the
 // existing placement sites (`Step.env`, `Job.env`, `Workflow.env`) named
 // in the dissolution trigger below: once `WorkflowSecret` attaches at
@@ -158,7 +158,7 @@ type Job {
 // and https://docs.github.com/en/actions/using-jobs/using-concurrency (mapping keys
 // `group`, `cancel-in-progress`, `queue`; expression-valued cancel-in-progress).
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟡 YELLOW (scaffold). Literal bool vs opaque `${{ }}` expression string mirrors GitHub's
 // surface union; richer source is a typed Actions boolean-expression carrier when/if
 // modeled structurally in this repo.
@@ -172,7 +172,7 @@ type CancelInProgressSpec
 // This sum therefore excludes literal `true` while still modeling omitted key, literal
 // `false`, and opaque `${{ }}` (expression truth remains runtime — see 🟡 below).
 //
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). `QueueMaxCancelInProgressFalse` is 1:1 with YAML `cancel-in-progress: false`.
 // 🟡 YELLOW (scaffold). `QueueMaxCancelInProgressExpression` mirrors expression-valued mapping;
 // GitHub may still reject at runtime if the expression evaluates to true with `queue: max`.
@@ -207,7 +207,7 @@ type ConcurrencySpec
 // -- Runners ----------------------------------------------------------
 // The execution environment for a job.
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). `HostedRunner` + `RunnerLabel` are a closed scaffold set aligned with
 // GitHub's documented hosted runner images for this repo's first-draft model.
 // Ledger (patterns 1–4): no cheaper dissolution for the label enum itself — expanding the

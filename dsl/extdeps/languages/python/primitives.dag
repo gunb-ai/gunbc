@@ -84,7 +84,7 @@ module extdeps.languages.python.primitives
 // admit nonsense rows like `PythonBooleanPrimitive { algebra: TerminalAlgebra }`
 // — illegal-states-unrepresentable forbids that.
 //
-// Practice 4 (docs/modeling-discipline.md) ledger annotations follow the
+// Coproduct-dissolution ledger annotations follow the
 // post-#1046 Go file style: each closed coproduct names its **🟢 GREEN**
 // (terminal / consumed) arm and its **🟡 YELLOW** (parse-scaffold reserved)
 // arm. Every coproduct below has ≥2 arms by construction (v2 bootstrap
@@ -97,14 +97,14 @@ module extdeps.languages.python.primitives
 
 // --- Integer primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN** — `PythonIntOrderedRingAlgebra` is the terminal
+// **🟢 GREEN** — `PythonIntOrderedRingAlgebra` is the terminal
 // algebra-tag for Python's spec integer (signed, additive inverse exists).
 // **🟡 YELLOW (scaffold)** — `PythonIntegerSpecAlgebraReserved`.
 type PythonIntegerSpecAlgebraTag
   = PythonIntOrderedRingAlgebra
   | PythonIntegerSpecAlgebraReserved
 
-// Practice 4: **🟢 GREEN** — `PythonIntUnboundedCarrier` is the honest
+// **🟢 GREEN** — `PythonIntUnboundedCarrier` is the honest
 // declaration that Python `int` is arbitrary-precision (substrate-gap
 // flag #1; DB-11 will refine to a countably-infinite cardinality witness).
 // **🟡 YELLOW (scaffold)** — `PythonIntegerSpecCarrierReserved`.
@@ -115,14 +115,14 @@ type PythonIntegerSpecCarrierTag
 
 // --- Boolean primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN** — `PythonBoolCanonicalTwoElementBooleanAlgebra`
+// **🟢 GREEN** — `PythonBoolCanonicalTwoElementBooleanAlgebra`
 // is the terminal algebra-tag for Python's spec `bool`.
 // **🟡 YELLOW (scaffold)** — `PythonBooleanSpecAlgebraReserved`.
 type PythonBooleanSpecAlgebraTag
   = PythonBoolCanonicalTwoElementBooleanAlgebra
   | PythonBooleanSpecAlgebraReserved
 
-// Practice 4: **🟢 GREEN** — `PythonBoolBitCarrier` is the algebra
+// **🟢 GREEN** — `PythonBoolBitCarrier` is the algebra
 // value-domain witness for `bool` (per `dsl/std/integer.dag:4` carrier-vs-
 // evidence convention; not CPython object representation).
 // **🟡 YELLOW (scaffold)** — `PythonBooleanSpecCarrierReserved`.
@@ -133,7 +133,7 @@ type PythonBooleanSpecCarrierTag
 
 // --- String primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN** —
+// **🟢 GREEN** —
 // `PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra` is the
 // terminal algebra-tag for Python `str` (header §STRING).
 // **🟡 YELLOW (scaffold)** — `PythonStringSpecAlgebraReserved`. Encoding
@@ -142,7 +142,7 @@ type PythonStringSpecAlgebraTag
   = PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra
   | PythonStringSpecAlgebraReserved
 
-// Practice 4: **🟢 GREEN** — `PythonStrUnicodeCodePointSequenceCarrier` is
+// **🟢 GREEN** — `PythonStrUnicodeCodePointSequenceCarrier` is
 // the terminal carrier-tag for Python `str`.
 // **🟡 YELLOW (scaffold)** — `PythonStringSpecCarrierReserved`.
 type PythonStringSpecCarrierTag
@@ -152,14 +152,14 @@ type PythonStringSpecCarrierTag
 
 // --- Unit (None / NoneType) primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN** — `PythonUnitTerminalAlgebra` is the
+// **🟢 GREEN** — `PythonUnitTerminalAlgebra` is the
 // single-inhabitant algebra of `NoneType`.
 // **🟡 YELLOW (scaffold)** — `PythonUnitSpecAlgebraReserved`.
 type PythonUnitSpecAlgebraTag
   = PythonUnitTerminalAlgebra
   | PythonUnitSpecAlgebraReserved
 
-// Practice 4: **🟢 GREEN** — `PythonUnitTerminalCarrier` is the
+// **🟢 GREEN** — `PythonUnitTerminalCarrier` is the
 // single-inhabitant carrier sentinel for `None` (DB-11 will refine to
 // `Cardinality<T, Exactly(1)>`).
 // **🟡 YELLOW (scaffold)** — `PythonUnitSpecCarrierReserved`.
@@ -185,7 +185,7 @@ type PythonUnitSpecCarrierTag
 // concrete-width integer routing should consult target-specific lanes
 // (Rust / Go `*_integer_range` rows) rather than synthesizing a width here.
 //
-// Practice 4 (docs/modeling-discipline.md): **🟡 YELLOW (scheduled
+// **🟡 YELLOW (scheduled
 // scaffold).** All four arms are spec-realized and consumed today (each
 // has a matching row in `python_spec_predeclared_primitives` /
 // `python_dag_unit_target_primitive`):

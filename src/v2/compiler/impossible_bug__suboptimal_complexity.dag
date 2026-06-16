@@ -1,14 +1,14 @@
 // Scope: TestClaim — suboptimal-complexity contract violation impossible-bug
 //        class (R1). There is NO `complexity ≤ O(...)` annotation: complexity
-//        IS coercion-cost (THESIS:187 unification), DERIVED by
+//        IS coercion-cost, DERIVED by
 //        lens/complexity.dag from Node structure. An operation whose
 //        structural context bounds its cost (the bound its consuming
 //        position / algebra inhabitance permits) but whose lens-derived
 //        complexity exceeds that bound MUST error at compile time, not
 //        review time. Bound = structural requirement; cost = lens-derived;
 //        neither is a tag (feedback_no_annotations — compositional only).
-// Anchor: THESIS.md "Enumerable impossible-bug classes" §374-376 R1 — the
-//         CLASS only; THESIS's "annotated complexity ≤ O(n log n)" wording
+// Anchor: enumerable impossible-bug class R1 (DESIGN.md §5 fail-closed) — the
+//         CLASS only; an "annotated complexity ≤ O(n log n)" wording
 //         is annotation shorthand, the modeled mechanism is a structural
 //         cost bound + lens derivation. Also lens/complexity.dag.
 

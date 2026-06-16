@@ -1,7 +1,7 @@
 // src/v2/extdeps/runtimes/v2_effect_io_pure.dag
 // Scope: Pure/test effect-IO handler bundle — file / HTTP / storage backends over an in-memory fixture store.
 // Status: Wave-2 M-E2 — inhabits EffectHandlerBinding from std/runtime.dag E-1; declare-per-claim fixture
-//   store + inject-per-run binding construction (design-v2-runtime-architecture.md §4.3, §7 Q-R3).
+//   store + inject-per-run binding construction (Q-R3).
 
 module v2.extdeps.runtimes.v2_effect_io_pure
 
@@ -47,14 +47,14 @@ import v2.std.runtime {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-// 🟢 coproduct dissolution — resource transport backend axis (Practice 4); wave-2 gate exercises
+// 🟢 coproduct dissolution — resource transport backend axis; wave-2 gate exercises
 // FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
 type EffectIoResourceBackend
   = FileResourceBackend
   | HttpResourceBackend
   | StorageResourceBackend
 
-// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// 🟡 gated — illegal-states interim — feature:effect-io-backend-parameterized-store —
 // consumer: effect_io_pure_backends_match — locator carries backend tag alongside store.backend;
 // mismatch unrepresentable once fixture store is parameterized by backend. dissolve-on-arrival:
 // backend-indexed store type or eq/tag substrate in std/; forbidden: silent dual-tag drift.
@@ -63,7 +63,7 @@ type EffectIoResourceLocator {
   identity: Symbol
 }
 
-// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// 🟡 gated — illegal-states interim — feature:effect-io-backend-parameterized-store —
 // consumer: effect_io_pure_backends_match — store carries backend tag alongside locator.backend;
 // dissolve-on-arrival: backend-indexed store type makes cross-backend lookup unrepresentable.
 type EffectIoFixtureStore {
@@ -180,7 +180,7 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:effect-io-backend-match — dissolve-on-arrival: backend equality via declared carrier
 // projection instead of nested match; forbidden: permanent untagged Bool backend-alignment predicates.
 fn effect_io_pure_backends_match(

@@ -447,7 +447,7 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
   go_facts_string,
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn go_inhabitant_atom(id: Symbol) -> Node {
@@ -1915,7 +1915,7 @@ data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealizat
 
 // 🟡 gated — feature:go-target-atom-realization-int — bind docs/planning/v2-go-target-atom-realization-worksheet-2026-06-01.md §4 Int row —
 // dissolve-on: v2.std.compilers.target_model adds integer TargetValueTemplateKind + value path; forbidden: Symbol
-// value templates (e.g. ValueSymbolIdentityPassthrough) standing in for platform int (INVARIANTS P1/P3).
+// value templates (e.g. ValueSymbolIdentityPassthrough) standing in for platform int (faithful modeling — DESIGN.md §3).
 
 data go_target_atom_realization_catalog: List<TargetAtomRealization> = [
   go_target_atom_realization_symbol,

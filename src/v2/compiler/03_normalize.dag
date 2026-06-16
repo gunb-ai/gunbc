@@ -93,7 +93,7 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
   }
 }
 
-// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 4/10) — feature:traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: Outcome-bearing fold_node algebra carries sugar-finish per node natively, replacing manual child-slot normalize_node re-entry; forbidden: bare fold_node(n, normalize_fold_algebra) here — fold_node's child slot only recurses fold_node (structural shells), so per-depth sugar finish requires normalize_node in the step child slot until Q4 lands.
+// 🟡 traverse-dissolution interim — feature:traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: Outcome-bearing fold_node algebra carries sugar-finish per node natively, replacing manual child-slot normalize_node re-entry; forbidden: bare fold_node(n, normalize_fold_algebra) here — fold_node's child slot only recurses fold_node (structural shells), so per-depth sugar finish requires normalize_node in the step child slot until Q4 lands.
 fn normalize_node(n: Node) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
     normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))

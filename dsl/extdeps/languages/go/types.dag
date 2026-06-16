@@ -128,7 +128,7 @@ data go_callable: CallableRepr = CallableRepr {
 // Go has GC but value semantics for structs. The value-vs-reference
 // distinction (large structs → *T, slices/maps/channels → identity) is
 // derived from ValueContext at emit time, not from a declared config.
-// See INVARIANTS.md "Emission is translation, not decision-making."
+// Emission is translation, not decision-making.
 // =========================================================================
 
 

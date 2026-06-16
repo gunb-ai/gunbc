@@ -1,6 +1,6 @@
 // src/v2/std/compilers/lexing.dag
 // Scope: canonical lexical model shared by compiler stages and target-language specs.
-// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + THESIS.md "Compiler-std consolidation" + gunbc#4761.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + gunbc#4761.
 // Status: T-6 lexical data carriers; lexer implementation remains in v2.compiler.tokenize.
 
 module v2.std.compilers.lexing
@@ -74,7 +74,7 @@ type TokenStream {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:lex-rule-token-class-query — bound task: gunbc#4761 (owner/lane: std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
+// 🟡 gated — predicate-dissolution interim — feature:lex-rule-token-class-query — bound task: gunbc#4761 (owner/lane: std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class

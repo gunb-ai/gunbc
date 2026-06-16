@@ -152,7 +152,7 @@ fn coproduct_nullary_inhabitants(type_name: Symbol) -> Outcome<List<Behavior>> {
 
 data coproduct_unresolved_payload: Symbol = ^coproduct_unresolved_payload
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
+// 🟡 gated — predicate-dissolution interim — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
@@ -161,7 +161,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query.
+// 🟡 gated — predicate-dissolution interim — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query.
 fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
@@ -176,8 +176,8 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
 // and whose positional children[1..] are the actual arguments. add / pick / loop / bind and
 // effect_io all share this uniform shape: the dispatch surface keys on the callee, NOT on the
 // Behavior family (add and effect_io are BOTH Transform, so a closed Behavior fold cannot
-// separate them — INVARIANTS P2 keeps effectfulness signature-authored, not a Behavior variant).
-// M9 home: node_query (structural Node-children queries). This is the named dissolution target
+// separate them — single authority (DESIGN.md §3) keeps effectfulness signature-authored, not a Behavior variant).
+// Home: node_query (structural Node-children queries). This is the named dissolution target
 // for the 05_eval interim callee Bool predicates (bind node://adhoc-9a72d4fb-8c2):
 // eval_node_is_callee_reference / eval_transform_has_callee_reference / eval_transform_callee_edge
 // dissolve into these. forbidden: parallel callee-shape predicates outside std/node_query.
@@ -200,7 +200,7 @@ fn node_is_call(node: Node) -> Bool {
   }
 }
 
-// The resolved callee reference (positional child[0]). Fail-closed (P3) when `node` is not a
+// The resolved callee reference (positional child[0]). Fail-closed when `node` is not a
 // call: the dispatch surface routes on this target, so a non-call must refuse, never default.
 fn call_callee_target(node: Node) -> Outcome<Node> {
   if node_is_call(node: node) {
@@ -232,7 +232,7 @@ fn call_argument_targets(node: Node) -> List<Node> {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
+// 🟡 gated — predicate-dissolution interim — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
 fn node_envelope_without_named_coordinate_go(
   root: Node,
   xs: FreeMonoid<Edge>,
@@ -273,8 +273,8 @@ fn node_envelope_without_named_coordinate_go(
 }
 
 // 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
-// (Practice 10: no parallel EdgeLabel walker). Misses and ambiguities fail closed via Outcome.
-// Conj guard rejects non-Conj roots (Atom nodes cannot have Named edges; malformed inputs fail closed per P3).
+// (no parallel EdgeLabel walker). Misses and ambiguities fail closed via Outcome.
+// Conj guard rejects non-Conj roots (Atom nodes cannot have Named edges; malformed inputs fail closed).
 fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -321,7 +321,7 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
   }
 }
 
-// 🟢 grounded — Arrow.body single-named-edge lookup (E-9); wraps std.node arrow_body_target_lookup with Outcome diagnostics.
+// 🟢 grounded — Arrow.body single-named-edge lookup; wraps std.node arrow_body_target_lookup with Outcome diagnostics.
 fn find_arrow_body_child(root: Node) -> Outcome<Node> {
   match root.kind {
     TypeNode { connective: Arrow } =>
@@ -396,7 +396,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
 }
 
 // 🟢 grounded — Arrow positional-0 domain Conj harvest; sibling to find_arrow_body_child.
-// Order is load-bearing (05_eval index-binds args against this list). M9 attach: lifted from
+// Order is load-bearing (05_eval index-binds args against this list). Attach: lifted from
 // compiler/03_resolve add_arrow_domain_named_params / harvest_conj_named_bindings.
 fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
   match arrow.kind {

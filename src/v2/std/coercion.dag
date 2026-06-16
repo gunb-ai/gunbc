@@ -1,6 +1,6 @@
 // src/v2/std/coercion.dag
 // Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
-// Anchor: design-v2-compiler-homomorphism.md Ratified Q14; gunbc#4760; docs/modeling-discipline.md Practice 11.
+// Anchor: gunbc#4760.
 // Status: W-T-10 — coercion_fold lifts FindWitnessResult → CoercionResult via find_witness.
 
 

@@ -1,5 +1,5 @@
 // src/v2/workflow/bootstrap.dag
-// Scope: v2-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
+// Scope: v2-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (self-hosting seed-used-once / meta-circular, DESIGN.md §7). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
 // 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
@@ -675,7 +675,7 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
 // Modeled `gunbc run --source-root … --function ^run_manual_testclaim_corpus_eval` surface for
 // T-38 manual corpus eval at runtime. Host transport (A.3b step-3) invokes this entry via the
 // pinned stage0 binary — not a new shell script (project_no_new_shell).
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) —
 // feature:rr-a-bootstrap-evaluator-corpus-harness — consumer: v2.workflow.cli
 // GunbcTestCorpusHarnessRoute (the v2.workflow.ci TestClaimCorpusEvalCommand half was deleted with ci.dag in PR #4543) — bind
 // docs/planning/v2-runtime-testclaim-rr-a-worksheet-2026-06-02.md §5.2 A.1 — dissolve-on-arrival:

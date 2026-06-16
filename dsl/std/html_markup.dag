@@ -111,7 +111,7 @@ fn attr_is_url_attr(name: String) -> Bool {
 }
 
 // Walk the tree; return the first RejectedHref reason without collapsing
-// HrefValidation to a standalone Bool predicate (Practice 10).
+// HrefValidation to a standalone Bool predicate.
 fn find_first_rejected_url(node: HtmlNode) -> RejectedUrlScheme? {
   match node {
     TextNode { text: _ } => Absent

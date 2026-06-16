@@ -1,7 +1,7 @@
 // extdeps/boot/linux_x86_boot.dag — Linux x86 direct-kernel boot image (Slice-0).
 //
 // Anchor: Documentation/arch/x86/boot.rst (Linux kernel boot protocol).
-// M9 attach: x86_64_linux ArchitectureProfile + ELF EntryPoint.
+// Concept attach: x86_64_linux ArchitectureProfile + ELF EntryPoint.
 
 module extdeps.boot.linux_x86_boot
 
@@ -23,7 +23,7 @@ type BootImageOutcome
   = BootImageAccepted { value: LinuxX86BootImage }
   | BootImageRejected { reason: BootImageRejectReason }
 
-// Practice 4 (docs/modeling-discipline.md): coproduct ledger — **🟢 GREEN**
+// Coproduct ledger — **🟢 GREEN**
 // `HollowInitNotEmitProof` is the terminal reject arm (produced when init is
 // `HollowPrebuiltInit`). **🟡 YELLOW (scaffold)** — `BootImageRejectUnspecified`
 // reserved for v2 loader ≥2-arms constraint; never produced by

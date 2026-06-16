@@ -3,7 +3,7 @@
 //! **Modeled authority (future):** `src/v2/compiler/compile_host.dag` (`run_compile_host_v2`).
 //! Substrate `.dag` body stays `transport_not_wired` until eval intercept lands (operator HOLD).
 //!
-//! **Host boundary (INVARIANTS §P2):** outcomes are typed carriers — setup failure is
+//! **Host boundary (DESIGN.md §3):** outcomes are typed carriers — setup failure is
 //! `HostExitOutcome::Rejected(HostSetupFailure)`, logical compile outcome is
 //! `HostExitOutcome::Accepted(ExitWitness::Holds|Violates)`. No free-form `String` authority.
 
@@ -39,7 +39,7 @@ pub enum HostStream {
     Stderr,
 }
 
-/// Harness / transport setup failure — distinct from logical compile outcome (INVARIANTS §P2(c)).
+/// Harness / transport setup failure — distinct from logical compile outcome (DESIGN.md §3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostSetupFailure {
     CompilerBinaryMissing {
@@ -182,6 +182,7 @@ pub fn validate_compile_host_transport_inputs(
 
 /// Parse v2 compile receipt from combined compiler output (M1 probe pattern).
 pub fn parse_compiled_receipt(combined_output: &[u8]) -> Option<CompiledReceipt> {
+<<<<<<< HEAD
     // Scan from the end and return the last `compiled:` receipt, skipping any
     // non-matching trailing lines. Each fallible step must `continue` to the next
     // line on a miss — using `?` here would bail out of the whole function on the
@@ -212,6 +213,19 @@ pub fn parse_compiled_receipt(combined_output: &[u8]) -> Option<CompiledReceipt>
         });
     }
     None
+=======
+    let text = String::from_utf8_lossy(combined_output);
+    let trimmed = text.lines().next_back()?.trim();
+    let rest = trimmed.strip_prefix("compiled: ")?;
+    let (files, diagnostics) = rest.split_once(" files emitted, ")?;
+    let diagnostic_count = diagnostics.strip_suffix(" diagnostics")?;
+    let files_emitted = files.parse().ok()?;
+    let diagnostic_count = diagnostic_count.parse().ok()?;
+    Some(CompiledReceipt {
+        files_emitted,
+        diagnostic_count,
+    })
+>>>>>>> origin/main
 }
 
 struct BoundedChildOutput {

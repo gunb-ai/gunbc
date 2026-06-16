@@ -218,15 +218,15 @@ fn stage0_cargo_check() {
 //   (PR #264 review). All 315 are indirect-recursion complexity violations
 //   (A→B→A) from 27 root functions. They are real errors, not bypassed.
 //   Resolves when .dag fold primitive replaces manual recursion with
-//   bounded iteration (I1/I2 in ROADMAP Exploratory Directions).
+//   bounded iteration.
 //
-// These are analyzer limitations, not program violations. INVARIANTS.md
-// §Decidability: "If the analyzer produces ?O(?), the bug is in the
-// analyzer (it cannot see the bound that structurally exists), not in
-// the program." The ratchet only moves down, never up.
+// These are analyzer limitations, not program violations. Decidability:
+// if the analyzer produces ?O(?), the bug is in the analyzer (it cannot
+// see the bound that structurally exists), not in the program. The
+// ratchet only moves down, never up.
 // 2026-04-07: 526 — honest count after restoring CostUnknown for all
-//   unresolved descent patterns. See docs/cx-violation-triage.md for
-//   the 3-fix reduction path (Node tree descent, Parser SCC, Graph DFS).
+//   unresolved descent patterns. The 3-fix reduction path:
+//   Node tree descent, Parser SCC, Graph DFS.
 // 2026-04-08: 526→528 — transport property inference adds 2 complexity
 //   diagnostics (infer_property_values/infer_transport_node call infer_expr).
 // 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2

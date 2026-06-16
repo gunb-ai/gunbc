@@ -6,10 +6,8 @@
 //              the no-engine / no-fallback thesis made visible).
 //        The fail-closed boundary in this file guards regime (a) only;
 //        regime (b) is claimed by manual/english_emit_add.dag.
-// Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
+// Anchor: no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
 //         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
-// Prerequisites (sequencing — NOT parallel to an unfilled verification
-// Brief: see BRIEF_TEMPLATE.md.
 
 module v2.test.boundary.english_ingest_fail_closed
 

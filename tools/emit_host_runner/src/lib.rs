@@ -5,7 +5,7 @@
 //! models receipt assembly while `emit_host_bridge.rs` dispatches this crate until T-22 eval
 //! wires host transport directly.
 //!
-//! **Host boundary (INVARIANTS §P2):** outcomes are typed carriers — setup failure is
+//! **Host boundary (DESIGN.md §3):** outcomes are typed carriers — setup failure is
 //! `HostExitOutcome::Rejected(HostSetupFailure)`, logical child outcome is
 //! `HostExitOutcome::Accepted(ExitWitness::Holds|Violates)`. No free-form `String` authority.
 //! **W3 dissolution:** map `HostExit` / `HostLogicalRun` into `v2.std.host_run` carriers when
@@ -53,7 +53,7 @@ pub enum HostStream {
     Stderr,
 }
 
-/// Harness / transport setup failure — distinct from logical child exit (INVARIANTS §P2(c)).
+/// Harness / transport setup failure — distinct from logical child exit (DESIGN.md §3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostSetupFailure {
     SpawnFailed {
@@ -143,7 +143,7 @@ impl HostExit {
     }
 }
 
-/// Phase-typed logical-run stdout — only `Some` when exit witness Holds (P2 boundary).
+/// Phase-typed logical-run stdout — only `Some` when exit witness Holds (DESIGN.md §3 boundary).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostLogicalRun {
     pub stdout_bytes: Vec<u8>,
@@ -258,7 +258,7 @@ __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
 ";
 
-// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// 🟡 gated — per-target host-emission discriminator (DESIGN.md §3: target knowledge in compiler code;
 // hand-rolled discriminator-over-Symbol with default-reject arm) — feature: T-22 host-emission
 // TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) —
 // dissolve-on-arrival: promote a typed runtime_row
@@ -279,7 +279,7 @@ fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
 }
 
 /// Single generic host-process primitive — dispatches on modeled descriptor identity.
-// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// 🟡 gated — per-target host-emission discriminator (DESIGN.md §3: target knowledge in compiler code;
 // match on descriptor_identity against a single hard-coded TS identity with default-reject arm,
 // cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750
 // (supersedes #4674; step 1 landed via #4718) —
