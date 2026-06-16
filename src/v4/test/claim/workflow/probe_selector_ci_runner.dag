@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/probe_selector_ci_runner.dag
 // Scope: ProbeSelector keystone claims — ONE select kernel + availability conditioning.
-// Host gate: scripts/v4-probe-selector-keystone-gate.sh (v4_lens_ci, --perturb-check).
+// Host gate: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv) (v4_lens_ci, --perturb-check).
 
 module v4.test.claim.workflow.probe_selector_ci_runner
 
@@ -40,7 +40,7 @@ fn probe_selector_srv2_walkthrough_spine_holds() -> Bool {
   length(xs: selected) == 1
 }
 
-// ── probe-selector keystone claim-run gate authority (host: scripts/v4-probe-selector-keystone-gate.sh) ──
+// ── probe-selector keystone claim-run gate authority (host: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv)) ──
 type ProbeSelectorKeystoneClaimRunRow {
   label: String
   entry: String
@@ -87,7 +87,7 @@ fn probe_selector_ci_runner_srv2_spine_holds() -> Bool {
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
 // Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
-// hand-maintained awk/grep roster projection in scripts/v4-probe-selector-keystone-gate.sh.
+// hand-maintained awk/grep roster projection in the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv).
 fn probe_selector_ci_runner_rows_tsv() -> String {
   fold_list_right(
     xs: probe_selector_claim_run_rows,
