@@ -52,4 +52,8 @@ bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
 bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
 bash scripts/v4-layering-imports-gate.sh --perturb-check
 
+# E-10 execution consumer: structural emit witness (claim-run) then ngspice -b oracle.
+# Strict on GITHUB_ACTIONS (fail if ngspice missing); local dev skips when absent.
+bash scripts/v4-spice-ngspice-op-gate.sh
+
 echo "gate-3 PASS: affected-tests superset battery"
