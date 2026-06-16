@@ -1,6 +1,6 @@
 // Scope: affected-set → generated TestClaim → run_test_claim CI receipt.
-// Status: first executable fusion slice; host is the ci-claim-gate runner over
-// affected_set_ci_runner.dag (rows-fn affected_set_node_frontier_rows_tsv).
+// Status: first executable fusion slice; witnesses are `test fn` rows discovered
+// by `ci-claim-gate --roster-from-discovery` (no shadow gate_entry roster).
 
 module v2.test.workflow.affected_testgen_ci_runner
 
@@ -241,7 +241,7 @@ fn affected_testgen_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
 }
 
 
-fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
+test fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
   match affected_testgen_emit_generated_claim() {
     Accepted { value: RoundTripClaim { label: label, anchor: _, input: _, classification: _ }, diagnostics: _ } =>
       label == affected_testgen_generated_claim_label
@@ -250,12 +250,12 @@ fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
 }
 
 
-fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
+test fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
 }
 
 
-fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
+test fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
     Holds { value: reading } =>
       reading.edit_locus == affected_testgen_source_dependency
@@ -268,12 +268,12 @@ fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool 
 }
 
 
-fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
+test fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_dependency_selected_claims()) == 1
 }
 
 
-fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
+test fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
     && fold_list(
       xs: affected_testgen_selected_claims(),
@@ -294,7 +294,7 @@ fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
 }
 
 
-fn affected_testgen_fusion_holds() -> Bool {
+test fn affected_testgen_fusion_holds() -> Bool {
   affected_testgen_generator_emits_expected_claim_holds()
     && affected_testgen_selects_one_generated_claim_holds()
     && affected_testgen_dependency_frontier_reaches_generated_input_holds()
@@ -302,68 +302,3 @@ fn affected_testgen_fusion_holds() -> Bool {
     && affected_testgen_generated_claim_run_passes_holds()
     && affected_testgen_unrelated_diff_selects_no_claims_holds()
 }
-
-
-// 🟢 terminal CI receipt carrier — local to this workflow gate. This is not a substrate
-// row registry; it only gives the existing host gate a modeled list of claim-run
-// witness functions to project and perturb.
-type AffectedTestgenClaimRunRow {
-  label: String
-  entry: String
-  function: String
-}
-
-
-data affected_testgen_gate_entry: String = "src/v2/test/claim/workflow/affected_testgen_ci_runner.dag"
-
-
-data affected_testgen_gate_row_generator_emits_expected_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring emits expected witness-validity claim",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_generator_emits_expected_claim_holds"
-}
-
-
-data affected_testgen_gate_row_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring selects one generated witness-validity claim",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_selects_one_generated_claim_holds"
-}
-
-
-data affected_testgen_gate_row_dependency_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring dependency-path diff selects generated claim",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_dependency_diff_selects_generated_claim_holds"
-}
-
-
-data affected_testgen_gate_row_dependency_frontier_reaches_generated_input: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring dependency frontier reaches generated input",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_dependency_frontier_reaches_generated_input_holds"
-}
-
-
-data affected_testgen_gate_row_generated_claim_runs: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring generated claim runs through run_test_claim",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_generated_claim_run_passes_holds"
-}
-
-
-data affected_testgen_gate_row_fusion: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fixture wiring fusion diff to generated run",
-  entry: affected_testgen_gate_entry,
-  function: "affected_testgen_fusion_holds"
-}
-
-
-data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
-  affected_testgen_gate_row_generator_emits_expected_claim,
-  affected_testgen_gate_row_selects_generated_claim,
-  affected_testgen_gate_row_dependency_frontier_reaches_generated_input,
-  affected_testgen_gate_row_dependency_selects_generated_claim,
-  affected_testgen_gate_row_generated_claim_runs,
-  affected_testgen_gate_row_fusion
-]
