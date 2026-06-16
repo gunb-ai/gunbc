@@ -182,19 +182,17 @@ pub fn validate_compile_host_transport_inputs(
 
 /// Parse v2 compile receipt from combined compiler output (M1 probe pattern).
 pub fn parse_compiled_receipt(combined_output: &[u8]) -> Option<CompiledReceipt> {
-    for line in String::from_utf8_lossy(combined_output).lines().rev() {
-        let trimmed = line.trim();
-        let rest = trimmed.strip_prefix("compiled: ")?;
-        let (files, diagnostics) = rest.split_once(" files emitted, ")?;
-        let diagnostic_count = diagnostics.strip_suffix(" diagnostics")?;
-        let files_emitted = files.parse().ok()?;
-        let diagnostic_count = diagnostic_count.parse().ok()?;
-        return Some(CompiledReceipt {
-            files_emitted,
-            diagnostic_count,
-        });
-    }
-    None
+    let text = String::from_utf8_lossy(combined_output);
+    let trimmed = text.lines().next_back()?.trim();
+    let rest = trimmed.strip_prefix("compiled: ")?;
+    let (files, diagnostics) = rest.split_once(" files emitted, ")?;
+    let diagnostic_count = diagnostics.strip_suffix(" diagnostics")?;
+    let files_emitted = files.parse().ok()?;
+    let diagnostic_count = diagnostic_count.parse().ok()?;
+    Some(CompiledReceipt {
+        files_emitted,
+        diagnostic_count,
+    })
 }
 
 struct BoundedChildOutput {
