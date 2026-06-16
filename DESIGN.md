@@ -1,7 +1,7 @@
 # gunbc — Design
 
-`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v2 ships the `gunbc`
-CLI and is v4's seed · v3 was removed, migrated into v2 · v4 is active.)
+`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v1 ships the `gunbc`
+CLI and is v2's seed · v3 was removed, migrated into v1 · v2 is active.)
 
 This document is reasoned **serially**: each section is a consequence of the one before it, or an
 independent peer — never a restatement of it. The principles below apply recursively, including to
@@ -35,7 +35,7 @@ is removed along exactly two directions — not separate "DRY rules," but one mo
   (model-local / derive-global). At the right layer there is nothing fundamentally different between
   scales, so the *same* concept spans nanosecond memoization and broad infra deployment — the
   Realization pattern (content-addressed pure-spec → host-effect; one kernel, N handlers).
-  - *e.g.* `dsl/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows, one axis not 10 types. Realization spans resolve-cost (ns) → sccache → §10 OS provisioning on one content-hash. Cost of *not* doing it: eleven hand-rolled v2 `HashMap` caches, and v4 still recurs (`ParseTable`).
+  - *e.g.* `dsl/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows, one axis not 10 types. Realization spans resolve-cost (ns) → sccache → §10 OS provisioning on one content-hash. Cost of *not* doing it: eleven hand-rolled v1 `HashMap` caches, and v2 still recurs (`ParseTable`).
 - **Deep — every concept decomposed to grounded atoms.** Nothing is opaque that isn't *genuinely*
   atomic. The move is `decompress → map → reduce`: reveal the structure the source names, **map** each
   part onto the concept that already exists (DFS the concept DAG first), **reduce** duplicates. A
@@ -53,7 +53,9 @@ Minimization holds only if each fact lives in exactly one place. The recurring v
 we generate from concepts, duplicates it again in everything derived (testgen, emit, lenses). A fork
 always gets consolidated later, so it is a correctness concern, not a style one. We cannot enforce this
 programmatically yet; until then it is diligence — faithfully model the accepted universal frameworks
-(classical logic, set theory, algebra) rather than re-coining them. Corollaries: the layer DAG is
+(classical logic, set theory, algebra), and in `extdeps/` the real upstream spec (cite the source, keep
+its real names, declare its version, model what the API actually returns), rather than re-coining them.
+Corollaries: the layer DAG is
 strict (`std ← extdeps ← compiler ← workflow`, imports point toward std); a fact's home is its *layer*,
 not its file (paths are discriminators, not gospel); below-boundary representation is opaque (the
 rename test).
@@ -107,7 +109,7 @@ your own output as unverified until a consumer runs it green.)
 - **Enforce with lenses,** not grep: a lens is a pure reader over the same `Node` tree, storing
   nothing, so a new analysis costs zero substrate edits. Beware the tier where the machinery exists but
   nothing gates on it — coverage by illusion.
-- *e.g.* one catamorphism `fold_node` is reused by all 7 v4 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v4 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited).
+- *e.g.* one catamorphism `fold_node` is reused by all 7 v2 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v2 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited).
 
 ## 7. Self-hosting (the principles applied to the compiler itself)
 
@@ -137,4 +139,4 @@ still a violation) · internal review finds missing tests, external review finds
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
 - one-time: `.githooks/install-hooks.sh` (pre-push runs `cargo fmt`)
-- CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v4 --roster-from-discovery --scan-dir src/v4/test`
+- CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test`
