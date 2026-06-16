@@ -939,14 +939,15 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
-// Exact carrier shape for effect_io_roundtrip_transform (program.dag:171 program_effect_io_roundtrip):
-// callee-free Transform + SyntheticOccurrence + two positional SyntheticOccurrence Value leaves.
+// Callee-free effect-IO roundtrip Transform — mirrors eval_node_is_effect_io_roundtrip (05_eval.dag)
+// but gates on canonical AST shape (Transform + callee-free + two Value leaf operands), not runtime
+// marker atoms.
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
 // feature:V4-EFFECTS-IO — consumer:translate_project_arrow_body_to_value_expression effect-IO roundtrip arm —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: declared callee-carrying roundtrip carrier +
-// callee-identity gate resolving to EffectSemanticsDecl.operations membership replaces
-// effect_io_roundtrip_transform carrier shape match; forbidden: permanent untagged Bool
-// roundtrip predicates in 06_translate.
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: callee-carrying roundtrip carrier +
+// recognizer gates on callee identity resolving to EffectSemanticsDecl.operations membership
+// (EffectSignature-backed) replaces callee-free effect_io roundtrip shape match; forbidden: permanent
+// untagged Bool roundtrip predicates in 06_translate.
 fn translate_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -966,10 +967,9 @@ fn translate_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-fn translate_node_is_synthetic_value_leaf(node: Node) -> Bool {
+fn translate_node_is_value_leaf(node: Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Value } =>
-      length(xs: node.children) == 0 && node.occurrence_id == SyntheticOccurrence
+    ComputationNode { behavior: Value } => length(xs: node.children) == 0
     _ => false
   }
 }
@@ -977,13 +977,12 @@ fn translate_node_is_synthetic_value_leaf(node: Node) -> Bool {
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      node.occurrence_id == SyntheticOccurrence
-        && !translate_transform_has_callee_reference(node: node)
+      !translate_transform_has_callee_reference(node: node)
         && length(xs: node.children) == 2
         && fold(
           node_positional_child_targets(node: node),
           init: true,
-          f: fn(acc, child) { acc && translate_node_is_synthetic_value_leaf(node: child) }
+          f: fn(acc, child) { acc && translate_node_is_value_leaf(node: child) }
         )
     _ => false
   }

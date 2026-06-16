@@ -338,9 +338,7 @@ fn run_host_process_ts_mvp1(
 
     let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
     build_cmd.current_dir(work_dir).args([
-        // Pin typescript@5.9.2 via `-p` (not `-y`) so MVP1 and program transports resolve the
-        // same compiler; early WIP used `-y` before the pin was chosen.
-        "-p",
+        "-y",
         "typescript@5.9.2",
         "tsc",
         "--target",

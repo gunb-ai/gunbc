@@ -1531,7 +1531,7 @@ fn eval_node_is_loop(node: Node) -> Bool {
 }
 
 // Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate pairs
-// this effect_io_roundtrip_transform carrier with EffectIoEvalPresent — never with EffectIoEvalAbsent).
+// this callee-free 2-argument Transform with EffectIoEvalPresent — never with EffectIoEvalAbsent).
 fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -1543,53 +1543,21 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   }
 }
 
-// Exact carrier shape for effect_io_roundtrip_transform (program.dag:171 program_effect_io_roundtrip):
-// callee-free Transform + SyntheticOccurrence + two positional SyntheticOccurrence Value leaves.
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
 // feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm (E-10) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: declared callee-carrying roundtrip carrier +
-// callee-identity gate resolving to EffectSemanticsDecl.operations membership replaces
-// effect_io_roundtrip_transform carrier shape match; forbidden: permanent untagged Bool
-// roundtrip predicates in 05_eval.
-fn eval_node_is_synthetic_value_leaf(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Value } =>
-      count(node.children) == 0 && node.occurrence_id == SyntheticOccurrence
-    _ => false
-  }
-}
-
-fn eval_effect_io_roundtrip_carrier_operand(node: Node, wanted: Int) -> Bool {
-  match eval_nth_child(
-    node: node,
-    wanted: wanted,
-    absent_reason: eval_rejected_effect_io_roundtrip_arity
-  ) {
-    Accepted { value: e, diagnostics: _ } =>
-      match e.label {
-        Positional => eval_node_is_synthetic_value_leaf(node: e.target)
-        Named { name: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn eval_node_is_effect_io_roundtrip_carrier_shape(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      node.occurrence_id == SyntheticOccurrence
-        && !eval_transform_has_callee_reference(node: node)
-        && count(node.children) == 2
-        && eval_effect_io_roundtrip_carrier_operand(node: node, wanted: 0)
-        && eval_effect_io_roundtrip_carrier_operand(node: node, wanted: 1)
-    _ => false
-  }
-}
-
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: callee-carrying roundtrip carrier +
+// recognizer gates on callee identity resolving to EffectSemanticsDecl.operations membership
+// (EffectSignature-backed) replaces callee-free effect_io roundtrip shape match; forbidden: permanent
+// untagged Bool roundtrip predicates in 05_eval.
 fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
   match effect_io {
     EffectIoEvalAbsent => false
-    EffectIoEvalPresent { bundle: _ } => eval_node_is_effect_io_roundtrip_carrier_shape(node: node)
+    EffectIoEvalPresent { bundle: _ } =>
+      match node.kind {
+        ComputationNode { behavior: Transform } =>
+          !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
+        _ => false
+      }
   }
 }
 
