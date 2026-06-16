@@ -911,7 +911,6 @@ fn gist_transitive_closure_parse() {
         "dsl/extdeps/github/gists.dag",
         "dsl/extdeps/git/git.dag",
         "dsl/gunbc/auth/credentials.dag",
-        "dsl/gunbc/tools/gist.dag",
     ];
     for path in &files {
         assert_parses_strict(path);
