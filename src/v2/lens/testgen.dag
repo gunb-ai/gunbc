@@ -281,8 +281,8 @@ fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
 // F.2-P1: canonical per-anchor GeneratorId table. Identity is DERIVED from the row's
 // ClaimAnchorKey (single authority — not a coarse static category symbol), so distinct
 // anchors/obligations get distinct GeneratorIds and no two scheduled generators collide.
-// 🟡 dissolution target: replace this literal table with an anchor→Symbol reflection when
-// .dag can project a Symbol from a ClaimAnchorKey directly (TestClaim reflection).
+// 🟡 dissolution target: replace this literal table with an anchor→Symbol compile-time lens projection when
+// .dag can project a Symbol from a ClaimAnchorKey directly (TestClaim coproduct-arm lens).
 // F.2-P1: derive a generator's identity from its ManualAnchorKey (one id per manual anchor).
 fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   match key {
@@ -1315,7 +1315,7 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
 }
 
 // 🟡 gated — feature:nat-algebra-law-anchor-projection — bind gunbc#4762
-// dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
+// dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen compile-time lens); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }

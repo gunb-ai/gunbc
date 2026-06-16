@@ -90,7 +90,7 @@ type ImpossibleBugClass
   | UnhandledDiagnosticPaths
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct-arm compile-time lens / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct-arm compile-time lens in std/verification.dag; delete this mirror.
 // forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
 fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
   [
@@ -191,10 +191,10 @@ type ManualAnchorKey
   | ManualAnchorAbsent
 
 
-// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: gunbc#4759; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until compile-time lens can project from TestClaim directly.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-lens; bound task: gunbc#4759; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
 type TestClaimCoproductVariant
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: gunbc#4759
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-lens; bound task: gunbc#4759
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant
@@ -272,7 +272,7 @@ fn test_claim_input(c: TestClaim) -> Node {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-reflection — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → label projection with canonical common-field / coproduct-arm reflection once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled TestClaim arm projection outside the reflection primitive.
+// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-lens — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → label projection with canonical common-field / coproduct-arm compile-time lens once TestClaim coproduct-arm lens is available; forbidden: permanent hand-rolled TestClaim arm projection outside the compile-time lens primitive.
 fn test_claim_label(c: TestClaim) -> String {
   match c {
     CompilesClaim { label: l, anchor: _, input: _, expected_value: _, classification: _ } => l
@@ -284,7 +284,7 @@ fn test_claim_label(c: TestClaim) -> String {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-reflection — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → TestClaimCoproductVariant projection with canonical coproduct arm reflection once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled TestClaim arm projection outside the reflection primitive.
+// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-lens — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → TestClaimCoproductVariant projection with canonical coproduct-arm compile-time lens once TestClaim coproduct-arm lens is available; forbidden: permanent hand-rolled TestClaim arm projection outside the compile-time lens primitive.
 fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
   match c {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>

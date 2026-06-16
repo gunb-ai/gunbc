@@ -1,4 +1,4 @@
-// Status: source-shape receipt; host CI can pin this file until generated item-registry reflection replaces explicit family rosters.
+// Status: source-shape receipt; host CI can pin this file until generated item-registry compile-time lens replaces explicit family rosters.
 
 module v2.test.workflow.lens_ownership_family_eval
 
