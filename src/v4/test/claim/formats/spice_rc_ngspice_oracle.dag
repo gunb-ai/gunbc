@@ -1,0 +1,45 @@
+// src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag
+// Scope: ngspice oracle structural witness — spice_emit_ngspice(rc_tran_deck) matches the
+//        single golden netlist in spice_rc_tran_deck.dag; scripts/v4-spice-ngspice-rc-oracle.sh
+//        is the E-10 execution consumer (ngspice -b) that reads the same golden bytes.
+// SP-M1 closed: emitted tran deck runs `ngspice -b` exit 0 AS-EMITTED (.control run/quit trailer).
+//        RC charge curve v(n2): 0V@t=0 → 3.15V@1ms (63% of 5V, τ=RC=1ms) → 5V@10ms.
+// Clear win receipt: T-4.10 — ONE .dag circuit declaration → simulating ngspice netlist.
+
+module v4.test.claim.formats.spice_rc_ngspice_oracle
+
+import v4.extdeps.formats.spice { spice_emit_ngspice }
+import v4.test.fixture.spice_rc_tran_deck {
+  spice_rc_tran_deck,
+  spice_rc_tran_deck_ngspice_golden
+}
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
+  let text = spice_emit_ngspice(netlist: spice_rc_tran_deck)
+  (text != "") && (text != "* rc tran witness")
+}
+
+// SP-M1 closed-loop witness: emitted deck equals the single golden authority.
+fn spice_rc_ngspice_op_holds() -> Bool {
+  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
+}
+
+data unified_claim_spice_rc_tran_emit_ngspice_nonempty: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+    function: spice_rc_tran_emit_ngspice_nonempty_holds
+  }
+}
+
+data unified_claim_spice_rc_ngspice_op: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+    function: spice_rc_ngspice_op_holds
+  }
+}

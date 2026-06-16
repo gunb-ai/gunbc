@@ -359,6 +359,15 @@ data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
+// gunbhub M1 CommonMark consumer (dsl/std/markdown.dag) — reduces to Fragment IR,
+// serializes through the one fold, and rejects javascript:/data: link/image URLs (XSS).
+data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "markdown markup consumer + XSS reject keystone",
+  entry: "dsl/test/claim/markdown_markup_xss_witness.dag",
+  function: "markdown_markup_xss_keystone_holds",
+  expected: ExpectPass
+}
+
 // gunbhub M2 served render surface — request→serialized-page round-trip via
 // extdeps.http.server route bindings + canonical markup consumers; hostile href
 // rejected before response body.
@@ -481,6 +490,20 @@ data corpus_ci_gate_row_self_host_stage_emission_equality_violates: ClaimWitness
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M1 spice RC tran ngspice emit matches golden",
+  entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+  function: "spice_rc_ngspice_op_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_spice_rc_ngspice_nonempty: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "SP-M1 spice RC tran ngspice emit nonempty",
+  entry: "src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag",
+  function: "spice_rc_tran_emit_ngspice_nonempty_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "spice RC passive deck fixture authority (vin-R1-mid-C1-ground + .op)",
   entry: "src/v4/test/claim/extdeps/spice_rc_passive_deck_claims.dag",
@@ -537,6 +560,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_markdown_markup_xss_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
@@ -552,5 +576,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology,
   corpus_ci_gate_row_self_host_stage_emission_equality_holds,
   corpus_ci_gate_row_self_host_stage_emission_equality_violates,
+  corpus_ci_gate_row_spice_rc_ngspice_op,
+  corpus_ci_gate_row_spice_rc_ngspice_nonempty,
   corpus_ci_gate_row_spice_rc_passive_deck_authority
 ]

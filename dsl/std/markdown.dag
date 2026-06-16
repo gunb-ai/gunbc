@@ -1,0 +1,275 @@
+// std/markdown.dag — CommonMark-shaped markdown surface + thin consumer of std.markup.
+//
+// gunbhub builds MarkdownDocument trees structurally; try_serialize_markdown
+// adapts to std.markup.Fragment and delegates to the ONE convergent
+// serialize_fragment fold (cost-of-change = 1 with HtmlNode #4927 / React #4934).
+//
+// XSS: link [text](url) and image ![alt](url) URLs are scheme-allowlisted
+// (http/https/mailto/relative) fail-closed BEFORE escape_url — same spine as
+// std.html_markup / std.react_markup.
+
+module std.markdown
+
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+  serialize_fragment,
+}
+import std.html_markup {
+  RejectedUrlScheme,
+  SafeHref,
+  RejectedHref,
+  validate_href,
+}
+
+// --- CommonMark consumer-facing IR ------------------------------------------
+//
+// Structural model of the block/inline shapes this consumer reduces. Parsing
+// raw markdown text is out of scope here — callers build these trees directly.
+
+// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark heading depths.
+type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
+
+// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark inline shapes.
+type MarkdownInline
+  = TextInline { text: String }
+  | EmphasisInline { inlines: List<MarkdownInline> }
+  | StrongInline { inlines: List<MarkdownInline> }
+  | CodeInline { text: String }
+  | LinkInline { inlines: List<MarkdownInline>, url: String }
+  | ImageInline { alt: String, url: String }
+
+type MarkdownListItem { blocks: List<MarkdownBlock> }
+
+// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark block shapes.
+type MarkdownBlock
+  = HeadingBlock { level: HeadingLevel, inlines: List<MarkdownInline> }
+  | ParagraphBlock { inlines: List<MarkdownInline> }
+  | UnorderedListBlock { items: List<MarkdownListItem> }
+  | OrderedListBlock { items: List<MarkdownListItem> }
+  | CodeBlock { code: String }
+
+type MarkdownDocument { blocks: List<MarkdownBlock> }
+
+// --- XSS: scheme allowlist on link/image URLs -------------------------------
+
+fn markdown_url_validation(url: String) -> RejectedUrlScheme? {
+  match validate_href(url: url) {
+    SafeHref { url: _ } => Absent
+    RejectedHref { reason: r } => Present { value: r }
+  }
+}
+
+fn find_first_rejected_url_in_inlines(inlines: List<MarkdownInline>) -> RejectedUrlScheme? {
+  fold(inlines,
+    init: Absent,
+    f: (acc, inline) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_inline(inline: inline)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlScheme? {
+  match inline {
+    TextInline { text: _ } => Absent
+    CodeInline { text: _ } => Absent
+    ImageInline { alt: _, url } => markdown_url_validation(url: url)
+    LinkInline { inlines, url } =>
+      match markdown_url_validation(url: url) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_inlines(inlines: inlines)
+      }
+    EmphasisInline { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    StrongInline { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+  }
+}
+
+fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrlScheme? {
+  fold(blocks,
+    init: Absent,
+    f: (acc, block) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_block(block: block)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
+  match block {
+    CodeBlock { code: _ } => Absent
+    HeadingBlock { level: _, inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    ParagraphBlock { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    UnorderedListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+    OrderedListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+  }
+}
+
+fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlScheme? {
+  find_first_rejected_url_in_blocks(blocks: doc.blocks)
+}
+
+// 🟢 TERMINAL coproduct at markdown-consumer scope — fail-closed serialize outcome.
+type MarkdownSerializeResult
+  = Serialized { html: String }
+  | Rejected { reason: String }
+
+// --- Markdown -> Fragment adapter -------------------------------------------
+
+fn heading_level_to_tag(level: HeadingLevel) -> String {
+  match level {
+    H1 => "h1"
+    H2 => "h2"
+    H3 => "h3"
+    H4 => "h4"
+    H5 => "h5"
+    H6 => "h6"
+  }
+}
+
+fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<Fragment> {
+  match inline {
+    TextInline { text } =>
+      [ TextNode { content: text } ]
+    CodeInline { text } =>
+      [ Element {
+        tag: "code",
+        attributes: [],
+        children: [ TextNode { content: text } ],
+      } ]
+    EmphasisInline { inlines } =>
+      [ Element {
+        tag: "em",
+        attributes: [],
+        children: markdown_inlines_to_fragments(inlines: inlines),
+      } ]
+    StrongInline { inlines } =>
+      [ Element {
+        tag: "strong",
+        attributes: [],
+        children: markdown_inlines_to_fragments(inlines: inlines),
+      } ]
+    LinkInline { inlines, url } =>
+      [ Element {
+        tag: "a",
+        attributes: [
+          Attribute { name: "href", ctx: UrlContext, value: url },
+        ],
+        children: markdown_inlines_to_fragments(inlines: inlines),
+      } ]
+    ImageInline { alt, url } =>
+      [ Element {
+        tag: "img",
+        attributes: [
+          Attribute { name: "src", ctx: UrlContext, value: url },
+          Attribute { name: "alt", ctx: AttributeContext, value: alt },
+        ],
+        children: [],
+      } ]
+  }
+}
+
+fn markdown_inlines_to_fragments(inlines: List<MarkdownInline>) -> List<Fragment> {
+  fold(inlines,
+    init: [],
+    f: (acc, inline) => concat(acc, markdown_inline_to_fragments(inline: inline))
+  )
+}
+
+fn markdown_list_item_to_fragment(item: MarkdownListItem) -> Fragment {
+  Element {
+    tag: "li",
+    attributes: [],
+    children: markdown_blocks_to_fragments(blocks: item.blocks),
+  }
+}
+
+fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
+  match block {
+    HeadingBlock { level, inlines } =>
+      Element {
+        tag: heading_level_to_tag(level: level),
+        attributes: [],
+        children: markdown_inlines_to_fragments(inlines: inlines),
+      }
+    ParagraphBlock { inlines } =>
+      Element {
+        tag: "p",
+        attributes: [],
+        children: markdown_inlines_to_fragments(inlines: inlines),
+      }
+    CodeBlock { code } =>
+      Element {
+        tag: "pre",
+        attributes: [],
+        children: [
+          Element {
+            tag: "code",
+            attributes: [],
+            children: [ TextNode { content: code } ],
+          },
+        ],
+      }
+    UnorderedListBlock { items } =>
+      Element {
+        tag: "ul",
+        attributes: [],
+        children: map(items, i => markdown_list_item_to_fragment(item: i)),
+      }
+    OrderedListBlock { items } =>
+      Element {
+        tag: "ol",
+        attributes: [],
+        children: map(items, i => markdown_list_item_to_fragment(item: i)),
+      }
+  }
+}
+
+fn markdown_blocks_to_fragments(blocks: List<MarkdownBlock>) -> List<Fragment> {
+  map(blocks, b => markdown_block_to_fragment(block: b))
+}
+
+fn markdown_document_to_fragment(doc: MarkdownDocument) -> Fragment {
+  Element {
+    tag: "div",
+    attributes: [],
+    children: markdown_blocks_to_fragments(blocks: doc.blocks),
+  }
+}
+
+// --- thin consumer entry ------------------------------------------------------
+
+fn serialize_markdown_document(doc: MarkdownDocument) -> String {
+  serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
+}
+
+fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkdownSerializeResult {
+  match find_first_rejected_url_in_document(doc: doc) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
+    Absent =>
+      Serialized { html: serialize_markdown_document(doc: doc) }
+  }
+}

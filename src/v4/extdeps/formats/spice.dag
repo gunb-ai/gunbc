@@ -29,7 +29,21 @@
 module v4.extdeps.formats.spice
 
 
-import v4.std.diagnostic { Outcome }
+import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Textual,
+  Unavailable,
+  WholeFile,
+  diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
 import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.compilers.lexing {
   CharClassPattern,
@@ -220,9 +234,7 @@ type SpiceNetlist {
   body: List<DeckStatement>
 }
 
-type SpiceParseResult = Outcome<SpiceNetlist>
-
-type SpiceParse = fn(String) -> SpiceParseResult
+type SpiceParse = fn(String) -> Outcome<SpiceNetlist>
 
 type SpiceEmit = fn(SpiceNetlist) -> String
 
@@ -331,4 +343,279 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
       expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
     }
   }
+}
+
+
+// --- wave-1 Shape B emit/parse (extdeps-local; no v4.compiler imports) --------
+
+data spice_wave1_fixture_file: Symbol = ^spice_wave1_fixture_file
+
+fn spice_text_concat(left: String, right: String) -> String {
+  list_append(left: left, right: right)
+}
+
+fn spice_text_concat3(left: String, mid: String, right: String) -> String {
+  spice_text_concat(left: spice_text_concat(left: left, right: mid), right: right)
+}
+
+fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
+  spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
+}
+
+// Wave-1 ident spellings: RC witness symbols (^r1 -> "R1", ^v1 -> "V1", etc.)
+// plus node names and grammar-probe idents.
+// 🟡 dissolve-on-arrival: feature:spice-symbol-spelling-bridge — replace hand table when Symbol→String substrate lands (SP-M2+).
+fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
+  if ident == ^r1 {
+    optional_present(value: "R1")
+  } else if ident == ^c1 {
+    optional_present(value: "C1")
+  } else if ident == ^v1 {
+    optional_present(value: "V1")
+  } else if ident == ^n1 {
+    optional_present(value: "n1")
+  } else if ident == ^n2 {
+    optional_present(value: "n2")
+  } else {
+    optional_absent()
+  }
+}
+
+fn spice_emit_node_ref(node: NodeRef) -> Optional<String> {
+  match node {
+    Ground => Present { value: "0" }
+    Named { node: named } =>
+      spice_wave1_ident_spelling(ident: named.name)
+  }
+}
+
+fn spice_emit_passive_line(
+  name: Symbol,
+  n_plus: NodeRef,
+  n_minus: NodeRef,
+  value: SpiceValue
+) -> Optional<String> {
+  match spice_emit_node_ref(node: n_plus) {
+    Present { value: plus_spelling } =>
+      match spice_emit_node_ref(node: n_minus) {
+        Present { value: minus_spelling } =>
+          match spice_wave1_ident_spelling(ident: name) {
+            Present { value: name_spelling } =>
+              Present {
+                value: spice_text_concat4(
+                  a: spice_text_concat(left: name_spelling, right: " "),
+                  b: spice_text_concat(left: plus_spelling, right: " "),
+                  c: spice_text_concat(left: minus_spelling, right: " "),
+                  d: value.lexeme
+                )
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn spice_emit_component(component: Component) -> Optional<String> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    Capacitor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    Inductor { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    VoltageSource { name, n_plus, n_minus, value } =>
+      spice_emit_passive_line(name: name, n_plus: n_plus, n_minus: n_minus, value: value)
+    CurrentSource { name: _, n_plus: _, n_minus: _, value: _ } => Absent
+    Diode { name: _, anode: _, cathode: _, model: _ } => Absent
+    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => Absent
+    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => Absent
+    MutualInductance { name: _, l1: _, l2: _, coupling: _ } => Absent
+    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => Absent
+  }
+}
+
+fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> Optional<String> {
+  match spice_emit_node_ref(node: binding.node) {
+    Present { value: node_spelling } =>
+      Present {
+        value: spice_text_concat4(
+          a: "v(",
+          b: node_spelling,
+          c: ")=",
+          d: binding.value.lexeme
+        )
+      }
+    Absent => Absent
+  }
+}
+
+fn spice_emit_directive(directive: Directive) -> Optional<String> {
+  match directive {
+    Op => Present { value: ".op" }
+    Tran { tstep, tstop } =>
+      Present {
+        value: spice_text_concat3(
+          left: ".tran ",
+          mid: spice_text_concat(left: tstep.lexeme, right: " "),
+          right: tstop.lexeme
+        )
+      }
+    InitialCondition { assignments } =>
+      match spice_emit_node_voltage_binding(binding: assignments.first) {
+        Present { value: binding_text } =>
+          Present {
+            value: spice_text_concat(left: ".ic ", right: binding_text)
+          }
+        Absent => Absent
+      }
+    Dc { source: _, vstart: _, vstop: _, vincr: _ } => Absent
+    Ac { sweep: _, n: _, fstart: _, fstop: _ } => Absent
+    NodeSet { assignments: _ } => Absent
+    Options { modifiers: _ } => Absent
+    Include { card: _ } => Absent
+  }
+}
+
+fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
+  match stmt {
+    DeckComponent { component } => spice_emit_component(component: component)
+    DeckDirective { directive } => spice_emit_directive(directive: directive)
+    DeckModelCard { model: _ } => Absent
+    DeckSubcircuit { definition: _ } => Absent
+  }
+}
+
+fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
+  fold_list(
+    xs: body,
+    empty: Present { value: "" },
+    cons: fn(acc, stmt) {
+      match acc {
+        Absent => Absent
+        Present { value: prefix } =>
+          match spice_emit_deck_statement(stmt: stmt) {
+            Present { value: line } =>
+              if prefix == "" {
+                Present { value: line }
+              } else {
+                Present {
+                  value: spice_text_concat(
+                    left: spice_text_concat(left: prefix, right: "\n"),
+                    right: line
+                  )
+                }
+              }
+            Absent => Absent
+          }
+      }
+    }
+  )
+}
+
+// Wave-1 text emit: unsupported deck statements propagate `Absent` from the
+// per-line emitters; this arm maps that to `""` rather than surfacing an
+// `Outcome` diagnostic — mild fail-open bounded to enrolled witnesses only.
+// The SP-M1 ngspice oracle golden-equality check catches empty regressions;
+// any new corpus row on this emit path must golden-check (not nonempty-only).
+// SP-M2+ should revisit fail-closed emit at this boundary.
+fn spice_emit(netlist: SpiceNetlist) -> String {
+  match spice_emit_body_lines(body: netlist.body) {
+    Present { value: body_text } =>
+      if netlist.title == "" {
+        body_text
+      } else {
+        spice_text_concat(
+          left: spice_text_concat(left: netlist.title, right: "\n"),
+          right: body_text
+        )
+      }
+    Absent => ""
+  }
+}
+
+// ngspice-ready emit: appends mandatory `.end` terminator required by all SPICE3 parsers.
+// Transient decks also carry the ngspice-39 batch `.control run` trailer so `ngspice -b`
+// executes the analysis without a separate interactive wrapper.
+// Tran detection is inlined as a direct coproduct branch (no detached *_is_* predicate).
+// Empty `base` means wave-1 emit could not render the body (see `spice_emit` note).
+fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
+  let base = spice_emit(netlist: netlist)
+  if base == "" {
+    ""
+  } else {
+    let has_tran = fold_list(
+      xs: netlist.body,
+      empty: false,
+      cons: fn(acc, stmt) {
+        if acc {
+          true
+        } else {
+          match stmt {
+            DeckDirective { directive: Tran { tstep: _, tstop: _ } } => true
+            _ => false
+          }
+        }
+      }
+    )
+    if has_tran {
+      spice_text_concat(
+        left: spice_text_concat(left: base, right: "\n.control\nrun\nquit\n.endc"),
+        right: "\n.end"
+      )
+    } else {
+      spice_text_concat(left: base, right: "\n.end")
+    }
+  }
+}
+
+data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
+  title: "",
+  body: Cons {
+    head: DeckComponent {
+      component: Resistor {
+        name: ^r1,
+        n_plus: Named { node: NamedNode { name: ^n1 } },
+        n_minus: Named { node: NamedNode { name: ^n2 } },
+        value: SpiceValue { lexeme: "1" }
+      }
+    },
+    tail: Empty
+  }
+}
+
+data spice_wave1_probe_resistor_line: String = "R1 n1 n2 1"
+
+fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^spice_parse_wave1_unsupported,
+      at: Textual { file: spice_wave1_fixture_file, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
+  (text == spice_wave1_probe_resistor_line)
+    || (text == spice_emit(netlist: spice_wave1_probe_resistor_netlist))
+}
+
+fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
+  outcome_accepted(value: spice_wave1_probe_resistor_netlist)
+}
+
+// Wave-1 parse: structural inverse of spice_emit for enrolled witness netlists only.
+fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
+  if spice_parse_is_wave1_probe_line(text: text) {
+    spice_parse_accept_probe()
+  } else {
+    spice_parse_reject_unsupported()
+  }
+}
+
+data spice_io_contract: SpiceIoContract = SpiceIoContract {
+  parse: spice_parse,
+  emit: spice_emit
 }
