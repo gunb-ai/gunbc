@@ -1,5 +1,5 @@
 // src/v2/lens/unused_parameters.dag
-// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (per-edge classification-family shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (Practice 11 / single mechanism, two outputs).
+// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (per-edge classification-family shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (single mechanism, two outputs).
 // Status: per-edge classification-family ratchet + registry split-contract.
 
 
@@ -19,7 +19,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Witness }
 
-// 🟢 USE classification — `BindsTo` is the single USE kind (P6 symbol-
+// 🟢 USE classification — `BindsTo` is the single USE kind (symbol-
 // resolution attaches uses through BindsTo). `Contains` is structural
 // composition, others are non-USE dependencies. The fail-closed slot
 // `RequiresResolutionWitness` covers kinds that need further evidence.
@@ -64,7 +64,7 @@ fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRela
 }
 
 fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
-  // P6 orientation: BindsTo carries Declaration → Use, so `view.source`
+  // Orientation: BindsTo carries Declaration → Use, so `view.source`
   // is the declaration; downstream readers access via `classified_source`.
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
@@ -115,7 +115,7 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
   })
 }
 
-// P6/P2: only Contains dependents are unused candidates; BindsTo sources already have a use, and other dependency kinds are not declaration positions.
+// Only Contains dependents are unused candidates; BindsTo sources already have a use, and other dependency kinds are not declaration positions.
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: Empty, f: fn(acc, classified) {

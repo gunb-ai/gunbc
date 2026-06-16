@@ -101,13 +101,13 @@ type AnthropicToolResultContent
 // SearchResultBlockParam | ToolReferenceBlockParam`).
 //
 // Singleton wire tag: nested `search_result.content[]` rows and plaintext document
-// `source.type` both require the JSON string `"text"` (Practice 2 — illegal states
+// `source.type` both require the JSON string `"text"` (illegal states
 // unrepresentable at the substrate boundary).
 type AnthropicToolResultWireTextTag
   = Text {}
 
 // Singleton: `PlainTextSourceParam.media_type` is the literal `"text/plain"` on the wire
-// (Practice 2 — https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py).
+// (illegal states unrepresentable — https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py).
 type AnthropicPlainTextDocumentMediaType
   = TextPlain {}
 

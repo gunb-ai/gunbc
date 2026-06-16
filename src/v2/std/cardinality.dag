@@ -123,7 +123,7 @@ type TerminationProof {
   non_increasing: List<RankingDimension>
   strict: RankingDimension
 }
-// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: loop-bound-interval-parent — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent for measure + descent evidence (v3 substrate direction); forbidden: terminal LoopBound coproduct duplicating measure per arm.
+// 🟡 gated — coproduct-dissolution interim — feature: loop-bound-interval-parent — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent for measure + descent evidence (v3 substrate direction); forbidden: terminal LoopBound coproduct duplicating measure per arm.
 // LoopBound records the iteration-measure witness for Loop computation nodes.
 // `measure` is the single authoritative bound node via substrate `loop_bound_edge`;
 // `termination` is the descent-proof coordinate (Holds/Violates), not a coproduct arm.
@@ -173,7 +173,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: cardinality-loop-bound-measure-witness — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent owns Loop measure witness minting; forbidden: hand-rolled EdgeLabel walks outside std.node loop_bound_measure_target.
+// 🟡 gated — predicate-dissolution interim — feature: cardinality-loop-bound-measure-witness — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent owns Loop measure witness minting; forbidden: hand-rolled EdgeLabel walks outside std.node loop_bound_measure_target.
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {

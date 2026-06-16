@@ -385,7 +385,7 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
+// 🟡 gated — predicate-dissolution interim — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v2_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -1379,8 +1379,7 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_has_callee_reference
+// 🟡 gated — predicate-dissolution interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_has_callee_reference
 // (executed by comprep_eval_by_execution keystone) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
 // node_query dispatch surface (Node-projectable connective dispatch) instead of inline
@@ -1413,8 +1412,7 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
   }
 }
 
-// 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Arrow
+// 🟡 gated — COMPREP wave-1 callee admission interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Arrow
 // exact-arity arm (executed by comprep_eval_by_execution keystone excess-signature red) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
 // node_query dispatch surface (Arrow.body + declared arity) instead of hand-rolled child-index
@@ -1428,8 +1426,7 @@ fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
   }
 }
 
-// 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Transform-body
+// 🟡 gated — COMPREP wave-1 callee admission interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Transform-body
 // exact-arity arm (executed by comprep_eval_by_execution keystone excess-body red) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
 // node_query dispatch surface instead of hand-rolled child-index absence checks;
@@ -1496,8 +1493,7 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// 🟡 gated — predicate-dissolution interim — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
 // consumer:eval_edge_is_runtime_argument (executed by
 // comprep_eval_lazy_arm_branch_suppression_holds keystone) —
 // bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
@@ -1513,8 +1509,7 @@ fn eval_node_is_branch(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
+// 🟡 gated — predicate-dissolution interim — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
 // consumer:eval_edge_is_runtime_argument (executed by
 // comprep_eval_lazy_arm_loop_suppression_holds keystone) —
 // bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
@@ -1543,8 +1538,8 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm (E-10) —
+// 🟡 gated — predicate-dissolution interim —
+// feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm —
 // dissolve-on-arrival: EffectIoRoundtrip behavior variant or declared roundtrip carrier replaces
 // callee-free 2-arg Transform shape match; forbidden: permanent untagged Bool roundtrip predicates in 05_eval.
 fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
@@ -1612,7 +1607,7 @@ fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
 }
 
 // ReadResource→WriteResource round-trip observed by eval: yield write, apply store, rebind handlers, yield read, resume with value.
-// Exported for E-10 direct-orchestration witnesses (bypasses fold when isolating handler resume).
+// Exported for direct-orchestration witnesses (bypasses fold when isolating handler resume).
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
   args: List<RuntimeValue>,
@@ -2378,8 +2373,7 @@ fn eval_fold_step(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-EVAL-CONTROL-DISPATCH — consumer:eval_runtime_node
+// 🟡 gated — predicate-dissolution interim — feature:COMPREP-EVAL-CONTROL-DISPATCH — consumer:eval_runtime_node
 // (demand-driven spine gate before data-flow fold) — bind: lazy-arm ruling adhoc-edb982e2-4a4;
 // dissolve-on: eval_runtime_node routes via Node-projectable control-transfer dispatch surface
 // instead of inline ComputationNode { behavior: Branch|Loop|Bind } shape match; owner/lane:

@@ -1,7 +1,7 @@
 // src/v2/lens/cost.dag
 //
 // Scope: cost lens — symbolic cost composition with target-realization.
-// Anchor: THESIS Cost dimension §1.2 + per-target realization in extdeps/languages/*
+// Anchor: Cost dimension + per-target realization in extdeps/languages/*
 //
 // U2 (ratified 2026-05-15) — cost is TOTAL over the closed
 // kernel. SymbolicCost is defined at the kernel level (the 6 connectives
@@ -17,7 +17,7 @@
 // the lattice laws — the AbelianGroup<Nat> precedent).
 //
 // Status: SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// This file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
 

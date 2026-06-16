@@ -1,6 +1,6 @@
 // src/v2/std/witness.dag
 // Scope: fail-closed proof/read carrier + unified witness taxonomy (Pass B).
-// Anchor: docs/design-v2-compiler-homomorphism.md
+// Anchor: one-fold homomorphism (DESIGN.md §6)
 // Status: T-3 modeled; Wave-2-BC3 taxonomy extension.
 
 

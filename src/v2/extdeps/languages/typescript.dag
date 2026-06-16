@@ -484,7 +484,7 @@ fn ts_declared_inhabitants_root() -> Node {
 }
 
 // Zip-fold support nodes derived from ts_facts_number constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
   [
     ts_named_edge(
@@ -765,7 +765,7 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v2/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
 type TsGramBuild1State
   = TsGramBuild1StateInit
   | TsGramBuild1StateReady { expr: GrammarExpr }
@@ -1545,7 +1545,7 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
 
 // SG-2 — canonical per-connective TargetTypeExpressionProjection row for TypeScript.
 // Single authority: carrier lives in v2.std.compilers.target_model; this is the per-language row only
-// (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
+// (no name-keyed Outcome/Witness/Refined special cases — SG-2 worksheet).
 // Connective → TS surface (ECMA / TS Handbook):
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          { id: T, ... }                    (object type; shared field-label separator)
@@ -1601,7 +1601,7 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   }
 }
 
-// TargetTypeExpressionProjection bundle node — P2 std row-shape authority (child-slot discipline envelope).
+// TargetTypeExpressionProjection bundle node — std row-shape authority (child-slot discipline envelope).
 fn ts_type_expression_projection_bundle_node() -> Node {
   type_expr_projection_step_algebra(projection: ts_type_expression_projection())
 }
@@ -1664,7 +1664,7 @@ fn ts_sg2_type_expr_lex() -> LexRules {
 // dedicated bundle drives the projection translate path. The MVP-1 bundle kind is the statically
 // declared Conj of ts_mvp1_target_model_node(); we snoc the projection edge onto its children
 // directly — no kind-match fallback arm, which would silently re-emit the projection-absent bundle
-// (P3 plausible substitute) rather than fail closed on a malformed host.
+// (a plausible substitute) rather than fail closed on a malformed host.
 fn ts_sg2_type_expr_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },

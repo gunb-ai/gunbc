@@ -52,14 +52,14 @@ type MachineWidth<bits>
 //
 // Per Director Q1+Q2+Q3+Q4 RATIFIED at gunbc#1739 #issuecomment-4393248961
 // (2026-05-07) + inner-token rename `Platform` → `PointerWidth` RATIFIED at
-// gunbc#828 #issuecomment-4393616097 (per `feedback_reason_not_label` —
+// gunbc#828 #issuecomment-4393616097 (per reason-not-label —
 // pointer-width is the structural reason; the original brief framing
 // collided with pre-existing `Platform = Linux | Macos | Windows` at
 // `dsl/std/types.dag:356`, which is the OS-identity axis, NOT the pointer-
 // width axis; conflating them would lose orthogonality).
 //
 // `PointerWidth` names the target-resolved pointer-width axis at substrate-
-// concept layer (NOT target-only) per `feedback_target_agnostic_ir`:
+// concept layer (NOT target-only) — target-agnostic IR principle:
 // multiple targets carry pointer-sized integers (Rust `isize`/`usize`, Go
 // `int`/`uint`, C `intptr_t`, …); modeling at substrate-concept layer keeps
 // substrate target-agnostic and lets Grounding project to specific widths
@@ -72,7 +72,7 @@ type MachineWidth<bits>
 // the substrate-concept layer — Grounding consumers project `PointerWidth`
 // to the per-target width (Rust pointer-width 32/64, Go `int` width, etc.).
 //
-// Practice 4 dissolution ledger (nominal opaque carrier; no coproduct variants):
+// Decomposition ledger (DESIGN.md §2 decompress→map→reduce; nominal opaque carrier; no coproduct variants):
 // - Pattern 1 (fact placement): fails — `PointerWidth` centralizes the
 //   "target-resolved pointer-width" axis; one slot per use, not multiple
 //   competing slots.
@@ -109,6 +109,6 @@ type PointerWidth
 // (`= Phantom` without `|`) — v3 `parse_type_rhs_after_eq` accepts unary sums; `data` declarations do
 // not yet allow generic parameters on the declaration name.
 //
-// Practice 4: single-variant sum — no multi-variant coproduct checkpoint until extension adds a
+// Decomposition (DESIGN.md §2): single-variant sum — no multi-variant coproduct checkpoint until extension adds a
 // second discriminant.
 type Compose<Algebra, MachineConstraint> = Phantom

@@ -2,7 +2,7 @@
 // Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
 // Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
 // target_serialize_source_from_model grammar-inverse lex walk (no string templates).
-// Anchor: docs/design-v2-compiler-homomorphism.md Stage 5b + Ratified Q11.
+// Anchor: Stage 5b + Ratified Q11.
 
 
 module v2.compiler.emit

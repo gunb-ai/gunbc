@@ -1,6 +1,6 @@
 // src/v2/std/qualified_name.dag
 // Scope: Qualified names as a projection over symbol sequences.
-// Anchor: INVARIANTS.md P1 "Model names must reflect what they are" (T-QN-1).
+// Anchor: faithful modeling — model names must reflect what they are (DESIGN.md §3) (T-QN-1).
 // Status: T-QN-1 modeled; consumed by compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Qualified_name
 
@@ -58,7 +58,7 @@ fn qualified_name_for_all(qn: QualifiedName, predicate: fn(Symbol) -> Bool) -> B
 }
 
 
-// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 4) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node (Outcome-bearing fold_node algebra will carry Outcome natively through the fold, replacing the explicit partial-state tracking in this coproduct; QnFoldStatus collapses entirely); forbidden: promoting QnFoldStatus to a public API or adding arms outside the qualified_name_from_node fold context.
+// 🟡 traverse-dissolution interim — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node (Outcome-bearing fold_node algebra will carry Outcome natively through the fold, replacing the explicit partial-state tracking in this coproduct; QnFoldStatus collapses entirely); forbidden: promoting QnFoldStatus to a public API or adding arms outside the qualified_name_from_node fold context.
 // Internal accumulator for the fold_node algebra in qualified_name_from_node.
 // Tracks head and tail independently so the step function is order-independent:
 // Conj uses LabeledEdges discipline — labels are the authority, storage order is not.
@@ -178,7 +178,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
 }
 
 
-// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate (Outcome-bearing fold_node algebra dissolves the nested Rejected/Accepted propagation chains in step); forbidden: re-inlining the carrier ladder after Q4 resolves.
+// 🟡 traverse-dissolution interim — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate (Outcome-bearing fold_node algebra dissolves the nested Rejected/Accepted propagation chains in step); forbidden: re-inlining the carrier ladder after Q4 resolves.
 // Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the
 // dag_surface_module_header_qualified_name edge of an emitted module header node.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {

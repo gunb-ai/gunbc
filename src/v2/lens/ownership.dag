@@ -1,6 +1,6 @@
 // src/v2/lens/ownership.dag
 // Scope: ownership lens — proves no aliased mutation in emitted code.
-// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<OwnershipMode>`; no copied endpoints (Practice 11 sub-rule: parallel-payload vs typed-reference). Resource access/alias-mode evidence is routed via `RequiresAccessWitness`; deriving the closed access carrier is a tracked follow-up to the #3468 codex BLOCKING reviews.
+// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<OwnershipMode>`; no copied endpoints (parallel-payload vs typed-reference, DESIGN.md §3). Resource access/alias-mode evidence is routed via `RequiresAccessWitness`; deriving the closed access carrier is a tracked follow-up to the #3468 codex BLOCKING reviews.
 
 
 module v2.lens.ownership
@@ -70,7 +70,7 @@ fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Own
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-ownership-mode-unresolved — dissolve-on-arrival: substrate projects OwnershipMode resolved/unresolved from coproduct; forbidden: parallel ad-hoc RequiresAccessWitness/UnknownOwnership Bool predicates outside ownership_witness.
+// 🟡 gated — predicate-dissolution interim — feature:T-13-ownership-mode-unresolved — dissolve-on-arrival: substrate projects OwnershipMode resolved/unresolved from coproduct; forbidden: parallel ad-hoc RequiresAccessWitness/UnknownOwnership Bool predicates outside ownership_witness.
 fn ownership_mode_unresolved(mode: OwnershipMode) -> Bool {
   match mode {
     RequiresAccessWitness => true

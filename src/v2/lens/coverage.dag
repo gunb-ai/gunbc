@@ -200,7 +200,7 @@ data coverage_defect_skeleton_collapse: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: SkeletonCollapse }
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace connective_eq / behavior_eq / type_construction_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-variant Connective/Behavior equality table drift from std/node.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace connective_eq / behavior_eq / type_construction_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-variant Connective/Behavior equality table drift from std/node.dag.
 fn connective_eq(a: Connective, b: Connective) -> Bool {
   match a {
     Atom { identity: ai } =>
@@ -281,7 +281,7 @@ fn type_construction_subject_eq(a: TypeConstructionSubject, b: TypeConstructionS
   }
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace algebra_law_subject_eq / l6_coverage_key_eq / l7_coverage_key_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field AlgebraLawSubject / L6CoverageKey equality table drift from std/nat.dag and lens/testgen.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace algebra_law_subject_eq / l6_coverage_key_eq / l7_coverage_key_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field AlgebraLawSubject / L6CoverageKey equality table drift from std/nat.dag and lens/testgen.dag.
 fn algebra_law_subject_eq(a: AlgebraLawSubject, b: AlgebraLawSubject) -> Bool {
   a.algebra == b.algebra && a.inhabitant == b.inhabitant && a.law == b.law
 }
@@ -295,7 +295,7 @@ fn l7_coverage_key_eq(a: L7CoverageKey, b: L7CoverageKey) -> Bool {
   algebra_law_subject_eq(a: a, b: b)
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace impossible_bug_coverage_key_eq call sites with the substrate ImpossibleBugClass equality primitive and delete this helper in that same PR; forbidden: permanent per-variant ImpossibleBugClass equality table drift from std/verification.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace impossible_bug_coverage_key_eq call sites with the substrate ImpossibleBugClass equality primitive and delete this helper in that same PR; forbidden: permanent per-variant ImpossibleBugClass equality table drift from std/verification.dag.
 fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugCoverageKey) -> Bool {
   match a.bug_class {
     SuboptimalComplexity =>
@@ -331,7 +331,7 @@ fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugC
   }
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace frozen_language_behavior_snapshot_eq / language_behavior_io_mock_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field LBE mock equality table drift from lens/testgen.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace frozen_language_behavior_snapshot_eq / language_behavior_io_mock_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field LBE mock equality table drift from lens/testgen.dag.
 fn frozen_language_behavior_snapshot_eq(
   a: FrozenLanguageBehaviorSnapshot,
   b: FrozenLanguageBehaviorSnapshot
@@ -345,7 +345,7 @@ fn language_behavior_io_mock_eq(a: LanguageBehaviorIoMock, b: LanguageBehaviorIo
   frozen_language_behavior_snapshot_eq(a: a.snapshot, b: b.snapshot)
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace lens_applicability_subject_eq / bidirectional_roundtrip_subject_eq / node_list_eq / refinement_preservation_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field TestgenConcept subject equality table drift from lens/testgen.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace lens_applicability_subject_eq / bidirectional_roundtrip_subject_eq / node_list_eq / refinement_preservation_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field TestgenConcept subject equality table drift from lens/testgen.dag.
 fn lens_applicability_subject_eq(a: LensApplicabilitySubject, b: LensApplicabilitySubject) -> Bool {
   a.lens == b.lens && a.program == b.program
 }
@@ -368,7 +368,7 @@ fn refinement_preservation_subject_eq(
   refined_base(r: a.refined) == refined_base(r: b.refined) && node_list_eq(a: a.original, b: b.original)
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace test_claim_coproduct_variant_eq call sites with the substrate TestClaimCoproductVariant equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestClaimCoproductVariant equality table drift from std/verification.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace test_claim_coproduct_variant_eq call sites with the substrate TestClaimCoproductVariant equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestClaimCoproductVariant equality table drift from std/verification.dag.
 fn test_claim_coproduct_variant_eq(a: TestClaimCoproductVariant, b: TestClaimCoproductVariant) -> Bool {
   match a {
     TestClaimCompilesClaimVariant =>
@@ -399,7 +399,7 @@ fn test_claim_coproduct_variant_eq(a: TestClaimCoproductVariant, b: TestClaimCop
   }
 }
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
 fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
   match a {
     TypeConstruction { subject: as } =>
@@ -574,7 +574,7 @@ fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
   )
 }
 
-// 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape consumed as L7CoverageKey; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete l7_coverage_key_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/coverage.
+// 🟡 gated — record-shape bridge interim — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape consumed as L7CoverageKey; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete l7_coverage_key_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/coverage.
 fn l7_coverage_key_from_nat_obligation(o: NatAlgebraLawObligation) -> L7CoverageKey {
   AlgebraLawSubject {
     algebra: o.algebra,
@@ -749,7 +749,7 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:testgen-scheduled-anchor-absent — bind gunbc#4762 — dissolve-on-arrival: L6/L7/testgen slice NotApplicable for ManualAnchorAbsent rows reads testgen_concept_for_manual_claim rejection taxonomy from lens/testgen + std/verification; delete claim_is_outside_testgen_scheduled_anchor in that same PR; forbidden: permanent lens-owned ClaimAnchorKey ManualAnchorAbsent predicate drift from std/verification.
+// 🟡 gated — predicate-dissolution interim — feature:testgen-scheduled-anchor-absent — bind gunbc#4762 — dissolve-on-arrival: L6/L7/testgen slice NotApplicable for ManualAnchorAbsent rows reads testgen_concept_for_manual_claim rejection taxonomy from lens/testgen + std/verification; delete claim_is_outside_testgen_scheduled_anchor in that same PR; forbidden: permanent lens-owned ClaimAnchorKey ManualAnchorAbsent predicate drift from std/verification.
 fn claim_is_outside_testgen_scheduled_anchor(c: TestClaim) -> Bool {
   match test_claim_anchor(c: c) {
     ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } => true
@@ -944,7 +944,7 @@ fn testgen_coverage_projection_from_claim(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:impossible-bug-reason-projection — bind gunbc#4759 — dissolve-on-arrival: impossible-bug slice gate reads canonical DiagnosticClaim reason membership from std/verification impossible_bug_class_from_diagnostic_reason when TestClaim carries ImpossibleBugClass directly; delete diagnostic_reason_is_canonical_impossible_bug and append_if_canonical_impossible_bug_diagnostic / non_empty_diagnostics_targets_impossible_bug_slice Bool wrappers in that same PR; forbidden: permanent lens-owned Outcome→Bool reason classifier outside impossible_bug_coverage_projection_from_claim.
+// 🟡 gated — predicate-dissolution interim — feature:impossible-bug-reason-projection — bind gunbc#4759 — dissolve-on-arrival: impossible-bug slice gate reads canonical DiagnosticClaim reason membership from std/verification impossible_bug_class_from_diagnostic_reason when TestClaim carries ImpossibleBugClass directly; delete diagnostic_reason_is_canonical_impossible_bug and append_if_canonical_impossible_bug_diagnostic / non_empty_diagnostics_targets_impossible_bug_slice Bool wrappers in that same PR; forbidden: permanent lens-owned Outcome→Bool reason classifier outside impossible_bug_coverage_projection_from_claim.
 fn diagnostic_reason_is_canonical_impossible_bug(reason: Symbol) -> Bool {
   match impossible_bug_class_from_diagnostic_reason(reason: reason) {
     Accepted { value: _, diagnostics: None } => true

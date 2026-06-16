@@ -275,7 +275,7 @@ fn resolve_program_partition(
   )
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim (DESIGN.md §2 — decompress→map→reduce) —
 // feature:program-partition-arrow-body-behavior-segment — consumer:partition_segment_is_ambient_arrow_body_behavior —
 // bind: design-in-language-emission-program-partition.md §6.1 — dissolve-on-arrival: segment-root behavior
 // projects through std node-kind realization rows; forbidden: steady-state ComputationNode behavior Transform

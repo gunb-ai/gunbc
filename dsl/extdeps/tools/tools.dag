@@ -13,9 +13,9 @@
 // is for install hints when the tool is missing, and for documenting
 // the supported environments.
 //
-// Per M10 (MODELING.md): every InstallSource variant references a
-// proper extdeps file. Adding a new variant requires modeling the
-// install source first.
+// Faithful modeling (DESIGN.md §3): every InstallSource variant
+// references a proper extdeps file. Adding a new variant requires
+// modeling the install source first.
 //
 // Pattern reference: gunb.ai/tools/toolpaths/toolpaths.go (Ensure upsert).
 

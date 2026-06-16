@@ -3,7 +3,7 @@
 //! **Modeled authority (future):** `src/v2/compiler/compile_host.dag` (`run_compile_host_v2`).
 //! Substrate `.dag` body stays `transport_not_wired` until eval intercept lands (operator HOLD).
 //!
-//! **Host boundary (INVARIANTS §P2):** outcomes are typed carriers — setup failure is
+//! **Host boundary (DESIGN.md §3):** outcomes are typed carriers — setup failure is
 //! `HostExitOutcome::Rejected(HostSetupFailure)`, logical compile outcome is
 //! `HostExitOutcome::Accepted(ExitWitness::Holds|Violates)`. No free-form `String` authority.
 
@@ -39,7 +39,7 @@ pub enum HostStream {
     Stderr,
 }
 
-/// Harness / transport setup failure — distinct from logical compile outcome (INVARIANTS §P2(c)).
+/// Harness / transport setup failure — distinct from logical compile outcome (DESIGN.md §3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostSetupFailure {
     CompilerBinaryMissing {

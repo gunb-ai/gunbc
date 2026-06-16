@@ -1,9 +1,9 @@
 // src/v2/workflow/release.dag
-// Scope: GitHub Releases binary distribution AS DATA (RELEASE_TODO.md §5 Phase 1a).
+// Scope: GitHub Releases binary distribution AS DATA (Phase 1a).
 // Status: filled — semantic authority for tag trigger, six-target matrix (musl linux x2,
 //   darwin x2, windows msvc x2), published triples + GH Release artifact basenames (`.exe` on
 //   windows rows), musl cross + native darwin/windows builds, GH Release upload intent.
-//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (TASKS T-24; note
+//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (note
 //   `src/v2/workflow/ci.dag` was deleted in PR #4543 — CI is hand-authored directly in ci.yml, so
 //   release is the remaining workflow with a deferred-YAML posture). `.github/workflows/release.yml` is a hand-synced
 //   projection until emission lands. End-user install moves to `install.dag` (Phase 1b).
@@ -33,7 +33,7 @@ import v2.std.algebra {
   length,
   unique
 }
-// 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-synced command surface; forbidden: adding release transport variants outside this coproduct + `release_pipeline`.
+// 🟡 coproduct dissolution — Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-synced command surface; forbidden: adding release transport variants outside this coproduct + `release_pipeline`.
 type ReleaseCommand
   = CrossMuslGunbcBuild { target: String }
   | NativeDarwinGunbcBuild { target: String }
@@ -64,7 +64,7 @@ type ReleaseMatrixRow {
   artifact_basename: String
 }
 
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v2.workflow.release_dist release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
+// 🟡 gated — live-workflow projection interim (gates #98/#100) — feature:release-github-actions-landed — consumer:v2.workflow.release_dist release_live_workflow_signal — bind Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
 type ReleaseLiveWorkflowSignal {
   workflow_name: String
   tag_pattern: String
@@ -343,7 +343,7 @@ fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
   length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
 }
 
-// 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `(target, runner, cross)`; forbidden: new supported platform rows without disposition.
+// 🟡 matrix-row validator dissolution — Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `(target, runner, cross)`; forbidden: new supported platform rows without disposition.
 fn release_matrix_row_tuple_well_formed(row: ReleaseMatrixRow) -> Bool {
   (row.target == "x86_64-unknown-linux-musl"
     && row.runner == "ubuntu-24.04"
@@ -380,7 +380,7 @@ fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
     })
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` `ci_command_authority_ok` / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-rolled `ReleaseCommand` property helpers; forbidden: new `match` predicates over `ReleaseCommand` without disposition.
+// 🟡 coproduct predicate dissolution — Phase 1 (mirror `ci.dag` `ci_command_authority_ok` / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-rolled `ReleaseCommand` property helpers; forbidden: new `match` predicates over `ReleaseCommand` without disposition.
 fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: t } =>
@@ -400,7 +400,7 @@ fn release_all_commands_authority_ok(jobs: List<ReleaseJob>) -> Bool {
   })
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (same trigger as `ReleaseCommand` coproduct).
+// 🟡 coproduct predicate dissolution — Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (same trigger as `ReleaseCommand` coproduct).
 fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: t } => t == target
@@ -441,7 +441,7 @@ fn release_target_in_matrix(target: String, rows: List<ReleaseMatrixRow>) -> Boo
   }) != 0
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+// 🟡 coproduct predicate dissolution — Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
 fn release_command_is_build(c: ReleaseCommand) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: _ } => true
@@ -452,7 +452,7 @@ fn release_command_is_build(c: ReleaseCommand) -> Bool {
   }
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (per-job `ReleaseCommand` projection in well-formedness).
+// 🟡 coproduct predicate dissolution — Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (per-job `ReleaseCommand` projection in well-formedness).
 fn release_job_command_in_matrix(j: ReleaseJob, rows: List<ReleaseMatrixRow>) -> Bool {
   match j.command {
     CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
@@ -494,7 +494,7 @@ fn release_build_commands_use_matrix_targets_only(jobs: List<ReleaseJob>, rows: 
     })
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (mechanical `is_upload` over `ReleaseCommand`; same bounded posture as `ci.dag`).
+// 🟡 coproduct predicate dissolution — Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (mechanical `is_upload` over `ReleaseCommand`; same bounded posture as `ci.dag`).
 fn release_command_is_upload(c: ReleaseCommand) -> Bool {
   match c {
     UploadGunbcMatrixArtifact => true
@@ -531,7 +531,7 @@ fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<Release
   })
 }
 
-// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+// 🟡 coproduct predicate dissolution — Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
 fn release_command_is_publish(c: ReleaseCommand) -> Bool {
   match c {
     PublishGitHubRelease => true

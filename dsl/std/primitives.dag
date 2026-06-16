@@ -51,7 +51,7 @@ type Certainty = Proven | Amortized | Expected | Conservative
 // pathology. A claim asserting "fold-built collections are sub-quadratic"
 // resolves against `persistent_work` by execution — this field is the
 // structural gate, not RSS anecdotes.
-// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the arms are
+// 🟢 terminal — decomposition (DESIGN.md §2) — the arms are
 // presence/absence of carrier-conditional cost structure. Variant-is-data
 // N/A: the payload is meaningless for insensitive primitives, and an
 // empty-string sentinel record would be worse vocabulary (dead fields on

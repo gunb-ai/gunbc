@@ -121,7 +121,7 @@ data probe_ci_unbounded_budget: CostBudget = CostBudget { max_cost: 1000000 }
 data host_health_hypothesis_reachability: HostHealthHypothesis = HostHealthHypothesisReachability
 data host_health_hypothesis_standoff_cap_vddq: HostHealthHypothesis = HostHealthHypothesisStandoffCapVddq
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind gunbc#4759 / R-reflect coproduct-arm reflection — dissolve-on-arrival: substrate-derived DiagnosticInterfaceKind variant equality via coproduct reflection; forbidden: parallel hand-matched DiagnosticInterfaceKind arm equality outside this query.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind gunbc#4759 / R-reflect coproduct-arm reflection — dissolve-on-arrival: substrate-derived DiagnosticInterfaceKind variant equality via coproduct reflection; forbidden: parallel hand-matched DiagnosticInterfaceKind arm equality outside this query.
 fn diagnostic_interface_kind_eq(
   left: DiagnosticInterfaceKind,
   right: DiagnosticInterfaceKind

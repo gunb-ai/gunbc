@@ -1,6 +1,6 @@
 // src/v2/workflow/layering_imports_gate.dag
 //
-// Cross-layer import gate transport authority (INVARIANTS P2 dependency direction).
+// Cross-layer import gate transport authority (layer-DAG dependency direction, DESIGN.md §3).
 // Host enumerates import facts via layering_imports_scan; v2.lens.layering_imports
 // owns violation semantics. Green pass runs clean_tree on the live scanned manifest.
 // Scanner-execution perturb receipts are driven by scripts/v2-layering-imports-gate.sh

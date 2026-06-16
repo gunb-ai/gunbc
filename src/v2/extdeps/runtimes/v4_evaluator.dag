@@ -176,11 +176,11 @@ fn v2_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-// 🟡 gated — wave-1 interim (Practice 10) — feature: faithful RuntimeValue-to-EvaluationFrame reification —
+// 🟡 gated — wave-1 interim — feature: faithful RuntimeValue-to-EvaluationFrame reification —
 // dissolve-on-arrival: T-22 or T-8 providing RuntimeValue→Node reification (runtime_value_node_projection
 // returns non-Unrepresentable) or EvaluationFrame gains a RuntimeValue result slot.
 // Wave-1: Continue/Return reject until value reification is modeled — type-only projection into
-// frame.current would fabricate a successful frame missing the value fact (P3).
+// frame.current would fabricate a successful frame missing the value fact.
 fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: v } =>

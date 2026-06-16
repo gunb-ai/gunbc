@@ -8,8 +8,8 @@
 //   _|_ = Unit = {}        (empty set)
 //   T = Json             (universal structured value)
 //
-// See dsl-design.md S4.1 "Type-Theoretic Foundations" for the full
-// axiom system and coercion theorem.
+// The full axiom system and coercion theorem follow from the
+// set-theoretic foundation above.
 //
 // TYPES ARE DAGS: Every type T is itself a Dag<TypeOp>. The set [T]
 // is the set of values that PASS the type's DAG when executed:
@@ -51,7 +51,7 @@ import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra
 // bindings for isolated tests. These declarations override the seed via
 // the normal merge order (kernel < imports < local).
 //
-// COMPOSITIONAL TARGET (Part B of P5.13):
+// COMPOSITIONAL TARGET (Part B):
 // These types will compose from algebraic structures in std/algebra.dag:
 //   Int    = OrderedRing<Word64>      — arithmetic emerges from Ring
 //   Float  = Field<Word64>            — division emerges from Field
@@ -295,7 +295,7 @@ type GlobPattern {
 type FilePath      = String where non_empty
 
 // --- Temporal types (Level 1: Refinements for time) -----------------------
-// Addresses deficit D14 from domain-modeling-comprehensive.md S9.
+// Addresses the temporal-modeling deficit (D14).
 //
 // Timestamp is an ISO 8601 string (not epoch). Duration is milliseconds.
 // These are refinements, not opaque wrappers -- the pipeline can still
@@ -325,7 +325,7 @@ type Seconds       = Int where range(min: 0), brand("Seconds")
 type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
-// Addresses deficit D15 from domain-modeling-comprehensive.md S9.
+// Addresses the nominal-disjointness deficit (D15).
 //
 // Branded types are structurally identical (all NonEmptyStr) but nominally
 // disjoint. The @brand annotation adds a Brand node to the type's DAG,
@@ -346,7 +346,7 @@ type SignalKey    = NonEmptyStr where brand("SignalKey")
 type ContentHash  = NonEmptyStr where brand("ContentHash")
 // Workflow external-attachment anchor (T-WAD Slice 2 / gate #55): distinct
 // nominals for producer / observer / prover / run keys so provenance roles and
-// run scope cannot be conflated at callsites (P2 / M9 vs bare `String`).
+// run scope cannot be conflated at callsites (DESIGN.md §3 single authority, vs bare `String`).
 type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
 type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
 type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
@@ -677,26 +677,25 @@ type DocSource {
   kind: DocSourceKind
 }
 
-// --- ReferenceModel<T> — pointer/reference parent carrier (PR-F S7 / design-emission §Q2) ---
+// --- ReferenceModel<T> — pointer/reference parent carrier (PR-F S7 / §Q2 decision) ---
 //
-// DFS parent attachment (INVARIANTS.md#p1-modeling-faithfulness Step 1): lands under the shared
+// DFS parent attachment (DESIGN.md §3 faithful modeling, Step 1): lands under the shared
 // kernel vocabulary in `std.types`, adjacent to other carriers typed over generic parameters (same
-// epistemic-stacking pattern as Q1 `Interval<D>`). Authority: docs/design-emission-model.md §Q2 DECISION
+// epistemic-stacking pattern as Q1 `Interval<D>`). Authority: §Q2 DECISION
 // (2026-04-28) — Rust `Box<T>` / `&T` / `Rc<T>`, Go `*T`, Python object references declare projections
 // over this parent; flavors are not unrelated sibling enums here.
 //
-// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (docs/modeling-discipline.md §4 coproduct dissolution)
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
 // Type-parameter carrier for downstream projections/specializations (`&T`, `Box<T>`, …): widening adds
 // those shapes, not new `ReferenceModel` variants at this substrate layer.
 //
-// Substrate note (INVARIANTS.md P2 / modeling-discipline Practice 6): today `T` lowers only into
+// Substrate note (DESIGN.md §3 single authority / boundary discipline): today `T` lowers only into
 // `type_params` with `phantom_params` empty — comments alone do not enforce phantom discipline.
 // Until a fail-closed `phantom_params` bridge (or source `phantom_params` on the declaration)
 // exists for `ReferenceModel`, do not read API-level “phantom” intent from this block; follow
 // `phantom_params` on the declaration.
 //
-// Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): worker brief
-// `docs/briefs/r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md` bundles this carrier with the
+// Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): bundles this carrier with the
 // BoundDeclaration consumer lane under Substrate canvas B3.
 //
 // HARD BOUNDARIES:

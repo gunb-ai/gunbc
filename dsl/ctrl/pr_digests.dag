@@ -83,16 +83,16 @@ type AttachedUrlContainer
   | PullReviewBody
   | ReviewCommentBody
 
-// 🟡 STAGED — Practice 4 (`docs/modeling-discipline.md` §4 YELLOW scaffold;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
+// 🟡 STAGED — coproduct dissolution status, YELLOW scaffold
+// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
 // Named trigger: richer Markdown context (e.g. fenced blocks) is modeled
 // structurally and consumers migrate off the `Prose` / `InlineCode` split.
 type AttachedUrlTextContext
   = Prose
   | InlineCode
 
-// 🟢 TERMINAL — Practice 4 (`docs/modeling-discipline.md` §4 GREEN terminal;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
+// 🟢 TERMINAL — coproduct dissolution status, GREEN terminal
+// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
 // Ledger (dissolution patterns 1–4 at this declaration): (1) fact placement —
 // not cheaper than this sum (single ctrl classifier returning this coproduct).
 // (2) variant-as-data — three arms are semantically distinct failure classes for

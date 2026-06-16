@@ -1,7 +1,7 @@
 // rest_transport_facts.rs — Hand-maintained REST transport introspection.
 // Survives stage0 regeneration (see scripts/check-stage0-freshness.sh exclusions).
 //
-// Bounded substrate seed (INVARIANTS.md — Bounded Substrate Seed):
+// Bounded substrate seed:
 // This file is a bootstrap-only bridge so tests can read `transport rest`
 // facts through the same `v1_std_core` accessors as the compiler. It is NOT
 // a second authority over service metadata.

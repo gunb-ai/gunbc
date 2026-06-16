@@ -7,7 +7,7 @@
 //        Phase 1 published-target list. Single authority (DESIGN.md §3).
 //        Per parent-session guidance (snappy-bee-513, 2026-05-29): general types live in std/ +
 //        extdeps/, NOT inlined here. install.dag adds only the release-domain composition.
-// Status: Release Jun1 §5 Phase 1b substrate — modeled 2026-05-29 (operator brief: "all common
+// Status: Release Jun1 Phase 1b substrate — modeled 2026-05-29 (operator brief: "all common
 //         platforms modeled/supported from day 1 — this should all be modeled properly in .dag").
 //         Lowerings (release.yml build matrix, install.sh, install.ps1, Formula.rb, .deb metadata)
 //         project FROM these carriers in later phases.
@@ -91,7 +91,7 @@ type InstallTarget {
 type InstallChannel
   = GitHubReleaseTarball {
       // Anchor: https://docs.github.com/en/repositories/releasing-projects-on-github.
-      // 🟡 needs-more-work — feature:shell-static-install-script-emit — bind RELEASE_TODO.md §5
+      // 🟡 needs-more-work — feature:shell-static-install-script-emit — bind release
       // Phase 1 · dissolve-on: install.sh + install.ps1 are projected from a typed shell AST
       // (ShellStatic / PowerShellStatic emit gate) that consumes targets + UnameArchMapping
       // (v2.extdeps.platform_detection); hand-authored install.sh disappears.
@@ -102,7 +102,7 @@ type InstallChannel
     }
   | HomebrewFormula {
       // Anchor: https://docs.brew.sh/Formula-Cookbook.
-      // 🟡 needs-more-work — feature:homebrew-formula-emit — bind RELEASE_TODO.md §5 Phase 2 ·
+      // 🟡 needs-more-work — feature:homebrew-formula-emit — bind release Phase 2 ·
       // dissolve-on: Formula.rb is projected from a typed Ruby AST that consumes the targets
       // list + per-target sha256 carriers; hand-authored Formula.rb disappears.
       tap_repo_identity: Symbol
@@ -113,7 +113,7 @@ type InstallChannel
   | DebPackage {
       // Anchor: https://www.debian.org/doc/debian-policy/ — Debian Policy Manual control-fields
       // chapter. Debian arch names (amd64 / arm64) project FROM Architecture by the emitter.
-      // 🟡 needs-more-work — feature:deb-control-metadata-emit — bind RELEASE_TODO.md §5
+      // 🟡 needs-more-work — feature:deb-control-metadata-emit — bind release
       // Phase 3 · dissolve-on: cargo-deb (or equivalent) metadata is projected from this
       // carrier; hand-authored [package.metadata.deb] table in Cargo.toml disappears.
       package_section: String
@@ -124,7 +124,7 @@ type InstallChannel
       // Anchor: https://wiki.debian.org/DebianRepository/Format. Distinct from DebPackage
       // because the repo adds Release/InRelease metadata + a hosting boundary; the .deb is the
       // unit, the apt repo is the distribution.
-      // 🟡 needs-more-work — feature:apt-repo-metadata-emit — bind RELEASE_TODO.md §5 Phase 3 ·
+      // 🟡 needs-more-work — feature:apt-repo-metadata-emit — bind release Phase 3 ·
       // dissolve-on: Release / InRelease / Packages.gz are projected from this carrier; hand-
       // authored sources.list snippet disappears.
       repo_root_authority: Symbol
@@ -133,7 +133,7 @@ type InstallChannel
     }
   | CargoInstall {
       // Anchor: https://doc.rust-lang.org/cargo/commands/cargo-install.html.
-      // 🟡 needs-more-work — feature:cargo-publish-metadata-emit — bind RELEASE_TODO.md §5
+      // 🟡 needs-more-work — feature:cargo-publish-metadata-emit — bind release
       // Phase 4 · dissolve-on: Cargo.toml [package] publish metadata (description / license /
       // repository / publish flag) is projected from this carrier; hand-authored workspace-
       // member publish audit disappears.
@@ -198,7 +198,7 @@ data install_target_aarch64_windows_msvc: InstallTarget = InstallTarget {
 
 
 // Phase 1 GitHub Releases build matrix — the four musl/darwin targets named verbatim in
-// RELEASE_TODO.md §5 Phase 1. Windows targets are modeled (per operator "all common platforms
+// the release plan Phase 1. Windows targets are modeled (per operator "all common platforms
 // from day 1") and ship via the same channel as Phase 1.5 / Phase 2; downstream channel
 // projections filter by readiness gate.
 data release_published_targets: List<InstallTarget> = [
@@ -254,7 +254,7 @@ data cargo_install_channel: InstallChannel = CargoInstall {
 }
 
 
-// The full set of channels the June 1+ release plan covers. Ordered by RELEASE_TODO.md §5 phase
+// The full set of channels the June 1+ release plan covers. Ordered by release phase
 // (Phase 1 → Phase 4); downstream tooling that picks "which channel to project today" reads
 // this list and filters by readiness gate (substrate carrier only; per-channel readiness flags
 // land when each emitter does — see the 🟡 gates inside each InstallChannel variant).
