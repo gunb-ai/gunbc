@@ -6,7 +6,7 @@
 // tables, no hardcoded accessor lists.
 //
 // BACKGROUND (from ROADMAP CX-NEXT):
-// Node is implemented in Rust (`src/v3/compiler/`) but its recursive structure
+// Node is implemented in Rust (`src/v1/stage0/`) but its recursive structure
 // must be visible to the .dag complexity analyzer. This file declares the
 // structural facts as data — NOT the implementation. The types remain Rust
 // structs; this file tells the analyzer "Node.children is List<Node>".

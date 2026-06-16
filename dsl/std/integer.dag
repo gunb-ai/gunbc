@@ -131,9 +131,9 @@ type UInt = Nat
 // only) — `MachineWidth<PointerWidth>` resolves at Grounding-emit time
 // per target spec; substrate stays target-agnostic.
 //
-// Direct-consumer site: `src/v3/spec/rust.dag` `TargetIntegerTypeInhabitance`
-// rows for `isize` (kernel_integer = IntPlatform) and `usize`
-// (kernel_integer = UIntPlatform) with `bound: PlatformDependentFact`.
+// Direct consumer: the target integer-inhabitance rows for `isize`
+// (kernel_integer = IntPlatform) and `usize` (kernel_integer = UIntPlatform)
+// with `bound: PlatformDependentFact`.
 // Targets without native pointer-sized integers (Python's arbitrary-
 // precision `int`, etc.) handle ground-time projection via target-
 // conditioned **lowering** — substrate stays clean (Grounding-lane work).
@@ -163,8 +163,7 @@ type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 // (Director Option 2 ratification at gunbc#828 issuecomment-4390199218);
 // the prior range(min: 1) over Int was a misleading label that treated
 // Nat's lower-bound = 0 as a contingent rather than structural fact.
-// gt_zero is enrolled in the lowerer's predicate registry
-// (KNOWN_PREDICATES in src/v3/compiler/src/lower.rs), which
+// gt_zero is enrolled in the lowerer's predicate registry, which
 // retired the prior PB-1 file-path special case.
 type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
@@ -172,9 +171,8 @@ type PositiveInt    = Nat where gt_zero
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
 //
 // **Substrate-declared ordering authority** for diagnostic enumeration (narrow→wide).
-// Not emission policy — fail-closed UX only. The ordered `List<DeclarationRef>`
-// rows live in `src/v3/std/integer_diagnostic_order.dag` because `DeclarationRef`
-// is defined in `v3.spec.v3_l1` (not loaded in the dsl-only std bootstrap seed).
+// Not emission policy — fail-closed UX only. The ordered rows are keyed by
+// `DeclarationRef`, which is not loaded in the dsl-only std bootstrap seed.
 //
 // **Dissolution:** when typed `width_bits` (or equivalent) lands on word carriers
 // (`dsl/std/bit.dag`), derive order from carriers and remove these lists.

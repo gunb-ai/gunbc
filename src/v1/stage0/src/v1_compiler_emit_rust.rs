@@ -7,7 +7,6 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
     rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy,
 };
-pub use crate::generated_method_template_projection::rust_method_template_emit;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
@@ -27,8 +26,9 @@ pub use crate::v1_compiler_emit::{
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
     is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
     module_emit_scope, order_typed_call_args, render_node_type, rust_literal_for_pattern,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, tco_reassign_core, typed_named_arg_matches, wrap_shared_type,
+    rust_method_template_emit, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
+    wrap_shared_type,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,

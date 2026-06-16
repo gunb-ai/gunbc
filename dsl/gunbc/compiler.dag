@@ -106,7 +106,6 @@ data stage0: GeneratedCrate = {
     "lower.rs",
     "memory_peak_cost.rs",
     "omni_shape_b_openapi.rs",
-    "pb_method_template_projection.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.

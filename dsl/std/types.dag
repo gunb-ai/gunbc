@@ -181,15 +181,14 @@ fn canonical_container_names() -> List<String> {
 // Target: Bool = BooleanAlgebra over {True, False}.
 // Note: std.logic.Classical and std.bit.Bit carry the same structural
 // shape as distinct nominal types. Aliasing Bool = Classical would
-// require v3 to resolve aliases in Branch input type-checking
+// require the compiler to resolve aliases in Branch input type-checking
 // (currently pins Bool as a direct Disj for if/else). Deferred until
 // that compiler work lands; keeps intent-signaling via distinct names.
-// v3 Path A (Lane 1e-2b): `Bool` still parses here for the legacy scanner (`dsl/`
-// was scanned end-to-end; see historical `gist_transitive_closure_parse` and
+// `Bool` still parses here for the legacy scanner (`dsl/` was scanned
+// end-to-end; see historical `gist_transitive_closure_parse` and
 // stage0 self-host fixtures). `Declaration.inhabits` → `BooleanAlgebra<Bool>` is
-// applied when lowering this sum (`crate::lower::wire_kernel_bool_boolean_algebra_inhabits`).
-// Surface `type … inhabits … =` is v3-only under `src/v3/compiler/` (generated
-// parser) and cannot appear in this file until v2 gains a compatible parse path.
+// applied when lowering this sum. Surface `type … inhabits … =` cannot appear
+// in this file until v2 gains a compatible parse path.
 type Bool = True | False
 
 // Unit: terminal object (zero-field product, single inhabitant).
@@ -692,10 +691,9 @@ type DocSource {
 //
 // Substrate note (INVARIANTS.md P2 / modeling-discipline Practice 6): today `T` lowers only into
 // `type_params` with `phantom_params` empty — comments alone do not enforce phantom discipline.
-// Compare `Dimension<Unit, Carrier>` in `src/v3/std/dimensions.dag`, which gets a fail-closed
-// `phantom_params` edge from the std `Dimension` bridge in `src/v3/compiler/src/lower.rs`. Until a
-// similar bridge (or source `phantom_params` on the declaration) exists for `ReferenceModel`, do
-// not read API-level “phantom” intent from this block; follow `phantom_params` on the declaration.
+// Until a fail-closed `phantom_params` bridge (or source `phantom_params` on the declaration)
+// exists for `ReferenceModel`, do not read API-level “phantom” intent from this block; follow
+// `phantom_params` on the declaration.
 //
 // Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): worker brief
 // `docs/briefs/r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md` bundles this carrier with the

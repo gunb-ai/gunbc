@@ -3,37 +3,43 @@
 `README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v1 ships the `gunbc`
 CLI and is v2's seed · v3 was removed, migrated into v1 · v2 is active.)
 
-This document is reasoned **serially**: each section is a consequence of the one before it, or an
-independent peer — never a restatement of it. The principles below apply recursively, including to
+This document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of
+the ones before it (or an independent peer) — never a restatement of it. The principles below apply recursively, including to
 this document. It is a living draft rebuilt from first principles (the prior ~30k-line doc corpus was
 bankrupted 2026-06-16; it remains in git history). Examples are verified against the live tree or a
 git-history receipt; open threads are collected at the end.
 
 ---
 
-## 1. The objective (the axiom)
+## 1. The objective (the axioms)
 
-To *solve a problem* is to find its **minimal, safe, efficient solution** — and those three are not
-preferences we layer on; they fall out of the meaning of "problem" itself:
+The assumptions everything else rests on. Three **axioms** — assumed, not derived:
 
-- **minimize cost** — input sustainability (cheap to run and to feed);
-- **maximize safety** — harm reduction (it never silently does the wrong thing);
-- **minimize complexity** — solution + maintenance sustainability (it stays cheap to change).
+- **A1 — there is a goal.** To *solve a problem* presupposes an agent with a goal to satisfy; with no
+  goal there is nothing to optimize.
+- **A2 — time is the value.** Every agent intrinsically values time — it is finite and is the substance
+  of acting at all: **time is life**. It is the one value we may assume is *shared*.
+- **A3 — agreement is temporal.** Intersubjective agreement — two parties holding the same fact — is
+  possible only *across* time, and only on what stays stable under it.
 
-Underneath, all three are **time**: cost is time-to-run, complexity is time-to-change, and an unsafe
-answer is time-to-recover — paid later, at interest. Time is the one quantity every agent intrinsically
-values (**time is life**), which is what makes minimal/safe/efficient an intersubjectively grounded
-objective (§4), not a house preference.
+Three things follow, in order:
 
-The aim, stated at its limit, is to **reduce intersubjectivity to physics** — physics being the
-efficient, time-bound description of interactions that satisfies a goal (i.e. §1 itself, turned on
-grounding). Every convention replaced by necessity is agreement that no longer has to be negotiated,
-and the shared framework §4 points at is, at the floor, physics — the description nothing arbitrary
-survives in. This is the deep reason §3 models the universal frameworks and real upstream rather than
-re-coining them: a nickname is convention standing where physics was available.
+- **From A1 and A2 — the solution is minimal, safe, efficient.** A solution is good exactly insofar as
+  it spends less of the only thing valued, time; and time is spent three ways:
+  - **cost** — time to run (cheap to run and to feed);
+  - **safety** — time to recover from a silent wrong answer, paid later at interest (harm reduction);
+  - **complexity** — time to change (it stays cheap to maintain).
 
-The whole project optimizes these three jointly. Everything below is a mechanism for one or more of
-them.
+  So the three are not preferences layered on — they are A2 applied to A1, and the project optimizes
+  them jointly.
+- **From A2 and A3 — grounding is intersubjective.** Because time is the *only* assumed-shared value, a
+  fact is grounded only by pointing at a shared, time-stable framework (§4), never an internal taxonomy.
+- **At the limit — reduce intersubjectivity to physics.** The deepest such framework — the efficient,
+  time-bound description of interactions that satisfies a goal — is **physics** (A1–A2 turned on
+  grounding itself). So the aim, at its limit, is to *reduce intersubjectivity to physics*: replace
+  convention with necessity until nothing arbitrary survives. This is the deep reason §3 models the
+  universal frameworks and real upstream rather than re-coining them — a nickname is convention standing
+  where physics was available.
 
 ## 2. Minimize redundancy (the master move for cost and complexity)
 
@@ -152,11 +158,15 @@ still a violation) · internal review finds missing tests, external review finds
 
 ## Open threads
 
+- model §1's axioms (A1–A3) explicitly in `.dag` and have a lens **enforce the syllogism** — every
+  claim a consequence-chain back to an axiom, no orphan and no cycle (the §4 acyclicity test turned on
+  the argument itself; the §7 recursion, with this document as the first target). (operator's next
+  project)
 - can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
 - sweep deleted-doc references in `.dag` comments (~100 files, mostly `Practice 4 (docs/modeling-discipline.md)` ledger marks) — fold into the dep-graph reform, not a blind repoint.
 
 ## Building & checks
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
-- one-time: `.githooks/install-hooks.sh` (pre-push runs `cargo fmt`)
+- one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)
 - CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test`

@@ -65,7 +65,6 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
-import generated.method_template_projection { rust_method_template_emit }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result,
   rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
@@ -119,6 +118,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.emit {
   BlockEmitState, TcoFrame, TcoReassignInput, InterpPart,
+  rust_method_template_emit,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
