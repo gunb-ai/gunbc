@@ -2189,48 +2189,16 @@ fn emit_typed_block_join(
 }
 
 // Per-target algebra method emit templates — \{recv\} = receiver, \{arg\} = first argument.
-// Rust draws from the extdeps SimpleMethodSpec authority (rust_method_templates,
-// imported above); Python/Go still carry local maps pending their own parity-proved
-// consolidation (the extdeps python/go maps are supersets — concat/map/fold).
-data python_method_template_emit: Map<String, String> = {
-  "all": "all(\{arg\}(x) for x in \{recv\})",
-  "any": "any(\{arg\}(x) for x in \{recv\})",
-  "append": "\{recv\} + [\{arg\}]",
-  "chars": "[ord(c) for c in \{recv\}]",
-  "count": "len(\{recv\})",
-  "enumerate": "list(enumerate(\{recv\}))",
-  "filter": "[x for x in \{recv\} if \{arg\}(x)]",
-  "first": "\{recv\}[0] if \{recv\} else None",
-  "flat_map": "[y for x in \{recv\} for y in \{arg\}(x)]",
-  "join": "\{arg\}.join(\{recv\})",
-  "last": "\{recv\}[-1] if \{recv\} else None",
-  "skip": "\{recv\}[\{arg\}:]",
-  "sort_by": "sorted(\{recv\}, key=\{arg\})",
-  "split": "\{recv\}.split(\{arg\})",
-  "string_contains": "\{arg\} in \{recv\}",
-  "take": "\{recv\}[:\{arg\}]",
-}
-
-data go_method_template_emit: Map<String, String> = {
-  "all": "v2rt.All(\{recv\}, \{arg\})",
-  "any": "v2rt.Any(\{recv\}, \{arg\})",
-  "append": "append(\{recv\}, \{arg\})",
-  "count": "len(\{recv\})",
-  "filter": "v2rt.Filter(\{recv\}, \{arg\})",
-  "flat_map": "v2rt.FlatMap(\{recv\}, \{arg\})",
-  "join": "strings.Join(\{recv\}, \{arg\})",
-  "skip": "\{recv\}[\{arg\}:]",
-  "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
-  "split": "strings.Split(\{recv\}, \{arg\})",
-  "string_contains": "strings.Contains(\{recv\}, \{arg\})",
-  "take": "\{recv\}[:\{arg\}]",
-}
-
+// All three targets draw from their extdeps SimpleMethodSpec authority (the
+// `*_method_templates*()` derived maps imported above). map/fold/concat are
+// intentionally absent from every target's flat map — they are binary+ and
+// route through the runtime bridge in emit_algebra_method_call_unified, which
+// forwards every argument.
 fn method_template_emit_for_target(target: RenderTarget) -> Map<String, String>? {
   match target {
     Rust => Present { value: rust_method_templates() }
-    Python => Present { value: python_method_template_emit }
-    Go => Present { value: go_method_template_emit }
+    Python => Present { value: python_method_templates_flat() }
+    Go => Present { value: go_method_templates_flat() }
     Dag => none
   }
 }

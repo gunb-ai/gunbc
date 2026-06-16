@@ -639,7 +639,7 @@ fn python_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: python_method_templates,
+    method_templates: python_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "base_url: str",
       auth_decl: "auth_token: str",
@@ -784,7 +784,7 @@ fn go_spec() -> LanguageSpec {
       lambda_param_typed: "{0} {1}",
       lambda_param_untyped: "{0} interface{}"
     },
-    method_templates: go_method_templates,
+    method_templates: go_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "\tBaseURL string",
       auth_decl: "\tAuthToken string",
