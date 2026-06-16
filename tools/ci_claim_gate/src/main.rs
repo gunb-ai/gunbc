@@ -202,8 +202,8 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
-            let content = fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            let content =
+                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
             for name in scan_test_fn_names(&content) {
                 if seen.insert((entry.clone(), name.clone())) {
                     rows.push(GateRow {
