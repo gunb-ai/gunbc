@@ -412,6 +412,11 @@ fn stack_parses_strict() {
     assert_parses_strict("dsl/std/stack.dag");
 }
 
+#[test]
+fn unicode_parses_strict() {
+    assert_parses_strict("dsl/std/unicode.dag");
+}
+
 // ── Phase 0: strict parse audit (.dag files) ────────────────────────────
 
 #[test]
