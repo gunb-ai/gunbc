@@ -122,6 +122,13 @@ import v1.compiler.languages {
 // (derived map below). The former local `rust_method_template_emit` fork
 // is dissolved into this import.
 import extdeps.languages.rust.emit { rust_method_templates }
+// Python/Go draw the same way from their own SimpleMethodSpec authority: the
+// flat (`{recv}`/`{arg}`) templatable methods. map/fold/concat are absent from
+// these derived maps and route through the runtime bridge (it forwards every
+// arg — required for binary+ `fold`). The former local `python_method_template_emit`
+// / `go_method_template_emit` forks are dissolved into these imports.
+import extdeps.languages.python.emit { python_method_templates_flat }
+import extdeps.languages.go.emit { go_method_templates_flat }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
