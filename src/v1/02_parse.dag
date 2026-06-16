@@ -329,7 +329,6 @@ fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow =>
 // =========================================================================
 // Minimal-information token inspectors: take Token?, not List<Token>.
 // Callers extract the token explicitly — no ambiguity about which list.
-// See INVARIANTS.md "Minimal information per interface".
 // =========================================================================
 
 fn tok_is_keyword(tok: Token?, kw: String) -> Bool {

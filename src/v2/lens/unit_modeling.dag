@@ -2,7 +2,7 @@
 // Scope: universal .dag unit-modeling discipline lens — flags a bare-scalar leaf
 //        field that carries a quantity but is NOT attached to the
 //        `Measure<Quantity, Scale>` carrier (dsl/std/measure.dag) or an alias.
-//        MODELING.md M12 / modeling-discipline.md Practice 13 (JIT modeling) — a
+//        JIT modeling (DESIGN.md §2/§6) — a
 //        domain quantity may not ship as a raw scalar.
 //
 // Mode: ADVISORY lens (CompileLensIntrospect). Per-node gate
@@ -92,7 +92,7 @@ import v2.std.witness { Holds, Witness }
 // check — from the carrier registry rather than literaling rows here. A later
 // increment is expected to DISSOLVE this table toward registry-derivation, not
 // just extend it row-by-row; forbidden: growing the literal table as the
-// permanent shape. (M9 / modeling-discipline.md Practice 10/11.)
+// permanent shape.
 type UnitFieldRow {
   field: Symbol
   carrier: Symbol
@@ -165,7 +165,7 @@ data unit_field_rows: List<UnitFieldRow> = [
 ]
 
 // Build the exact-Symbol-keyed lookup once by folding the rows into an empty Map.
-// M9: a single Symbol-keyed authority, not re-literaled symbol comparisons
+// Single authority (DESIGN.md §3): a single Symbol-keyed authority, not re-literaled symbol comparisons
 // scattered across the gate.
 fn unit_field_token_map() -> Map<Symbol, Symbol> {
   fold(unit_field_rows, init: empty_map(), f: fn(acc, row) {
@@ -252,8 +252,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 }
 
 // (Left-biased first-present fold over Optionals uses the std combinator
-// `optional_prefer_first_present` — no hand-rolled duplicate, INVARIANTS.md P1 /
-// Practice 10.)
+// `optional_prefer_first_present` — no hand-rolled duplicate.)
 
 // One field edge → an Optional violation under the INVERTED predicate: a bare
 // scalar leaf is flagged BY DEFAULT and exempt ONLY if its name is a categorical
@@ -313,7 +312,7 @@ fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
 //     GATE-N-pending quantity (tdp_watts → Power, not in the catalog). The flag
 //     STILL fires (no false-negative; a quantity is a quantity regardless of
 //     whether its carrier exists yet), but there is no fix-suggestion — the honest
-//     reconciliation is to escalate the upstream carrier gate (M12 / Practice 13),
+//     reconciliation is to escalate the upstream carrier gate,
 //     not to suppress the flag.
 // The token map (degraded from flag-predicate to advisory hint) doubles as the
 // carrier-exists oracle that splits the two classes. `correction` is `Unavailable`
@@ -351,7 +350,7 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 // `unit_modeling_lens` are wired in 00_compile.dag and REGISTERED in
 // always_required_lenses() alongside fact_density_lens. validate_then_compile runs the
 // always-required lenses fail-closed (CompileLensEnforce), so a unit violation rejects
-// the gated compile — the M12 / Practice 13 unmodeled-unit discipline made executable.
+// the gated compile — the unmodeled-unit discipline made executable.
 // (The earlier "advisory/introspect" plan was the pre-infra-recovery wiring caution;
 // the always-required roster is enforce-only, which is the intended soundness posture.
 // validate_then_compile is not on the `gunbc compile` emit path — compile() runs no

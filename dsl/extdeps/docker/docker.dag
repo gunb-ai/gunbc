@@ -31,7 +31,7 @@ type DockerImage {
 // container; a volume mount attaches a daemon-managed named volume; a
 // tmpfs mount is container-private memory-backed scratch.
 //
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). Docker's `--mount type=` surface is a closed,
 // daemon-defined taxonomy of exactly these three kinds; the variants are
 // the irreducible distinction at the docker-CLI boundary, with genuinely

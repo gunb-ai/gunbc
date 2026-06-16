@@ -4,15 +4,15 @@
 //        .platform_detection mappings) into release-domain facts: InstallTarget (triple ×
 //        archive extension × install path × env policy), InstallChannel coproduct (GitHub
 //        Releases tarball, Homebrew formula, deb package, apt repo, cargo install), and the
-//        Phase 1 published-target list. Single authority per INVARIANTS P2.
+//        Phase 1 published-target list. Single authority (DESIGN.md §3).
 //        Per parent-session guidance (snappy-bee-513, 2026-05-29): general types live in std/ +
 //        extdeps/, NOT inlined here. install.dag adds only the release-domain composition.
 // Status: Release Jun1 §5 Phase 1b substrate — modeled 2026-05-29 (operator brief: "all common
 //         platforms modeled/supported from day 1 — this should all be modeled properly in .dag").
 //         Lowerings (release.yml build matrix, install.sh, install.ps1, Formula.rb, .deb metadata)
 //         project FROM these carriers in later phases.
-// Anchor: RELEASE_TODO.md §5 (Phase 1 GitHub Releases; Phase 2 Homebrew; Phase 3 apt/deb;
-//         Phase 4 cargo install).
+// Release phases: Phase 1 GitHub Releases; Phase 2 Homebrew; Phase 3 apt/deb;
+//         Phase 4 cargo install.
 
 module v2.install.install
 
@@ -66,7 +66,7 @@ type EnvPathPolicy
   | AppendToUserPath              // Windows install.ps1: setx PATH to include install dir.
 
 
-// Anchor: RELEASE_TODO.md §5 Phase 1 build matrix. InstallTarget is the per-platform composition
+// Anchor: Phase 1 build matrix. InstallTarget is the per-platform composition
 // the release pipeline iterates over; it pins the (TargetTriple × archive extension × install
 // prefix × env policy) tuple a single channel-emitter consumes for one platform.
 type InstallTarget {
@@ -84,7 +84,7 @@ type InstallTarget {
 }
 
 
-// Anchor: RELEASE_TODO.md §5 Phase 1–4. Distribution channels — closed set of mechanisms users
+// Anchor: Phase 1–4. Distribution channels — closed set of mechanisms users
 // run to obtain gunbc; each variant carries the channel-specific configuration the downstream
 // emitter consumes.
 // 🟢 coproduct dissolution — InstallChannel.

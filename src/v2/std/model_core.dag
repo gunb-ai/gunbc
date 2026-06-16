@@ -34,7 +34,7 @@ import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticO
 import v2.std.witness { Holds, Violates, Witness }
 
 
-// 🟢 terminal — closed model_core primitive fact-axis vocabulary (PrimitiveFactBundle P2).
+// 🟢 terminal — closed model_core primitive fact-axis vocabulary.
 // G.0 keys `PerLanguageFactBundleKey.fact_axis` here; target_model catalog axes widen in G.1.
 type ModelCorePrimitiveFactAxis
   = ModelCoreFactAxisWidth {}
@@ -301,7 +301,7 @@ fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> Node {
 
 // 🟡 gated — feature:model-core-node-projection — consumer:v2.std.language_model.language_model_to_node —
 // dissolve-on: ModelCore core edge projects primitives/inhabitance/laws/effects/partiality as named Conj facts;
-// forbidden: lossy head-only primitive substrate projection without this gate (INVARIANTS P1 facts-flow-forward).
+// forbidden: lossy head-only primitive substrate projection without this gate (facts-flow-forward, DESIGN.md §3).
 fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> Node {
   match fold_list(
     xs: bundles,

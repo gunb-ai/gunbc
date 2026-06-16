@@ -1,6 +1,6 @@
 // Scope: TestClaim corpus — fail-closed admission receipts for duplicate module roots
 //         and missing import targets (T-QN-1 Change 2 / catalog dissolution follow-on).
-// Anchor: INVARIANTS P3 (Fail-Closed) — duplicate/missing module names must reject.
+// Anchor: DESIGN.md §5 (fail-closed) — duplicate/missing module names must reject.
 
 module v2.test.name_resolve.admission_fail_closed
 

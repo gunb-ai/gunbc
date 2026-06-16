@@ -1,6 +1,6 @@
 // src/v2/lens/parallelism.dag
-// Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
-// Status: per-edge classification-family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate (Practice 11).
+// Scope: parallelism lens — independence visible in dependency-graph structure.
+// Status: per-edge classification-family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate.
 
 
 module v2.lens.parallelism
@@ -158,7 +158,7 @@ fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> P
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc unresolved Bool predicates outside parallelism_witness.
+// 🟡 gated — predicate-dissolution interim — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc unresolved Bool predicates outside parallelism_witness.
 fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
   match relation {
     UnresolvedCoupling { diagnostic: _ } => true

@@ -24,23 +24,23 @@ import std.constructors { Phantom }
 // 🟢 PRIMITIVE — substrate authority for machine word width. `bits` is a phantom type parameter
 // (documentation intent: indexed by `Nat` magnitude); not an alternate Nat authority (`dsl/std/nat.dag`).
 //
-// Practice 4 dissolution ledger (nominal opaque carrier; no coproduct variants here):
+// Decomposition ledger (DESIGN.md §2 decompress→map→reduce; nominal opaque carrier; no coproduct variants here):
 // - Pattern 1 (fact placement): fails — width centralizes as the machine axis composed with algebra.
 // - Pattern 2 (variant-is-data): n/a — no variants.
 // - Pattern 3 (algebraic form): fails — width does not dissolve into an algebra witness over Nat.
 // - Pattern 4 (dimensional): fails — word width is an irreducible machine fact at this layer.
 // Verdict: terminal at machine-width axis scope.
 //
-// P2 / P5 — **TRACKED PARAMETER GAP / bounded scaffold** (INVARIANTS.md § P5 scaffold boundaries —
-//   named dissolution trigger below; closes “prose-only Nat index” / “unbounded phantom” reviews):
-// - **P2 (Boundary discipline, INVARIANTS.md § P2):** `bits` is phantom; v3 `.dag` surface grammar
+// **TRACKED PARAMETER GAP / bounded scaffold** (scaffold with a
+//   named dissolution trigger below, DESIGN.md §6; closes “prose-only Nat index” / “unbounded phantom” reviews):
+// - **Boundary discipline (DESIGN.md §3):** `bits` is phantom; v3 `.dag` surface grammar
 //   here does **not** attach a structural `bits : Nat` bound. The Nat-magnitude intent above is
 //   **single-authority documentation** plus **Grounding lowering** enforcement — not a second,
 //   parser-parallel “Nat police” encoded only in comments.
 // - **Constructibility:** shapes like `MachineWidth<String>` are **not R3-valid substrate uses**
 //   of this carrier; absent a parse-time bound, rejection is **mechanical at Grounding** (fail
 //   closed / omit per universal-substrate posture, gunbc#828) — not silent acceptance.
-// - **P5 (Dissolution trigger, INVARIANTS.md § P5 / scaffold boundaries):** dissolve this gap in
+// - **Dissolution trigger (DESIGN.md §6 scaffold boundaries):** dissolve this gap in
 //   the **same PR** that first lands one of: (a) substrate grammar for bounded phantom parameters
 //   tying `bits` to `Nat`, or (b) a non-phantom canonical `MachineWidth` indexed by an explicit
 //   `Nat` carrier — then delete this block and re-measure consumers.

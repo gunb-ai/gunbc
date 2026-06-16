@@ -1,7 +1,6 @@
 // src/v2/compiler/program_partition.dag
 // Scope: resolve ProgramSegment against InferredTree → ProgramPartition; project emit input.
 // Status: Wave A — facts_closure_fold + boundary checks; emit_partition / emit_for_target wired.
-// Anchor: docs/design-in-language-emission-program-partition.md
 
 module v2.compiler.program_partition
 
@@ -107,7 +106,7 @@ fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
 }
 
 // 🟡 gated — feature:program-partition-subtree-containment — consumer:partition_subtree_root_contained_in_ambient —
-// bind: design-in-language-emission-program-partition.md Q-EP1 — dissolve-on-arrival: path witness via
+// dissolve-on-arrival: path witness via
 // subterm_at / content_hash containment replaces structural identity-in-subtree membership; forbidden:
 // steady-state identity-only containment without path witness.
 fn partition_subtree_root_contained_in_ambient(

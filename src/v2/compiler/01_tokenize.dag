@@ -79,7 +79,7 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived LexCharClass membership predicate (per-variant character range projection dissolves per-arm nat-range inline); forbidden: per-arm expansion laundering.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived LexCharClass membership predicate (per-variant character range projection dissolves per-arm nat-range inline); forbidden: per-arm expansion laundering.
 fn char_in_class(c: Char, class: LexCharClass) -> Bool {
   match class {
     WhitespaceChar =>

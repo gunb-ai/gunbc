@@ -1,5 +1,5 @@
 // Scope: TestClaim — malformed module root is rejected fail-closed.
-// Anchor: INVARIANTS P3 (Fail-Closed) — malformed graph-entry root must produce a
+// Anchor: DESIGN.md §5 (fail-closed) — malformed graph-entry root must produce a
 //         diagnostic, not silently succeed.
 
 module v2.test.name_resolve.malformed_imported_root

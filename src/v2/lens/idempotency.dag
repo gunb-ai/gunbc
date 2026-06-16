@@ -1,6 +1,6 @@
 // src/v2/lens/idempotency.dag
-// Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally (THESIS:188 — idempotency + cancellation + redundancy = algebraic simplification).
-// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<IdempotencyVerdict>`; no copied endpoints, no nested per-row EffectDependencyFact (Practice 11 sub-rule: parallel-payload vs typed-reference). The algebra-law witness is the verdict payload itself; the dependency-edge identity authority is `ClassifiedDependencyView.dependency`.
+// Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally (idempotency + cancellation + redundancy = algebraic simplification).
+// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<IdempotencyVerdict>`; no copied endpoints, no nested per-row EffectDependencyFact (parallel-payload vs typed-reference). The algebra-law witness is the verdict payload itself; the dependency-edge identity authority is `ClassifiedDependencyView.dependency`.
 
 
 module v2.lens.idempotency
@@ -75,7 +75,7 @@ fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> I
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-idempotency-verdict-unresolved — dissolve-on-arrival: substrate projects IdempotencyVerdict resolved/unresolved from coproduct; forbidden: parallel ad-hoc IdempotencyVerdict Bool predicates outside idempotency_witness.
+// 🟡 gated — predicate-dissolution interim — feature:T-13-idempotency-verdict-unresolved — dissolve-on-arrival: substrate projects IdempotencyVerdict resolved/unresolved from coproduct; forbidden: parallel ad-hoc IdempotencyVerdict Bool predicates outside idempotency_witness.
 fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
   match verdict {
     RequiresAlgebraWitness => true

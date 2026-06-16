@@ -56,7 +56,7 @@ type GoIntegerAlgebra
 // bits carrier witness — do not duplicate width as independent algebra+carrier
 // fields on the same row.
 //
-// Practice 4 (docs/modeling-discipline.md): **🟢 GREEN (terminal coproduct).**
+// **🟢 GREEN (terminal coproduct).**
 // Ledger — both arms are spec-realized and consumed: `GoFloat32Width` /
 // `GoFloat64Width` are the irreducible width distinction for Go’s two
 // predeclared floating-point types (spec §Floating-point_types); each arm has a
@@ -102,7 +102,7 @@ type GoTargetCarrier
 // future operator/substrate refinements get their own rows — not Rust `Saturating`
 // / `Trap` names copied onto the Go spec surface.
 //
-// Practice 4: **🟢 GREEN** — `GoModularWrapOnFixedWidth` is the terminal ledger entry
+// **🟢 GREEN** — `GoModularWrapOnFixedWidth` is the terminal ledger entry
 // for Go spec §Integer_overflow on fixed-width predeclared numerics in this slice.
 // **🟡 YELLOW (scaffold)** — `GoIntegerOverflowRefinementReservedA/B` exist only for
 // the v2 “≥2 sum arms” tag-resolution constraint; named trigger: same-row engine
@@ -118,7 +118,7 @@ type GoIntegerOverflow
 // single-arm-resolution issue as `GoIntegerOverflow`; do **not** add a UTF-8
 // parallel authority here (header §STRING).
 //
-// Practice 4: **🟢 GREEN** — first arms are the terminal string-value witnesses.
+// **🟢 GREEN** — first arms are the terminal string-value witnesses.
 // **🟡 YELLOW** — reserved arms; trigger: bootstrap / loader closes single-arm sums.
 type GoSpecStringAlgebraTag
   = GoImmutableByteSequenceMonoidAlgebra
