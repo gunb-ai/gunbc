@@ -11,16 +11,6 @@
 // `CommutativeSemiring` is the right algebra layer for ℕ; `Int` extends to
 // `AbelianGroup<Nat>` in a later slice (Grothendieck construction).
 //
-// T-Nat-Sharpening stack-overflow receipt:
-//   The direct alias pivot originally overflowed the default Rust test thread
-//   inside `bootstrap_generated::bootstrapped_fixture_dag()`, before runtime
-//   finalization, cloning, declaration lookup, or instantiation traversal.
-//   The committed bootstrap emitter now splits generated snapshot construction
-//   into helper functions; `generated_full_bootstrap_dag()` loads this sharpened
-//   alias on the default test stack, ratcheted by
-//   `nat_resolves_to_semiring_over_magnitude` in
-//   `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`.
-//
 // CONSUMERS: none in this slice. Refinements `Nat<N>` (later slices, gated
 // on T-V2-Retirement per design doc §"path (a) coordination") parameterize
 // the namespace to bind concrete bit-width at grounding time.

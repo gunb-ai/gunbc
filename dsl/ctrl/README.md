@@ -31,6 +31,6 @@ The migration project plan and the manager brief that define these gates live in
 ## Discipline carry-overs
 
 Workers landing files here MUST grep BEFORE naming new carriers:
-- `src/v3/SELF_HOSTING.md` and ctrl's authority docs (per `feedback_self_hosting_md_authority_audit_before_naming.md`)
+- ctrl's authority docs (per `feedback_self_hosting_md_authority_audit_before_naming.md`)
 - existing `dsl/std/` for primitives reuse (per MODELING.md M9 DFS-the-concept-DAG)
 - `dsl/extdeps/` headers for emission/policy fact placement (per `feedback_extdeps_header_discriminator_before_field_placement.md`)

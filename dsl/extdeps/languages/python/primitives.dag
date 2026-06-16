@@ -27,16 +27,13 @@
 //       python/types.dag + emit tables until a dedicated stdlib-authority
 //       slice lands; do not cite stdlib paths here.
 //
-// CONSUMER BOUNDARY: top-level list / record `ValueBody` aggregates lower
-// structurally today (rust_grounding_primitives is loaded as `ValueBody::List`
-// by `src/v3/grounding_engine/src/lib.rs:7`, registered via
-// `src/v3/std/extdeps_bootstrap_fixtures.dag:23`). What is *not* yet live
-// for this file: no `BootstrapFixture` row has been registered for
-// `python_spec_predeclared_primitives` or `python_dag_unit_target_primitive`,
-// and there is no Python-grounding engine consumer in-tree yet — so today
-// these rows are loaded but unconsumed (Path-2 staging in the
-// fixture-registration sense, not in the lowering sense). Type-structure
-// (`PythonPrimitive = …`) is walkable for the future engine consumer.
+// CONSUMER BOUNDARY: top-level list / record aggregates lower structurally.
+// What is *not* yet live for this file: there is no Python-grounding consumer
+// in-tree yet for `python_spec_predeclared_primitives` or
+// `python_dag_unit_target_primitive` — so today these rows are loaded but
+// unconsumed (Path-2 staging in the fixture-registration sense, not in the
+// lowering sense). Type-structure (`PythonPrimitive = …`) is walkable for the
+// future engine consumer.
 //
 // LESSON 5 (grounding-pilot-receipt.md): subset-only axes are structurally
 // partitioned — every `PythonPrimitive` variant carries its own per-variant

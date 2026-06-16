@@ -1,7 +1,7 @@
 // Scope: v2.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
-// These witnesses migrate the EXECUTABLE behavioral content of
-// src/v3/compiler/tests/integration/v2_extdeps_coordination_dag_smoke_test.rs's
+// The executable receipt is the in-file claim witness, run in-process by the
+// ci_claim_gate binary (the witnesses ARE the coverage).
 // Importing v2.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 

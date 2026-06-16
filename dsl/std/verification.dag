@@ -52,13 +52,12 @@ type TestClaim {
 // warn-name list. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
 // rows per test where paydown replaces warn-only policy.
 //
-// Legacy dsl projection note: this tree does not carry T-WAD's v3
-// `TimingBudget` / `TimingMeasurement` / `Nanoseconds` substrate yet.
-// The bootstrap-local v3 authority (`src/v3/std/verification.dag`) is the
-// convergence shape. These `_ms` fields use the existing branded
+// Legacy dsl projection note: this tree does not carry T-WAD's finer
+// `TimingBudget` / `TimingMeasurement` / `Nanoseconds` timing substrate yet.
+// These `_ms` fields use the existing branded
 // non-negative `Milliseconds` carrier as the older dsl projection of that
 // same timing fact, not a parallel cost algebra.
-// Retirement trigger: #102 (`slow_test_exemptions_dissolved`) consumes the v3
+// Retirement trigger: #102 (`slow_test_exemptions_dissolved`) lands a
 // `Nanoseconds` timing authority for the slow-test ratchet, then deletes or
 // rewires this dsl projection instead of extending it.
 
