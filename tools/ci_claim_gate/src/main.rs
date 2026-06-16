@@ -1,7 +1,9 @@
 //! `ci-claim-gate` — uniform `.dag`-driven CI Bool-witness gate host.
 //!
-//! Replaces the duplicated awk/grep roster projection in `v4-lens-ci-gate.sh`,
-//! `v4-affected-set-node-frontier-gate.sh`, and peers. The gate model owns the row
+//! Replaces the duplicated awk/grep roster projection that the former per-gate
+//! wrapper shells once carried; the lens-ci, probe-selector, and node-frontier
+//! rows-fns are now invoked directly from `scripts/v4-affected-tests-gate.sh`
+//! (gate-3). The gate model owns the row
 //! list; this host evaluates a modeled `*_rows_tsv()` function via the v2 interpreter
 //! (the #4804 / `claim_batch` Option-B precedent), then runs:
 //!   1. GREEN pass — one `claim_batch`-style multi-entry resolve (module index once)

@@ -61,7 +61,7 @@ keystone's swapped-operand red already demonstrates the discrimination.
 The witness is an ordinary `-> Bool` entry run by the existing host boundary
 (`gunbc run --claim-run --entry --function`), wired as one new row in
 `lens_ci_claim_run_rows` (`src/v4/workflow/lens_ci_gate.dag`), perturb-checked by
-`scripts/v4-lens-ci-gate.sh`.
+the v4 lens CI rows-fn invocation in `scripts/v4-affected-tests-gate.sh` (gate-3).
 
 ### Placement
 

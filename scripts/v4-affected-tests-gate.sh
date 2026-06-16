@@ -34,9 +34,19 @@ fi
   --gate-entry src/v4/test/claim/workflow/affected_set_ci_runner.dag \
   --rows-fn affected_set_node_frontier_rows_tsv \
   --notice-title "affected-set node-frontier"
-bash scripts/v4-probe-selector-keystone-gate.sh --perturb-check
+"$bin" \
+  --source-root src/v4 \
+  --gate-entry src/v4/test/claim/workflow/probe_selector_ci_runner.dag \
+  --rows-fn probe_selector_ci_runner_rows_tsv \
+  --notice-title "probe-selector keystone" \
+  --perturb-check
 bash scripts/v4-batch-executor-gate.sh --perturb-check
-bash scripts/v4-lens-ci-gate.sh --perturb-check
+"$bin" \
+  --source-root src/v4 \
+  --gate-entry src/v4/workflow/lens_ci_gate.dag \
+  --rows-fn lens_ci_claim_run_rows_tsv \
+  --notice-title "v4 lens CI" \
+  --perturb-check
 bash scripts/v4-substrate-equivalence-gate.sh --perturb-check
 bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
 bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
