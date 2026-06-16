@@ -174,7 +174,6 @@ fn self_gen6_bin_census_is_locked_to_expected_regen_shims() {
         // checks without a host child, the wrappers + bin retire together
         // (R1 Closure dispatch on issue #973). Documented in ROADMAP T-Emit
         // / R1C-E lane row.
-        "gunbc_ci.rs",
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
         "regen_parse.rs",
@@ -201,7 +200,7 @@ fn self_gen6_bin_census_is_locked_to_expected_regen_shims() {
         "SG-6 hand-authored bin census changed. The census is \
          `boundary_emit_gates` (F.14 / T-PB-B class-5 boundary `.dag` `ExecuteCommand` child; \
          dissolves with PB-Runtime-External-Toolchain-TestClaims / zero-floor boundary migration), \
-         `gunbc_ci` (modeled CI host shim), `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
+         `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
          issue #973), `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
          carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \
          `regen_v3`, and `self_host_fixed_point`. The `regen_lens` binary is a \
@@ -357,6 +356,11 @@ fn self_gen6_regen_dag_registry_triples_are_pinned() {
             "effect_enumeration",
             "src/v3/lenses/effect_enumeration.dag",
             "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
+        ),
+        (
+            "idempotency",
+            "src/v3/lenses/idempotency.dag",
+            "src/v3/compiler/src/lens_idempotency_generated.rs",
         ),
         (
             "infer_helpers",

@@ -286,7 +286,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // for the remaining `ExecuteCommand` claims — checkable: Self-Generation-0 `EXPECTED_HAND_AUTHORED_TEST`
     // no longer lists any `tests/boundary/*` path still covered only by this bin.
     "src/v3/compiler/src/bin/boundary_emit_gates.rs",
-    "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
@@ -354,9 +353,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/enforced_lens_application.rs",
-    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
-    // row in INVARIANTS.md §Self-Generation-0 hand-authored compiler non-test paths).
-    "src/v3/compiler/src/gunbc_ci.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch

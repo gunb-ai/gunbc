@@ -3,14 +3,13 @@
 // Models the GitHub Actions CI/CD platform as external dependency facts:
 // workflows, jobs, steps, runners, logging annotations, artifacts, and
 // matrix strategies. These are platform constraints -- what GH Actions
-// provides and requires -- not repository CI orchestration logic (that stays in `gunbc/ci.dag` for
-// gate intent; future `gunbc/ci_emission.dag` — WI-2 — will hold `Workflow` projection scaffolding).
+// provides and requires -- not repository CI orchestration logic. (The gunbc CI
+// gate/projection model that once consumed this carrier was retired in the CI-track rework.)
 //
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
-// Consumers (gunbc namespace):
-//   future: gunbc/ci_emission.dag — WI-2: `Workflow` via `project_github_actions` from `CIWorkflowDag` (not in tree yet)
-//   gunbc/ci.dag — compiler-intent `CIPipeline` / `CIGate` only (no Actions `Workflow` mirror)
+// Consumers: `src/v3/std/t_ci_workflow_as_data_demo.dag` (gate-58 timing-lens
+// self-application fixture authors a `Workflow` value over these carriers).
 //
 // Related extdeps:
 //   extdeps/github/ci.dag — repository workflow path facts (complements this syntax model)

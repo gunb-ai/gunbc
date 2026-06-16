@@ -93,7 +93,6 @@ data stage0: GeneratedCrate = {
     "emit_rust_bin_shim.rs",
     "emit_rust_roundtrip_fixtures.rs",
     "enforced_lens_application.rs",
-    "gunbc_ci.rs",
     "infer.rs",
     "int_literal_ranges.rs",
     "integration_rs_wiring_scan.rs",

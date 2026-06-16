@@ -598,8 +598,8 @@ type QuantifiedTestClaim {
 // Test execution cost is the timing substrate projected onto a test node in
 // the modeled graph (`TestNodeCostDimension` on `TestNodeRef`) — not a
 // verification-local scalar dimension. CI projects warn-only libtest tokens from
-// `dsl/gunbc/test_node_wall_clock_ratchet.dag` via `gunbc-ci wall-clock-warn-manifest`
-// into the JSONL shape `scripts/check-test-timeout.sh` consumes (**interim bridge** —
+// `dsl/gunbc/test_node_wall_clock_ratchet.dag` via the `wall_clock_ratchet_manifest`
+// projection into the JSONL shape `scripts/check-test-timeout.sh` consumes (**interim bridge** —
 // not #102 closure; no checked-in JSONL manifest).
 // `TestNodeRef` is a closed test-typed edge: only modeled `TestClaim` /
 // `QuantifiedTestClaim` nodes can inhabit it, so arbitrary declarations cannot
