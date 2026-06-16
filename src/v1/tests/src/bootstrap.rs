@@ -832,7 +832,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // Freshness: diff pass 1 output against committed stage0.
     // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
     //
-    // Committed stage0 is fmt-compliant (applied by gunbc-bootstrap / `make bootstrap`):
+    // Committed stage0 is fmt-compliant (regen_stage0 applies a
     // trailing `cargo fmt --all`). The v2 emitter itself does not produce
     // fmt-canonical output, so raw self-compile output differs from
     // committed stage0 only in whitespace/layout. Normalize pass1 output
@@ -988,7 +988,7 @@ fn ci_freshness() {
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
-             Run `make bootstrap-check` (or `cargo run -p gunbc-codegen --bin gunbc-bootstrap`) to update.\n\
+             Run `cargo run -p v1-compiler --bin regen_stage0` to update.\n\
              Diff:\n{}",
             diff
         );

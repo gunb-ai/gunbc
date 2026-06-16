@@ -138,5 +138,5 @@ still a violation) · internal review finds missing tests, external review finds
 ## Building & checks
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
-- one-time: `.githooks/install-hooks.sh` (pre-push runs `cargo fmt`)
+- one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)
 - CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test`

@@ -1,3 +1,1 @@
 **/*.dag linguist-language=Rust
-
-# Historical: v2 stage0 merge driver (retired with `src/v2/` deletion).
