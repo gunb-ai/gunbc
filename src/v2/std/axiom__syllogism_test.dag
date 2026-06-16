@@ -1,0 +1,70 @@
+// src/v2/std/axiom__syllogism_test.dag
+// By-execution witnesses for the syllogism lens (v2.std.axiom). The positive witness proves the
+// project's real §1 chain is fully grounded; the three negative discriminators prove the lens is
+// fail-closed — each goes RED if the lens wrongly accepts an ungrounded claim. This is the answer
+// to "verifiable instead of via review": the reviewer is a lens, and these run it.
+
+
+module v2.test.axiom.syllogism
+
+
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.axiom { DesignClaim, design_axioms, syllogism_holds, design_syllogism_holds }
+
+
+fn not_(b: Bool) -> Bool {
+  match b {
+    true => false
+    false => true
+  }
+}
+
+
+// test-only claim ids for the negative discriminators
+data t_orphan: Symbol = t_orphan
+data t_cycle_a: Symbol = t_cycle_a
+data t_cycle_b: Symbol = t_cycle_b
+data t_dangling: Symbol = t_dangling
+data t_missing: Symbol = t_missing
+
+
+// POSITIVE — the real §1 chain (A1-A3 + the four claims) is fully grounded.
+test fn design_syllogism_holds_holds() -> Bool {
+  design_syllogism_holds()
+}
+
+
+// RED CONTRACT 1 — an orphan claim (no premises, not an axiom) must be rejected.
+// Goes red if the lens ever vacuously accepts an ungrounded claim ("all of nothing").
+test fn orphan_claim_rejected_holds() -> Bool {
+  not_(syllogism_holds(
+    axioms: design_axioms(),
+    claims: [
+      DesignClaim { id: t_orphan, statement: "ungrounded orphan", because: [] }
+    ]
+  ))
+}
+
+
+// RED CONTRACT 2 — a cycle (a because b, b because a) never reaches an axiom; must be rejected.
+test fn cycle_rejected_holds() -> Bool {
+  not_(syllogism_holds(
+    axioms: design_axioms(),
+    claims: [
+      DesignClaim { id: t_cycle_a, statement: "cycle a", because: [t_cycle_b] },
+      DesignClaim { id: t_cycle_b, statement: "cycle b", because: [t_cycle_a] }
+    ]
+  ))
+}
+
+
+// RED CONTRACT 3 — a dangling premise (cites a symbol that is neither axiom nor claim) is rejected.
+test fn dangling_premise_rejected_holds() -> Bool {
+  not_(syllogism_holds(
+    axioms: design_axioms(),
+    claims: [
+      DesignClaim { id: t_dangling, statement: "cites a missing premise", because: [t_missing] }
+    ]
+  ))
+}
