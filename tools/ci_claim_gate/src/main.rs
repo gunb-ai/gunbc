@@ -190,6 +190,31 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
             }
         }
     }
+
+    // Single-representation `test fn NAME()` tests: the v2 parser drops the
+    // contextual `test` keyword, so the resolved graph carries no is_test bit.
+    // Detect the marker in source text (same posture as the `data unified_claim_`
+    // content scan) and run NAME as a witness. Dual-mode with the loop above so
+    // claims migrate off `unified_claim_*` one at a time without losing coverage.
+    for scan_dir in scan_dirs {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(scan_dir), &excludes, &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content = fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            for name in scan_test_fn_names(&content) {
+                if seen.insert((entry.clone(), name.clone())) {
+                    rows.push(GateRow {
+                        label: name.clone(),
+                        entry: entry.clone(),
+                        function: name,
+                    });
+                }
+            }
+        }
+    }
     rows.sort_by(|a, b| {
         a.entry
             .cmp(&b.entry)
@@ -351,6 +376,43 @@ fn run_perturb_pass(
         let _ = fs::remove_dir_all(&tmp);
     }
     Ok(all_ok)
+}
+
+/// Recursively collect `.dag` files under `dir`, skipping any path containing an
+/// excluded substring (mirrors the `unified_claim_` discovery exclude set).
+fn collect_dag_files(dir: &Path, excludes: &[String], out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, excludes, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            let s = path.to_string_lossy();
+            if !excludes.iter().any(|ex| s.contains(ex.as_str())) {
+                out.push(path);
+            }
+        }
+    }
+}
+
+/// Extract `NAME` from every `test fn NAME(...)` declaration in source text.
+fn scan_test_fn_names(content: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in content.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("test fn ") {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+    }
+    names
 }
 
 fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
