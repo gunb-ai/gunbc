@@ -1,0 +1,57 @@
+// Semantics oracle: native fold_grammar_expr fast path must match the interpreted .dag body.
+module test.claim.fold_grammar_expr_native_semantics
+
+import v4.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
+import v4.std.integer { int_add }
+import v4.std.logic { Bool }
+
+data tok_a: Symbol = tok_a
+data prod_x: Symbol = prod_x
+
+fn grammar_leaf_count(expr: GrammarExpr) -> Int {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { 1 },
+      nonterminal: fn(_) { 1 },
+      sequence: fn(l, r) { int_add(l, r) },
+      choice: fn(l, r) { int_add(l, r) },
+      optional: fn(e) { e },
+      repeat: fn(e) { e }
+    }
+  )
+}
+
+fn grammar_sequence_leaf_count_holds() -> Bool {
+  grammar_leaf_count(
+    expr: Sequence {
+      left: Terminal { token_class: tok_a },
+      right: Nonterminal { production: prod_x }
+    }
+  ) == 2
+}
+
+fn grammar_choice_leaf_count_holds() -> Bool {
+  grammar_leaf_count(
+    expr: Choice {
+      left: Terminal { token_class: tok_a },
+      right: Nonterminal { production: prod_x }
+    }
+  ) == 2
+}
+
+fn grammar_optional_leaf_count_holds() -> Bool {
+  grammar_leaf_count(expr: Optional { element: Terminal { token_class: tok_a } }) == 1
+}
+
+fn grammar_repeat_leaf_count_holds() -> Bool {
+  grammar_leaf_count(expr: Repeat { element: Nonterminal { production: prod_x } }) == 1
+}
+
+fn grammar_terminal_only_holds() -> Bool {
+  grammar_leaf_count(expr: Terminal { token_class: tok_a }) == 1
+}
+
+fn grammar_nonterminal_only_holds() -> Bool {
+  grammar_leaf_count(expr: Nonterminal { production: prod_x }) == 1
+}

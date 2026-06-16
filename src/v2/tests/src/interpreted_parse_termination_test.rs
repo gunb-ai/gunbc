@@ -103,15 +103,16 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
             other => panic!("expected Bool(true) from {BISECT_PARSE_FN}, got {other:?}"),
         }
         let elapsed = start.elapsed();
-        let (fold_list, fold_list_right) = v2_interpreter::fold_native_hit_counts_snapshot();
+        let (fold_list, fold_list_right, fold_grammar_expr) =
+            v2_interpreter::fold_native_hit_counts_snapshot();
         eprintln!(
-            "witness {BISECT_PARSE_FN} elapsed {elapsed:?} (budget {:?}); native_fold_hits fold_list={fold_list} fold_list_right={fold_list_right}",
+            "witness {BISECT_PARSE_FN} elapsed {elapsed:?} (budget {:?}); native_fold_hits fold_list={fold_list} fold_list_right={fold_list_right} fold_grammar_expr={fold_grammar_expr}",
             WITNESS_BUDGET
         );
         assert!(
-            fold_list > 0 && fold_list_right > 0,
+            fold_list > 0 && fold_list_right > 0 && fold_grammar_expr > 0,
             "native fold fast paths must be engaged during {BISECT_PARSE_FN} (FLAG1); \
-             got fold_list={fold_list} fold_list_right={fold_list_right}"
+             got fold_list={fold_list} fold_list_right={fold_list_right} fold_grammar_expr={fold_grammar_expr}"
         );
         assert!(
             elapsed <= WITNESS_BUDGET,
@@ -136,14 +137,15 @@ fn interpreted_parse_witness_exceeds_budget_with_native_disabled() {
     let start = Instant::now();
     let run_result = v2_interpreter::run_in_context(&ctx, BISECT_PARSE_FN, false);
     let elapsed = start.elapsed();
-    let (fold_list, fold_list_right) = v2_interpreter::fold_native_hit_counts_snapshot();
+    let (fold_list, fold_list_right, fold_grammar_expr) =
+        v2_interpreter::fold_native_hit_counts_snapshot();
     unsafe { std::env::remove_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE") };
 
     assert_eq!(
-        (fold_list, fold_list_right),
-        (0, 0),
+        (fold_list, fold_list_right, fold_grammar_expr),
+        (0, 0, 0),
         "perturbation path must not invoke native fold fast paths; \
-         got fold_list={fold_list} fold_list_right={fold_list_right}"
+         got fold_list={fold_list} fold_list_right={fold_list_right} fold_grammar_expr={fold_grammar_expr}"
     );
 
     assert!(

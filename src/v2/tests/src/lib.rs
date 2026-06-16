@@ -36,6 +36,8 @@ mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod fold_list_native_semantics_test;
 #[cfg(test)]
+mod fold_grammar_expr_native_semantics_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod html_markup_smoke_test;

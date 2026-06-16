@@ -2218,14 +2218,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         };
     }
 
-    // std/algebra list folds: the interpreted recursive .dag bodies are correct but
+    // std/algebra + std/grammar folds: the interpreted recursive .dag bodies are correct but
     // pathological under the table-build hot loop (O(n) interpreter frames per element).
-    // Native iterators preserve FreeMonoid semantics via `free_monoid_to_vec`.
+    // Native iterators preserve FreeMonoid / GrammarExpr semantics.
     // Set GUNBC_INTERP_DISABLE_FOLD_NATIVE=1 to force the interpreted .dag bodies (oracle).
     if fold_native_fast_path_enabled() {
         match func_name.as_str() {
             "fold_list" => return eval_fold_list_native(&args, env, ctx),
             "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
+            "fold_grammar_expr" => return eval_fold_grammar_expr_native(&args, env, ctx),
             _ => {}
         }
     }
@@ -2283,12 +2284,15 @@ fn fold_native_fast_path_enabled() -> bool {
 
 static FOLD_LIST_NATIVE_HITS: AtomicU64 = AtomicU64::new(0);
 static FOLD_LIST_RIGHT_NATIVE_HITS: AtomicU64 = AtomicU64::new(0);
+static FOLD_GRAMMAR_EXPR_NATIVE_HITS: AtomicU64 = AtomicU64::new(0);
 
-/// Witness/oracle instrumentation: native fold_list fast-path invocation counts.
-pub fn fold_native_hit_counts_snapshot() -> (u64, u64) {
+/// Witness/oracle instrumentation: native fold fast-path invocation counts
+/// `(fold_list, fold_list_right, fold_grammar_expr)`.
+pub fn fold_native_hit_counts_snapshot() -> (u64, u64, u64) {
     (
         FOLD_LIST_NATIVE_HITS.load(Ordering::Relaxed),
         FOLD_LIST_RIGHT_NATIVE_HITS.load(Ordering::Relaxed),
+        FOLD_GRAMMAR_EXPR_NATIVE_HITS.load(Ordering::Relaxed),
     )
 }
 
@@ -2296,6 +2300,7 @@ pub fn fold_native_hit_counts_snapshot() -> (u64, u64) {
 pub fn fold_native_hit_counts_reset() {
     FOLD_LIST_NATIVE_HITS.store(0, Ordering::Relaxed);
     FOLD_LIST_RIGHT_NATIVE_HITS.store(0, Ordering::Relaxed);
+    FOLD_GRAMMAR_EXPR_NATIVE_HITS.store(0, Ordering::Relaxed);
 }
 
 fn eval_fold_list_native(
@@ -2348,6 +2353,144 @@ fn eval_fold_list_right_native(
         acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
     }
     Ok(acc)
+}
+
+fn eval_fold_grammar_expr_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    FOLD_GRAMMAR_EXPR_NATIVE_HITS.fetch_add(1, Ordering::Relaxed);
+    let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    let (expr, algebra) = match positional.as_slice() {
+        [expr, algebra] => (expr, algebra),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: "fold_grammar_expr requires (expr, algebra)".to_string(),
+            })
+        }
+    };
+    let algebra_fields = match algebra {
+        Value::Record { fields, .. } => fields.as_ref(),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "fold_grammar_expr algebra must be GrammarExprFold record, got {}",
+                    algebra.type_label()
+                ),
+            })
+        }
+    };
+    eval_fold_grammar_expr_rec(expr, algebra_fields, env, ctx)
+}
+
+fn eval_fold_grammar_expr_rec(
+    expr: &Value,
+    algebra_fields: &HashMap<Symbol, Value>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let Value::Variant {
+        variant_name, fields, ..
+    } = expr
+    else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "fold_grammar_expr expects GrammarExpr variant, got {}",
+                expr.type_label()
+            ),
+        });
+    };
+
+    if ctx.sym_eq(*variant_name, "Terminal") {
+        let token_class = ctx.field(fields, "token_class").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExpr.Terminal missing token_class".to_string(),
+            }
+        })?;
+        let handler = ctx.field(algebra_fields, "terminal").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing terminal".to_string(),
+            }
+        })?;
+        return apply_closure(handler, std::slice::from_ref(token_class), env, ctx);
+    }
+    if ctx.sym_eq(*variant_name, "Nonterminal") {
+        let production = ctx.field(fields, "production").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExpr.Nonterminal missing production".to_string(),
+            }
+        })?;
+        let handler = ctx.field(algebra_fields, "nonterminal").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing nonterminal".to_string(),
+            }
+        })?;
+        return apply_closure(handler, std::slice::from_ref(production), env, ctx);
+    }
+    if ctx.sym_eq(*variant_name, "Sequence") {
+        let left = ctx.field(fields, "left").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Sequence missing left".to_string(),
+        })?;
+        let right = ctx.field(fields, "right").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Sequence missing right".to_string(),
+        })?;
+        let left_r = eval_fold_grammar_expr_rec(left, algebra_fields, env, ctx)?;
+        let right_r = eval_fold_grammar_expr_rec(right, algebra_fields, env, ctx)?;
+        let handler = ctx.field(algebra_fields, "sequence").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing sequence".to_string(),
+            }
+        })?;
+        return apply_closure(handler, &[left_r, right_r], env, ctx);
+    }
+    if ctx.sym_eq(*variant_name, "Choice") {
+        let left = ctx.field(fields, "left").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Choice missing left".to_string(),
+        })?;
+        let right = ctx.field(fields, "right").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Choice missing right".to_string(),
+        })?;
+        let left_r = eval_fold_grammar_expr_rec(left, algebra_fields, env, ctx)?;
+        let right_r = eval_fold_grammar_expr_rec(right, algebra_fields, env, ctx)?;
+        let handler = ctx.field(algebra_fields, "choice").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing choice".to_string(),
+            }
+        })?;
+        return apply_closure(handler, &[left_r, right_r], env, ctx);
+    }
+    if ctx.sym_eq(*variant_name, "Optional") {
+        let element = ctx.field(fields, "element").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Optional missing element".to_string(),
+        })?;
+        let element_r = eval_fold_grammar_expr_rec(element, algebra_fields, env, ctx)?;
+        let handler = ctx.field(algebra_fields, "optional").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing optional".to_string(),
+            }
+        })?;
+        return apply_closure(handler, std::slice::from_ref(&element_r), env, ctx);
+    }
+    if ctx.sym_eq(*variant_name, "Repeat") {
+        let element = ctx.field(fields, "element").ok_or_else(|| InterpError::TypeError {
+            msg: "GrammarExpr.Repeat missing element".to_string(),
+        })?;
+        let element_r = eval_fold_grammar_expr_rec(element, algebra_fields, env, ctx)?;
+        let handler = ctx.field(algebra_fields, "repeat").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "GrammarExprFold missing repeat".to_string(),
+            }
+        })?;
+        return apply_closure(handler, std::slice::from_ref(&element_r), env, ctx);
+    }
+
+    Err(InterpError::TypeError {
+        msg: format!(
+            "fold_grammar_expr: unknown GrammarExpr variant {}",
+            ctx.resolve(*variant_name)
+        ),
+    })
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
@@ -4263,6 +4406,53 @@ fn eval_builtin(
 // Closure application
 // ---------------------------------------------------------------------------
 
+fn closure_call_env(closure_env: &Rc<Env>, params: &[Symbol], args: &[Value]) -> Rc<Env> {
+    match params.len() {
+        0 => closure_env.clone(),
+        1 => Env::with_binding(
+            closure_env,
+            params[0],
+            args.first().cloned().unwrap_or(Value::Null),
+        ),
+        2 => {
+            let e0 = Env::with_binding(
+                closure_env,
+                params[0],
+                args.first().cloned().unwrap_or(Value::Null),
+            );
+            Env::with_binding(
+                &e0,
+                params[1],
+                args.get(1).cloned().unwrap_or(Value::Null),
+            )
+        }
+        3 => {
+            let e0 = Env::with_binding(
+                closure_env,
+                params[0],
+                args.first().cloned().unwrap_or(Value::Null),
+            );
+            let e1 = Env::with_binding(
+                &e0,
+                params[1],
+                args.get(1).cloned().unwrap_or(Value::Null),
+            );
+            Env::with_binding(
+                &e1,
+                params[2],
+                args.get(2).cloned().unwrap_or(Value::Null),
+            )
+        }
+        n => {
+            let mut bindings = HashMap::with_capacity(n);
+            for (i, param) in params.iter().enumerate() {
+                bindings.insert(*param, args.get(i).cloned().unwrap_or(Value::Null));
+            }
+            Env::extend(closure_env, bindings)
+        }
+    }
+}
+
 fn apply_closure(
     closure: &Value,
     args: &[Value],
@@ -4275,12 +4465,7 @@ fn apply_closure(
             body,
             env: closure_env,
         } => {
-            let mut bindings = HashMap::new();
-            for (i, param) in params.iter().enumerate() {
-                let val = args.get(i).cloned().unwrap_or(Value::Null);
-                bindings.insert(param.clone(), val);
-            }
-            let call_env = Env::extend(closure_env, bindings);
+            let call_env = closure_call_env(closure_env, params, args);
             match eval_expr(body, &call_env, ctx) {
                 Err(InterpError::EarlyReturn { value }) => Ok(value),
                 other => other,

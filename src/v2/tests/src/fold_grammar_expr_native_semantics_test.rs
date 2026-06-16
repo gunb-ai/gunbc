@@ -1,5 +1,5 @@
-//! Semantics-preservation proof: native fold_list / fold_list_right fast paths match the
-//! interpreted .dag bodies on order- and associativity-sensitive inputs.
+//! Semantics-preservation proof: native fold_grammar_expr fast path matches the
+//! interpreted .dag body on structural counting inputs.
 
 use std::rc::Rc;
 
@@ -8,7 +8,7 @@ use v2_compiler::v2_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const SEMANTICS_ENTRY: &str = "src/v4/test/claim/manual/fold_list_native_semantics.dag";
+const SEMANTICS_ENTRY: &str = "src/v4/test/claim/manual/fold_grammar_expr_native_semantics.dag";
 
 fn v4_source_roots() -> Vec<std::path::PathBuf> {
     vec![workspace_root().join("src/v4")]
@@ -46,7 +46,6 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 }
 
 fn run_witness(function: &str, disable_native: bool) -> Value {
-    v2_interpreter::fold_native_hit_counts_reset();
     let resolved = compile_to_resolved(Rc::new(semantics_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
@@ -55,14 +54,13 @@ fn run_witness(function: &str, disable_native: bool) -> Value {
         // SAFETY: single-threaded test; cleared before return.
         unsafe { std::env::set_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE", "1") };
     }
+    v2_interpreter::fold_native_hit_counts_reset();
     let result = v2_interpreter::run_in_context(&ctx, function, false)
         .unwrap_or_else(|e| panic!("run {function} (native_disabled={disable_native}): {e:?}"));
-    if disable_native {
-        unsafe { std::env::remove_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE") };
-    }
     let (fold_list, fold_list_right, fold_grammar_expr) =
         v2_interpreter::fold_native_hit_counts_snapshot();
     if disable_native {
+        unsafe { std::env::remove_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE") };
         assert_eq!(
             (fold_list, fold_list_right, fold_grammar_expr),
             (0, 0, 0),
@@ -70,8 +68,8 @@ fn run_witness(function: &str, disable_native: bool) -> Value {
         );
     } else {
         assert!(
-            fold_list > 0 || fold_list_right > 0 || fold_grammar_expr > 0,
-            "{function}: native fast-path must be engaged (fold_list={fold_list}, fold_list_right={fold_list_right}, fold_grammar_expr={fold_grammar_expr})"
+            fold_grammar_expr > 0,
+            "{function}: native fold_grammar_expr must be engaged (fold_grammar_expr={fold_grammar_expr})"
         );
     }
     result
@@ -88,31 +86,31 @@ fn assert_native_matches_interpreted(function: &str) {
 }
 
 #[test]
-fn fold_list_left_order_sensitive_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_left_order_sensitive_holds");
+fn fold_grammar_expr_sequence_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_sequence_leaf_count_holds");
 }
 
 #[test]
-fn fold_list_right_order_sensitive_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_right_order_sensitive_holds");
+fn fold_grammar_expr_choice_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_choice_leaf_count_holds");
 }
 
 #[test]
-fn fold_list_empty_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_empty_holds");
+fn fold_grammar_expr_optional_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_optional_leaf_count_holds");
 }
 
 #[test]
-fn fold_list_right_empty_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_right_empty_holds");
+fn fold_grammar_expr_repeat_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_repeat_leaf_count_holds");
 }
 
 #[test]
-fn fold_list_single_element_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_single_element_holds");
+fn fold_grammar_expr_terminal_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_terminal_only_holds");
 }
 
 #[test]
-fn fold_list_right_single_element_matches_interpreted() {
-    assert_native_matches_interpreted("fold_list_right_single_element_holds");
+fn fold_grammar_expr_nonterminal_matches_interpreted() {
+    assert_native_matches_interpreted("grammar_nonterminal_only_holds");
 }
