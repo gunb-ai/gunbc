@@ -73,42 +73,44 @@ mod compiler_tests {
             .collect()
     }
 
-    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let tokens = tokenize(content.to_string(), path.to_string());
-        let mut source_indices = HashMap::new();
-        source_indices.insert(
-            path.to_string(),
-            crate::v1_std_core::build_newline_index(path.to_string(), content.to_string()),
-        );
-        let parsed = crate::v1_compiler_parse::parse_with_table(
-            tokens.clone(),
-            std::rc::Rc::new(source_indices),
-            crate::v1_std_core::empty_intern_table(),
-        );
-        if let Some(err) = parsed.result.error.as_ref() {
-            panic!(
-                "failed to parse {} while building source closure: {}",
-                path,
-                crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-            );
+    fn extract_module_path(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("module ") {
+                return Some(rest.trim().to_string());
+            }
+            if !trimmed.is_empty() && !trimmed.starts_with("//") {
+                break;
+            }
         }
-        parsed
-            .result
-            .module
-            .clone()
-            .unwrap_or_else(|| panic!("{} produced no module while building source closure", path))
+        None
+    }
+
+    fn extract_import_paths(content: &str) -> Vec<String> {
+        let mut imports = Vec::new();
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("import ") {
+                let module_path = rest.split('{').next().unwrap_or(rest).trim();
+                if !module_path.is_empty() {
+                    imports.push(module_path.to_string());
+                }
+            }
+        }
+        imports
     }
 
     fn module_path_from_source(path: &str, content: &str) -> String {
-        parse_module_or_panic(path, content).name.clone()
+        extract_module_path(content).unwrap_or_else(|| {
+            panic!(
+                "{} is missing a module declaration while building source closure",
+                path
+            )
+        })
     }
 
-    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
-        let module = parse_module_or_panic(path, content);
-        crate::v1_std_core::module_imports(module)
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect()
+    fn import_paths_from_source(_path: &str, content: &str) -> Vec<String> {
+        extract_import_paths(content)
     }
 
     fn build_source_index(roots: &[&str]) -> HashMap<String, (String, String)> {
@@ -177,10 +179,33 @@ mod compiler_tests {
         resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dsl"])
     }
 
-    /// Build the gist pipeline source closure from the gist entry module with dsl as a dependency pool.
     fn gist_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
-        let gist_path = "dsl/gunbc/tools/gist.dag";
-        resolve_source_closure(vec![(gist_path.to_string(), read_dag(gist_path))], &["dsl"])
+        let gist_deps = &[
+            "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/errors.dag",
+            "dsl/extdeps/cloud/gcp/gcp.dag",
+            "dsl/extdeps/git/git.dag",
+            "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/errors.dag",
+            "dsl/extdeps/github/gists.dag",
+            "dsl/extdeps/github/github.dag",
+            "dsl/gunbc/auth/credentials.dag",
+            "dsl/gunbc/tools/gist.dag",
+            "dsl/std/credentials.dag",
+            "dsl/std/error_primitives.dag",
+            "dsl/std/algebra.dag",
+            "dsl/std/encoding.dag",
+            "dsl/std/filesystem.dag",
+            "dsl/std/resources.dag",
+            "dsl/std/serialization.dag",
+            "dsl/std/types.dag",
+        ];
+        let root = workspace_root();
+        gist_deps.iter().map(|p| {
+            let full = root.join(p);
+            let content = std::fs::read_to_string(&full).unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: p.to_string(), content })
+        }).collect()
     }
 
     #[test]
