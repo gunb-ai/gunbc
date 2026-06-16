@@ -28,10 +28,6 @@ const LAYER_ROOTS: &[LayerRoot] = &[
     },
     LayerRoot {
         layer: "LayerStd",
-        rel_root: "src/v3/std",
-    },
-    LayerRoot {
-        layer: "LayerStd",
         rel_root: "dsl/std",
     },
     LayerRoot {
@@ -236,18 +232,12 @@ mod tests {
     }
 
     #[test]
-    fn layer_roots_cover_all_five_authority_paths() {
+    fn layer_roots_cover_all_authority_paths() {
         let roots: Vec<&str> = LAYER_ROOTS
             .iter()
             .map(|layer_root| layer_root.rel_root)
             .collect();
-        for expected in [
-            "src/v2/std",
-            "src/v3/std",
-            "dsl/std",
-            "src/v2/extdeps",
-            "dsl/extdeps",
-        ] {
+        for expected in ["src/v2/std", "dsl/std", "src/v2/extdeps", "dsl/extdeps"] {
             assert!(
                 roots.contains(&expected),
                 "missing layer root {expected}: {roots:?}"

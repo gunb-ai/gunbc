@@ -35,20 +35,16 @@ type LayeringImportViolation {
   import_module: String
 }
 
-data forbidden_compiler_prefix_v3: String = "v3.compiler."
-data forbidden_compiler_prefix_v4: String = "v2.compiler."
-data forbidden_compiler_exact_v3: String = "v3.compiler"
-data forbidden_compiler_exact_v4: String = "v2.compiler"
+data forbidden_compiler_prefix: String = "v2.compiler."
+data forbidden_compiler_exact: String = "v2.compiler"
 
 fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
 fn is_forbidden_compiler_import(module: String) -> Bool {
-  module == forbidden_compiler_exact_v3
-    || module == forbidden_compiler_exact_v4
-    || is_prefix_of(prefix: forbidden_compiler_prefix_v3, xs: module, eq: char_eq)
-    || is_prefix_of(prefix: forbidden_compiler_prefix_v4, xs: module, eq: char_eq)
+  module == forbidden_compiler_exact
+    || is_prefix_of(prefix: forbidden_compiler_prefix, xs: module, eq: char_eq)
 }
 
 fn is_layering_violation(fact: LayerImportFact) -> Bool {
