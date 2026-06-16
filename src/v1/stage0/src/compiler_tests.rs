@@ -177,40 +177,10 @@ mod compiler_tests {
         resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dsl"])
     }
 
-    /// Build the gist pipeline source closure.
+    /// Build the gist pipeline source closure from the gist entry module with dsl as a dependency pool.
     fn gist_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
-        let gist_deps = &[
-            "dsl/extdeps/cloud/cloud.dag",
-            "dsl/extdeps/cloud/gcp/errors.dag",
-            "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/git/git.dag",
-            "dsl/extdeps/github/auth.dag",
-            "dsl/extdeps/github/errors.dag",
-            "dsl/extdeps/github/gists.dag",
-            "dsl/extdeps/github/github.dag",
-            "dsl/gunbc/auth/credentials.dag",
-            "dsl/gunbc/tools/gist.dag",
-            "dsl/std/error_primitives.dag",
-            "dsl/std/algebra.dag",
-            "dsl/std/encoding.dag",
-            "dsl/std/filesystem.dag",
-            "dsl/std/resources.dag",
-            "dsl/std/serialization.dag",
-            "dsl/std/types.dag",
-        ];
-        let root = workspace_root();
-        gist_deps
-            .iter()
-            .map(|p| {
-                let full = root.join(p);
-                let content = std::fs::read_to_string(&full)
-                    .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: p.to_string(),
-                    content,
-                })
-            })
-            .collect()
+        let gist_path = "dsl/gunbc/tools/gist.dag";
+        resolve_source_closure(vec![(gist_path.to_string(), read_dag(gist_path))], &["dsl"])
     }
 
     #[test]
