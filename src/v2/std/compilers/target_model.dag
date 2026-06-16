@@ -1,7 +1,7 @@
 // src/v2/std/compilers/target_model.dag
 // Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols
 //   + target-realization carriers (SG-1/SG-2/SG-3 canonical home per design-target-realization-canonical-home.md).
-// Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
+// Status: single authority (DESIGN.md §3) — consumers import; do not redeclare.
 
 module v2.std.compilers.target_model
 
@@ -159,7 +159,7 @@ data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
 // T-11: the typed ConcreteSyntaxToken coproduct below is the single concrete-syntax-token
-// authority (P2). Per-language `*ConcreteSyntaxToken` coproducts dissolve into this carrier
+// authority. Per-language `*ConcreteSyntaxToken` coproducts dissolve into this carrier
 // (src/v2/extdeps/languages/*.dag), dag.dag's emit_fixed_token/emit_bound_token construct it,
 // and 06_translate matches it structurally. The `concrete_syntax_token_kind_{fixed,bound}`
 // Symbols persist only as the serialized wire-form tags written by `concrete_syntax_token_to_node`
@@ -169,14 +169,14 @@ data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
 data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
 
-// T-11 shared concrete-syntax-token carrier (single authority per INVARIANTS P2).
+// T-11 shared concrete-syntax-token carrier (single authority, DESIGN.md §3).
 // FixedToken: a terminal whose spelling is the token class' literal lexeme.
 // BoundToken: a terminal whose spelling is resolved from a binding (e.g. an identifier site).
 // 🟢 coproduct dissolution — terminal sum, no further dissolution. FixedToken and BoundToken are
 // genuine one-at-a-time alternatives (a concrete-syntax terminal is either a fixed lexeme or a
 // binding-resolved terminal, never both) and the bound arm carries a `binding` payload the fixed
-// arm lacks — an irreducible sum, not compressed record coordinates (INVARIANTS §C-vs-coordinates
-// at INVARIANTS.md:179-184). Inherits the 🟢 classification the dissolved per-language
+// arm lacks — an irreducible sum, not compressed record coordinates (a genuine coproduct vs a
+// record; DESIGN.md §2). Inherits the 🟢 classification the dissolved per-language
 // *ConcreteSyntaxToken coproducts carried before this carrier consolidated them.
 type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
@@ -510,7 +510,7 @@ type SourceAtomValue
 
 // 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
 // PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
-// EffectApply is the emit-side projection of an applied v2.std.runtime EffectRequest (M9: it
+// EffectApply is the emit-side projection of an applied v2.std.runtime EffectRequest (it
 // attaches to the existing runtime EffectRequestKind concept — no parallel emit effect vocabulary).
 // The carrier stores the effect kind as its discriminant Symbol; the typed runtime reuse
 // (EffectRequestKind ↔ discriminant, ReadResource|WriteResource) lives at the value-expression
@@ -557,7 +557,7 @@ type TargetValueTemplate {
 }
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
-// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness (M9).
+// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness.
 type CanonicalOperation
   = OpAdd { algebra_field: Symbol }
 
@@ -817,7 +817,7 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:canonical-operation-wire-decode-bool — consumer:target_operator_realization_row_matches_canonical_op
 // — bind: operator-catalog row operation wire match — owner: T6 value-expression (lively-badger-242) —
 // lane: std/compilers/target_model — dissolve-on-arrival: Outcome-bearing wire decode propagates diagnostics
@@ -2704,7 +2704,7 @@ fn target_value_expression_primitive_apply(
 // Emit-side constructor for an applied effect. `effect_kind_discriminant` is the discriminant
 // Symbol of a v2.std.runtime EffectRequestKind (e.g. discriminant(v: ReadResource)); the caller
 // at the value-expression projection boundary supplies it, so this structural substrate reuses
-// the runtime effect vocabulary by identity without importing runtime (M9; no parallel vocabulary).
+// the runtime effect vocabulary by identity without importing runtime (no parallel vocabulary).
 // Operand edges mirror primitive_apply — the lowered effect application carries its argument
 // value-expressions positionally for the projection arm (PR2) to emit through the host shim.
 fn target_value_expression_effect_apply(
@@ -3994,7 +3994,7 @@ fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> 
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:target-wave1-signature-declared-inhabitants — consumer:06_value_expression
 // target_wave1_add_signature_matches — bind: COMPREP wave-1 Arrow signature slots vs
 // declared_inhabitants catalog — owner: T6 value-expression (lively-badger-242) —
@@ -5133,7 +5133,7 @@ fn target_function_signature_realization_to_node(
 // Catalog rows are POSITIONAL slots, not Named edges: the (source_carrier, boundary_site)
 // lookup key lives inside each encoded row, so a Named edge keyed on either coordinate alone
 // would alias a second row at the same boundary (or same carrier) into a duplicate Conj edge
-// name. Positional slots keep every (carrier × site) row representable without collision (P2).
+// name. Positional slots keep every (carrier × site) row representable without collision.
 fn target_function_signature_realization_catalog_edge(
   row: TargetFunctionSignatureRealization
 ) -> Edge {
@@ -6452,7 +6452,7 @@ fn target_collection_set_carrier_head(node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:SG-5-set-carrier-recognition — bind docs/planning/v2-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: 06_translate Cardinality arm matches set_carrier structurally without Bool predicate over Node.kind.
+// 🟡 gated — predicate-dissolution interim — feature:SG-5-set-carrier-recognition — bind docs/planning/v2-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: 06_translate Cardinality arm matches set_carrier structurally without Bool predicate over Node.kind.
 fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Cardinality } =>
@@ -6476,7 +6476,7 @@ fn target_collection_free_monoid_carrier_head(node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // owner: vivid-lynx-81 / Rust RCA SG critical path; lane: SG-COLLECTION-PROJECTION;
 // planning-row: ROADMAP.md § "What v2 is building toward" rows `src/v2/std/` and
 // `Compiler stages`; bind: PR #4218 / node://adhoc-2d1d6d4b-023. Dissolve-on:
@@ -6916,7 +6916,7 @@ fn target_use_site_ownership_catalog_lookup_step(
 // Reference-ownership catalog lookup (SG-RC): consult the per-carrier catalog for a
 // reference realization. A carrier with no row is a fail-closed miss. Extracted so
 // the value-semantics discrimination can live inline at the lookup authority below
-// without a standalone is_* predicate (modeling-discipline Practice 10).
+// without a standalone is_* predicate.
 fn target_use_site_ownership_reference_catalog_lookup(
   catalog: Node,
   source_carrier: Node,
@@ -7542,7 +7542,7 @@ fn type_expr_projection_graft_child_slots_coordinate(
   )
 }
 
-// P2 row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
+// Row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -7789,7 +7789,7 @@ fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symb
   }
 }
 
-// SG-2 fold — connective shape node from TargetModel bundle (P2 authority; not caller projection).
+// SG-2 fold — connective shape node from TargetModel bundle (authority; not caller projection).
 fn type_expr_projection_bundle_shape_for_connective(
   bundle: Node,
   connective: Connective
@@ -7800,7 +7800,7 @@ fn type_expr_projection_bundle_shape_for_connective(
   )
 }
 
-// SG-2 fold — fail-close when caller projection row disagrees with bundle authority (P2/P3).
+// SG-2 fold — fail-close when caller projection row disagrees with bundle authority.
 fn type_expr_projection_row_closedness_from_target(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
@@ -7888,7 +7888,7 @@ fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Ou
   projection_bundle_child(bundle: target.bundle, name: target_model_edge_declared_inhabitants)
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:target-wave1-signature-declared-inhabitants — consumer:target_value_expr_arrow_body_scope_binding —
 // bind: COMPREP wave-1 Arrow signature vs TargetModel.declared_inhabitants —
 // owner: T6 value-expression (lively-badger-242) —
@@ -7909,7 +7909,7 @@ fn target_value_expr_wave1_add_signature_matches_for_target(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:t6-value-expr-bodied-arrow-serialize — consumer:target_value_expr_arrow_body_scope_binding —
 // bind: PR #4627 / docs/design-value-emit-schema.md §4.5 —
 // owner: T6 value-expression (lively-badger-242) —
@@ -7963,7 +7963,7 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
     || target_value_expr_arrow_has_loop_body(arrow: arrow)
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature:arrow-domain-binding-list-membership —
 // consumer:target_value_expr_arrow_body_scope_binding —
 // bind: membership in arrow_domain_named_param_bindings ordered list —
@@ -8231,7 +8231,7 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:value-expression-loop-positional-m0 —
+// 🟡 gated — predicate-dissolution interim — feature:value-expression-loop-positional-m0 —
 // consumer:target_project_loop —
 // bind: COMPREP wave-2 M0-Loop (symmetric w/ bind/branch §12.9) —
 // dissolve-on: Q-B1 named pattern edges for Loop (M0-B5);

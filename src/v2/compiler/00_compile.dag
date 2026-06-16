@@ -2,7 +2,7 @@
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
 // Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile.
-// Anchor: docs/design-v2-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
+// Anchor: P3 commitment 6 + Ratified Q11.
 
 
 module v2.compiler.compile
@@ -146,7 +146,7 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 // Registered in always_required_lenses() above, so validate_then_compile runs it
 // fail-closed (CompileLensEnforce) on every gated compile — a flat-scalar field
 // carrying a known unit (e.g. a raw Nat byte-count where Measure<…> is owed)
-// rejects compilation. M12 / Practice 13 made executable.
+// rejects compilation — the unit-modeling soundness check made executable.
 fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   unit_modeling_gate(node: tree.root)
 }

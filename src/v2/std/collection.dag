@@ -47,7 +47,7 @@ fn optional_absent_unwrap_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:optional-present-witness — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate projects Optional<T> Present arm to Witness<T>; forbidden: returning a synthetic payload on Absent (fail-open unwrap).
+// 🟡 gated — predicate-dissolution interim — feature:optional-present-witness — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate projects Optional<T> Present arm to Witness<T>; forbidden: returning a synthetic payload on Absent (fail-open unwrap).
 fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   match opt {
     Present { value: v } => Holds { value: v }

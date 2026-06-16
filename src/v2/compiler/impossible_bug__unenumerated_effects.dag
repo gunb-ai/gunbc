@@ -1,4 +1,4 @@
-// Anchor: THESIS.md "Enumerable impossible-bug classes" §384-389 R2+ + lens/effect.dag (5-behavior compositional fold)
+// Anchor: enumerable impossible-bug classes (DESIGN.md §5, fail-closed) R2+ + lens/effect.dag (5-behavior compositional fold)
 
 
 module v2.test.impossible_bug.unenumerated_effects

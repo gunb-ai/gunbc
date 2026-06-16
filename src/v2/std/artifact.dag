@@ -43,7 +43,7 @@ type GeneratedArtifact {
   refined: Refined<Artifact>
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:artifact-generated-kind-query — owner/lane: F.2-P1 Runtime/TestClaim — bind node://adhoc-6c543d46-716 — dissolve-on-arrival: substrate projects a canonical generated/producer-output partition over ArtifactKind (query/fold), `generated_artifact_validation.admits` routes through it, and this hand-written arm match is deleted in the same PR; forbidden: parallel ad-hoc generated-kind Bool predicates outside this validation authority.
+// 🟡 gated — predicate-dissolution interim — feature:artifact-generated-kind-query — owner/lane: F.2-P1 Runtime/TestClaim — bind node://adhoc-6c543d46-716 — dissolve-on-arrival: substrate projects a canonical generated/producer-output partition over ArtifactKind (query/fold), `generated_artifact_validation.admits` routes through it, and this hand-written arm match is deleted in the same PR; forbidden: parallel ad-hoc generated-kind Bool predicates outside this validation authority.
 fn artifact_is_generated(a: Artifact) -> Bool {
   match a.kind {
     GeneratedSource => true

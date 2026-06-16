@@ -1,7 +1,6 @@
 // src/v2/std/constraint_satisfaction_predicate.dag
 // Scope: mechanical constraint-satisfaction preservation check.
 // Status: T-25-tail predicate prover.
-// Anchor: docs/design-v2-compiler-homomorphism.md
 
 
 module v2.std.constraint_satisfaction_predicate

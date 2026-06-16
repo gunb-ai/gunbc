@@ -1,7 +1,7 @@
 // src/v2/std/target_triple.dag
-// Scope: Rust target-triple substrate — TargetTriple fact-bundle (M1) composing the
+// Scope: Rust target-triple substrate — TargetTriple fact-bundle composing the
 //        v2.std.platform vocabulary (Architecture × Vendor × OperatingSystem × LibcEnv), plus
-//        canonical tier1 / tier2 published-triple constants. Single authority per INVARIANTS P2.
+//        canonical tier1 / tier2 published-triple constants. Single authority (DESIGN.md §3).
 //        Consumers (install/install, runtime selection, build matrix projection) import; do not
 //        redeclare.
 // Status: Release Jun1 §5 Phase 1b prerequisite — modeled 2026-05-29.
@@ -17,7 +17,7 @@ import v2.std.platform { Aarch64, Apple, Architecture, Gnu, LibcEnv, Linux, Maco
 
 // Anchor: https://doc.rust-lang.org/cargo/appendix/glossary.html#target. The Rust target-triple
 // grammar carries four facts (arch, vendor, os, env); each is a closed-set carrier declared in
-// v2.std.platform. TargetTriple is the named-edge fact-bundle (M1) that consumes those carriers
+// v2.std.platform. TargetTriple is the named-edge fact-bundle that consumes those carriers
 // — Cargo / rustc accept this exact shape via the `--target` flag.
 type TargetTriple {
   arch: Architecture

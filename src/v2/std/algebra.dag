@@ -667,7 +667,7 @@ fn free_monoid_node(inhabitant: Node) -> Node {
     inhabitant: inhabitant
   )
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
@@ -676,7 +676,7 @@ fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived non-Empty-variant discriminant projection; forbidden: fold_list laundering.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived non-Empty-variant discriminant projection; forbidden: fold_list laundering.
 fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match is_empty(xs: xs) {
     true => false

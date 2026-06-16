@@ -12,8 +12,8 @@
 //
 // Clone elision (FF-1 exploitation):
 //
-// The .dag language guarantees fan-out is a syntactic property (INVARIANTS.md
-// "Facts Flow Forward"). This analysis computes binding_fan_out and the emitter
+// The .dag language guarantees fan-out is a syntactic property (facts flow
+// forward). This analysis computes binding_fan_out and the emitter
 // reads it: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
 //
 // VarBindingKind flows from inference through the ownership proof to emission.

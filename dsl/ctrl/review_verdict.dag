@@ -19,7 +19,7 @@ module ctrl.review_verdict
 
 import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp, Url }
 
-// Practice 4 receipt: terminal for the current provider coordinate.
+// Coproduct receipt: terminal for the current provider coordinate.
 // Adding a provider is a new declaration row or ProviderOther value, not a
 // rewrite of parser/tally logic.
 type ReviewProvider
@@ -30,7 +30,7 @@ type ReviewProvider
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
-// Practice 4 receipt: staged. GitHub review/comment transport is the first
+// Coproduct receipt: staged. GitHub review/comment transport is the first
 // consumer; dashboard-only artifacts remain modeled so extraction can preserve
 // source identity instead of flattening every artifact to raw Markdown.
 // Dissolution trigger: when extdeps.github review/comment facts are reflected,
@@ -41,7 +41,7 @@ type ReviewArtifactKind
   | GitHubIssueComment
   | DashboardReviewArtifact
 
-// Practice 4 receipt: staged mirror of GitHub review states consumed by ctrl
+// Coproduct receipt: staged mirror of GitHub review states consumed by ctrl
 // today. This is not the extdeps authority for GitHub's review wire model.
 // Dissolution trigger: replace this mirror with typed state references from
 // the extdeps.github review/comment authority once that source-fact carrier
@@ -53,7 +53,7 @@ type GitHubReviewState
   | Dismissed
   | Pending
 
-// Practice 4 receipt: terminal. This is the semantic verdict coordinate that
+// Coproduct receipt: terminal. This is the semantic verdict coordinate that
 // downstream merge-readiness logic consumes; it is not the same axis as raw
 // GitHub review state.
 type ReviewVerdict
@@ -63,7 +63,7 @@ type ReviewVerdict
   | NeedsHumanTriage
   | NoVerdict
 
-// Practice 4 receipt: staged. BLOCKING/P0/P1 currently drive action-routing in
+// Coproduct receipt: staged. BLOCKING/P0/P1 currently drive action-routing in
 // ctrl pr_feedback_format.mjs. Priority and severity are split so the relay can
 // preserve both reviewer intent and scheduling weight.
 // Dissolution trigger: generated dashboard relay consumes this file and deletes
@@ -80,7 +80,7 @@ type FindingPriority
   | P3
   | Unprioritized
 
-// Practice 4 receipt: staged. Textual recognizers remain named evidence until
+// Coproduct receipt: staged. Textual recognizers remain named evidence until
 // the review providers emit structural verdict rows directly.
 // Dissolution trigger: review providers return ReviewVerdictReport as JSON or
 // another typed transport payload, making TextualVerdictMarker unnecessary.
@@ -92,7 +92,7 @@ type VerdictEvidence
   | HumanOverride { reason: String }
   | TextualVerdictMarker { marker: NonEmptyStr }
 
-// Practice 4 receipt: staged. These are successful report extraction outcomes,
+// Coproduct receipt: staged. These are successful report extraction outcomes,
 // not verdicts. Parser fallback is explicit so "whole comment stored as one
 // finding" is a typed degraded success instead of silently looking like a clean
 // parse.
@@ -102,7 +102,7 @@ type ReportExtractionState
   = ParsedDiscreteFindings
   | FallbackWholeCommentStored
 
-// Practice 4 receipt: terminal subset for parse attempts that did not produce
+// Coproduct receipt: terminal subset for parse attempts that did not produce
 // a report. Kept separate from ReportExtractionState so ReviewVerdictReport
 // cannot carry no-report states, and ParseDeferred cannot carry successful
 // report states.
@@ -169,7 +169,7 @@ type ReviewVerdictParseRequest {
   expected_head_sha: CommitSha
 }
 
-// Practice 4 receipt: staged boundary result. ParsedReport and ParseDeferred
+// Coproduct receipt: staged boundary result. ParsedReport and ParseDeferred
 // intentionally carry disjoint state axes: reports can only carry successful
 // ReportExtractionState, while deferred results can only carry no-report
 // ParseDeferredState. Dissolution trigger: provider outputs become structural

@@ -1,6 +1,6 @@
 // src/v2/std/refinement_widening_predicate.dag
 // Scope: mechanical refinement-widening preservation check (leaf — no extdeps import).
-// Anchor: ROADMAP.md coercion faithful widening; design-v2-compiler-homomorphism.md Pass B.
+// Anchor: ROADMAP.md coercion faithful widening; Pass B.
 // Status: bundle-encoded pair evidence on PreservationPredicate.algebra; axis-general registry is forward work.
 
 

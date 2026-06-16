@@ -6,7 +6,7 @@
 // authority_source_text retained on TargetModel as self-host anchor only.
 //         grammar-inverse serialize uses translate_serialize_measure (node_subtree_count +
 //         translation_rules subtree) — no fixed fuel constant.
-// Anchor: docs/design-v2-compiler-homomorphism.md Stage 5a; Ratified Q14.
+// Anchor: Stage 5a; Ratified Q14.
 
 
 module v2.compiler.translate
@@ -3909,7 +3909,7 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
-// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v2-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v2.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
+// 🟡 gated — coproduct-dissolution interim — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v2-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v2.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent

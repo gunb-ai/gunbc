@@ -1,7 +1,7 @@
 // src/v2/std/logic.dag
 // Scope: classical two-valued logic.
 // Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
-// Status: T-3 modeled; substrate-extension rule in src/v2/STRUCTURE.md.
+// Status: T-3 modeled.
 
 
 module v2.std.logic

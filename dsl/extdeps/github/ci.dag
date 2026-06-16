@@ -17,10 +17,10 @@ import std.types { NonEmptyStr }
 
 // Directory (repository-relative, forward slashes) where GitHub loads workflow definitions.
 // Single string authority for the tree root — do not add a parallel unconstrained
-// `path: String` carrier for the same fact (INVARIANTS P1/P2).
+// `path: String` carrier for the same fact (DESIGN.md §3 single authority).
 data github_actions_workflows_dir: String = ".github/workflows"
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). GitHub allows exactly two filename suffixes for workflow definitions
 // under `.github/workflows/` (`.yml` / `.yaml`); variants are 1:1 with that closed surface.
 // Ledger (Patterns 1–4): (1) no per-consumer split — suffix is global to the file ref.
@@ -31,7 +31,7 @@ type GitHubActionsWorkflowExtension
   = GitHubActionsWorkflowYml
   | GitHubActionsWorkflowYaml
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟡 YELLOW (scaffold). `NonEmptyStr` + nominal brand enforces non-emptiness only; GitHub
 // additionally requires a single path segment (no `/`) and stem/extension consistency
 // (no embedded `.yml`/`.yaml` suffix in the segment when extension is carried separately).
@@ -49,7 +49,7 @@ type GitHubActionsWorkflowStem {
 
 // Workflow file identity: composes only with `github_actions_workflows_dir` — no
 // unconstrained repository-relative path string as a second authority.
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). Product of the fixed-dir constant + stem + closed extension;
 // single structural sink for "which workflow file" under the GitHub layout rule.
 type GitHubActionsWorkflowFileRef {

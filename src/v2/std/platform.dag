@@ -2,8 +2,8 @@
 // Scope: cross-cutting platform vocabulary — OperatingSystem, Architecture, LibcEnv, Vendor.
 //        These are domain-general types consumed by target-triple composition (std/target_triple),
 //        platform-detection facts (extdeps/platform_detection), runtime/build pools (workflow/ci),
-//        and binary distribution (install/install). Authority lives here per INVARIANTS P2 — all
-//        consumers import; do not redeclare. Mirrors the layered modeling already established in
+//        and binary distribution (install/install). Authority lives here per single authority
+//        (DESIGN.md §3) — all consumers import; do not redeclare. Mirrors the layered modeling already established in
 //        gunb-ai/the-gunbai (crates/gunbai-types/src/platform.rs +
 //        crates/gunbai-integrations-contracts/src/understanding/rust_targets.rs).
 // Status: Release Jun1 §5 Phase 1b prerequisite — modeled 2026-05-29.

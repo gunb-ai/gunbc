@@ -3,13 +3,14 @@
 // Current authority (consumer-side): ctrl/scripts/session-dashboard/{pr_attached_urls,
 // pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
 //
-// STAGED → AUTHORITY trigger (single event under INVARIANTS P2/P5): the
+// STAGED → AUTHORITY trigger (single event, per single-authority/boundary
+// discipline — DESIGN.md §3): the
 // ctrl PR cut-over deleting ONLY WHOLE .mjs files whose ENTIRE function
 // set is fully modeled in this brief's narrowed scope. Per single-
 // authority discipline, the unit of authority is the .mjs FILE, not
 // a function body — partial-file cut-over (keep the .mjs, delete some
 // functions) would leave TS and .dag as co-authorities and violate
-// INVARIANTS P2/P5. With the narrowed service surface, only TWO files
+// single-authority discipline. With the narrowed service surface, only TWO files
 // qualify:
 //   - pr_attached_urls.mjs        (extract_attached_urls fully covers)
 //   - pr_rest_fallback.mjs        (classify_rest_fallback fully covers)
@@ -42,13 +43,13 @@ import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { Url }
 
-// M9 anchor: verdict is a ctrl-side aggregate over existing GitHub pull
+// Anchor: verdict is a ctrl-side aggregate over existing GitHub pull
 // source facts (`PullRequest.state`, `draft`, `merged_at`, and each
 // `PullReview.state` string from `github.Pulls.ListReviews`); it does not
 // declare new extdeps fields.
 //
-// 🟡 STAGED — Practice 4 (`docs/modeling-discipline.md` §4 YELLOW scaffold;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker
+// 🟡 STAGED — coproduct dissolution status (`dsl/ctrl/README.md`
+// §Practice-4 receipts). Mechanical classification marker
 // for coproduct dissolution status (not prose-only).
 // Named trigger: follow-up Phase 1.5 + extdeps carriers when CI/conflict
 // mergeability reasons must join this verdict (worker brief
@@ -59,7 +60,7 @@ type MergeReadinessVerdict
   = Ready
   | NotReady { first_reason: String, more_reasons: List<String> }
 
-// M9 anchor: attaches to `std.types.Url`; URLs are extracted from text fields on
+// Anchor: attaches to `std.types.Url`; URLs are extracted from text fields on
 // `PullRequest`, `PullReview`, and `ReviewComment` carriers in
 // `extdeps.github.pulls` (`ListReviews` / `ListComments` outputs).
 type AttachedUrl {
@@ -68,8 +69,8 @@ type AttachedUrl {
   context: AttachedUrlTextContext
 }
 
-// 🟡 STAGED — Practice 4 (`docs/modeling-discipline.md` §4 YELLOW scaffold;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
+// 🟡 STAGED — coproduct dissolution status (`dsl/ctrl/README.md`
+// §Practice-4 receipts). Mechanical classification marker.
 // Variants align to imported body carriers: `PullRequest.body`, each
 // `PullReview.body`, each `ReviewComment.body` from `github.Pulls.ListReviews` /
 // `github.Pulls.ListComments` respectively.
@@ -82,16 +83,16 @@ type AttachedUrlContainer
   | PullReviewBody
   | ReviewCommentBody
 
-// 🟡 STAGED — Practice 4 (`docs/modeling-discipline.md` §4 YELLOW scaffold;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
+// 🟡 STAGED — coproduct dissolution status, YELLOW scaffold
+// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
 // Named trigger: richer Markdown context (e.g. fenced blocks) is modeled
 // structurally and consumers migrate off the `Prose` / `InlineCode` split.
 type AttachedUrlTextContext
   = Prose
   | InlineCode
 
-// 🟢 TERMINAL — Practice 4 (`docs/modeling-discipline.md` §4 GREEN terminal;
-// `dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
+// 🟢 TERMINAL — coproduct dissolution status, GREEN terminal
+// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
 // Ledger (dissolution patterns 1–4 at this declaration): (1) fact placement —
 // not cheaper than this sum (single ctrl classifier returning this coproduct).
 // (2) variant-as-data — three arms are semantically distinct failure classes for

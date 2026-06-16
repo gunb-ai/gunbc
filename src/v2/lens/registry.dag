@@ -10,7 +10,7 @@ import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// 🟢 closed set — MODELING.md M4 / PREFIX-T-23-registry (`LensIdV0`).
+// 🟢 closed set — PREFIX-T-23-registry (`LensIdV0`).
 // 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
 
@@ -94,7 +94,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_table_decision_tree
 ]
 
-// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality (docs/audit/pr-3510-distinct-node-zip-fold-blocked-2026-05-21.md) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
+// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   match left {
     Complexity => match right {
@@ -136,7 +136,7 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — bound target: coproduct variant-discriminant predicate substrate (docs/design-dissolution-lens.md L1.1 predicate-dissolution class) — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: replace `lens_registry_entry_bound` with the substrate-derived `LensModulePathV0.Bound` discriminant projection and delete this helper in that same PR; forbidden: permanent local variant-discriminator predicate.
+// 🟡 gated — predicate-dissolution interim — bound target: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: replace `lens_registry_entry_bound` with the substrate-derived `LensModulePathV0.Bound` discriminant projection and delete this helper in that same PR; forbidden: permanent local variant-discriminator predicate.
 fn lens_registry_entry_bound(entry: LensRegistryEntryV0) -> Bool {
   match entry.module_path {
     Bound { path: _ } => true

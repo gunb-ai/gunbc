@@ -1,6 +1,6 @@
 // src/v2/std/language_model.dag
 // Scope: canonical LanguageModel carrier shared by compiler stages, workflow bootstrap, and extdeps.
-// Status: P1/P2 dissolution — replaces v2.compiler.target_carriers `LanguageModel = Node` hollow alias.
+// Status: hollow-alias dissolution — replaces v2.compiler.target_carriers `LanguageModel = Node` hollow alias.
 
 module v2.std.language_model
 
@@ -21,7 +21,7 @@ import v2.std.model_core {
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 
-// Field edge keys — single authority per INVARIANTS P2.
+// Field edge keys — single authority (DESIGN.md §3).
 data language_model_field_lex: Symbol = language_model_field_lex
 data language_model_field_grammar: Symbol = language_model_field_grammar
 data language_model_field_language_identity: Symbol = language_model_field_language_identity

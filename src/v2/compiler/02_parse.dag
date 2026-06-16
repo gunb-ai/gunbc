@@ -696,7 +696,7 @@ fn compute_left_corner_closure(
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
+// 🟡 gated — predicate-dissolution interim — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
 // Per-production or-fold rides v2.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   let nullable_set = compute_nullable_set(root: root)
@@ -740,7 +740,7 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
+// 🟡 gated — predicate-dissolution interim — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
 // Per-production or-fold rides v2.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {

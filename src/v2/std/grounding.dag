@@ -2,7 +2,7 @@
 // Scope: Branch G.0 — grounding schema / authority (W2.2).
 // Status: design closure substrate — indexes per-language fact bundles, hollow-alias bar,
 //   SG-1 / SG-1b / SG-2 / SG-5 evidence shapes, and per-target receipt contract for Branch C/G consumers.
-// Anchor: Wave-2 plan Branch G.0 (G0.1–G0.4); INVARIANTS P1; docs/modeling-discipline.md Practice 8.
+// Anchor: Wave-2 plan Branch G.0 (G0.1–G0.4).
 
 
 module v2.std.grounding
@@ -40,7 +40,7 @@ import v2.std.verdict { VerdictTally }
 
 // --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
 
-// P2: substrate carrier + TargetModel (language identity) + closed model_core fact_axis coproduct
+// substrate carrier + TargetModel (language identity) + closed model_core fact_axis coproduct
 // (target_model catalog axes widen PerLanguageFactBundleKey in G.1 — no parallel Symbol taxonomy).
 type PerLanguageFactBundleKey {
   subject_carrier: Node
@@ -49,14 +49,14 @@ type PerLanguageFactBundleKey {
 }
 
 
-// P2: fact payload for key.fact_axis only — no Map that can disagree with the keyed axis.
+// fact payload for key.fact_axis only — no Map that can disagree with the keyed axis.
 type PerLanguageFactBundleEntry {
   key: PerLanguageFactBundleKey
   fact_value: Node
 }
 
 
-// P2: single keyed fact authority. Duplicate subject×target×axis rows are rejected by
+// single keyed fact authority. Duplicate subject×target×axis rows are rejected by
 // `insert_per_language_fact_bundle_entry`; `primitive_fact_bundle_for_subject` derives the
 // model_core projection by looking up the closed ModelCorePrimitiveFactAxis vocabulary.
 type PerLanguageFactBundleRegistry {
@@ -292,7 +292,7 @@ fn primitive_fact_bundle_for_subject(
 
 // 🟢 terminal — G.0 hollow-alias governance posture (T-30 enforces via v2.lens.fact_density).
 // Closed nullary carrier: requires named spec facts and permits kernel-ambient atoms — no free
-// Bool configuration that could represent requires_named_fact_fields=false (P2 / illegal states).
+// Bool configuration that could represent requires_named_fact_fields=false (illegal states).
 // `{}` on single-arm coproduct only (v2 export; rust_leaf_model_claim.dag).
 type HollowAliasGovernanceBar
   = HollowAliasRequiresNamedFieldsAndKernelAmbient {}
@@ -307,7 +307,7 @@ fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
 
 // 🟢 coproduct dissolution — terminal G.0 evidence-family tag: one arm per closed SG-1 / SG-1b / SG-2 / SG-5
 // target_model catalog row kind (variant arm is the authority).
-// P2: payload carries canonical target_model lookup coordinates per family — not a shared opaque Node:
+// payload carries canonical target_model lookup coordinates per family — not a shared opaque Node:
 //   Sg1/Sg2/Sg5: source_carrier Node key; Sg1b: source_carrier × boundary_site (per
 //   target_function_signature_realization_lookup_in_catalog_node in target_model.dag).
 type GroundingEvidenceSchema
@@ -319,7 +319,7 @@ type GroundingEvidenceSchema
 
 // --- G0.4: per-target receipt schema (Branch C/G consumer contract; parallels A.3b.3) ---
 
-// Host-boundary receipt: TargetModel authority lives on EmitHostRunReceipt.target only (P2).
+// Host-boundary receipt: TargetModel authority lives on EmitHostRunReceipt.target only.
 // In-process T-38 eval runs project TestClaimRun at v2.compiler.eval — this schema is the
 // cross-target grounding receipt for host verification and leaf-model runners.
 type PerTargetGroundingReceipt {
@@ -353,7 +353,7 @@ type HostVerdictSurfaceExecutionStatus
 
 
 // Host-boundary per-target TestClaim receipt — parallels PerTargetGroundingReceipt (G0.4):
-// TargetModel authority lives on EmitHostRunReceipt.target only (P2; no second target field that
+// TargetModel authority lives on EmitHostRunReceipt.target only (no second target field that
 // could disagree). Carries the modeled corpus verdict surface as a VerdictTally (the per-row
 // `TestClaimRun` verdicts folded by `corpus_report_tally`) plus the execution-provenance
 // discriminator. The concrete `CorpusEvalReport` binding lives in the v2.test.workflow layer
@@ -374,7 +374,7 @@ fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> Ta
 // RR-A §4 R1/R6 terminal-pass gate: a corpus verdict surface is authoritative for a terminal CI
 // pass ONLY when it carries RuntimeVerdicts. AuthoringTimeVerdictSurface fails closed — it must not
 // satisfy the terminal gate until the step-2 harness produces runtime verdicts.
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority — consumer: the RR-A terminal corpus-pass gate (was v2.workflow.ci TestClaimCorpusEvalCommand / ci_upsert_testclaim_corpus_eval_*, deleted with the descriptive ci.dag model in PR #4543; CI transport is now hand-authored in .github/workflows/ci.yml) — bind RR-A #4296 §4 R1/R6 + node://adhoc-ee4060fb-bba — dissolve-on-arrival: delete when the Compiler Spine step-2 bootstrap-evaluator harness lands and the Runtime/TestClaim step-3 surface consumes HostVerdictSurfaceExecutionStatus directly (variant match moves to that consumer); forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding.
+// 🟡 gated — predicate-dissolution interim — feature: a3b-host-verdict-surface-runtime-authority — consumer: the RR-A terminal corpus-pass gate (was v2.workflow.ci TestClaimCorpusEvalCommand / ci_upsert_testclaim_corpus_eval_*, deleted with the descriptive ci.dag model in PR #4543; CI transport is now hand-authored in .github/workflows/ci.yml) — bind RR-A #4296 §4 R1/R6 + node://adhoc-ee4060fb-bba — dissolve-on-arrival: delete when the Compiler Spine step-2 bootstrap-evaluator harness lands and the Runtime/TestClaim step-3 surface consumes HostVerdictSurfaceExecutionStatus directly (variant match moves to that consumer); forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding.
 fn host_verdict_surface_runtime_authoritative(receipt: PerTargetTestClaimReceipt) -> Bool {
   match receipt.execution_status {
     RuntimeVerdicts => true

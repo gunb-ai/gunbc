@@ -55,7 +55,7 @@
 //   catamorphisms — i.e., which functions structurally recurse on
 //   sub-terms of an inductive type.
 //
-// DESIGN PRINCIPLE (P1 from cx-design.md):
+// DESIGN PRINCIPLE:
 //   Descent is a TYPE-LEVEL fact. The type definition `children: List<Node>`
 //   IS the descent fact. The complexity analyzer should never need to know
 //   about specific accessor functions. It reads from the type that certain
@@ -376,14 +376,14 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 // projection is `Strict`) from the non-strict PreservedValue / NonIncreasingValue. Used by
 // join to decide whether two operands meet under StrictAxisErased or escalate to MixedTop.
 //
-// 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: this is a hand-rolled boolean projection of
+// 🟡 PREDICATE-DISSOLUTION DISPOSITION (DESIGN.md §2/§3): this is a hand-rolled boolean projection of
 // `sub_value_to_evidence(r) == Strict` over the lattice carrier. Dissolution trigger:
 // when the substrate gains derived-predicate-from-projection (a `derive_from`-style
 // reflected helper that lets `is_strict_style_structural(r) := sub_value_to_evidence(r) == Strict`
 // be generated from the evidence-projection definition rather than re-stated), this
 // helper retires and the join/compose call sites read the derived form directly. Until
 // then, the by-hand match keeps the carrier's strict-cone classification co-located with
-// the lattice operations that need it (per CODING.md "pure functions, data + free functions"
+// the lattice operations that need it (DESIGN.md §6: pure functions over data + free functions
 // — derive the predicate from `sub_value_to_evidence` is the homomorphism, but the
 // substrate cannot yet express that derivation). P5 (ROADMAP.md:390): same engineering slice
 // as stage0 Rc<T>-aware merge-helper surfacing — not a `BoundedLattice` data witness.
@@ -751,7 +751,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 //   LogBasedExp: n^(log_b(a)) with divisor witness b ≥ 2 and positive Peano argument a.
 //
 // `cost_poly` / `master_theorem` are the typed bridges from `Int` literals; invalid or
-// oversized degrees fail closed (`ErrorBound` / `none`) — M9 matches `std.termination` caps.
+// oversized degrees fail closed (`ErrorBound` / `none`) — matches `std.termination` caps.
 //
 // 🟢 TERMINAL coproduct at E-I exponent scope — negative roots, bases < 2, and non-positive
 // log arguments are not representable as inhabitants (only via the `Int` bridges above).
@@ -906,7 +906,7 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 // P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
 // are a bootstrap scaffold, but **`bounded_int_pow_exponent`** is the single authority gate:
 // `master_theorem` and `int_pow_bounded` route raw exponents through it **before** any `b^d`
-// recursion — same closed `[0, peano_literal_materialization_cap()]` as `std.termination` (M9).
+// recursion — same closed `[0, peano_literal_materialization_cap()]` as `std.termination`.
 // Oversized / negative → `none` / `ErrorBound` (no raw `*` on the power path; see `int_mul_checked`).
 //
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence

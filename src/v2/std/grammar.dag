@@ -89,7 +89,7 @@ type FormalProduction {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v2-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: v2.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: v2.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
 // 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
@@ -148,7 +148,7 @@ fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFor
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v2-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
   | Nonterminal { production: Symbol }
@@ -226,13 +226,13 @@ type ValidatedGrammarRoot {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v2-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type ParseGrammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
-// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v2-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
@@ -1136,7 +1136,7 @@ fn grammar_expr_node(children: List<Edge>) -> Node {
 // the hand-rolled per-variant GrammarExpr match is dissolved: grammar_expr_to_node is now a
 // fold_grammar_expr consumer (GrammarExprFold<Node>). Recursive positions (Sequence/Choice children,
 // Optional/Repeat element) arrive already projected to Node, so each handler only wraps the canonical
-// named edges. No second structural walker over GrammarExpr remains (INVARIANTS P5 / Practice 10).
+// named edges. No second structural walker over GrammarExpr remains.
 fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   fold_grammar_expr(
     expr: expr,
@@ -1221,7 +1221,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 
 
-// 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
+// 🟡 gated T-8 — boundary interim — feature: grammar-root-node-projection-completeness —
 // bind gunbc#4766 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
 // { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
 // sync_tokens cannot be materialized as a Node child here. ^grammar_root_sync_tokens_node_projection
@@ -1288,19 +1288,19 @@ fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
 }
 
 
-// #g-bidir G.2 — bidirectional interpretation modeling (design-bidirectional-coercion.md §4).
+// #g-bidir G.2 — bidirectional interpretation modeling.
 // Status: MODELING ONLY — names the find_witness selection discipline at the syntax layer.
 // Preservation rules wire into find_witness when G.3 forward interpreter lands (02_parse
 // de-anemic owned with Mgr-CONSOLIDATION). By-execution bidir witnesses gated on emit S1.
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed two-arm sum for the only two
-//    interpreters over a declared production row (§4.1 backward render / forward parse); no
+//    interpreters over a declared production row (backward render / forward parse); no
 //    third direction and no arm payloads to decompress.
 type GrammarInterpretationDirection
   = GrammarInterpretBackward
   | GrammarInterpretForward
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed four-arm sum is exactly the
-//    bidirectionality obligation carve (§4.3 obligations 1–4); exhaustive by design, not an
+//    bidirectionality obligation carve (obligations 1–4); exhaustive by design, not an
 //    open classifier awaiting further variants.
 type BidirectionalGrammarObligation
   = ObligationSlotBijection
