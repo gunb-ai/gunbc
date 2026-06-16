@@ -152,7 +152,7 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
   }
 }
 
-// Testgen port: `rust_r1_fixture` (docs/planning/v4-leaf-model-verification-2026-05-30.md §8).
+// Testgen port: `rust_r1_fixture`.
 fn rust_r1_fixture() -> LeafModelFixturePair {
   rust_r1_fixture_pair()
 }

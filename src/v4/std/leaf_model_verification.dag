@@ -1,6 +1,6 @@
 // src/v4/std/leaf_model_verification.dag
 // Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
-// Status: Phase 1 substrate (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
+// Status: Phase 1 substrate.
 // Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
 // Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<Subj,T> from verdict.dag (PR #3961).
 // R1 rustc slice: concrete fixture-pair + compile verdict carriers (PR #3972).

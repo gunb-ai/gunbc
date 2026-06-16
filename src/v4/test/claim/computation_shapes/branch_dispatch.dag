@@ -1,7 +1,7 @@
 // src/v4/test/claim/computation_shapes/branch_dispatch.dag
 // Scope: Phase 4 ladder fixture — well-formed Branch computation-node with positional arms.
 // Status: T-14 corpus rows; rung-8 execution wired in v4.test.claim.branch_dispatch.rung_8.
-// Fixture id: phase4/branch_dispatch (docs/planning/v4-correctness-ladder-2026-05-30.md §7 Phase 4).
+// Fixture id: phase4/branch_dispatch.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
