@@ -939,9 +939,14 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
-// Callee-free effect-IO roundtrip Transform — mirrors eval_node_is_effect_io_roundtrip (05_eval.dag)
-// but gates on canonical AST shape (Transform + callee-free + two Value leaf operands), not runtime
-// marker atoms. 🟡 dissolve-on: dedicated EffectIoRoundtrip behavior variant (bind gunbc#4757).
+// Exact carrier shape for effect_io_roundtrip_transform (program.dag:171 program_effect_io_roundtrip):
+// callee-free Transform + SyntheticOccurrence + two positional SyntheticOccurrence Value leaves.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:V4-EFFECTS-IO — consumer:translate_project_arrow_body_to_value_expression effect-IO roundtrip arm —
+// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: declared callee-carrying roundtrip carrier +
+// callee-identity gate resolving to EffectSemanticsDecl.operations membership replaces
+// effect_io_roundtrip_transform carrier shape match; forbidden: permanent untagged Bool
+// roundtrip predicates in 06_translate.
 fn translate_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -961,9 +966,10 @@ fn translate_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-fn translate_node_is_value_leaf(node: Node) -> Bool {
+fn translate_node_is_synthetic_value_leaf(node: Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Value } => length(xs: node.children) == 0
+    ComputationNode { behavior: Value } =>
+      length(xs: node.children) == 0 && node.occurrence_id == SyntheticOccurrence
     _ => false
   }
 }
@@ -971,12 +977,13 @@ fn translate_node_is_value_leaf(node: Node) -> Bool {
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      !translate_transform_has_callee_reference(node: node)
+      node.occurrence_id == SyntheticOccurrence
+        && !translate_transform_has_callee_reference(node: node)
         && length(xs: node.children) == 2
         && fold(
           node_positional_child_targets(node: node),
           init: true,
-          f: fn(acc, child) { acc && translate_node_is_value_leaf(node: child) }
+          f: fn(acc, child) { acc && translate_node_is_synthetic_value_leaf(node: child) }
         )
     _ => false
   }
