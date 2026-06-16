@@ -23,10 +23,13 @@ preferences we layer on; they fall out of the meaning of "problem" itself:
 The whole project optimizes these three jointly. Everything below is a mechanism for one or more of
 them.
 
-## 2. The two axes of minimization (the objective, decomposed)
+## 2. Minimize redundancy (the master move for cost and complexity)
 
-Redundancy is removed along exactly two axes. These are not separate "DRY rules" — they are §1 seen
-from two directions:
+Redundant work — **duplicated, unnecessary, or irrelevant** — loses on all three of §1's quantities at
+once: it costs more to run, it widens the surface where harm hides, and it adds complexity to maintain.
+So a perfectly DRY process is, *by the meaning of redundant*, the minimal/efficient one; minimizing
+redundancy is therefore the master move for §1's cost and complexity axes (the safety axis is §5). It
+is removed along exactly two directions — not separate "DRY rules," but one move seen two ways:
 
 - **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use
   (model-local / derive-global). At the right layer there is nothing fundamentally different between
@@ -74,10 +77,11 @@ N×M adapters; every refusal a located, typed mismatch).
 
 - *e.g.* `dsl/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring (ops aren't listed per type); idempotency dissolved from an `idempotent: Bool` flag into the `EffectShape` variant; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed.
 
-## 5. Fail-closed (what makes §2–§4 trustworthy)
+## 5. Fail-closed (§1's safety axis — harm reduction)
 
-All of the above is worthless if a wrong thing passes silently. This code is digital: a wrong answer is
-a **loud error, never a warning** — a bridge collapses, it does not warn. Every path succeeds fully or
+Minimizing cost and complexity (§2–§4) is worthless if a wrong thing passes silently — this is §1's
+safety axis made concrete. This code is digital: a wrong answer is a **loud error, never a warning** —
+a bridge collapses, it does not warn. Every path succeeds fully or
 fails with a typed, located diagnostic; no fabricated plausible output (a bounded "forever" ≠ an
 "unknown" error). Relax toward application-layer leniency only under protest, and lean to infra so
 others can build on your work. The deepest trap is **specification-without-execution**: a typecheck and
