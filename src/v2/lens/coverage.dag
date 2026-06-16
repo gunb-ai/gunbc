@@ -704,7 +704,7 @@ fn expected_refinement_preservation_testgen_keys() -> Outcome<List<TestgenCovera
 
 // 🟡 gated — feature:testgen-lens-applicability-schedule — bind gunbc#4762 — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
 // 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind gunbc#4762 — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
-// 🟡 gated — feature:testgen-concept-reflection — bind gunbc#4762 — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
+// 🟡 gated — feature:testgen-concept-lens — bind gunbc#4762 — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection via compile-time lens.
 fn expected_testgen_coverage_keys() -> Outcome<List<TestgenCoverageKey>> {
   bind_outcome(
     o: expected_refinement_preservation_testgen_keys(),
