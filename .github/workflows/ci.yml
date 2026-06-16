@@ -111,12 +111,8 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: cargo fmt (format gate)
-      run: cargo fmt --all --check
-    - name: Build gate binaries
-      run: cargo build -p v2-compiler --release --bin gunbc --bin discover_owned_data && cargo build -p ci_claim_gate --release
-    - name: Claim-corpus gate (discovery-driven, no shell roster)
-      # Reflection over the discovered `unified_claim_*` BoolWitness corpus — no
-      # hand-typed roster, no bash gate script, no `.dag` shell-out. ci-claim-gate
-      # evaluates every discovered claim in-interpreter and fails closed on any red.
-      run: target/release/ci-claim-gate --source-root src/v4 --roster-from-discovery --scan-dir src/v4/test/claim --notice-title "v4 claim corpus"
+    # The whole CI floor: one .dag binary. ci-claim-gate discovers the
+    # `unified_claim_*` BoolWitness corpus and evaluates every claim in-interpreter.
+    # No shell gate script, no hand-typed roster, no `.dag` shell-out.
+    - name: CI floor (.dag claim gate)
+      run: cargo run -p ci_claim_gate --release -- --source-root src/v4 --roster-from-discovery --scan-dir src/v4/test/claim --notice-title "v4 claim corpus"
