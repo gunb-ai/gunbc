@@ -43,8 +43,8 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
         Value::Str(s) => s.clone(),
         Value::List(items) => items.iter().map(codepoint).collect(),
         Value::Variant {
-            variant_name,
-            fields,
+            variant_name: _,
+            fields: _,
             ..
         } => {
             let mut out = String::new();
