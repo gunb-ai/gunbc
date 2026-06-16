@@ -359,6 +359,15 @@ data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
+// gunbhub M1 CommonMark consumer (dsl/std/markdown.dag) — reduces to Fragment IR,
+// serializes through the one fold, and rejects javascript:/data: link/image URLs (XSS).
+data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "markdown markup consumer + XSS reject keystone",
+  entry: "dsl/test/claim/markdown_markup_xss_witness.dag",
+  function: "markdown_markup_xss_keystone_holds",
+  expected: ExpectPass
+}
+
 // gunbhub M2 served render surface — request→serialized-page round-trip via
 // extdeps.http.server route bindings + canonical markup consumers; hostile href
 // rejected before response body.
@@ -551,6 +560,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_markdown_markup_xss_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
