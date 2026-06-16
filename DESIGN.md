@@ -80,6 +80,10 @@ vocabulary (6 connectives + 5 behaviors); surface syntax is sugar that adds no p
 sugar over `Loop`), so decidability and termination *fall out* rather than being separately proved.
 **Grounding is intersubjective** — point at a shared framework, not an internal taxonomy — and in a
 closed system **a heuristic is never necessary**: the richer source always exists or can be written.
+This is *why* the structure is acyclic — a DAG in the substrate, serial reasoning in this document
+(recursively, per the preamble): intersubjective agreement holds only **across time** (§1), which
+demands claims that stay stable under it, so each is written syllogistically — a consequence-chain you
+can re-interrogate and that never wavers (algebra), never a cycle that could quietly redefine itself.
 
 Because the substrate is closed and grounded, the wins of §2 fall out for free: operations come from
 *inhabitance* (no per-type ops); and emission, ingestion, and coercion are **one** total decision
