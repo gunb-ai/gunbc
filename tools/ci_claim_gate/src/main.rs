@@ -191,20 +191,33 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
         }
     }
 
-    // Single-representation `test fn NAME()` tests: the v2 parser drops the
-    // contextual `test` keyword, so the resolved graph carries no is_test bit.
-    // Detect the marker in source text (same posture as the `data unified_claim_`
-    // content scan) and run NAME as a witness. Dual-mode with the loop above so
-    // claims migrate off `unified_claim_*` one at a time without losing coverage.
-    for scan_dir in scan_dirs {
+    // Single-representation `test fn NAME()` tests. The v2 parser drops the
+    // contextual `test` keyword, so the gate detects the marker in source text
+    // (same posture as the `data unified_claim_` scan) and runs NAME. Dual-mode
+    // with the loop above so claims migrate off `unified_claim_*` one at a time.
+    //
+    // Convention, enforced fail-closed: `test fn` may live ONLY in `*_test.dag`
+    // files. The whole source root is scanned (so manual/ and implementation files
+    // are covered), and a `test fn` found anywhere else is a hard error — tests do
+    // not live in implementation files.
+    let mut test_fn_violations: Vec<String> = Vec::new();
+    for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files(Path::new(scan_dir), &excludes, &mut dag_files);
+        collect_dag_files(Path::new(root), &mut dag_files);
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
             let content =
                 fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            for name in scan_test_fn_names(&content) {
+            let names = scan_test_fn_names(&content);
+            if names.is_empty() {
+                continue;
+            }
+            if !entry.ends_with("_test.dag") {
+                test_fn_violations.push(entry);
+                continue;
+            }
+            for name in names {
                 if seen.insert((entry.clone(), name.clone())) {
                     rows.push(GateRow {
                         label: name.clone(),
@@ -214,6 +227,13 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
                 }
             }
         }
+    }
+    if !test_fn_violations.is_empty() {
+        test_fn_violations.sort();
+        return Err(format!(
+            "`test fn` tests must live in `*_test.dag` files; found `test fn` in: {}",
+            test_fn_violations.join(", ")
+        ));
     }
     rows.sort_by(|a, b| {
         a.entry
@@ -380,7 +400,7 @@ fn run_perturb_pass(
 
 /// Recursively collect `.dag` files under `dir`, skipping any path containing an
 /// excluded substring (mirrors the `unified_claim_` discovery exclude set).
-fn collect_dag_files(dir: &Path, excludes: &[String], out: &mut Vec<PathBuf>) {
+fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -388,12 +408,9 @@ fn collect_dag_files(dir: &Path, excludes: &[String], out: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_dag_files(&path, excludes, out);
+            collect_dag_files(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            let s = path.to_string_lossy();
-            if !excludes.iter().any(|ex| s.contains(ex.as_str())) {
-                out.push(path);
-            }
+            out.push(path);
         }
     }
 }
