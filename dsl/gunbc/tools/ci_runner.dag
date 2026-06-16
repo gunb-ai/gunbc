@@ -51,7 +51,8 @@ fn ensure_claim_batch_binary() -> String {
 }
 
 fn ensure_claim_executor_binary() -> String {
-  "test -x target/release/claim_executor || cargo build -p v2-compiler --release --bin claim_executor"
+  // Unconditional build: test -x short-circuits on stale artifacts (missing --perturb-check).
+  "cargo build -p v2-compiler --release --bin claim_executor"
 }
 
 fn ensure_discover_owned_data_binary() -> String {
