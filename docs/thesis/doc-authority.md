@@ -74,8 +74,8 @@ its sole load-bearing design root was promoted to
 `.dag`/`.rs` headers must not cite planning docs (they are ephemeral); any such citation
 is a stale comment cleaned on the next touch of that file `[live]`.
 
-**Frozen:** `src/v2/*.md`, `src/v3/*.md` carry a historical banner and read as frozen,
-not live (v3 is frozen and out of the v4 loop; v2 is the reference compiler / v4 seed).
+**Frozen:** `src/v2/*.md` carry a historical banner and read as frozen, not live
+(v2 is the reference compiler / v4 seed). The v3 tree has been removed.
 Marked in place — not moved, because moving manufactures the dangling-reference rot this
 contract exists to prevent.
 

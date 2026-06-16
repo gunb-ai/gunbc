@@ -1,9 +1,0 @@
-// §3.3 — `drop`. Parameter is NOT reachable from the return.
-//
-//   Expected disposition (post-Track-1-Phase-2): Borrowed.
-//   Reachability fact today: UnusedParametersLens reports the
-//   parameter as UNUSED (the body is the literal `0`).
-//
-// Abstraction boundary probed: "parameter not reachable from return".
-fn drop(x: Int) -> Int = 0
-let sample: Int = drop(1)

@@ -1,7 +1,0 @@
-// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent
-// free-consequences fixture: structural `fold` (acc + x) lowers a real loop; lens `Pass` still follows
-// directive attestation + pending lens (ROADMAP second-batch auto-loop scaffold) - not compiler-derived upsert classification.
-import std.list { List, cons, empty, fold }
-
-let auto_loop_dependence_xs: List<Int> = cons(1, cons(2, cons(3, empty())))
-let _: Int = fold(auto_loop_dependence_xs, 0, |acc, x| acc + x)

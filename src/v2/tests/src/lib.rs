@@ -58,7 +58,6 @@ mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
-mod pb_method_template_projection_consumability;
 #[cfg(test)]
 mod pd3_adversarial;
 #[cfg(test)]

@@ -5,35 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::helpers::{read_v2_file, workspace_root};
-
-const LEGACY_METHOD_TEMPLATE_AUTHORITIES: &[&str] = &[
-    "rust_simple_method_specs",
-    "rust_method_templates",
-    "rust_method_wraps_result",
-    "python_method_templates",
-    "go_method_templates",
-];
-
-const ALLOWED_LEGACY_READER_PREFIXES: &[(&str, &str)] = &[(
-    "src/v2/",
-    "v2-side stage0 emit surface is PB-Zero-walled and cannot read v3 substrate rows today",
-)];
-
-const ALLOWED_LEGACY_READER_PATHS: &[(&str, &str)] = &[
-    (
-        "dsl/extdeps/languages/rust/emit.dag",
-        "canonical Rust extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
-    ),
-    (
-        "dsl/extdeps/languages/python/emit.dag",
-        "canonical Python extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
-    ),
-    (
-        "dsl/extdeps/languages/go/emit.dag",
-        "canonical Go extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
-    ),
-];
+use crate::helpers::read_v2_file;
 
 fn live_source(source: &str) -> String {
     source
@@ -73,26 +45,6 @@ fn relative_display(path: &Path, root: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn allowed_legacy_reader_reason(rel: &str) -> Option<&'static str> {
-    ALLOWED_LEGACY_READER_PREFIXES
-        .iter()
-        .find_map(|(prefix, reason)| rel.starts_with(prefix).then_some(*reason))
-        .or_else(|| {
-            ALLOWED_LEGACY_READER_PATHS
-                .iter()
-                .find_map(|(path, reason)| (*path == rel).then_some(*reason))
-        })
-}
-
-fn legacy_method_template_violations(rel: &str, source: &str) -> Vec<String> {
-    let live = live_source(source);
-    LEGACY_METHOD_TEMPLATE_AUTHORITIES
-        .iter()
-        .filter(|authority| live.contains(**authority))
-        .map(|authority| format!("{rel}: live reference to `{authority}`"))
-        .collect()
 }
 
 #[test]
@@ -288,62 +240,6 @@ fn parse_supports_response_blocks() {
     assert!(
         source.contains("parse_optional_mock_response_block"),
         "02_parse.dag should contain parse_optional_mock_response_block"
-    );
-}
-
-#[test]
-fn no_new_non_v2_consumers_of_legacy_method_template_authorities() {
-    // Textual deferral ratchet, not structural enforcement. The structural
-    // replacement is a typed row consumer for
-    // `src/v3/std/*_method_template_contracts.dag`, but v2 cannot use that
-    // path until PB-Zero unblocks bootstrap-Dag consumers. As each v2
-    // consumer migrates, shrink the allow-list; delete this ratchet when it
-    // empties.
-    let root = workspace_root();
-    let mut files = Vec::new();
-    collect_source_files(&root.join("src"), &mut files);
-    collect_source_files(&root.join("dsl"), &mut files);
-
-    let mut violations = Vec::new();
-    for path in files {
-        let rel = relative_display(&path, &root);
-        if allowed_legacy_reader_reason(&rel).is_some() {
-            continue;
-        }
-
-        let source = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
-        violations.extend(legacy_method_template_violations(&rel, &source));
-    }
-
-    assert!(
-        violations.is_empty(),
-        "legacy method-template authorities are PB-Zero-blocked v2-only deferrals; \
-         new consumers must read src/v3/std/*_method_template_contracts.dag rows:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn legacy_method_template_ratchet_detects_live_non_v2_reader() {
-    let source = r#"
-module v3.std.synthetic_method_template_reader
-
-// rust_method_templates in comments should not trip the ratchet.
-data synthetic_old_reader: String = rust_method_templates
-"#;
-
-    let violations = legacy_method_template_violations(
-        "src/v3/std/synthetic_method_template_reader.dag",
-        source,
-    );
-
-    assert_eq!(
-        violations,
-        vec![
-            "src/v3/std/synthetic_method_template_reader.dag: live reference to `rust_method_templates`"
-                .to_string()
-        ]
     );
 }
 
@@ -1032,21 +928,6 @@ fn parse_item_keyword_arm_count() {
     );
 }
 
-/// Read a `data foo: String = "..."` literal from `dsl/gunbc/tools/ratchet.dag`.
-/// Patterns must not be duplicated in Rust — ratchet.dag is the sole authority.
-fn l1_ratchet_pattern_from_dag(data_name: &str) -> String {
-    let ratchet = workspace_root().join("dsl/gunbc/tools/ratchet.dag");
-    let content = std::fs::read_to_string(&ratchet)
-        .unwrap_or_else(|e| panic!("read {}: {e}", ratchet.display()));
-    let marker = format!("data {data_name}: String = \"");
-    let line = content
-        .lines()
-        .find(|l| l.contains(&marker))
-        .unwrap_or_else(|| panic!("missing `{marker}` in {}", ratchet.display()));
-    let rest = line.split_once(&marker).expect("marker on line").1;
-    unescape_dag_string_literal(rest)
-}
-
 fn unescape_dag_string_literal(mut rest: &str) -> String {
     let mut out = String::new();
     while let Some(ch) = rest.chars().next() {
@@ -1073,57 +954,6 @@ fn unescape_dag_string_literal(mut rest: &str) -> String {
         }
     }
     out
-}
-
-/// Tri-state grep: Ok(true) = match, Ok(false) = no match, Err = tool failure.
-fn l1_grep_has_match(dir: &Path, pattern: &str) -> Result<bool, String> {
-    let output = std::process::Command::new("grep")
-        .args(["-rqE", "--include=*.dag", pattern, &dir.to_string_lossy()])
-        .output()
-        .expect("grep must be on PATH for L1 ratchet");
-    match output.status.code() {
-        Some(0) => Ok(true),
-        Some(1) => Ok(false),
-        code => Err(format!(
-            "grep error (exit {code:?}): {}",
-            String::from_utf8_lossy(&output.stderr)
-        )),
-    }
-}
-
-fn l1_grep_violation_report(dir: &Path, pattern: &str) -> String {
-    let output = std::process::Command::new("grep")
-        .args(["-rnE", "--include=*.dag", pattern, &dir.to_string_lossy()])
-        .output()
-        .expect("grep detail for L1 ratchet");
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-#[test]
-fn l1_type_knowledge_ratchet() {
-    // Hermetic source audit: patterns from ratchet.dag, corpus src/v3 only (see deleted
-    // scripts/l1-ratchet.sh). CI still runs gunbc `run_l1_ratchet`; this test mirrors it
-    // without requiring a release binary or parsing the full dsl/ tree.
-    let ws = workspace_root();
-    let corpus = ws.join("src/v3");
-    assert!(corpus.is_dir(), "L1 corpus {} must exist", corpus.display());
-
-    let ctor_pat = l1_ratchet_pattern_from_dag("l1_constructor_pattern");
-    let type_pat = l1_ratchet_pattern_from_dag("l1_typename_pattern");
-
-    let ctor = l1_grep_has_match(&corpus, &ctor_pat).expect("constructor pattern grep");
-    let typ = l1_grep_has_match(&corpus, &type_pat).expect("typename pattern grep");
-
-    if ctor || typ {
-        let mut report = String::new();
-        if ctor {
-            report.push_str(&l1_grep_violation_report(&corpus, &ctor_pat));
-        }
-        if typ {
-            report.push_str(&l1_grep_violation_report(&corpus, &type_pat));
-        }
-        panic!("L1 ratchet failed (patterns from dsl/gunbc/tools/ratchet.dag):\n{report}");
-    }
 }
 
 #[test]
