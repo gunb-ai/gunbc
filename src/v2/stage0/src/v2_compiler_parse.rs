@@ -1196,6 +1196,23 @@ pub fn drop_leading_type_modifier(
     }
 }
 
+pub fn drop_leading_test_marker(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
+    if (tok_is_ident_text(tokens.clone().first().cloned(), "test".to_string())
+        && tok_is_keyword(tokens.clone().get(1 as usize).cloned(), "fn".to_string()))
+    {
+        Rc::new(
+            tokens
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        tokens.clone()
+    }
+}
+
 pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     drop_leading_type_modifier(tokens, "nominal_opaque".to_string())
 }
@@ -2485,6 +2502,7 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
 pub fn parse_item(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let tokens = skip_newlines(tokens.clone());
+        let tokens = drop_leading_test_marker(tokens.clone());
         let tok = tokens.clone().first().cloned();
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
