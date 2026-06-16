@@ -111,11 +111,17 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
 /// (graph-exported facts replace this scaffold).
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v1/stage0/src");
+    // Keep in sync with HAND_MAINTAINED_STAGE0_FILES in regen_stage0.rs: every
+    // hand-maintained module that committed lib.rs declares must exist in the
+    // temp output dir so rustfmt and cargo can resolve its module path.
     for name in &[
         "v1_interpreter.rs",
         "cli_run.rs",
         "rest_transport_facts.rs",
         "coproduct_reflection.rs",
+        "resolved_graph_cache.rs",
+        "v1_compiler_dag_collect.rs",
+        "method_template_projection_source.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
