@@ -116,6 +116,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "cli_run.rs",
         "rest_transport_facts.rs",
         "coproduct_reflection.rs",
+        "method_template_projection_source.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -176,6 +177,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=cli_run.rs")
         .arg("--exclude=rest_transport_facts.rs")
         .arg("--exclude=coproduct_reflection.rs")
+        .arg("--exclude=method_template_projection_source.rs")
         .arg(dir_a)
         .arg(dir_b)
         .output()
