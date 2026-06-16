@@ -6,11 +6,21 @@ from first principles. Not a finished document. Work the list; promote a line to
 we've actually discussed it.
 
 `README.md` and `CLAUDE.md` symlink to this file — it is the single source of truth. (v2 ships the
-`gunbc` CLI · v3 is frozen · v4 is active.)
+`gunbc` CLI and is v4's seed · v3 was removed, migrated into v2 · v4 is active.)
 
 Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
 
 ## Principles (the review spine)
+
+**Why all of this (the objective function).** A theoretically perfect DRY process is, *by
+definition*, the fastest, most efficient, and most reliable one — safety, cost, and speed are jointly
+maximized for the domain's constraints. Redundant work is never wanted — that is what *redundant*
+means — and "redundant" is broader than duplication: it is anything unwanted, whether **duplicated**
+(a forked concept), **unnecessary** (dead / consumer-less code), or **irrelevant** (off-purpose
+bloat). So the objective is to rip programming down to the bare minimum along two axes: **horizontal** —
+unify a concept across all its breadth and scales (model-local / derive-global; one concept, every
+scale) — and **deep** — decompose every concept to its bare atoms. Every principle below serves that
+minimization.
 
 - [~] **Loud errors, not warnings — lean toward infra.** This code is (mostly) digital: when
   something is wrong we want a *loud error*, never a warning. In digital logic there is no ambiguity
@@ -50,7 +60,8 @@ Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
 - [ ] P4 Decidability — bounded forward execution; lowering is the receipt; checker, not discoverer
 - [ ] P5 Progress-is-Dissolution — no bridges/deprecations as steady state; scaffolds need a live ratchet; debt-negative default
 - [ ] the through-line: how much *stricter* than a normal compiler can we be? (grounded leaves + DRY concepts let us reject what they can't even express)
-- [~] **balance quantitative and qualitative — anchor on neither.** Optimizing one metric/KPI blinds you to everything else on this list — you'll hit the number, at a cost. Pure qualitative ("do I actually like this?") is a real signal but misses critical quantitative limits. Balance all the goals simultaneously; no single axis is the objective.
+- [~] **Solve holistically at the root, not the bottleneck.** Don't anchor on one axis: optimizing a single metric/KPI hits the number at the cost of everything else here, and pure qualitative ("do I actually like this?") misses critical quantitative limits — balance all goals at once. And don't just chase the bottleneck: the 80s path tempts you, but the move is to map the cause→effect sequence *across* sections, see how they relate (caching, shared redundancy), and make each as fast and non-redundant as it can be — a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step). Root-cause to the language/substrate layer and fix the related systems *together*; local subsystem patches are the forked-logic trap.
+- [~] **DRY across scales — one concept, every scale.** This project is DRY on steroids: the *same* concept models a phenomenon at every scale, because at the right layer there is nothing fundamentally different between them. The caching/Realization concept that memoizes a nanosecond computation is the one that caches a build and reconciles a broad infra deployment — content-addressed pure-spec → host-effect, one kernel, N handlers (see Substrate → the Realization pattern). Model it once at the substrate; every scale and every consumer derives from it (model-local / derive-global).
 
 ## Worldview
 - [ ] program-as-dependency-graph; the compiler is a non-executing causal engine
