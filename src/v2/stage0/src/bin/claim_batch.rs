@@ -12,14 +12,14 @@
 //! 2. **Multi-entry batch** (lens-gate extension, #4719 follow-on): multiple
 //!    `--entry` flags each followed by its own `--function`/`--functions`
 //!    flags.  The module source index is built once; each entry's closure is
-//!    resolved separately in the same process.  This is what
-//!    `v4-lens-ci-gate.sh`'s GREEN pass uses.
+//!    resolved separately in the same process.  This is what the v4 lens CI
+//!    rows-fn's GREEN pass uses.
 //!
-//! Motivation. The v4 node-frontier CI gate
-//! (`scripts/v4-affected-set-node-frontier-gate.sh`) runs N Bool witnesses
+//! Motivation. The v4 node-frontier rows-fn (now invoked from gate-3,
+//! `scripts/v4-affected-tests-gate.sh`) runs N Bool witnesses
 //! that ALL share a single `--entry` file, differing only in `--function`.
-//! The v4 lens CI gate (`scripts/v4-lens-ci-gate.sh`) has one witness per
-//! entry file.  Both gates previously ran `gunbc run --claim-run` once per
+//! The v4 lens CI rows-fn (same gate-3 host) has one witness per
+//! entry file.  Both previously ran `gunbc run --claim-run` once per
 //! row, re-resolving the module tree each time (~5-13s per resolve —
 //! `build_module_index` + closure-compile dominates).  Multi-entry mode
 //! collapses that to ONE filesystem scan + one resolve per distinct entry.
