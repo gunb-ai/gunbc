@@ -1,0 +1,40 @@
+// Semantics oracle: native fold_list / fold_list_right fast paths must match the
+// interpreted .dag bodies on order- and associativity-sensitive inputs.
+module test.claim.fold_list_native_semantics
+
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_right }
+import v4.std.logic { Bool }
+
+fn fold_list_left_order_sensitive() -> Int {
+  let xs = [1, 2, 3]
+  fold_list(xs: xs, empty: 0, cons: fn(acc, h) { acc * 10 + h })
+}
+
+fn fold_list_right_order_sensitive() -> Int {
+  let xs = [1, 2, 3]
+  fold_list_right(xs: xs, empty: 0, snoc: fn(acc, h) { acc * 10 + h })
+}
+
+fn fold_list_left_order_sensitive_holds() -> Bool {
+  fold_list_left_order_sensitive() == 123
+}
+
+fn fold_list_right_order_sensitive_holds() -> Bool {
+  fold_list_right_order_sensitive() == 321
+}
+
+fn fold_list_empty_holds() -> Bool {
+  fold_list(xs: [], empty: 7, cons: fn(acc, h) { acc + h }) == 7
+}
+
+fn fold_list_right_empty_holds() -> Bool {
+  fold_list_right(xs: [], empty: 7, snoc: fn(acc, h) { acc + h }) == 7
+}
+
+fn fold_list_single_element_holds() -> Bool {
+  fold_list(xs: [42], empty: 0, cons: fn(acc, h) { acc * 10 + h }) == 42
+}
+
+fn fold_list_right_single_element_holds() -> Bool {
+  fold_list_right(xs: [42], empty: 0, snoc: fn(acc, h) { acc * 10 + h }) == 42
+}
