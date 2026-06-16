@@ -5,7 +5,9 @@
 
 use std::path::Path;
 
-use emit_host_runner::{run_host_process, EmitHostTransportInputs, TS_HOST_TRANSPORT_PROGRAM_IDENTITY};
+use emit_host_runner::{
+    run_host_process, EmitHostTransportInputs, TS_HOST_TRANSPORT_PROGRAM_IDENTITY,
+};
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
 use v2_compiler::v2_interpreter::{self, InterpContext, Value};
 
@@ -116,8 +118,7 @@ fn program_emit_typescript_receipt_runs_on_node_with_effect_io_roundtrip() {
         "emitted source missing ReadResource shim call: {source}"
     );
 
-    let work_dir =
-        std::env::temp_dir().join(format!("gunbc_program_emit_{}", std::process::id()));
+    let work_dir = std::env::temp_dir().join(format!("gunbc_program_emit_{}", std::process::id()));
     std::fs::create_dir_all(&work_dir).expect("create temp dir");
     let data_path = work_dir.join("gunbc_program_io_target.txt");
 

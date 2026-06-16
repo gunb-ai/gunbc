@@ -313,9 +313,7 @@ pub fn run_host_process(
     validate_emit_host_transport_inputs(inputs)?;
     match descriptor_identity {
         TS_HOST_TRANSPORT_MVP1_IDENTITY => run_host_process_ts_mvp1(source, inputs, work_dir),
-        TS_HOST_TRANSPORT_PROGRAM_IDENTITY => {
-            run_host_process_ts_program(source, inputs, work_dir)
-        }
+        TS_HOST_TRANSPORT_PROGRAM_IDENTITY => run_host_process_ts_program(source, inputs, work_dir),
         other => Err(HostSetupFailure::SpawnFailed {
             phase: HostPhase::Build,
             source: format!("unsupported host transport descriptor: {other}"),

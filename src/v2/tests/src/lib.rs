@@ -66,6 +66,8 @@ mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
+mod program_emit_typescript_receipt_test;
+#[cfg(test)]
 mod r2_emit_add_named_test;
 #[cfg(test)]
 mod rc_probe_wire_decode_call_test;
@@ -81,8 +83,6 @@ mod source_audit;
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;
-#[cfg(test)]
-mod program_emit_typescript_receipt_test;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
