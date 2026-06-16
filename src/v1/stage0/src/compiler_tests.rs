@@ -73,44 +73,42 @@ mod compiler_tests {
             .collect()
     }
 
-    fn extract_module_path(content: &str) -> Option<String> {
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("module ") {
-                return Some(rest.trim().to_string());
-            }
-            if !trimmed.is_empty() && !trimmed.starts_with("//") {
-                break;
-            }
+    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+        let tokens = tokenize(content.to_string(), path.to_string());
+        let mut source_indices = HashMap::new();
+        source_indices.insert(
+            path.to_string(),
+            crate::v1_std_core::build_newline_index(path.to_string(), content.to_string()),
+        );
+        let parsed = crate::v1_compiler_parse::parse_with_table(
+            tokens.clone(),
+            std::rc::Rc::new(source_indices),
+            crate::v1_std_core::empty_intern_table(),
+        );
+        if let Some(err) = parsed.result.error.as_ref() {
+            panic!(
+                "failed to parse {} while building source closure: {}",
+                path,
+                crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+            );
         }
-        None
-    }
-
-    fn extract_import_paths(content: &str) -> Vec<String> {
-        let mut imports = Vec::new();
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("import ") {
-                let module_path = rest.split('{').next().unwrap_or(rest).trim();
-                if !module_path.is_empty() {
-                    imports.push(module_path.to_string());
-                }
-            }
-        }
-        imports
+        parsed
+            .result
+            .module
+            .clone()
+            .unwrap_or_else(|| panic!("{} produced no module while building source closure", path))
     }
 
     fn module_path_from_source(path: &str, content: &str) -> String {
-        extract_module_path(content).unwrap_or_else(|| {
-            panic!(
-                "{} is missing a module declaration while building source closure",
-                path
-            )
-        })
+        parse_module_or_panic(path, content).name.clone()
     }
 
-    fn import_paths_from_source(_path: &str, content: &str) -> Vec<String> {
-        extract_import_paths(content)
+    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
+        let module = parse_module_or_panic(path, content);
+        crate::v1_std_core::module_imports(module)
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect()
     }
 
     fn build_source_index(roots: &[&str]) -> HashMap<String, (String, String)> {
