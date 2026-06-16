@@ -722,11 +722,26 @@ pub fn rust_nominal_ord_derives_for_shape(
     }
 }
 
+pub fn rust_nominal_ord_type_ref_eligible(
+    elem_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let type_name = authored_name_at(source_indices, elem_node.clone());
+        (((((elem_node.children.clone().len() as i64) == 0)
+            && ((elem_node.params.clone().len() as i64) == 0))
+            && (elem_node.connective.clone() == Connective::NoConnective))
+            && ((type_name.clone().as_str() == "Symbol".to_string().as_str())
+                || (type_name.clone().as_str() == "DiffId".to_string().as_str())))
+    }
+}
+
 pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
+    ((rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
+        || rust_nominal_ord_type_ref_eligible(elem_node.clone(), source_indices.clone()))
         || rust_diff_id_ord_carrier_shape_eligible(
             authored_name_at(source_indices.clone(), elem_node.clone()),
             elem_node.children.clone(),
