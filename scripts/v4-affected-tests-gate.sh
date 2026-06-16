@@ -52,8 +52,8 @@ bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
 bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
 bash scripts/v4-layering-imports-gate.sh --perturb-check
 
-# #4957: native==interpreted semantics oracle (merge gate). Termination witness deferred-not-green:
-# arm64 CI honest RED with native-fold ON at 30s (fold_list=11384 fold_list_right=62895); not a harness defect.
+# #4957: termination witness ExpectFail defer (honest RED does not block) + semantics oracle (merge gate).
+bash scripts/v4-interpreted-parse-termination-expect-fail-gate.sh
 bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release fold_list_native_semantics_test -- --test-threads=1 --quiet
 
 echo "gate-3 PASS: affected-tests superset battery"

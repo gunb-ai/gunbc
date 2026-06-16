@@ -1,9 +1,9 @@
-//! Live witness (manual / deferred-not-green): v4 `build_parse_table` / `parse` under the v2 interpreter.
+//! Live witness: v4 `build_parse_table` / `parse` under the v2 interpreter.
 //!
-//! **CI status (#4957 honest fork):** termination witness deferred-not-green — arm64 CI showed
-//! native-fold ON yet parse still exceeds 30s (fold-cost fix insufficient; not a harness defect).
-//! `fold_list_native_semantics_test` remains the merge gate oracle. Re-enable in
-//! `scripts/v4-affected-tests-gate.sh` only after a sub-30s GREEN with margin lands.
+//! **CI (#4957 ExpectFail defer):** `scripts/v4-interpreted-parse-termination-expect-fail-gate.sh`
+//! runs this witness and treats honest budget RED as PASS (labeled defer). Oracle
+//! (`fold_list_native_semantics_test`) gates merge. Dissolve-on: interpreted-parse fold-cost
+//! optimization work-item node://adhoc-fc63cf25-e45 (dissolve-on for ExpectFail defer).
 //!
 //! Without native `fold_list`/`fold_list_right` fast paths, `bisect_parse_terminates` exceeds
 //! its wall budget (O(n) interpreter frames per list element in the grammar fold hot loop).
@@ -91,20 +91,21 @@ where
     })
 }
 
-/// Primary +/- witness (deferred-not-green in CI): RED without native fold, GREEN with fix.
-/// Manual: `cargo test -p v2-compiler-tests --release interpreted_parse_termination_test::interpreted_parse_bisect_parse_terminates_within_budget -- --exact --test-threads=1 --nocapture`
+/// Primary +/- witness: RED without native fold, GREEN with fix (ExpectFail defer in CI).
+/// Times `bisect_parse_terminates` only; compile_to_resolved outside timer (thread_local ctx).
 #[test]
-#[ignore = "deferred-not-green: arm64 CI honest RED with native-fold ON (fold-cost insufficient); oracle gates merge"]
 fn interpreted_parse_bisect_parse_terminates_within_budget() {
     with_bisect_ctx(|ctx| {
+        v2_interpreter::fold_native_hit_counts_reset();
         let start = Instant::now();
         match v2_interpreter::run_in_context(ctx, BISECT_PARSE_FN, false) {
             Ok(Value::Bool(true)) => {}
             other => panic!("expected Bool(true) from {BISECT_PARSE_FN}, got {other:?}"),
         }
         let elapsed = start.elapsed();
+        let (fold_list, fold_list_right) = v2_interpreter::fold_native_hit_counts_snapshot();
         eprintln!(
-            "witness {BISECT_PARSE_FN} elapsed {elapsed:?} (budget {:?})",
+            "witness {BISECT_PARSE_FN} elapsed {elapsed:?} (budget {:?}); native_fold_hits fold_list={fold_list} fold_list_right={fold_list_right}",
             WITNESS_BUDGET
         );
         assert!(
