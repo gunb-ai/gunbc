@@ -30,10 +30,13 @@ if [[ "$ec" -eq 0 ]]; then
   exit 1
 fi
 
-if rg -q "exceeded.*budget|witness bisect_parse_terminates elapsed" "$log"; then
+# Discriminate the SPECIFIC honest-RED signature: budget trip WITH native-fold engaged.
+# Compile errors, panics, wrong-tree, or native-off (0/0 hits) must NOT pass as defer.
+if rg -q "exceeded.*budget|witness bisect_parse_terminates elapsed" "$log" \
+  && rg -q "native_fold_hits fold_list=[1-9][0-9]* fold_list_right=[1-9]" "$log"; then
   echo "::notice title=interpreted-parse termination (ExpectFail defer)::${HONEST_MARK}"
   exit 0
 fi
 
-echo "::error::interpreted-parse termination ExpectFail: did not get honest budget RED (infra/compile/runtime failure)"
+echo "::error::interpreted-parse termination ExpectFail: not honest budget RED with native-fold hits (infra/compile/panic/wrong failure mode)"
 exit 1

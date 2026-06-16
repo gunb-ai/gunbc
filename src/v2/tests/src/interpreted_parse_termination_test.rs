@@ -1,10 +1,8 @@
 //! Live witness: v4 `build_parse_table` / `parse` under the v2 interpreter.
 //!
-//! **#4957 DEFERRED-not-green (circuit-breaker B):** interpreted-parse termination NOT
-//! achieved; native-fold-cost insufficient under 30s budget (by-execution: native-on
-//! fold_list=11384, fold_list_right=62895, recv_timeout @30s on arm64). NOT a green claim.
-//! Merge gate: `fold_list_native_semantics_test` only. Dissolve-on: node://adhoc-fc63cf25-e45
-//! (fold-cost opt → sub-30s GREEN flips defer; then un-#[ignore] + CI-wire native-off teeth).
+//! **CI (#4957 ExpectFail defer):** `scripts/v4-interpreted-parse-termination-expect-fail-gate.sh`
+//! runs this witness CI-live (honest budget RED → defer ::notice; stale-fail-closed if GREEN).
+//! Oracle (`fold_list_native_semantics_test`) gates merge. Dissolve-on: node://adhoc-fc63cf25-e45.
 //!
 //! Without native `fold_list`/`fold_list_right` fast paths, `bisect_parse_terminates` exceeds
 //! its wall budget (O(n) interpreter frames per list element in the grammar fold hot loop).
@@ -92,9 +90,8 @@ where
     })
 }
 
-/// Primary witness — DEFERRED-not-green (manual only; no CI green claim).
+/// Primary witness — CI-live via ExpectFail defer gate (honest budget RED expected on arm64).
 #[test]
-#[ignore = "DEFERRED-not-green: termination NOT achieved; native-fold-cost insufficient @30s (native-on fold_list=11384 fold_list_right=62895 recv_timeout); dissolve-on node://adhoc-fc63cf25-e45"]
 fn interpreted_parse_bisect_parse_terminates_within_budget() {
     with_bisect_ctx(|ctx| {
         v2_interpreter::fold_native_hit_counts_reset();
@@ -115,6 +112,11 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
              got fold_list={fold_list} fold_list_right={fold_list_right}"
         );
         assert!(
+            fold_list > 0 && fold_list_right > 0,
+            "native fold fast paths must be engaged during {BISECT_PARSE_FN} (FLAG1); \
+             got fold_list={fold_list} fold_list_right={fold_list_right}"
+        );
+        assert!(
             elapsed <= WITNESS_BUDGET,
             "{BISECT_PARSE_FN} exceeded {:?} budget (elapsed {elapsed:?})",
             WITNESS_BUDGET
@@ -122,9 +124,9 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
     });
 }
 
-/// Perturbation teeth — proven manually; CI-wire required on dissolve-on (node://adhoc-fc63cf25-e45).
+/// Perturbation teeth — proven manually; CI-wire on dissolve-on (node://adhoc-fc63cf25-e45).
 #[test]
-#[ignore = "teeth-deferred-not-CI-wired: native-off must recv_timeout budgeted path; wire ExpectTimeout gate on dissolve-on"]
+#[ignore = "teeth-deferred-not-CI-wired: native-off must exceed budget on same in-timer path"]
 fn interpreted_parse_witness_exceeds_budget_with_native_disabled() {
     let resolved = compile_to_resolved(Rc::new(bisect_sources()));
     assert_resolved_ok(&resolved);
