@@ -1196,7 +1196,7 @@ fn python_flat_method_templates_derived_from_specs() {
     // python_method_templates_flat() is derived from python_simple_method_specs
     // — the single authority (the #5039 Rust pattern, extended to Python).
     use v1_compiler::extdeps_languages_python_emit::{
-        python_method_templates, python_method_templates_flat, python_simple_method_specs,
+        python_method_templates_flat, python_simple_method_specs,
     };
 
     let specs = python_simple_method_specs();
@@ -1233,21 +1233,12 @@ fn python_flat_method_templates_derived_from_specs() {
             "'{m}' must be absent from python_method_templates_flat() (it routes via the runtime bridge)"
         );
     }
-    // ...but the v2-legacy superset re-adds them.
-    let superset = python_method_templates();
-    for m in ["map", "fold", "concat"] {
-        assert!(
-            superset.contains_key(m),
-            "'{m}' must be present in the python_method_templates() superset"
-        );
-    }
-    assert_eq!(superset.len(), flat.len() + 3);
 }
 
 #[test]
 fn go_flat_method_templates_derived_from_specs() {
     use v1_compiler::extdeps_languages_go_emit::{
-        go_method_templates, go_method_templates_flat, go_simple_method_specs,
+        go_method_templates_flat, go_simple_method_specs,
     };
 
     let specs = go_simple_method_specs();
@@ -1280,14 +1271,6 @@ fn go_flat_method_templates_derived_from_specs() {
             "'{m}' must be absent from go_method_templates_flat() (it routes via the runtime bridge)"
         );
     }
-    let superset = go_method_templates();
-    for m in ["map", "fold", "concat"] {
-        assert!(
-            superset.contains_key(m),
-            "'{m}' must be present in the go_method_templates() superset"
-        );
-    }
-    assert_eq!(superset.len(), flat.len() + 3);
 }
 
 #[test]

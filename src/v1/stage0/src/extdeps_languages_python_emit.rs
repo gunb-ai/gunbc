@@ -226,22 +226,6 @@ pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
     )
 }
 
-pub fn python_method_templates() -> Rc<HashMap<String, String>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_map_insert(
-            v1_rt::rc_map_insert(
-                python_method_templates_flat(),
-                "concat".to_string(),
-                "{recv} + {arg}".to_string(),
-            ),
-            "map".to_string(),
-            "[{arg}(x) for x in {recv}]".to_string(),
-        ),
-        "fold".to_string(),
-        "functools.reduce({arg}, {recv})".to_string(),
-    )
-}
-
 pub fn python_lambda_template() -> String {
     thread_local! {
         static CACHED: String = {
