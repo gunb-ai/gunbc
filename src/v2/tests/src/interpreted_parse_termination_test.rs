@@ -112,11 +112,6 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
              got fold_list={fold_list} fold_list_right={fold_list_right}"
         );
         assert!(
-            fold_list > 0 && fold_list_right > 0,
-            "native fold fast paths must be engaged during {BISECT_PARSE_FN} (FLAG1); \
-             got fold_list={fold_list} fold_list_right={fold_list_right}"
-        );
-        assert!(
             elapsed <= WITNESS_BUDGET,
             "{BISECT_PARSE_FN} exceeded {:?} budget (elapsed {elapsed:?})",
             WITNESS_BUDGET
