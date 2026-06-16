@@ -22,6 +22,9 @@ unify a concept across all its breadth and scales (model-local / derive-global; 
 scale) — and **deep** — decompose every concept to its bare atoms. Every principle below serves that
 minimization.
 
+  - *e.g.* `dsl/std/integer.dag`: `Int8`…`Int128` + `UInt8`…`UInt128` are 10 one-liner `Compose<Int, MachineWidth<N>>` rows — one axis, not 10 hand-authored types *(horizontal)*.
+  - *e.g.* `dsl/std/algebra.dag`: arithmetic is never listed per type — `Int.add` falls out of `Int` inhabiting a ring; the compiler reads inhabitance *(deep)*.
+
 - [~] **Loud errors, not warnings — lean toward infra.** This code is (mostly) digital: when
   something is wrong we want a *loud error*, never a warning. In digital logic there is no ambiguity
   about whether a thing works — a bridge doesn't issue a warning, it collapses; when you hit danger you
@@ -31,6 +34,8 @@ minimization.
   **lean toward infra** so your work is something others can build on. (This is P3 Fail-Closed as a
   posture: typed located diagnostics, no fabricated output, no warning-as-escape-hatch; a bounded
   "forever" ≠ an "unknown" error.)
+  - *e.g.* the parser once faked dummy `LitNull` nodes to keep going; inference then inferred bogus types off them — now a typed parse-error carrier blocks downstream (INVARIANTS P3, history).
+  - *e.g.* removing a scan-all-keys fail-open heuristic (commit `0331b526ee`) exposed 8 real inference deficits its fabrication had been hiding.
 
 - [~] **DRY of concepts — no nicknaming (a correctness concern, not style).** A nickname is a *fork of
   a concept that still means the same underlying thing* — duplicate work at the meaning/communication
@@ -42,11 +47,17 @@ minimization.
   algebra) rather than re-coining them, and if you must introduce a name that relates to an existing
   concept, make the relationship explicit. (This is Decomposition's *reduce* step; reinforces P1
   grounding + P2 single-authority.)
+  - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums — the latter's own file header says "no parallel arch notion" while being exactly that *(a fork documenting itself)*.
+  - *e.g.* `ModulePath` was `FreeMonoid<Symbol>` mislabeled as a graph `Path`; the fix renamed it `QualifiedName` and deleted `ModulePathSegment` (= `Symbol`).
+  - *e.g.* the same "vendor" concept forks by rigor: `CpuVendor` is a closed enum, but `GpuFacts.vendor`/`AcceleratorFacts.vendor` are stringly `NonEmptyStr`.
 
 - [~] **DRY of logic — consolidate at the root, then generate.** Duplication anywhere — frontend,
   compiler — is a "why?". Solve it at the root by consolidating onto one authority and generating the
   rest, never by forking. Forked logic looks harmless and exponentiates. (P2 single-authority; "don't
   hand-roll a derived operation".)
+  - *e.g.* one catamorphism `fold_node` (in `v4/std/node.dag`) is reused by all 7 v4 compiler stages instead of each hand-rolling its own walk.
+  - *e.g.* keystone #4699 dissolved `06_translate` onto `fold_node`: 4,912 → 3,973 lines, hand-rolled `_go` traversal accumulators 35 → 0.
+  - *e.g.* the whole emit stage is now one composition — `emit = serialize_target ∘ translate`, 43 lines, no hand-walk.
 
 - [~] **Decomposition / the atom — `decompress → map → reduce`.** Nothing is opaque that isn't
   *genuinely* atomic. Keeping a rich concept as a bare `String` leaf is anemic, lazy modeling —
@@ -54,14 +65,24 @@ minimization.
   concepts unify on one model; forking quadruplicates the effort. *Decompress* the concept to its
   primitives, *map* each part onto the concept that already exists (M9 DFS), *reduce* duplicates and
   nicknames. Net concepts must not grow by re-invention. (drafted w/ operator 2026-06-16)
+  - *e.g.* `"LGA4926"` decompresses to `CpuSocket { package: LandGridArray, contact_count: 4926 }` — the number is a grounded `Int`, not an opaque token (`dsl/std/cpu/types.dag`).
+  - *e.g.* still anemic today: `DramModuleCatalogRow.{ddr4_pc4_class, rank_label}` are bare `NonEmptyStr` leaves, not modeled closed sets.
+  - *e.g.* `Cost = Time | Space | Energy` is the wrong shape — every cost has all three; dissolve the coproduct to a record `{time, space, energy}`.
 
 - [ ] P1 Modeling Faithfulness — grounding is intersubjective; faithfully model accepted universal frameworks; in a closed system heuristics are never necessary
+  - *e.g.* idempotency is not a flag — `is_idempotent_effect` is a trivial match over `EffectShape` (Read/Upsert ⇒ true); the old `idempotent: Bool` dissolved (`dsl/std/effects.dag`).
 - [ ] P2 Boundary Discipline — one fact, one home; layer DAG (std ← extdeps ← compiler ← workflow); cost-of-change → 1
 - [ ] P4 Decidability — bounded forward execution; lowering is the receipt; checker, not discoverer
+  - *e.g.* termination is checked, not discovered — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = `DescentUnknown` (fail-closed).
 - [ ] P5 Progress-is-Dissolution — no bridges/deprecations as steady state; scaffolds need a live ratchet; debt-negative default
+  - *e.g.* the ~4,900-line `06_translate` that couldn't emit `fn add` was rebuilt `emit = serialize ∘ translate`, green by execution (see Verification).
 - [ ] the through-line: how much *stricter* than a normal compiler can we be? (grounded leaves + DRY concepts let us reject what they can't even express)
 - [~] **Solve holistically at the root, not the bottleneck.** Don't anchor on one axis: optimizing a single metric/KPI hits the number at the cost of everything else here, and pure qualitative ("do I actually like this?") misses critical quantitative limits — balance all goals at once. And don't just chase the bottleneck: the 80s path tempts you, but the move is to map the cause→effect sequence *across* sections, see how they relate (caching, shared redundancy), and make each as fast and non-redundant as it can be — a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step). Root-cause to the language/substrate layer and fix the related systems *together*; local subsystem patches are the forked-logic trap.
+  - *e.g.* a 6-line `merge_envs` fix (reuse the intern table vs re-derive) cut reconcile from 81% of the pipeline to 6% (~2× whole self-compile) — found by profiling the root, not a grep-able symptom.
+  - *e.g.* v4 still hand-rolls two caches (`ParseTable`, `TestClaimCacheKey`) because the Realization carrier is staged, not inhabited — root unfixed, so the symptom recurs.
 - [~] **DRY across scales — one concept, every scale.** This project is DRY on steroids: the *same* concept models a phenomenon at every scale, because at the right layer there is nothing fundamentally different between them. The caching/Realization concept that memoizes a nanosecond computation is the one that caches a build and reconciles a broad infra deployment — content-addressed pure-spec → host-effect, one kernel, N handlers (see Substrate → the Realization pattern). Model it once at the substrate; every scale and every consumer derives from it (model-local / derive-global).
+  - *e.g.* the Realization pattern — one kernel, N handlers — spans resolve-cost (ns) → sccache build cache → §10 OS provisioning on one content-hash identity (ROADMAP).
+  - *e.g.* cost of *not* being DRY: eleven hand-rolled v2 `HashMap` caches (`pure_call_memo`, `parse_cache`, …), and v4 still recurs with `ParseTable`.
 
 ## Worldview
 - [ ] program-as-dependency-graph; the compiler is a non-executing causal engine
@@ -92,6 +113,8 @@ minimization.
 - [ ] model just-in-time; the mark on the carrier is authority (no parallel-ledger docs)
 - [ ] dissolution disposition: dissolve-now / terminal / gated (no fourth)
 - [~] **file paths are discriminators, not gospel** — a path helps a human/LLM center on what a cluster of modeling is *for*; organize by them broadly, but don't anchor on the file. A concept's home is its *layer* (it belongs in `std/` or `extdeps/` itself); the file is a movable label.
+  - *e.g.* `std/cpu` owns the catalog *shape* (`CpuModelCatalogRow`); the vendor's actual SKU rows live in `extdeps/cpu/ampere` — the concept's home is its layer.
+  - *e.g.* `compute_fabric` was moved `std/ → product/` because it's a domain model, not a std primitive (`dsl/std` now has zero compute_fabric files).
 
 ## Enforcement
 - [ ] lenses are the invariant primitive (not grep); pure readers that store nothing; new analysis = zero substrate edits
@@ -104,6 +127,9 @@ minimization.
 - [ ] tests are TestClaim data; a hand-written .rs test is an unexpressed language feature
 - [ ] hermetic, behavior-driven, unit-first; mock a minimal Dag, don't compile end-to-end
 - [ ] **HARVEST PROMINENTLY** — the specification-without-execution trap + E-10 (no code without a consumer)
+  - *e.g.* a compiler-sized `.dag` corpus typechecked and passed its grep claims, yet `emit` couldn't produce `fn add` — it hung >600s (the canonical story).
+  - *e.g.* the fix: `emit` is now 43 lines (`serialize_target ∘ translate`), proven green by *running* `emit(add)`, not by greps.
+  - *e.g.* the witness is execution: a test asserts `emit(add)` equals the literal `fn add(x: i32, y: i32) -> i32 { x + y }`.
 - [ ] "done" = green *by execution* + a discriminating input that goes red when the behavior is wrong
 
 ## Self-hosting
@@ -113,8 +139,8 @@ minimization.
 
 ## Hard-won lessons to harvest (paid for once; don't relearn)
 - [ ] hollow alias — minimality ≠ grounding; it passes every shape-checker
-- [ ] parameterized-family blindness — a 15-variant identical enum passed 4 shape-checks + 2 reviews
-- [ ] construct-discard-reconstruct — the cardinal anti-pattern AND the real perf cliff (68× from a 6-line fix)
+- [ ] parameterized-family blindness — a mechanically-identical multi-variant enum sails through shape-checks and review; test cost-of-change, not shape
+- [ ] construct-discard-reconstruct — the cardinal anti-pattern AND the real perf cliff (a 6-line root fix beat all clone-elimination; ~2× self-compile)
 - [ ] state-space conflation — Option/None standing for >2 meanings; split into named variants (illegal states unrepresentable)
 - [ ] cache purity — key on declared-input content; byte-identical cached-vs-cold is the standing purity oracle
 - [ ] coercion proven by normalized round-trip, not a golden string; ingest must not grow its own coercion arms
