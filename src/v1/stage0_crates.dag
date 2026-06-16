@@ -21,7 +21,7 @@ module v1.compiler.stage0_crates
 
 import v1.std.core { TextFile }
 import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
-import extdeps.cargo { CargoDependency, RegistryDep, LocalPathDep }
+import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 
 // =========================================================================
 // Crate-boundary model
@@ -47,6 +47,9 @@ type Stage0CrateSpec {
   header_doc: String
   modules: List<String>
   dependencies: List<CargoDependency>
+  // Optional `[features]` entries for split crates whose generated modules use
+  // `#[cfg(feature = ...)]` (e.g. v1_rt's text_lookup_work_counter gate).
+  features: List<CargoFeature>
   // Whether this crate defines the `NonEmpty*` newtype wrappers at its lib
   // root. The wrapper bodies are NOT modeled here -- they are emitted from the
   // single source `v1.compiler.emit_rust.emit_non_empty_wrappers`, the same
@@ -128,10 +131,33 @@ fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   }
 }
 
+fn render_stage0_crate_feature(feature: CargoFeature) -> String {
+  if (feature.dependencies |> count) == 0 {
+    concat(feature.name, " = []\n")
+  } else {
+    let dep_names = feature.dependencies |> map(d => concat("\"", d, "\"")) |> join(separator: ", ")
+    concat(feature.name, " = [", dep_names, "]\n")
+  }
+}
+
+fn render_stage0_crate_features_section(features: List<CargoFeature>) -> String {
+  if (features |> count) == 0 {
+    ""
+  } else {
+    concat(
+      "\n[features]\n",
+      "default = []\n",
+      features |> map(render_stage0_crate_feature) |> join(separator: "")
+    )
+  }
+}
+
 fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   let deps = spec.dependencies |> map(render_stage0_crate_dep) |> join(separator: "")
   let content = concat(
-    "[package]\nname = \"", spec.package_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n",
+    "[package]\nname = \"", spec.package_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"",
+    render_stage0_crate_features_section(features: spec.features),
+    "\n\n[dependencies]\n",
     deps
   )
   TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
@@ -237,6 +263,9 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
           CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } }
         ],
+        features: [
+          CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
+        ],
         carries_non_empty_wrappers: true
       },
       Stage0CrateSpec {
@@ -258,6 +287,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
           CargoDependency { name: "v1-stage0-core", source: LocalPathDep { path: "../stage0_core" } }
         ],
+        features: [],
         carries_non_empty_wrappers: false
       }
     ]
