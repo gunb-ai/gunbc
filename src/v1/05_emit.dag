@@ -117,6 +117,11 @@ import v1.compiler.languages {
   service_self_param, service_receiver_str, service_method_depth,
   service_methods_inside_class, service_return_str
 }
+// Single authority for Rust algebra-method emit templates: the
+// SimpleMethodSpec rows in extdeps own template + wraps_result together
+// (derived map below). The former local `rust_method_template_emit` fork
+// is dissolved into this import.
+import extdeps.languages.rust.emit { rust_method_templates }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -2177,18 +2182,9 @@ fn emit_typed_block_join(
 }
 
 // Per-target algebra method emit templates — \{recv\} = receiver, \{arg\} = first argument.
-data rust_method_template_emit: Map<String, String> = {
-  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
-  "count": "(\{recv\}.len() as i64)",
-  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
-  "first": "\{recv\}.first().cloned()",
-  "join": "\{recv\}.join(&\{arg\})",
-  "last": "\{recv\}.last().cloned()",
-  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
-  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",
-}
-
+// Rust draws from the extdeps SimpleMethodSpec authority (rust_method_templates,
+// imported above); Python/Go still carry local maps pending their own parity-proved
+// consolidation (the extdeps python/go maps are supersets — concat/map/fold).
 data python_method_template_emit: Map<String, String> = {
   "all": "all(\{arg\}(x) for x in \{recv\})",
   "any": "any(\{arg\}(x) for x in \{recv\})",
@@ -2225,7 +2221,7 @@ data go_method_template_emit: Map<String, String> = {
 
 fn method_template_emit_for_target(target: RenderTarget) -> Map<String, String>? {
   match target {
-    Rust => Present { value: rust_method_template_emit }
+    Rust => Present { value: rust_method_templates() }
     Python => Present { value: python_method_template_emit }
     Go => Present { value: go_method_template_emit }
     Dag => none
