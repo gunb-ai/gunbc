@@ -1,161 +1,130 @@
-# gunbc — Design (working TODO)
+# gunbc — Design
 
-The old doc corpus (~94 files / ~30k lines) was bankrupted on 2026-06-16 — it's in git history if
-needed. This is the **harvest agenda**: one-liner themes to discuss and turn into the real design,
-from first principles. Not a finished document. Work the list; promote a line to prose only when
-we've actually discussed it.
+`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v2 ships the `gunbc`
+CLI and is v4's seed · v3 was removed, migrated into v2 · v4 is active.)
 
-`README.md` and `CLAUDE.md` symlink to this file — it is the single source of truth. (v2 ships the
-`gunbc` CLI and is v4's seed · v3 was removed, migrated into v2 · v4 is active.)
+This document is reasoned **serially**: each section is a consequence of the one before it, or an
+independent peer — never a restatement of it. The principles below apply recursively, including to
+this document. It is a living draft rebuilt from first principles (the prior ~30k-line doc corpus was
+bankrupted 2026-06-16; it remains in git history). Examples are verified against the live tree or a
+git-history receipt; open threads are collected at the end.
 
-Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
+---
 
-## Principles (the review spine)
+## 1. The objective (the axiom)
 
-**Why all of this (the objective function).** A theoretically perfect DRY process is, *by
-definition*, the fastest, most efficient, and most reliable one — safety, cost, and speed are jointly
-maximized for the domain's constraints. Redundant work is never wanted — that is what *redundant*
-means — and "redundant" is broader than duplication: it is anything unwanted, whether **duplicated**
-(a forked concept), **unnecessary** (dead / consumer-less code), or **irrelevant** (off-purpose
-bloat). So the objective is to rip programming down to the bare minimum along two axes: **horizontal** —
-unify a concept across all its breadth and scales (model-local / derive-global; one concept, every
-scale) — and **deep** — decompose every concept to its bare atoms. Every principle below serves that
-minimization.
+Redundant work is never wanted — by definition of *redundant*: **duplicated**, **unnecessary**, or
+**irrelevant**. A theoretically perfect DRY process is therefore the optimal one — safety, cost, and
+speed jointly maximized for the domain's constraints. So the whole project reduces to one objective:
+**minimize redundancy.** Everything below is a consequence.
 
-  - *e.g.* `dsl/std/integer.dag`: `Int8`…`Int128` + `UInt8`…`UInt128` are 10 one-liner `Compose<Int, MachineWidth<N>>` rows — one axis, not 10 hand-authored types *(horizontal)*.
-  - *e.g.* `dsl/std/algebra.dag`: arithmetic is never listed per type — `Int.add` falls out of `Int` inhabiting a ring; the compiler reads inhabitance *(deep)*.
+## 2. The two axes of minimization (the objective, decomposed)
 
-- [~] **Loud errors, not warnings — lean toward infra.** This code is (mostly) digital: when
-  something is wrong we want a *loud error*, never a warning. In digital logic there is no ambiguity
-  about whether a thing works — a bridge doesn't issue a warning, it collapses; when you hit danger you
-  alert your neighbors, you don't whisper. Infra has to be unambiguous so others can build on it. The
-  rule relaxes on application layers — but only because user experience degrades under maximal
-  strictness, and that relaxation is a *tradeoff made under protest*, never a default. Weigh it and
-  **lean toward infra** so your work is something others can build on. (This is P3 Fail-Closed as a
-  posture: typed located diagnostics, no fabricated output, no warning-as-escape-hatch; a bounded
-  "forever" ≠ an "unknown" error.)
-  - *e.g.* the parser once faked dummy `LitNull` nodes to keep going; inference then inferred bogus types off them — now a typed parse-error carrier blocks downstream (INVARIANTS P3, history).
-  - *e.g.* removing a scan-all-keys fail-open heuristic (commit `0331b526ee`) exposed 8 real inference deficits its fabrication had been hiding.
+Redundancy is removed along exactly two axes. These are not separate "DRY rules" — they are §1 seen
+from two directions:
 
-- [~] **DRY of concepts — no nicknaming (a correctness concern, not style).** A nickname is a *fork of
-  a concept that still means the same underlying thing* — duplicate work at the meaning/communication
-  layer. The codebase leans hard on DRY: we generate everything we can, so a forked concept forces us
-  to duplicate — then quadruplicate — effort in everything derived from it (testgen, emit, lenses).
-  Forking *always* gets consolidated later, so it is compounding debt — treat it as correctness, not
-  taste. We can't enforce this programmatically yet (maybe LLMs help here); until then it is
-  diligence: faithfully model the accepted, universal frameworks (classical logic, set theory,
-  algebra) rather than re-coining them, and if you must introduce a name that relates to an existing
-  concept, make the relationship explicit. (This is Decomposition's *reduce* step; reinforces P1
-  grounding + P2 single-authority.)
-  - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums — the latter's own file header says "no parallel arch notion" while being exactly that *(a fork documenting itself)*.
-  - *e.g.* `ModulePath` was `FreeMonoid<Symbol>` mislabeled as a graph `Path`; the fix renamed it `QualifiedName` and deleted `ModulePathSegment` (= `Symbol`).
-  - *e.g.* the same "vendor" concept forks by rigor: `CpuVendor` is a closed enum, but `GpuFacts.vendor`/`AcceleratorFacts.vendor` are stringly `NonEmptyStr`.
+- **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use
+  (model-local / derive-global). At the right layer there is nothing fundamentally different between
+  scales, so the *same* concept spans nanosecond memoization and broad infra deployment — the
+  Realization pattern (content-addressed pure-spec → host-effect; one kernel, N handlers).
+  - *e.g.* `dsl/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows, one axis not 10 types. Realization spans resolve-cost (ns) → sccache → §10 OS provisioning on one content-hash. Cost of *not* doing it: eleven hand-rolled v2 `HashMap` caches, and v4 still recurs (`ParseTable`).
+- **Deep — every concept decomposed to grounded atoms.** Nothing is opaque that isn't *genuinely*
+  atomic. The move is `decompress → map → reduce`: reveal the structure the source names, **map** each
+  part onto the concept that already exists (DFS the concept DAG first), **reduce** duplicates. A
+  `String` leaf hiding named parts is anemic modeling.
+  - *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }` (the number is a grounded `Int`); `Cost = Time|Space|Energy` → a record (every cost has all three); still-anemic today: `DramModuleCatalogRow.{ddr4_pc4_class, rank_label}` are bare `NonEmptyStr`.
 
-- [~] **DRY of logic — consolidate at the root, then generate.** Duplication anywhere — frontend,
-  compiler — is a "why?". Solve it at the root by consolidating onto one authority and generating the
-  rest, never by forking. Forked logic looks harmless and exponentiates. (P2 single-authority; "don't
-  hand-roll a derived operation".)
-  - *e.g.* one catamorphism `fold_node` (in `v4/std/node.dag`) is reused by all 7 v4 compiler stages instead of each hand-rolling its own walk.
-  - *e.g.* keystone #4699 dissolved `06_translate` onto `fold_node`: 4,912 → 3,973 lines, hand-rolled `_go` traversal accumulators 35 → 0.
-  - *e.g.* the whole emit stage is now one composition — `emit = serialize_target ∘ translate`, 43 lines, no hand-walk.
+The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow
+by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is
+a failed decomposition.
 
-- [~] **Decomposition / the atom — `decompress → map → reduce`.** Nothing is opaque that isn't
-  *genuinely* atomic. Keeping a rich concept as a bare `String` leaf is anemic, lazy modeling —
-  anything can be modeled here, and the synergy (shared lenses, testgen, emit) only pays out when
-  concepts unify on one model; forking quadruplicates the effort. *Decompress* the concept to its
-  primitives, *map* each part onto the concept that already exists (M9 DFS), *reduce* duplicates and
-  nicknames. Net concepts must not grow by re-invention. (drafted w/ operator 2026-06-16)
-  - *e.g.* `"LGA4926"` decompresses to `CpuSocket { package: LandGridArray, contact_count: 4926 }` — the number is a grounded `Int`, not an opaque token (`dsl/std/cpu/types.dag`).
-  - *e.g.* still anemic today: `DramModuleCatalogRow.{ddr4_pc4_class, rank_label}` are bare `NonEmptyStr` leaves, not modeled closed sets.
-  - *e.g.* `Cost = Time | Space | Energy` is the wrong shape — every cost has all three; dissolve the coproduct to a record `{time, space, energy}`.
+## 3. Single authority (what keeps §2 from being undone)
 
-- [ ] P1 Modeling Faithfulness — grounding is intersubjective; faithfully model accepted universal frameworks; in a closed system heuristics are never necessary
-  - *e.g.* idempotency is not a flag — `is_idempotent_effect` is a trivial match over `EffectShape` (Read/Upsert ⇒ true); the old `idempotent: Bool` dissolved (`dsl/std/effects.dag`).
-- [ ] P2 Boundary Discipline — one fact, one home; layer DAG (std ← extdeps ← compiler ← workflow); cost-of-change → 1
-- [ ] P4 Decidability — bounded forward execution; lowering is the receipt; checker, not discoverer
-  - *e.g.* termination is checked, not discovered — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = `DescentUnknown` (fail-closed).
-- [ ] P5 Progress-is-Dissolution — no bridges/deprecations as steady state; scaffolds need a live ratchet; debt-negative default
-  - *e.g.* the ~4,900-line `06_translate` that couldn't emit `fn add` was rebuilt `emit = serialize ∘ translate`, green by execution (see Verification).
-- [ ] the through-line: how much *stricter* than a normal compiler can we be? (grounded leaves + DRY concepts let us reject what they can't even express)
-- [~] **Solve holistically at the root, not the bottleneck.** Don't anchor on one axis: optimizing a single metric/KPI hits the number at the cost of everything else here, and pure qualitative ("do I actually like this?") misses critical quantitative limits — balance all goals at once. And don't just chase the bottleneck: the 80s path tempts you, but the move is to map the cause→effect sequence *across* sections, see how they relate (caching, shared redundancy), and make each as fast and non-redundant as it can be — a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step). Root-cause to the language/substrate layer and fix the related systems *together*; local subsystem patches are the forked-logic trap.
-  - *e.g.* a 6-line `merge_envs` fix (reuse the intern table vs re-derive) cut reconcile from 81% of the pipeline to 6% (~2× whole self-compile) — found by profiling the root, not a grep-able symptom.
-  - *e.g.* v4 still hand-rolls two caches (`ParseTable`, `TestClaimCacheKey`) because the Realization carrier is staged, not inhabited — root unfixed, so the symptom recurs.
-- [~] **DRY across scales — one concept, every scale.** This project is DRY on steroids: the *same* concept models a phenomenon at every scale, because at the right layer there is nothing fundamentally different between them. The caching/Realization concept that memoizes a nanosecond computation is the one that caches a build and reconciles a broad infra deployment — content-addressed pure-spec → host-effect, one kernel, N handlers (see Substrate → the Realization pattern). Model it once at the substrate; every scale and every consumer derives from it (model-local / derive-global).
-  - *e.g.* the Realization pattern — one kernel, N handlers — spans resolve-cost (ns) → sccache build cache → §10 OS provisioning on one content-hash identity (ROADMAP).
-  - *e.g.* cost of *not* being DRY: eleven hand-rolled v2 `HashMap` caches (`pure_call_memo`, `parse_cache`, …), and v4 still recurs with `ParseTable`.
+Minimization holds only if each fact lives in exactly one place. The recurring violation is
+**nicknaming — a second name for one concept** — which duplicates work at the meaning layer and, since
+we generate from concepts, duplicates it again in everything derived (testgen, emit, lenses). A fork
+always gets consolidated later, so it is a correctness concern, not a style one. We cannot enforce this
+programmatically yet; until then it is diligence — faithfully model the accepted universal frameworks
+(classical logic, set theory, algebra) rather than re-coining them. Corollaries: the layer DAG is
+strict (`std ← extdeps ← compiler ← workflow`, imports point toward std); a fact's home is its *layer*,
+not its file (paths are discriminators, not gospel); below-boundary representation is opaque (the
+rename test).
 
-## Worldview
-- [ ] program-as-dependency-graph; the compiler is a non-executing causal engine
-- [ ] correctness is structural, not behavioral (type/arity/unit/effect/complexity/ownership/idempotency + user dims)
-- [ ] model-local / derive-global (N models, not N×M adapters)
-- [ ] emission = ingestion = coercion; one total decision procedure; closed mismatch taxonomy
-- [ ] Shape A (compiler emits languages/HDLs) vs Shape B (user .dag emits YAML/TF/SQL/SPICE/English) — never blur
-- [ ] two groundings: deep static validation vs shallow target realization (must be semantically equivalent)
+- *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model.
 
-## Substrate
-- [ ] two primitives Node + Edge; 6 connectives + 5 behaviors; the vocabulary closes here (surface = sugar)
-- [ ] bounded forward execution (cyclic relations yes, cyclic values no; recursion is sugar over Loop)
-- [ ] names are opaque; identity rides a binding-id channel, never structure-or-spelling
-- [ ] single equality authority; files leave the pipeline early (content-hash IR)
-- [ ] the Realization pattern (content-addressed pure-spec → host-effect; one kernel, N handlers)
-- [ ] effects are intrinsic to signature shape (a separate effect taxonomy *is* the bug)
+## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
-## Epistemic stacking (why grounding pays)
-- [ ] operations fall out of inhabitance (Int inhabits OrderedRing → `add` is free)
-- [ ] the epistemic chain *is* the emission algorithm; an emitter special-case = an ungrounded concept upstream
-- [ ] no third option for a concept: genuine primitive OR unfinished composition (never "treat as opaque")
+You can unify and decompose *mechanically* only in a closed, grounded system — so the substrate is
+built for it. A program is a dependency graph over two primitives (`Node` + `Edge`) and a closed
+vocabulary (6 connectives + 5 behaviors); surface syntax is sugar that adds no power. Execution is
+**bounded and forward** (cyclic relations via acyclic encodings, never cyclic values; recursion is
+sugar over `Loop`), so decidability and termination *fall out* rather than being separately proved.
+**Grounding is intersubjective** — point at a shared framework, not an internal taxonomy — and in a
+closed system **a heuristic is never necessary**: the richer source always exists or can be written.
 
-## How to model (day-to-day)
-- [ ] DFS the concept DAG before inventing vocabulary (M9); canonical CS names, no nicknames
-- [ ] fact-bundle modeling: invent-or-reuse, never bare-alias; coincidence = structural Node equality
-- [ ] project, don't enumerate; don't hand-roll a derived operation; watch over-modeling (nominalization)
-- [ ] a finished stage is one fold; non-fold residue = named kernel OR un-migrated modeling (no third)
-- [ ] model just-in-time; the mark on the carrier is authority (no parallel-ledger docs)
-- [ ] dissolution disposition: dissolve-now / terminal / gated (no fourth)
-- [~] **file paths are discriminators, not gospel** — a path helps a human/LLM center on what a cluster of modeling is *for*; organize by them broadly, but don't anchor on the file. A concept's home is its *layer* (it belongs in `std/` or `extdeps/` itself); the file is a movable label.
-  - *e.g.* `std/cpu` owns the catalog *shape* (`CpuModelCatalogRow`); the vendor's actual SKU rows live in `extdeps/cpu/ampere` — the concept's home is its layer.
-  - *e.g.* `compute_fabric` was moved `std/ → product/` because it's a domain model, not a std primitive (`dsl/std` now has zero compute_fabric files).
+Because the substrate is closed and grounded, the wins of §2 fall out for free: operations come from
+*inhabitance* (no per-type ops); and emission, ingestion, and coercion are **one** total decision
+procedure run in different directions (the epistemic chain *is* the emission algorithm — N models, not
+N×M adapters; every refusal a located, typed mismatch).
 
-## Enforcement
-- [ ] lenses are the invariant primitive (not grep); pure readers that store nothing; new analysis = zero substrate edits
-- [ ] correctness dims: declare lattice → compute at binding → carry → enforce (users declare their own)
-- [ ] guarantee tiers; Tier 3 (machinery exists but nothing gates on it) is the trap
-- [ ] opacity is single-authority's missing half (the rename test; the metamorphic representation-swap test)
-- [ ] OPEN (operator-parked): can a lens mechanically diagnose the *leaf-side* of decomposition?
+- *e.g.* `dsl/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring (ops aren't listed per type); idempotency dissolved from an `idempotent: Bool` flag into the `EffectShape` variant; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed.
 
-## Verification discipline
-- [ ] tests are TestClaim data; a hand-written .rs test is an unexpressed language feature
-- [ ] hermetic, behavior-driven, unit-first; mock a minimal Dag, don't compile end-to-end
-- [ ] **HARVEST PROMINENTLY** — the specification-without-execution trap + E-10 (no code without a consumer)
-  - *e.g.* a compiler-sized `.dag` corpus typechecked and passed its grep claims, yet `emit` couldn't produce `fn add` — it hung >600s (the canonical story).
-  - *e.g.* the fix: `emit` is now 43 lines (`serialize_target ∘ translate`), proven green by *running* `emit(add)`, not by greps.
-  - *e.g.* the witness is execution: a test asserts `emit(add)` equals the literal `fn add(x: i32, y: i32) -> i32 { x + y }`.
-- [ ] "done" = green *by execution* + a discriminating input that goes red when the behavior is wrong
+## 5. Fail-closed (what makes §2–§4 trustworthy)
 
-## Self-hosting
-- [ ] four facets: written-in-itself / self-emits to a bit-identical fixed point / tests-are-data / recursive-flex
-- [ ] hand-Rust target = 0, monotonically; the compiler's ontology dissolves into std/
-- [ ] fixed-point *contract* → DESIGN; *reached-or-not* status → ROADMAP
+All of the above is worthless if a wrong thing passes silently. This code is digital: a wrong answer is
+a **loud error, never a warning** — a bridge collapses, it does not warn. Every path succeeds fully or
+fails with a typed, located diagnostic; no fabricated plausible output (a bounded "forever" ≠ an
+"unknown" error). Relax toward application-layer leniency only under protest, and lean to infra so
+others can build on your work. The deepest trap is **specification-without-execution**: a typecheck and
+a `.contains()` grep are *not* consumers — "done" means a real consumer **green by execution** plus a
+discriminating input that goes *red* when the behavior is wrong. (For the LLM agent: fluent,
+type-checking, grep-passing output is precisely the artifact that looks finished without running. Treat
+your own output as unverified until a consumer runs it green.)
 
-## Hard-won lessons to harvest (paid for once; don't relearn)
-- [ ] hollow alias — minimality ≠ grounding; it passes every shape-checker
-- [ ] parameterized-family blindness — a mechanically-identical multi-variant enum sails through shape-checks and review; test cost-of-change, not shape
-- [ ] construct-discard-reconstruct — the cardinal anti-pattern AND the real perf cliff (a 6-line root fix beat all clone-elimination; ~2× self-compile)
-- [ ] state-space conflation — Option/None standing for >2 meanings; split into named variants (illegal states unrepresentable)
-- [ ] cache purity — key on declared-input content; byte-identical cached-vs-cold is the standing purity oracle
-- [ ] coercion proven by normalized round-trip, not a golden string; ingest must not grow its own coercion arms
-- [ ] reflection evidence ≠ structural proof — prove a read axis by execution with a no-host-enumeration control
-- [ ] parallel-representation debt — an honestly-marked scaffold duplicating a canonical fact is still a violation
-- [ ] internal review finds missing tests; external review finds missing checks — need both
+- *e.g.* a compiler-sized `.dag` corpus typechecked and passed its grep claims, yet `emit` hung >600s on `fn add` → rebuilt `emit = serialize_target ∘ translate` (43 lines), proven by *running* `emit(add)` against the literal `fn add(x: i32, y: i32) -> i32 { x + y }`. Removing a scan-all-keys fail-open heuristic (`0331b526ee`) exposed 8 real inference deficits its fabrication had hidden; the parser's dummy `LitNull` nodes once fed inference bogus types.
 
-## Housekeeping (this bankruptcy)
-- [ ] README — lean rewrite (entry + nav)
-- [ ] ROADMAP — lean pass; drop references to the deleted docs
-- [ ] sweep dangling `docs/*.md` references left in .dag comments / CLAUDE.md / PR template
-- [ ] `dsl/extdeps/extdeps.md` — substrate-adjacent doc, left in place for now; delete too?
-- [ ] secondary cleanup (recon-mapped): `fixtures/v4-mvp1/add` + its v2 parity test, orphan `scripts/ci-merge/`, dead `tools/` (compile_host_runner, ci_timings_collector, ci_affected_components, layering_imports_scan)
+## 6. How to work (given §1–§5 — these coexist)
 
-## Building & checks (operational)
+- **Model:** DFS the concept DAG before inventing vocabulary; fact-bundle modeling (invent or reuse on
+  proven coincidence, never bare-alias); a finished stage is one fold (any non-fold residue is either a
+  named irreducible kernel or un-migrated modeling — there is no third); model just-in-time and let the
+  mark on the carrier be the authority (no parallel-ledger docs); every scaffold lands with a named
+  dissolution trigger.
+- **Prioritize holistically, not by the bottleneck:** balance the quantitative and the qualitative —
+  don't anchor on one KPI (you'll hit it at a cost) or on pure taste. Map the cause→effect across
+  sections; a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step).
+  Root-cause to the language layer and fix related systems *together* — a local subsystem patch is the
+  forked-logic trap.
+- **Enforce with lenses,** not grep: a lens is a pure reader over the same `Node` tree, storing
+  nothing, so a new analysis costs zero substrate edits. Beware the tier where the machinery exists but
+  nothing gates on it — coverage by illusion.
+- *e.g.* one catamorphism `fold_node` is reused by all 7 v4 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v4 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited).
+
+## 7. Self-hosting (the principles applied to the compiler itself)
+
+The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. It is
+written in itself, self-emits to a bit-identical fixed point (the `.dag` graph is the truth; Rust is
+one realization, a seed that shrinks to zero), and its tests are data. Its ontology dissolves into
+`std/` — no dual representation at the compiler/user boundary. This is the recursion: every principle
+above governs the system that implements them, and this document.
+
+---
+
+## Recurring failure modes (instances of §3–§5, kept for pattern-matching)
+
+hollow alias (minimality ≠ grounding) · state-space conflation (an `Option`/`None` meaning >2 things —
+split into named variants) · cache impurity (key on declared-input content; byte-identical
+cached-vs-cold is the purity oracle) · reflection evidence ≠ structural proof (prove a read axis by
+execution, with a no-host-enumeration control) · coercion proven by normalized round-trip, not a golden
+string · parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is
+still a violation) · internal review finds missing tests, external review finds missing checks.
+
+## Open threads
+
+- can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
+- ROADMAP's own lean pass; sweep dangling `docs/*.md` references in `.dag` comments; `dsl/extdeps/extdeps.md` keep/delete; secondary code cleanup (`fixtures/v4-mvp1/add` + its v2 parity test, `scripts/ci-merge/`, dead `tools/`).
+
+## Building & checks
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
 - one-time: `.githooks/install-hooks.sh` (pre-push runs `cargo fmt`)
