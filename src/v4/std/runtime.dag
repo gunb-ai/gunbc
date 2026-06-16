@@ -95,7 +95,7 @@ type RuntimeValueNodeProjection
 //   functions of the entry SET — the same entries yield equal values and
 //   equal hashes regardless of insertion or iteration order
 //   (hash_fields_commutative in the v2 host implements this).
-// Executable witnesses: v4.test.claim.std_grounding.value_carrier_laws —
+// Executable witnesses: v4.test.std_grounding.value_carrier_laws —
 // these must stay green across any carrier swap (ctrl#1533 phase-2 gate).
 //
 // 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — variant-is-data

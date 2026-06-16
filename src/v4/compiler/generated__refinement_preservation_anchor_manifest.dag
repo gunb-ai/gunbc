@@ -1,0 +1,12 @@
+// Scope: One-row manifest for RefinementPreservation generated anchors (P2 join extension).
+
+module v4.test.generated.refinement_preservation_anchor_manifest
+
+
+import v4.std.verification {
+  ManualAnchorKey,
+  ManualRefinementNonEmptyListBase
+}
+
+
+data manual_anchor_refinement_nonempty_list_base: ManualAnchorKey = ManualRefinementNonEmptyListBase

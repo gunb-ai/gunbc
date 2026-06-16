@@ -50,13 +50,13 @@ struct Config {
 
 // Mirror of discover_owned_data's default exclude set: the manifest/law files that
 // import the ephemeral discovery output would otherwise re-enter discovery acyclically.
-// Plus the manual lane: `src/v4/test/claim/manual/` claims carry their own
+// Plus the manual lane: `src/v4/test/manual/` claims carry their own
 // ExpectPass|ExpectFail expected-outcome (some are pinned-red to tracking anchors,
 // e.g. witness_sg2_arrow ExpectFail{#4801}). A universal-green floor must NOT run them
 // as must-pass — excluded until expected-outcome is modeled at the claim level.
 const DISCOVERY_EXCLUDES: &[&str] = &[
     "impossible_bug",
-    "test/claim/manual/",
+    "test/manual/",
     "glob_discovery.dag",
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
@@ -189,6 +189,52 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
                 }
             }
         }
+    }
+
+    // Single-representation `test fn NAME()` / `test data NAME` tests. The v2
+    // parser drops the contextual `test` keyword, so the gate detects the marker
+    // in source text (same posture as the `data unified_claim_` scan) and runs
+    // NAME. Dual-mode with the loop above so claims migrate off `unified_claim_*`
+    // one at a time.
+    //
+    // Convention, enforced fail-closed: a `test` declaration may live ONLY in
+    // `*_test.dag` files. The whole source root is scanned (so manual/ and
+    // implementation files are covered), and a `test` decl found anywhere else is
+    // a hard error — tests do not live in implementation files.
+    let mut test_fn_violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content =
+                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let names = scan_test_decl_names(&content);
+            if names.is_empty() {
+                continue;
+            }
+            if !entry.ends_with("_test.dag") {
+                test_fn_violations.push(entry);
+                continue;
+            }
+            for name in names {
+                if seen.insert((entry.clone(), name.clone())) {
+                    rows.push(GateRow {
+                        label: name.clone(),
+                        entry: entry.clone(),
+                        function: name,
+                    });
+                }
+            }
+        }
+    }
+    if !test_fn_violations.is_empty() {
+        test_fn_violations.sort();
+        return Err(format!(
+            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
+            test_fn_violations.join(", ")
+        ));
     }
     rows.sort_by(|a, b| {
         a.entry
@@ -353,6 +399,45 @@ fn run_perturb_pass(
     Ok(all_ok)
 }
 
+/// Recursively collect `.dag` files under `dir`, skipping any path containing an
+/// excluded substring (mirrors the `unified_claim_` discovery exclude set).
+fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
+/// declaration in source text.
+fn scan_test_decl_names(content: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let rest = trimmed
+            .strip_prefix("test fn ")
+            .or_else(|| trimmed.strip_prefix("test data "));
+        if let Some(rest) = rest {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
 fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     if !from.is_dir() {
         return Err(format!("{} is not a directory", from.display()));
@@ -450,7 +535,7 @@ fn main() -> ExitCode {
     }
 
     println!(
-        "::notice title={}::{} discriminating lens witness(es) passed",
+        "{}: {} discriminating witness(es) passed",
         cfg.notice_title,
         rows.len()
     );

@@ -1,0 +1,56 @@
+
+module v4.test.lens_affected_set.data_dep_not_in_frontier
+
+import v4.lens.affected_set { dependency_in_lens_frontier }
+import v4.std.dependency { DataDependsOn, DependencyView }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn data_dep_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data data_dep_root: Node = data_dep_node(s: ^data_dep_root_symbol)
+
+data data_dep_dependency: DependencyView = DependencyView {
+  source: data_dep_root,
+  dependent: data_dep_node(s: ^data_dep_child_symbol),
+  kind: DataDependsOn,
+  usage_site: data_dep_node(s: ^data_dep_child_symbol)
+}
+
+fn data_dep_not_in_frontier_claim_holds() -> Bool {
+  !dependency_in_lens_frontier(dependency: data_dep_dependency)
+}
+
+fn data_dep_not_in_frontier_claim_rhs() -> Node {
+  if data_dep_not_in_frontier_claim_holds() {
+    data_dep_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+data claim_data_dep_not_in_frontier: TestClaim = EqualsClaim {
+  label: "lens_affected_set/data_dep_not_in_frontier: DataDependsOn excluded from frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: data_dep_root,
+  rhs: data_dep_not_in_frontier_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -117,7 +117,7 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
 // Substrate self-exemption: bare Refined on Rejected is totality-only (unreachable while
 // validation_from_vacuous uses vacuous_admits). Dissolution cohort (this lane only):
 // v4.lens.complexity (T-12-COMPLEXITY-PROJECTION) and
-// v4.test.claim.generated.testgen_category_wishlist (T-19 testgen follow-up) — no further
+// v4.test.generated.testgen_category_wishlist (T-19 testgen follow-up) — no further
 // VacuousValidation call sites until T-12/T-19 deletes vacuous_admits, oracle_terminal, stub_pack,
 // and all cohort consumers together.
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {

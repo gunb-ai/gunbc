@@ -74,7 +74,7 @@ import v4.std.runtime {
 }
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v4.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.workflow.runtime_run {
   RuntimeRunBlocked,
   RuntimeRunComplete,

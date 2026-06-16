@@ -1,0 +1,37 @@
+
+module v4.test.self_host.claim_rejects_until_substrate
+
+import v4.compiler.self_host {
+  self_host_runner_not_realized_diagnostic
+}
+import v4.std.diagnostic {
+  Rejected,
+  diagnostics_singleton
+}
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  manual_claim_anchor
+}
+data rejects_until_substrate_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^rejects_until_substrate_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+
+data claim_rejects_until_substrate: TestClaim = DiagnosticClaim {
+  label: "self-host fixed-point runner rejects until execution substrate lands",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: rejects_until_substrate_subject,
+  expected_rejection: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic()),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

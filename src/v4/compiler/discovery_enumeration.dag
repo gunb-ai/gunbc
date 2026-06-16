@@ -1,7 +1,7 @@
 // src/v4/compiler/discovery_enumeration.dag
 // Scope: PROMOTED home for the whole-tree discovery-enumeration shape — the neutral
 //   owned-decl transport record + its discovery receipt. Relocated from
-//   v4.test.claim.workflow.discovery_types (Consolidation #4553 host/modeled split) to the
+//   v4.test.workflow.discovery_types (Consolidation #4553 host/modeled split) to the
 //   compiler/source-authority layer so the discovery lane AND the future diff→provenance
 //   producer share ONE enumeration authority (one walk, not two).
 // Status: types only — no membership filtering or folds here (those stay in the discovery
@@ -27,8 +27,8 @@
 //   "one walk, not two" the ruling requires.
 //
 // Consumers (all migrated to this home in the same PR — no two-live-enumerators window):
-//   - v4.test.claim.workflow.glob_discovery_law          (decl-classification laws)
-//   - v4.test.claim.workflow.host_discovered_owned_data_manifest  (compile stub + overlay)
+//   - v4.test.workflow.glob_discovery_law          (decl-classification laws)
+//   - v4.test.workflow.host_discovered_owned_data_manifest  (compile stub + overlay)
 //   - host emitter src/v2/stage0/src/cli_run.rs (emit_dag_manifest import line) + the serde
 //     mirror struct OwnedDataDeclRecord in the same file.
 

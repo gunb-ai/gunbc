@@ -1,0 +1,70 @@
+//   RuntimeVerdicts authoritative (true); AuthoringTimeVerdictSurface fails closed (false).
+// Mutation-proven: making the AuthoringTimeVerdictSurface arm return true collapses the second
+// conjunct -> RED.
+
+module v4.test.std_grounding.terminal_gate
+
+
+import v4.std.logic { Bool }
+import v4.std.text { String }
+import v4.std.collection { List }
+import v4.std.machine { Byte }
+import v4.std.diagnostic { Accepted, None }
+import v4.std.witness { Holds }
+import v4.std.host_run {
+  BuildLog,
+  EmitHostRunReceipt,
+  ExitOk,
+  HostExit,
+  HostLogicalRun,
+  HostRunStdout
+}
+import v4.std.verdict { verdict_tally_empty }
+import v4.std.grounding {
+  AuthoringTimeVerdictSurface,
+  HostVerdictSurfaceExecutionStatus,
+  PerTargetTestClaimReceipt,
+  RuntimeVerdicts,
+  host_verdict_surface_runtime_authoritative
+}
+import v4.extdeps.languages.rust { rust_mvp1_target_model }
+
+
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+fn terminal_gate_empty_bytes() -> List<Byte> {
+  []
+}
+
+
+fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTargetTestClaimReceipt {
+  PerTargetTestClaimReceipt {
+    host_run: EmitHostRunReceipt {
+      target: rust_mvp1_target_model(),
+      source_text: "",
+      exit: HostExit {
+        outcome: Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }
+      },
+      logical_run: Accepted {
+        value: HostLogicalRun { stdout: HostRunStdout { bytes: terminal_gate_empty_bytes() } },
+        diagnostics: None
+      },
+      stderr_bytes: terminal_gate_empty_bytes(),
+      build_log: BuildLog { lines: [] }
+    },
+    execution_status: status,
+    verdict_tally: verdict_tally_empty
+  }
+}
+
+
+test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> Bool {
+  host_verdict_surface_runtime_authoritative(receipt: terminal_gate_receipt(status: RuntimeVerdicts))
+    && (host_verdict_surface_runtime_authoritative(
+      receipt: terminal_gate_receipt(status: AuthoringTimeVerdictSurface)
+    ) == false)
+}

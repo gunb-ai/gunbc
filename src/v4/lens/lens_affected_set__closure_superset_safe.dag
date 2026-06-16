@@ -1,0 +1,80 @@
+// Scope: D1a receipt — substrate closure superset-safe; dimension + real-diff selectivity
+//   pending receipt + provenance producer.
+// Status: scoped to affected_set_closure(dependencies, edit_locus) only; does NOT claim
+//   dimension-aware selectivity or real-git-diff coverage (D1b: canonical_changed_dimension_receipt).
+
+module v4.test.lens_affected_set.closure_superset_safe
+
+import v4.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
+import v4.lens.affected_set_examples { affected_set_claim_failure_node }
+import v4.std.algebra { contains, for_all }
+import v4.std.dependency { Contains, DependencyView }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.test.lens_affected_set.closure_deep_chain {
+  closure_deep_chain_dependency_reading,
+  closure_deep_chain_n01,
+  closure_deep_chain_n02,
+  closure_deep_chain_n03,
+  closure_deep_chain_root
+}
+
+fn closure_frontier_node_eq(left: Node, right: Node) -> Bool {
+  left == right
+}
+
+fn node_in_closure_frontier(closure: AffectedSetClosureAcc, node: Node) -> Bool {
+  contains(
+    xs: closure.frontier,
+    item: node,
+    eq: fn(left, right) { closure_frontier_node_eq(left: left, right: right) }
+  )
+}
+
+// Prefix of the deep-chain substrate: three hops from root (strict subset of full reading).
+data closure_superset_safe_prefix_dependencies: List<DependencyView> = [
+  DependencyView {
+    source: closure_deep_chain_root,
+    dependent: closure_deep_chain_n01,
+    kind: Contains,
+    usage_site: closure_deep_chain_n01
+  },
+  DependencyView {
+    source: closure_deep_chain_n01,
+    dependent: closure_deep_chain_n02,
+    kind: Contains,
+    usage_site: closure_deep_chain_n02
+  },
+  DependencyView {
+    source: closure_deep_chain_n02,
+    dependent: closure_deep_chain_n03,
+    kind: Contains,
+    usage_site: closure_deep_chain_n03
+  }
+]
+
+fn closure_superset_safe_under_dependency_growth_holds() -> Bool {
+  let narrow = affected_set_closure(
+    dependencies: closure_superset_safe_prefix_dependencies,
+    edit_locus: closure_deep_chain_root
+  )
+  let wide = affected_set_closure(
+    dependencies: closure_deep_chain_dependency_reading,
+    edit_locus: closure_deep_chain_root
+  )
+  for_all(xs: narrow.frontier, predicate: fn(node) {
+    node_in_closure_frontier(closure: wide, node: node)
+  })
+}
+
+fn closure_superset_safe_claim_holds() -> Bool {
+  closure_superset_safe_under_dependency_growth_holds()
+}
+
+fn closure_superset_safe_claim_rhs() -> Node {
+  if closure_superset_safe_claim_holds() {
+    closure_deep_chain_root
+  } else {
+    affected_set_claim_failure_node
+  }
+}
