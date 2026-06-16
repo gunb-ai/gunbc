@@ -46,6 +46,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 }
 
 fn run_witness(function: &str, disable_native: bool) -> Value {
+    v2_interpreter::fold_native_hit_counts_reset();
     let resolved = compile_to_resolved(Rc::new(semantics_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
@@ -58,6 +59,19 @@ fn run_witness(function: &str, disable_native: bool) -> Value {
         .unwrap_or_else(|e| panic!("run {function} (native_disabled={disable_native}): {e:?}"));
     if disable_native {
         unsafe { std::env::remove_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE") };
+    }
+    let (fold_list, fold_list_right) = v2_interpreter::fold_native_hit_counts_snapshot();
+    if disable_native {
+        assert_eq!(
+            (fold_list, fold_list_right),
+            (0, 0),
+            "{function}: interpreted path must not invoke native fold fast paths"
+        );
+    } else {
+        assert!(
+            fold_list > 0 || fold_list_right > 0,
+            "{function}: native fast-path must be engaged (fold_list={fold_list}, fold_list_right={fold_list_right})"
+        );
     }
     result
 }

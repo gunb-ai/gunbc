@@ -109,6 +109,11 @@ fn interpreted_parse_bisect_parse_terminates_within_budget() {
             WITNESS_BUDGET
         );
         assert!(
+            fold_list > 0 && fold_list_right > 0,
+            "native fold fast paths must be engaged during {BISECT_PARSE_FN} (FLAG1); \
+             got fold_list={fold_list} fold_list_right={fold_list_right}"
+        );
+        assert!(
             elapsed <= WITNESS_BUDGET,
             "{BISECT_PARSE_FN} exceeded {:?} budget (elapsed {elapsed:?})",
             WITNESS_BUDGET
@@ -127,10 +132,19 @@ fn interpreted_parse_witness_exceeds_budget_with_native_disabled() {
     let ctx = InterpContext::new(graph, resolved.source_indices.clone(), false);
 
     unsafe { std::env::set_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE", "1") };
+    v2_interpreter::fold_native_hit_counts_reset();
     let start = Instant::now();
     let run_result = v2_interpreter::run_in_context(&ctx, BISECT_PARSE_FN, false);
     let elapsed = start.elapsed();
+    let (fold_list, fold_list_right) = v2_interpreter::fold_native_hit_counts_snapshot();
     unsafe { std::env::remove_var("GUNBC_INTERP_DISABLE_FOLD_NATIVE") };
+
+    assert_eq!(
+        (fold_list, fold_list_right),
+        (0, 0),
+        "perturbation path must not invoke native fold fast paths; \
+         got fold_list={fold_list} fold_list_right={fold_list_right}"
+    );
 
     assert!(
         elapsed > WITNESS_BUDGET,
