@@ -1,9 +1,9 @@
-// fixtures/v4-mvp1/add/add.dag
-// Scope: MVP-1 CI gate entry — canonical add(x, y) = x + y (design-v4-compiler-homomorphism MVP).
-// Status: v2-bootstrap compile entry (outside src/v4 tree; no v4.std import closure — emitted crate must cargo-build).
+// fixtures/v2-mvp1/add/add.dag
+// Scope: MVP-1 CI gate entry — canonical add(x, y) = x + y (design-v2-compiler-homomorphism MVP).
+// Status: v2-bootstrap compile entry (outside src/v2 tree; no v2.std import closure — emitted crate must cargo-build).
 
 
-module v4.test.mvp1.add
+module v2.test.mvp1.add
 
 
 fn add(x: Int, y: Int) -> Int {

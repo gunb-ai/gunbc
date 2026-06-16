@@ -2,7 +2,7 @@
 
 > **Status: DESIGN — handoff seam only, 2026-06-11 (swift-bat-315).** Pairs the landed
 > COMPREP producer (`design-computation-representation.md`, #4608/#4624/#4660) with the
-> landed cost/complexity lens stack (`src/v4/lens/cost.dag`, `src/v4/lens/complexity.dag`).
+> landed cost/complexity lens stack (`src/v2/lens/cost.dag`, `src/v2/lens/complexity.dag`).
 > Both ends exist; this designs only the connection: how a `-> Bool` lens witness obtains a
 > REAL compiled function body as its `Node` subject. First consumer: the complexity-gate
 > exemplar row (work item adhoc-4e07f6f5-ebc / S1a). No code in this doc.
@@ -25,7 +25,7 @@ banned.*
 
 The sanctioned shape already exists and is post-ban-landed:
 `comprep_source_bridged_add_arrow_with_body()`
-(`src/v4/test/claim/manual/comprep_eval_by_execution.dag:293`) runs
+(`src/v2/test/claim/manual/comprep_eval_by_execution.dag:293`) runs
 
 ```
 tokenize(dag_mvp1_source_text) → parse → normalize → resolve
@@ -47,10 +47,10 @@ keystone's swapped-operand red already demonstrates the discrimination.
 1. **Subject acquisition** — call the source-bridge producer to get the compiled
    `Arrow`-with-body (`Outcome<Node>`).
 2. **Body extraction** — the canonical accessor `arrow_body_target_lookup`
-   (`src/v4/std/node.dag:302`). Do NOT write a local edge-walker next to it
+   (`src/v2/std/node.dag:302`). Do NOT write a local edge-walker next to it
    (INVARIANTS "second path" anti-pattern).
 3. **Fold** — `cost_lens(n: body)` → `Witness<SymbolicCost>`
-   (`src/v4/lens/cost.dag:429`).
+   (`src/v2/lens/cost.dag:429`).
 4. **Project** — `asymptotic_class_of_cost` / `complexity_lens` (complexity.dag is the
    asymptotic PROJECTION of cost.dag's carrier — consume, never re-derive).
 5. **Gate** — `complexity_bound_dominates(declared, computed)` against the declared
@@ -60,22 +60,22 @@ keystone's swapped-operand red already demonstrates the discrimination.
 
 The witness is an ordinary `-> Bool` entry run by the existing host boundary
 (`gunbc run --claim-run --entry --function`), wired as one new row in
-`lens_ci_claim_run_rows` (`src/v4/workflow/lens_ci_gate.dag`), perturb-checked by
-the v4 lens CI rows-fn invocation in `scripts/v4-affected-tests-gate.sh` (gate-3).
+`lens_ci_claim_run_rows` (`src/v2/workflow/lens_ci_gate.dag`), perturb-checked by
+the v2 lens CI rows-fn invocation in `scripts/v2-affected-tests-gate.sh` (gate-3).
 
 ### Placement
 
 The acquisition+extraction composition (steps 1–2) is a small additive helper. Home it
-with the consumer (under `src/v4/test/claim/` next to the gate row, or `src/v4/lens/` as
+with the consumer (under `src/v2/test/claim/` next to the gate row, or `src/v2/lens/` as
 an additive module) — NOT in `cost.dag` / `application.dag` / `05_eval.dag`, which carry
-operator-STOP headers. It imports `v4.compiler.body_producer` and `v4.std.node` only.
+operator-STOP headers. It imports `v2.compiler.body_producer` and `v2.std.node` only.
 
 ## 3. Honest labeling: the subject set rides the COMPREP wave ladder
 
-What can be a subject = what the v4 pipeline can ingest = COMPREP grammar coverage.
+What can be a subject = what the v2 pipeline can ingest = COMPREP grammar coverage.
 Today that is **wave 1: the MVP `add` production**. So the first real subject is
 **source-ingested `add`** — a real compiled body, but not yet a compiler-stage function.
-`02_parse` functions are full v4 grammar (match, let, generics); the self-pipeline cannot
+`02_parse` functions are full v2 grammar (match, let, generics); the self-pipeline cannot
 parse them until COMPREP waves 2+ land, and full stage coverage arrives with self-host
 breadth (wave 4).
 
@@ -90,9 +90,9 @@ COMPREP.
 
 - **R1 — runtime reflection primitive.** Banned (2026-06-07). Not revisited.
 - **R2 — host-boundary supply** (v2 stage0 grows a `--subject <file:fn>` flag, compiles
-  the file, encodes the function body from its internal representation into a v4 `Node`
+  the file, encodes the function body from its internal representation into a v2 `Node`
   runtime value passed to the witness). Rejected: grows the bootstrap seed (Rust shrinks
-  toward zero); requires a v2-internal-repr→v4-`Node` encoder, which is a *second*
+  toward zero); requires a v2-internal-repr→v2-`Node` encoder, which is a *second*
   body-access path next to `body_producer` (INVARIANTS "second path" anti-pattern) and a
   new parallel representation seam to keep faithful; and its coverage advantage over §2 is
   temporary — self-host closes it, leaving the encoder as debt.

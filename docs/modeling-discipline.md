@@ -5,8 +5,8 @@
 > DIRECTION-CHECKLIST.md, and live `.dag` 🟡 marks — leaving reviewers approving
 > against "Practice N" citations they could not read (the gap that let PR #4627's
 > dissolution findings through review). It is restored as the public review
-> rubric; references to retired internal ledgers (`src/v4/TASKS.md`,
-> `src/v4/DECISIONS.md`, audit worksheets) are re-pointed to PR review and
+> rubric; references to retired internal ledgers (`src/v2/TASKS.md`,
+> `src/v2/DECISIONS.md`, audit worksheets) are re-pointed to PR review and
 > dashboard work items.
 
 > Purpose: a short checklist of *modeling practices* that implement the
@@ -17,15 +17,15 @@
 > **No comment-duplicating ledgers (standing rule, 2026-05-19).** Do not
 > create or maintain docs that re-list facts whose source-of-truth is an inline
 > model mark (`🟢`/`🟡`/`🔴`, `feature:`/`consumer:` gate, dissolution slug).
-> Deleted as maintained mark ledgers: `src/v4/STRUCTURE.md` and
-> `docs/audit/dissolution-inventory.md`. `src/v4/DECISIONS.md` is permitted only
+> Deleted as maintained mark ledgers: `src/v2/STRUCTURE.md` and
+> `docs/audit/dissolution-inventory.md`. `src/v2/DECISIONS.md` is permitted only
 > as the bounded P1-KEYSTONE D2-reversal / fact-bundle reseed record, not as a
 > carrier-mark ledger. The **inline mark on the carrier** is
 > the system; verbose dissolution-pattern analysis and architectural debate live
 > in **PR review** (process receipts in the commit message). Unchanged:
 > dissolution is merge-blocking (INVARIANTS §P5), yellow must dissolve, Practice
 > 10 review heuristic. Non-comment receipts only: [INVARIANTS.md](../INVARIANTS.md)
-> §P5(b), PR review / dashboard work items (the `src/v4/TASKS.md` ledger is
+> §P5(b), PR review / dashboard work items (the `src/v2/TASKS.md` ledger is
 > retired), and
 > [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
 > (*coincide*). The bounded census worksheets that once carried audit exceptions
@@ -98,9 +98,9 @@ relevant practice, where it could be violated, and whether the existing
 checks are structural (type-system enforced) or merely behavioral
 (convention).
 
-> **Ledger-doc retirement (operator 2026-05-19):** `src/v4/STRUCTURE.md` and
+> **Ledger-doc retirement (operator 2026-05-19):** `src/v2/STRUCTURE.md` and
 > `docs/audit/dissolution-inventory.md` are **deleted**, and
-> `src/v4/DECISIONS.md` is not a maintained mark ledger — no maintained
+> `src/v2/DECISIONS.md` is not a maintained mark ledger — no maintained
 > manifests or parallel prose ledgers for facts that belong in inline `//`
 > marks. The only live `DECISIONS.md` scope is the bounded P1-KEYSTONE
 > D2-reversal / fact-bundle reseed record. **Standing principle:** do not create
@@ -678,9 +678,9 @@ diff. Rows 3/4 are named in the registry for completeness, not as a
 reviewer finding.
 
 **The rows-3/4 escalation has a concrete trigger: a new file under
-`src/v4/compiler/`.** "Caught at architecture review" is not a standing
+`src/v2/compiler/`.** "Caught at architecture review" is not a standing
 gate anyone runs — so the trigger is structural: **a PR that adds a new
-file under `src/v4/compiler/` is itself a review finding**, default-block.
+file under `src/v2/compiler/` is itself a review finding**, default-block.
 Compiler code orchestrates folds over modeled facts; it carries no
 per-target, per-operation, or per-fixture knowledge — token layouts,
 operator catalogs, arm shapes, and binding names are model data in
@@ -807,10 +807,10 @@ it is what stops a reviewer from wrongly demanding the impossible:
   recursion or `match` is genuinely irregular (the call graph is not the
   data graph), or the construct already uses the derived operation.
 
-The retroactive v4 dissolution audit applies this legend per-file,
+The retroactive v2 dissolution audit applies this legend per-file,
 per-finding — a symbol-marked inventory, not prose. The symbol records a
 finding's *disposition*; the matching in-file `.dag` tag lands with the
-fix, per migration PR — it is not retro-applied across all v4 files at
+fix, per migration PR — it is not retro-applied across all v2 files at
 once.
 
 **Decidability — checker-flaggable vs reviewer-judgment.** Every
@@ -917,7 +917,7 @@ declaration, ask:
    domain-named instances belong as glossary call sites, not as primitive
    declarations.
 
-**Worked examples (load-bearing — drawn from real v4 corrections).** Each
+**Worked examples (load-bearing — drawn from real v2 corrections).** Each
 row was a real design-review correction; the point of Practice 11 is to
 catch them at brief-authoring, not after a worker has implemented them
 under a mis-shaped brief.
@@ -979,7 +979,7 @@ domain-named primitives" but as **one row carrying both a typed
 reference to substrate AND a parallel copy of the referenced fields**.
 Operator-direct standing 2026-05-19, ratified for the T-13 family
 ratchet 2026-05-21 (crisp-boar-896 Phase 1, `ClassifiedDependencyView<C>`
-in `v4.std.dependency`).
+in `v2.std.dependency`).
 
 Worked instance (T-13 lens family pre-ratchet):
 
@@ -1153,7 +1153,7 @@ fine to keep as control-flow" is not a disposition:
   missing primitive (gate + owning task + dissolve-on-arrival, per
   Practice 4).
 
-**What to check.** For a stage file (`src/v4/compiler/*`): does the stage
+**What to check.** For a stage file (`src/v2/compiler/*`): does the stage
 body hand-walk its input, or is every decision pushed into the model? The
 finished shape is **zero decision-residue**, realized in one of two forms
 — both pass:
@@ -1314,7 +1314,7 @@ For each relevant principle and its implementing practices:
     concept-home, or carry an explicit cross-home justification.
     Practice 11 findings are BLOCKING at the design-PR layer even when
     no implementation hunks exist (Calibration section above).
-12. For any **compiler stage file** (`src/v4/compiler/*`) in the diff
+12. For any **compiler stage file** (`src/v2/compiler/*`) in the diff
     (Practice 12): is the stage body one `fold_carrier(x, algebra(...))`
     call — or a thin zero-residue composition of fold-backed stages
     (`∘` / `bind_outcome` glue, no added control-flow) — or does it

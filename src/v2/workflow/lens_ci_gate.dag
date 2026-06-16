@@ -1,0 +1,249 @@
+// src/v2/workflow/lens_ci_gate.dag
+//
+// Minimal lens-CI claim-run transport authority.
+//
+// History: extracted verbatim from the deleted `v2.workflow.ci` model (`src/v2/workflow/ci.dag`).
+// That ~6,300-line model was a descriptive-only CI mirror with no runtime consumer (see
+// docs/planning/thin-shim-ci-a3-runall-blocker-report-2026-06-08.md) and was deleted wholesale per
+// operator GO. The only fragment with a real consumer is this lens-CI claim-run roster: the must-pass
+// `v2_lens_gate` CI job (`the ci-claim-gate host (gate-3)` → uniform `ci-claim-gate` host) evaluates
+// `lens_ci_claim_run_rows_tsv` via the v2 interpreter — no shell awk/grep text projection. `.github/workflows/ci.yml`
+// is the direct hand-edited CI authority; this file owns only the lens claim-run roster the gate consumes.
+
+module v2.workflow.lens_ci_gate
+
+import v2.std.collection { List }
+import v2.std.algebra { fold_list_right }
+
+// M2 Lens-CI claim-run transport authority. `lens_ci_claim_run_rows` is the sole roster;
+// `lens_ci_claim_run_rows_tsv()` projects it for the `ci-claim-gate` host (no shell awk/grep).
+type LensCiClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data lens_ci_claim_run_row_cost_atom_zero: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/atom_zero",
+  entry: "src/v2/test/claim/lens_cost/atom_zero.dag",
+  function: "atom_zero_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis_polynomial_dominates_linear: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/polynomial_dominates_linear",
+  entry: "src/v2/test/claim/lens_synthesis/polynomial_dominates_linear.dag",
+  function: "polynomial_dominates_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_coverage_hollow_type_defect_key: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/hollow_type_defect_key",
+  entry: "src/v2/test/claim/lens_coverage/hollow_type_defect_key.dag",
+  function: "hollow_type_defect_key_claim_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/binds_to_resolved",
+  entry: "src/v2/test/claim/lens_structural_resolution/binds_to_resolved.dag",
+  function: "binds_to_resolved_claim_holds"
+}
+
+// #4643 load-bearing: distinct-minted-id occurrence_id exclusion proof (deep zip-fold;
+// root + nested mint cases; shallow RED guard on nested).
+data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "provenance/occurrence_id_model",
+  entry: "src/v2/test/claim/provenance/occurrence_id_model.dag",
+  function: "witness_occurrence_id_model_substrate_holds"
+}
+
+// #4643 wave-1 local parse-stamping successor to #4651 span-morphism witness (removed with
+// dissolved Node.span); terminal FromSource ByteRange + sequence DerivedBy child-id pair.
+data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "provenance/parse_stamp_span_index",
+  entry: "src/v2/test/claim/provenance/parse_stamp_span_index.dag",
+  function: "witness_parse_stamp_span_index_holds"
+}
+
+// complexity-gate S1a — source-bridged COMPREP wave-1 `add` body (design-lens-subject-supply §3);
+// cost_lens → complexity projection; declared budget from roster row dominates computed class.
+data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "complexity_gate/source_bridged_add_budget",
+  entry: "src/v2/test/claim/complexity_gate/source_bridged_add_budget.dag",
+  function: "source_bridged_add_budget_claim_holds"
+}
+
+// complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows (empty roster → false).
+data lens_ci_claim_run_row_complexity_gate_budget_roster_completeness: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "complexity_gate/budget_roster_completeness",
+  entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag",
+  function: "complexity_budget_roster_family_gate_holds"
+}
+
+// R-reflect Phase 2a: Path-3 key-set conformance (2FA proof) — Connective/Behavior FIRST.
+data lens_ci_claim_run_row_coproduct_reflection_connective_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/connective_path3",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_arm_key_set_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_behavior_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/behavior_path3",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_behavior_arm_key_set_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_connective_pair_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/connective_pair_path3",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_arm_payload_pair_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_behavior_pair_path3: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/behavior_pair_path3",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_behavior_arm_payload_pair_path3"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_behavior_nullary_inhabitants: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/behavior_nullary_inhabitants",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_behavior_nullary_inhabitant_set_matches_arm_keys"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_connective_nullary_failclosed: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/connective_nullary_failclosed",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_nullary_inhabitants_fail_closed"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/distinct_arm_sets",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "witness_connective_behavior_arm_sets_are_distinct"
+}
+
+data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "coproduct_reflection/conformance",
+  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  function: "coproduct_reflection_conformance_holds"
+}
+
+// unit-modeling lens (B1) — discriminating pass+fail witnesses. The flag/pass
+// pair (same `ram_bytes` field, bare Int vs ByteSize carrier) proves the lens
+// keys on the resolved type, not the name; the two exempt rows prove it does not
+// over-flag (electrical is GATE-2-pending with no carrier; a coordinate is not a
+// count). All ExpectPass (the `*_holds` Bool asserts the gate verdict).
+data lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/flat_scalar_unit_leaf_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag",
+  function: "flat_scalar_unit_leaf_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_modeled_field_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/modeled_unit_field_passes",
+  entry: "src/v2/test/claim/lens_unit_modeling/modeled_unit_field_passes.dag",
+  function: "modeled_unit_field_passes_holds"
+}
+
+// Inverted-predicate witnesses: the critical novel-unit (high-recall), the two
+// categorical exemptions (label + coordinate), and electrical-now-flagged
+// (blocked-pending class).
+data lens_ci_claim_run_row_unit_modeling_novel_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/novel_unit_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/novel_unit_flagged.dag",
+  function: "novel_unit_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_label_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/label_version_not_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/label_version_not_flagged.dag",
+  function: "label_version_not_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_coordinate_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/coordinate_index_not_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/coordinate_index_not_flagged.dag",
+  function: "coordinate_index_not_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_electrical_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/electrical_blocked_pending_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/electrical_blocked_pending_flagged.dag",
+  function: "electrical_blocked_pending_flagged_holds"
+}
+
+// BitWidth token (Information): pointer/word/bit width — operator ruled in-scope.
+data lens_ci_claim_run_row_unit_modeling_bitwidth_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/bitwidth_flat_scalar_flagged",
+  entry: "src/v2/test/claim/lens_unit_modeling/bitwidth_flat_scalar_flagged.dag",
+  function: "bitwidth_flat_scalar_flagged_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_bitwidth_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/bitwidth_modeled_passes",
+  entry: "src/v2/test/claim/lens_unit_modeling/bitwidth_modeled_passes.dag",
+  function: "bitwidth_modeled_passes_holds"
+}
+
+// Registration witnesses: unit_modeling_lens is wired into always_required_lenses()
+// (the roster validate_then_compile runs fail-closed). Paired FAIL/PASS arms prove the
+// lens is live in the roster — a fact-bearing flat-scalar unit leaf is rejected with the
+// unit-modeling reason (fact_density accepts, so the rejecter is unit_modeling); a modeled
+// ByteSize field is admitted.
+data lens_ci_claim_run_row_unit_modeling_registration_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses",
+  entry: "src/v2/test/claim/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
+  function: "unit_modeling_blocked_via_always_required_lenses_holds"
+}
+
+data lens_ci_claim_run_row_unit_modeling_registration_passes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses",
+  entry: "src/v2/test/claim/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
+  function: "modeled_unit_field_admitted_via_always_required_lenses_holds"
+}
+
+data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
+  lens_ci_claim_run_row_cost_atom_zero,
+  lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
+  lens_ci_claim_run_row_coverage_hollow_type_defect_key,
+  lens_ci_claim_run_row_structural_resolution_binds_to_resolved,
+  lens_ci_claim_run_row_provenance_occurrence_id_model,
+  lens_ci_claim_run_row_provenance_parse_stamp_span_index,
+  lens_ci_claim_run_row_complexity_gate_source_bridged_add,
+  lens_ci_claim_run_row_complexity_gate_budget_roster_completeness,
+  lens_ci_claim_run_row_coproduct_reflection_connective_path3,
+  lens_ci_claim_run_row_coproduct_reflection_behavior_path3,
+  lens_ci_claim_run_row_coproduct_reflection_connective_pair_path3,
+  lens_ci_claim_run_row_coproduct_reflection_behavior_pair_path3,
+  lens_ci_claim_run_row_coproduct_reflection_behavior_nullary_inhabitants,
+  lens_ci_claim_run_row_coproduct_reflection_connective_nullary_failclosed,
+  lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets,
+  lens_ci_claim_run_row_coproduct_reflection_conformance,
+  lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged,
+  lens_ci_claim_run_row_unit_modeling_modeled_field_passes,
+  lens_ci_claim_run_row_unit_modeling_novel_flagged,
+  lens_ci_claim_run_row_unit_modeling_label_exempt,
+  lens_ci_claim_run_row_unit_modeling_coordinate_exempt,
+  lens_ci_claim_run_row_unit_modeling_electrical_blocked,
+  lens_ci_claim_run_row_unit_modeling_bitwidth_flagged,
+  lens_ci_claim_run_row_unit_modeling_bitwidth_passes,
+  lens_ci_claim_run_row_unit_modeling_registration_blocked,
+  lens_ci_claim_run_row_unit_modeling_registration_passes
+]
+
+// Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
+// Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
+// hand-maintained awk/grep roster projection in the shell gate scripts.
+fn lens_ci_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: lens_ci_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}

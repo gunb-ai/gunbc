@@ -9,14 +9,14 @@ Every command below was run in this repository and shows actual output.
 ## 1. The program
 
 ```
-module v4.test.mvp1.add
+module v2.test.mvp1.add
 
 fn add(x: Int, y: Int) -> Int {
   x + y
 }
 ```
 
-Source: `fixtures/v4-mvp1/add/add.dag`
+Source: `fixtures/v2-mvp1/add/add.dag`
 
 The source contains no target-language syntax.
 There is no `function`, no `def`, no `func`, no `return`, no `:`.
@@ -31,8 +31,8 @@ The interpreter evaluates `add(2, 3) = 5` by execution — no compilation step, 
 
 ```
 gunbc run \
-  --source-root src/v4 \
-  --entry src/v4/test/claim/manual/comprep_eval_by_execution.dag \
+  --source-root src/v2 \
+  --entry src/v2/test/claim/manual/comprep_eval_by_execution.dag \
   --function comprep_eval_source_driven_add_executes_holds \
   --claim-run
 ```
@@ -57,8 +57,8 @@ The same source emits TypeScript through the dissolved 06\_translate fold:
 
 ```
 gunbc run \
-  --source-root src/v4 \
-  --entry src/v4/test/claim/manual/mvp1_typescript_add_translate.dag \
+  --source-root src/v2 \
+  --entry src/v2/test/claim/manual/mvp1_typescript_add_translate.dag \
   --function mvp1_ts_emit_add_fn_accepts_holds \
   --claim-run
 ```
@@ -72,7 +72,7 @@ true
 ```
 
 The witness asserts the emitted text equals the authority defined at
-`src/v4/extdeps/languages/typescript.dag:302`:
+`src/v2/extdeps/languages/typescript.dag:302`:
 
 ```typescript
 function add(x: number, y: number): number { return x + y; }
@@ -88,12 +88,12 @@ for TypeScript's number type and arithmetic operators.
 
 > **Branch note:** English emit lives on PR #4790 (`session/sunny-hawk-310`), which is not
 > yet merged to main. The commands below run from the `sunny-hawk-310` worktree.
-> Flip the `--source-root` to `src/v4` on main after the PR merges.
+> Flip the `--source-root` to `src/v2` on main after the PR merges.
 
 ```
 gunbc run \
-  --source-root src/v4 \
-  --entry src/v4/test/claim/manual/english_emit_add.dag \
+  --source-root src/v2 \
+  --entry src/v2/test/claim/manual/english_emit_add.dag \
   --function english_emit_add_prose_holds \
   --claim-run
 ```
@@ -107,7 +107,7 @@ true
 ```
 
 The witness asserts the emitted text equals the authority defined at
-`src/v4/extdeps/languages/english.dag:391`:
+`src/v2/extdeps/languages/english.dag:391`:
 
 ```
 the add is a function. the add takes the x. the add takes the y. the add returns the sum. the sum adds the x. the sum adds the y.
@@ -123,7 +123,7 @@ noun phrases instead of TypeScript tokens.
 The TypeScript emit witness (`mvp1_ts_emit_add_fn_accepts_holds`) is emit-only: it
 verifies the emitted source text equals the authority string. There is no executed
 tokenize+parse consumer for the emitted `function add(...)` text on main today;
-`src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag` explicitly scopes
+`src/v2/test/claim/manual/comprep_add_body_emit_typescript.dag` explicitly scopes
 itself as an emit-only receipt (E-10). The landed ingest round-trip is for the `.dag`
 target (`mvp1_dag_add_emit_ingest_round_trip_holds`), not for TypeScript text.
 Arbitrary TypeScript programs are also not yet ingestible; no TS text-ingest witness

@@ -1,0 +1,268 @@
+// Type realization: data-driven type coercion from .dag algebra declarations.
+
+module v1.compiler.coercion
+
+import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
+import std.types { container_template_algebra, canonical_container_names }
+import extdeps.languages.rust.types {
+  rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
+  rust_optional_template, rust_cast_syntax
+}
+import extdeps.languages.python.types {
+  python_type_checkpoints, python_algebra_inhabitants, python_callable,
+  python_optional_template, python_cast_syntax
+}
+import extdeps.languages.go.types {
+  go_type_checkpoints, go_algebra_inhabitants, go_callable,
+  go_optional_template, go_cast_syntax
+}
+import extdeps.languages.dag.types { dag_type_checkpoints }
+
+// =========================================================================
+// Per-target dispatch
+// =========================================================================
+
+fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
+  match target {
+    Rust => rust_type_checkpoints
+    Python => python_type_checkpoints
+    Go => go_type_checkpoints
+    Dag => dag_type_checkpoints
+  }
+}
+
+fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
+  match target {
+    Rust => rust_algebra_inhabitants
+    Python => python_algebra_inhabitants
+    Go => go_algebra_inhabitants
+    Dag => []
+  }
+}
+
+fn target_callable(target: RenderTarget) -> CallableRepr {
+  match target {
+    Rust => rust_callable
+    Python => python_callable
+    Go => go_callable
+    Dag => CallableRepr {
+      template: "fn(\{params\}) -> \{return\}",
+      param_separator: ", ",
+      return_separator: " -> ",
+      import_path: none
+    }
+  }
+}
+
+fn target_optional_template(target: RenderTarget) -> String {
+  match target {
+    Rust => rust_optional_template
+    Python => python_optional_template
+    Go => go_optional_template
+    Dag => "\{0\}?"
+  }
+}
+
+// =========================================================================
+// Level 0: Cast syntax lookup
+// =========================================================================
+
+fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
+  match target {
+    Rust => Present { value: rust_cast_syntax }
+    Python => Present { value: python_cast_syntax }
+    Go => Present { value: go_cast_syntax }
+    Dag => none
+  }
+}
+
+fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
+  match target_cast_syntax(target: target) {
+    Present { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+    Absent => false
+  }
+}
+
+fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+  let syntax = match target_cast_syntax(target: target) {
+    Present { value: s } => s
+    Absent => CastSyntax { template: "\{expr\}", cast_rules: [] }
+  }
+  replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
+}
+
+// =========================================================================
+// Level 1: Checkpoint lookup (primitive scalar coercion)
+// =========================================================================
+
+fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? {
+  target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
+}
+
+// Transitional: fail-open (returns dag_name on miss). M5-full should
+// fail-closed once all surface types have checkpoint declarations.
+fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Present { value: cp } => cp.target_type
+    Absent => dag_name
+  }
+}
+
+fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Present { value: cp } => cp.is_copy
+    Absent => none
+  }
+}
+
+fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Present { value: cp } => match cp.literal_suffix {
+      Present { value: s } => Present { value: s }
+      Absent => Present { value: "" }
+    }
+    Absent => none
+  }
+}
+
+// =========================================================================
+// Level 2: Algebra inhabitant lookup (container coercion)
+// =========================================================================
+
+fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
+  target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
+}
+
+fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
+  match container_template_algebra(name: container_name) {
+    Present { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
+      Present { value: inh } => Present { value: inh.template }
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+// =========================================================================
+// Template application utilities
+// =========================================================================
+
+fn apply_inhabitant_template1(template: String, inner: String) -> String {
+  replace(template, "\{0\}", inner)
+}
+
+fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
+  replace(replace(template, "\{0\}", first), "\{1\}", second)
+}
+
+// =========================================================================
+// Structural test extraction -- auto-generate coercion tests from data
+// =========================================================================
+
+type CoercionAssertion
+  = CheckpointAssertion { target: RenderTarget, dag_name: String, expected_type: String }
+  | ContainerAssertion { target: RenderTarget, container_name: String, expected_template: String }
+  | CopyAssertion { target: RenderTarget, dag_name: String, expected_copy: Bool }
+  | TemplateAssertion { template: String, args: List<String>, expected: String }
+
+type CoercionTestEntry {
+  test_name: String
+  assertions: List<CoercionAssertion>
+}
+
+fn target_label(target: RenderTarget) -> String {
+  match target {
+    Rust => "rust"
+    Python => "python"
+    Go => "go"
+    Dag => "dag"
+  }
+}
+
+fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+  let label = target_label(target: target)
+  let cps = target_checkpoints(target: target)
+  if cps |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: concat("coercion_", label, "_checkpoint_resolves_primitives"),
+      assertions: cps |> map(cp =>
+        CheckpointAssertion { target: target, dag_name: cp.dag_name, expected_type: cp.target_type })
+    }]
+  }
+}
+
+// Generate container test: coerce_container_template(target, name) == Some(template)
+// Derived from canonical_container_names (std/types.dag) — single authority.
+fn inhabitant_test_names() -> List<String> {
+  canonical_container_names()
+}
+
+fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+  let label = target_label(target: target)
+  let assertions = inhabitant_test_names() |> flat_map(name =>
+    match coerce_container_template(target: target, container_name: name) {
+      Present { value: tmpl } => [ContainerAssertion { target: target, container_name: name, expected_template: tmpl }]
+      Absent => []
+    })
+  if assertions |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: concat("coercion_", label, "_inhabitant_resolves_containers"),
+      assertions: assertions
+    }]
+  }
+}
+
+fn copy_tests() -> List<CoercionTestEntry> {
+  let cps = target_checkpoints(target: Rust)
+  let copy_assertions = cps |> flat_map(cp =>
+    match cp.is_copy {
+      Present { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
+      Absent => []
+    })
+  if copy_assertions |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: "coercion_is_copy_from_checkpoint",
+      assertions: copy_assertions
+    }]
+  }
+}
+
+fn template_application_tests() -> List<CoercionTestEntry> {
+  let targets = [Rust, Python, Go]
+  let assertions = targets |> flat_map(t =>
+    let inhs = target_inhabitants(target: t)
+    let int_target = coerce_primitive_type(target: t, dag_name: "Int")
+    let str_target = coerce_primitive_type(target: t, dag_name: "String")
+    inhs |> flat_map(inh =>
+      if inh.arity == 1 {
+        let expected = apply_inhabitant_template1(template: inh.template, inner: int_target)
+        [TemplateAssertion { template: inh.template, args: [int_target], expected: expected }]
+      } else if inh.arity == 2 {
+        let expected = apply_inhabitant_template2(template: inh.template, first: str_target, second: int_target)
+        [TemplateAssertion { template: inh.template, args: [str_target, int_target], expected: expected }]
+      } else { [] }))
+  if assertions |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: "coercion_template_application",
+      assertions: assertions
+    }]
+  }
+}
+
+fn extract_coercion_tests() -> List<CoercionTestEntry> {
+  concat(
+    checkpoint_tests(target: Rust),
+    checkpoint_tests(target: Python),
+    checkpoint_tests(target: Go),
+    inhabitant_tests(target: Rust),
+    inhabitant_tests(target: Python),
+    inhabitant_tests(target: Go),
+    copy_tests(),
+    template_application_tests())
+}
+

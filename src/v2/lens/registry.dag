@@ -1,0 +1,175 @@
+// src/v2/lens/registry.dag
+// Scope: v0 LENS_ID → v2 module_path registry (operator pin §3).
+// Status: v0 registry-backed consumer surface
+// Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/briefs/r4-lane-a-lens-interface-freeze-pin.md
+
+module v2.lens.registry
+
+import v2.std.algebra { count_where, for_all }
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// 🟢 closed set — MODELING.md M4 / PREFIX-T-23-registry (`LensIdV0`).
+// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
+type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
+
+// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
+type LensModulePathV0 = Bound { path: String } | Unbound
+
+type LensRegistryEntryV0 {
+  lens_id: LensIdV0
+  module_path: LensModulePathV0
+}
+
+// P9 registry-owned-fn authority: closed v0 enumeration (feature:p9-llvm-instruction-cost-registry-owner).
+type LensOwnedFnV0 {
+  fn_name: Symbol
+  owner_module_path: String
+}
+data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
+  fn_name: ^symbol_llvm_instruction_cost,
+  owner_module_path: "v2.lens.cost"
+}
+
+// Closed registry surface for P9 receipts — exclusivity is over this list until M2 fn-def scan lands.
+data lens_owned_fn_registry_v0: List<LensOwnedFnV0> = [
+  lens_owned_fn_llvm_instruction_cost
+]
+
+data lens_registry_v0_complexity: LensRegistryEntryV0 = {
+  lens_id: Complexity
+  module_path: Bound { path: "v2.lens.complexity" }
+}
+
+data lens_registry_v0_cost: LensRegistryEntryV0 = {
+  lens_id: Cost
+  module_path: Bound { path: "v2.lens.cost" }
+}
+
+data lens_registry_v0_parallelism: LensRegistryEntryV0 = {
+  lens_id: Parallelism
+  module_path: Bound { path: "v2.lens.parallelism" }
+}
+
+data lens_registry_v0_effect_enumeration: LensRegistryEntryV0 = {
+  lens_id: EffectEnumeration
+  module_path: Bound { path: "v2.lens.effect" }
+}
+
+data lens_registry_v0_idempotency: LensRegistryEntryV0 = {
+  lens_id: Idempotency
+  module_path: Bound { path: "v2.lens.idempotency" }
+}
+
+data lens_registry_v0_provenance: LensRegistryEntryV0 = {
+  lens_id: Provenance
+  module_path: Bound { path: "v2.lens.ownership" }
+}
+
+data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
+  lens_id: UnusedParameters
+  module_path: Bound { path: "v2.lens.unused_parameters" }
+}
+
+data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
+  lens_id: StructuralResolution
+  module_path: Bound { path: "v2.lens.structural_resolution" }
+}
+
+data lens_registry_v0_table_decision_tree: LensRegistryEntryV0 = {
+  lens_id: TableDecisionTree
+  module_path: Bound { path: "v2.lens.table_decision_tree" }
+}
+
+data lens_registry_v0: List<LensRegistryEntryV0> = [
+  lens_registry_v0_complexity,
+  lens_registry_v0_cost,
+  lens_registry_v0_parallelism,
+  lens_registry_v0_effect_enumeration,
+  lens_registry_v0_idempotency,
+  lens_registry_v0_provenance,
+  lens_registry_v0_unused_parameters,
+  lens_registry_v0_structural_resolution,
+  lens_registry_v0_table_decision_tree
+]
+
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: exact structural equality / compiler-provided closed-sum equality (docs/audit/pr-3510-distinct-node-zip-fold-blocked-2026-05-21.md) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
+fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
+  match left {
+    Complexity => match right {
+      Complexity => true
+      _ => false
+    }
+    Cost => match right {
+      Cost => true
+      _ => false
+    }
+    Parallelism => match right {
+      Parallelism => true
+      _ => false
+    }
+    EffectEnumeration => match right {
+      EffectEnumeration => true
+      _ => false
+    }
+    Idempotency => match right {
+      Idempotency => true
+      _ => false
+    }
+    Provenance => match right {
+      Provenance => true
+      _ => false
+    }
+    UnusedParameters => match right {
+      UnusedParameters => true
+      _ => false
+    }
+    StructuralResolution => match right {
+      StructuralResolution => true
+      _ => false
+    }
+    TableDecisionTree => match right {
+      TableDecisionTree => true
+      _ => false
+    }
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — bound target: coproduct variant-discriminant predicate substrate (docs/design-dissolution-lens.md L1.1 predicate-dissolution class) — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: replace `lens_registry_entry_bound` with the substrate-derived `LensModulePathV0.Bound` discriminant projection and delete this helper in that same PR; forbidden: permanent local variant-discriminator predicate.
+fn lens_registry_entry_bound(entry: LensRegistryEntryV0) -> Bool {
+  match entry.module_path {
+    Bound { path: _ } => true
+    Unbound => false
+  }
+}
+
+fn lens_registry_entry_matches_id(entry: LensRegistryEntryV0, lens_id: LensIdV0) -> Bool {
+  lens_id_v0_eq(left: entry.lens_id, right: lens_id)
+}
+
+fn lens_registry_entry_resolves_id(entry: LensRegistryEntryV0, lens_id: LensIdV0) -> Bool {
+  lens_registry_entry_matches_id(entry: entry, lens_id: lens_id) && lens_registry_entry_bound(entry: entry)
+}
+
+fn lens_registry_row_count(lens_id: LensIdV0) -> Int {
+  count_where(xs: lens_registry_v0, predicate: fn(entry) {
+    lens_registry_entry_matches_id(entry: entry, lens_id: lens_id)
+  })
+}
+
+fn lens_registry_bound_row_count(lens_id: LensIdV0) -> Int {
+  count_where(xs: lens_registry_v0, predicate: fn(entry) {
+    lens_registry_entry_resolves_id(entry: entry, lens_id: lens_id)
+  })
+}
+
+fn lens_registry_id_resolves(lens_id: LensIdV0) -> Bool {
+  lens_registry_row_count(lens_id: lens_id) == 1 && lens_registry_bound_row_count(lens_id: lens_id) == 1
+}
+
+fn lens_registry_ids_resolve(lens_ids: List<LensIdV0>) -> Bool {
+  for_all(xs: lens_ids, predicate: fn(lens_id) {
+    lens_registry_id_resolves(lens_id: lens_id)
+  })
+}

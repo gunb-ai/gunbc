@@ -1,0 +1,197 @@
+// src/v2/lens/affected_set_examples.dag
+// Scope: Expected affected-frontier example values for the affected-set lens.
+// Status: example data for the affected-set frontier model.
+
+module v2.lens.affected_set_examples
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  None,
+  Rejected,
+  node_locus,
+  Unavailable,
+  ExternalContractUnknown,
+  diagnostics_singleton
+}
+import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v2.lens.affected_set {
+  AffectedBoundaryRead,
+  AffectedFrontierRead,
+  AffectedPostEditDagRead,
+  AffectedSetRead,
+  ChangedDimensions,
+  ChangedDimensionReceipt,
+  Dag,
+  EditDimension,
+  FrontierProduced,
+  FrontierReceipt,
+  HashChanged,
+  HashReceipt,
+  Propagates,
+  PropagationReceipt,
+  ReExecFrontier,
+  ChangedSubgraphFrontier,
+  BoundaryExclusion,
+  UnchangedPureBoundary,
+  ExclusionKey,
+  Rerun,
+  Excluded,
+  DimensionNotRead,
+  FailClosed,
+  ReasonSymbol,
+  ReasonDiagnostics
+}
+import v2.std.dependency { DependencyView }
+data affected_set_example_hash: Hash = affected_set_example_hash
+
+
+data affected_set_example_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+data affected_set_claim_failure_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^affected_set_claim_failure_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+
+data affected_set_example_path: Path = Path { steps: [^affected_set_example_path_symbol] }
+
+
+data affected_set_example_edit: Edit = Edit {
+  at: affected_set_example_path,
+  replacement: affected_set_example_node
+}
+
+
+data affected_set_example_invalid_edit_diagnostic: Diagnostic = Diagnostic {
+  reason: ^affected_set_example_reason,
+  at: node_locus(node: affected_set_example_node),
+  correction: Unavailable { reason: ExternalContractUnknown }
+}
+
+
+data expected_affected_set_boundary_prune: ReExecFrontier = ChangedSubgraphFrontier {
+  boundary_exclusions: [
+    BoundaryExclusion {
+      edit: affected_set_example_edit,
+      proof: UnchangedPureBoundary {
+        content_hash: affected_set_example_hash
+      }
+    }
+  ],
+  decisions: empty_map()
+}
+
+
+data expected_affected_set_dimension_seed: ReExecFrontier = ChangedSubgraphFrontier {
+  boundary_exclusions: [],
+  decisions: map_insert(
+    empty_map(),
+    ExclusionKey { at: affected_set_example_node, dimension: ^affected_set_example_dimension },
+    Rerun
+  )
+}
+
+
+data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFrontier {
+  boundary_exclusions: [],
+  decisions: map_insert(
+    empty_map(),
+    ExclusionKey { at: affected_set_example_node, dimension: ^affected_set_example_dimension },
+    Excluded {
+      first: DimensionNotRead {
+        usage_site: affected_set_example_node,
+        changed_dimension: ^affected_set_example_dimension
+      },
+      rest: [
+        DimensionNotRead {
+          usage_site: affected_set_example_node,
+          changed_dimension: ^affected_set_example_dimension
+        }
+      ]
+    }
+  )
+}
+
+
+data expected_affected_set_unknown_fail_closed: ReExecFrontier = FailClosed {
+  reason: ReasonSymbol { reason: ^affected_set_example_reason }
+}
+
+
+data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = FailClosed {
+  reason: ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+  }
+}
+
+
+data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = FailClosed {
+  reason: ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+  }
+}
+
+
+fn affected_set_example_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+  HashChanged
+}
+
+
+fn affected_set_example_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
+  ChangedDimensions {
+    first: ^affected_set_example_dimension,
+    rest: []
+  }
+}
+
+
+fn affected_set_example_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
+  FrontierProduced { dependencies: [] }
+}
+
+
+fn affected_set_example_propagation_receipt(
+  dag: Dag,
+  edit_dimension: EditDimension,
+  dependency: DependencyView
+) -> PropagationReceipt {
+  Propagates
+}
+
+
+data affected_set_example_read: AffectedSetRead = AffectedSetRead {
+  boundary: AffectedBoundaryRead {
+    boundary_hash_receipt: affected_set_example_boundary_hash_receipt,
+    changed_dimension_receipt: affected_set_example_changed_dimension_receipt
+  },
+  frontier: AffectedFrontierRead {
+    proven_transitive_dependency_frontier: affected_set_example_transitive_frontier
+  },
+  propagation_receipt: affected_set_example_propagation_receipt
+}
+
+
+fn affected_set_example_post_edit_accepts(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+  AffectedPostEditDagRead {
+    outcome: Accepted { value: dag, diagnostics: None }
+  }
+}
+
+
+fn affected_set_example_post_edit_rejects(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+  AffectedPostEditDagRead {
+    outcome: Rejected {
+      diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+    }
+  }
+}
+
+
+data affected_set_example_two_edit_diff: Diff = Diff {
+  edits: [affected_set_example_edit, affected_set_example_edit]
+}

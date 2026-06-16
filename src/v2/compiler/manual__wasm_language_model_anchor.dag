@@ -1,0 +1,18 @@
+// Status: compile-only anchor.
+
+module v2.test.manual.wasm_language_model_anchor
+
+import v2.extdeps.languages.wasm {
+  WasmLanguageModel,
+  wasm_inhabitant_i32_node,
+  wasm_language_model_wave2b,
+  wasm_model_core_wave2b
+}
+import v2.std.model_core { ModelCore }
+import v2.std.node { Node }
+
+type wasm_anchor_language_model = WasmLanguageModel
+
+data wasm_anchor_wave2b: wasm_anchor_language_model = wasm_language_model_wave2b()
+data wasm_anchor_i32: Node = wasm_inhabitant_i32_node()
+data wasm_anchor_core: ModelCore = wasm_model_core_wave2b()

@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 # Install gunbc from GitHub Releases (Linux musl + macOS binaries).
 #
-# Semantic authority: src/v4/install/install.dag (GitHubReleaseTarball channel).
+# Semantic authority: src/v2/install/install.dag (GitHubReleaseTarball channel).
 # Target detection: install/release-target-triples.sh (platform_detection.dag projection).
-# Binary names: src/v4/workflow/release.dag `release_published_artifact_names`.
+# Binary names: src/v2/workflow/release.dag `release_published_artifact_names`.
 #
 # Usage:
 #   curl -fsSL https://github.com/gunb-ai/gunbc/releases/latest/download/install.sh | sh

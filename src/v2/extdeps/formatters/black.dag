@@ -1,0 +1,105 @@
+// src/v2/extdeps/formatters/black.dag
+// Scope: Black 26.5.1 pyproject [tool.black] configuration model.
+// Status: T-4.16 scaffold — Black 26.5.1 pyproject schema.
+// Anchor: https://github.com/psf/black/blob/26.5.1/src/black/resources/black.schema.json
+
+module v2.extdeps.formatters.black
+
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.patch { ConfigPatchRecord, config_patch_layer }
+import v2.std.refinement {
+  PositiveInt,
+  positive_int_authoritative_literal
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackTargetVersion
+  = BlackPy33
+  | BlackPy34
+  | BlackPy35
+  | BlackPy36
+  | BlackPy37
+  | BlackPy38
+  | BlackPy39
+  | BlackPy310
+  | BlackPy311
+  | BlackPy312
+  | BlackPy313
+  | BlackPy314
+  | BlackPy315
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackTargetVersionPolicy
+  = BlackTargetVersionAbsent
+  | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackRequiredVersionPolicy
+  = BlackRequiredVersionAbsent
+  | BlackRequiredVersionExplicit { version: String }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackUnstableFeature
+  = BlackUnstableStringProcessing
+  | BlackUnstableHugParensWithBracesAndSquareBrackets
+  | BlackUnstableWrapComprehensionIn
+  | BlackUnstableSimplifyPowerOperatorHugging
+  | BlackUnstableWrapLongDictValuesInParens
+  | BlackUnstableFixIfGuardExplosionInCaseStatement
+  | BlackUnstablePyiOverloadGroupBlankLines
+  | BlackUnstablePyiBlankLineBeforeDecoratedClass
+
+
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
+type BlackConfig {
+  line_length: Outcome<PositiveInt>
+  target_version: BlackTargetVersionPolicy
+  required_version: BlackRequiredVersionPolicy
+  pyi: Bool
+  ipynb: Bool
+  python_cell_magics: List<String>
+  skip_source_first_line: Bool
+  skip_string_normalization: Bool
+  skip_magic_trailing_comma: Bool
+  preview: Bool
+  unstable: Bool
+  enable_unstable_feature: List<BlackUnstableFeature>
+  include: String
+  exclude: String
+  extend_exclude: String
+  force_exclude: String
+}
+
+
+data black_defaults: BlackConfig = BlackConfig {
+  line_length: positive_int_authoritative_literal(value: 88),
+  target_version: BlackTargetVersionAbsent,
+  required_version: BlackRequiredVersionAbsent,
+  pyi: false,
+  ipynb: false,
+  python_cell_magics: [],
+  skip_source_first_line: false,
+  skip_string_normalization: false,
+  skip_magic_trailing_comma: false,
+  preview: false,
+  unstable: false,
+  enable_unstable_feature: [],
+  include: "(\\.pyi?|\\.ipynb)$",
+  exclude: "/(\\.direnv|\\.eggs|\\.git|\\.hg|\\.ipynb_checkpoints|\\.mypy_cache|\\.nox|\\.pytest_cache|\\.ruff_cache|\\.tox|\\.svn|\\.venv|\\.vscode|__pypackages__|_build|buck-out|build|dist|venv)/",
+  extend_exclude: "",
+  force_exclude: "",
+}
+
+
+type BlackConfigPatch = ConfigPatchRecord<BlackConfig>
+
+
+fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
+  config_patch_layer(base: base, patch: patch)
+}
+

@@ -1,0 +1,95 @@
+// Scope: affected-set reading claim for Node-level edit/rebuild precision.
+
+
+module v2.test.lens_affected_set.node_precision
+
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.lens.affected_set { AffectedSetReading, FrontierDependency, affected_set_reading }
+import v2.std.change { DependencyDependent, DependencySource }
+import v2.std.dependency { Contains, DependencyView }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+data affected_set_leaf: Node = claim_atom_node(s: ^affected_set_leaf_symbol)
+
+data affected_set_mid: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^affected_set_mid_symbol } },
+  children: [
+    Edge { label: Named { name: ^affected_set_mid_edge_symbol }, target: affected_set_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data affected_set_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^affected_set_root_symbol } },
+  children: [
+    Edge { label: Named { name: ^affected_set_root_edge_symbol }, target: affected_set_mid }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn affected_set_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: ^affected_set_type_symbol,
+    algebra_symbol: ^affected_set_algebra_symbol,
+    descent_symbol: ^affected_set_descent_symbol,
+  )
+}
+
+fn affected_set_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: affected_set_root, facts: affected_set_claim_facts())
+}
+
+data affected_set_mid_to_leaf_dependency: DependencyView = DependencyView {
+  source: affected_set_mid,
+  dependent: affected_set_leaf,
+  kind: Contains,
+  usage_site: affected_set_leaf
+}
+
+data affected_set_root_to_mid_dependency: DependencyView = DependencyView {
+  source: affected_set_root,
+  dependent: affected_set_mid,
+  kind: Contains,
+  usage_site: affected_set_mid
+}
+
+data affected_set_root_to_mid_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_root_to_mid_dependency,
+  target: DependencySource
+}
+
+data affected_set_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_mid_to_leaf_dependency,
+  target: DependencyDependent
+}
+
+type LensAffectedSetClaim {
+  input: InferredTree
+  edit_locus: Node
+  expected: AffectedSetReading
+  actual: AffectedSetReading
+}
+
+data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetClaim {
+  input: affected_set_claim_tree(),
+  edit_locus: affected_set_mid,
+  expected: AffectedSetReading {
+    edit_locus: affected_set_mid,
+    affected: [affected_set_mid, affected_set_root, affected_set_leaf],
+    dependencies: [affected_set_root_to_mid_frontier_dependency, affected_set_mid_to_leaf_frontier_dependency]
+  },
+  actual: affected_set_reading(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
+}
+
+fn affected_set_node_precision_claim_holds() -> Bool {
+  affected_set_node_precision_claim.actual.edit_locus == affected_set_node_precision_claim.expected.edit_locus
+    && affected_set_node_precision_claim.actual.affected == affected_set_node_precision_claim.expected.affected
+    && affected_set_node_precision_claim.actual.dependencies == affected_set_node_precision_claim.expected.dependencies
+}
+
+data affected_set_node_precision_claim_passes: Bool = affected_set_node_precision_claim_holds()

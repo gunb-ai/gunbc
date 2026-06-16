@@ -1,0 +1,60 @@
+Move 1 — v2 `run` vs v2 kernel (constructive pre-flight, 2026-05-16)
+================================================================
+
+Authority: `target/release/v1-compiler compile --source-root src/v2` (PASS,
+0 diagnostics) — this is the gate already exercised in CI job `v2`
+("bootstrap viability").
+
+Instrument: `v1-compiler run --source-root src/v2 --function <name>` was
+tried on small probe functions during Move 1 (see **git history** on this
+branch for the ephemeral probe sources: nat_add/nat_mul recursion, kernel
+`1 == 1`, bool meet via lattice top/bottom, well_formed on empty Conj,
+trivial ProcessExit). No placeholder `probes.dag` module is kept in-tree — real
+`dag run` probes should land with **T-22**, not as an empty reserved module.
+
+Findings (v2 seed interpreter, merged v2 graph)
+-----------------------------------------------
+COVERED by compile-only gate today
+  - Entire `src/v2/**/*.dag` module graph parses, resolves imports, and
+    type-checks under v2 — including new `test/claim/manual/*` TestClaim data.
+
+NOT COVERED by v2 `run` (runtime) — honest gaps
+  - Cross-module calls into substrate `fn` values (e.g. `nat_add`) from a
+    `func` probe: runtime error `undefined variable: nat_add`.
+  - Returning `ProcessExit` / `ExitSuccess` from a minimal probe: runtime
+    error `undefined variable: int_add` (host/exit plumbing not wired for this
+    graph shape).
+  - `well_formed` on a tiny well-formed `Node`: non-terminating under the
+    interpreter in local trials (treated as interpreter gap, not claimed
+    substrate bug).
+
+Interpretation
+--------------
+v2 `compile` is the reliable pre-T-22 bridge; v2 `run` is **not** a truthful
+execution oracle for v2 substrate yet. Phase 2 testing that requires
+evaluating v2 programs + TestClaims must wait on **T-22 (v2 compiler/05_eval
+and claim runner)** — dissolution trigger for an automated `v1-compiler run`
+TestClaim CI lane.
+
+There is **no** `ProcessExit` duplicate under `src/v2/` — canonical carrier
+remains **`dsl/std/process.dag`** only (P2 single authority). A prior test-only
+shim was removed once it had zero consumers; reintroduce only with an explicit
+Practice-4 receipt **and** a real `dag run` entry consumer, or after T-22 when
+v2 owns eval without cross-root duplication.
+
+Interim CI (Move 3)
+-------------------
+Per brief: **DEFERRED** — no required `v1-compiler run` gate on TestClaim
+execution until T-22. The `v2` workflow adds a **non-blocking informational**
+step after bootstrap viability (`.github/workflows/ci.yml`): it sets
+`V2_PREFLIGHT_SKIP_COMPILE=1` and runs `scripts/v2-run-preflight.sh`, which
+**skips** a second `v1-compiler compile` (the prior step already compiled
+`src/v2`) and only emits the GitHub `::notice::` tying deferral to **T-22** —
+visible in logs, not a silent drop. The step is **not** `continue-on-error`
+(the script always exits 0; the flag was redundant and removed).
+
+Atom-shaped manual TestClaims
+-----------------------------
+K-1 forbids minting `Symbol` values in `.dag` data literals; `Atom {…}`
+TestClaims are therefore absent from `test/claim/manual/connective_anchors.dag`
+with an explicit note in that file.

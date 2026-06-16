@@ -8,7 +8,7 @@
 > flag."
 >
 > **Deliverable (this session):** this doc + modeled carriers in
-> `src/v4/std/program_segment.dag` and `src/v4/compiler/program_partition.dag` (fail-closed
+> `src/v2/std/program_segment.dag` and `src/v2/compiler/program_partition.dag` (fail-closed
 > reason symbols + scaffold resolution for `WholeProgram` / `SubtreeAtPath` / `SubtreeRoot`).
 
 ## 1. Problem
@@ -16,7 +16,7 @@
 Today emit exists in `.dag` but only at **whole-program** granularity:
 
 ```dag
-// src/v4/compiler/05_emit.dag — frozen composition form (M11 receipt)
+// src/v2/compiler/05_emit.dag — frozen composition form (M11 receipt)
 fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource>
 ```
 
@@ -35,23 +35,23 @@ That is already "target as value" (no hidden Rust `LOADED_SPEC` — CODING.md). 
      side channel. The `_rust` suffix is **target-row selection sugar**, not a separate emitter.
 
 The v2 anti-pattern (`compile.dag` `match artifact.target { Rust => emit_rust ... }`) hard-wires
-target dispatch to an enum roster. v4's derived-homomorphism form keeps **one** `emit` and passes
+target dispatch to an enum roster. v2's derived-homomorphism form keeps **one** `emit` and passes
 `TargetModel` data (`rust_mvp1_target_model`, `mvp1_python_target_model`, …).
 
 ## 2. What already exists (M9 DFS — extend, don't coin)
 
 | Piece | Where | Role |
 |---|---|---|
-| `emit = serialize_target ∘ translate` | `src/v4/compiler/05_emit.dag` | stage composition; **consumer** of `InferredTree` |
-| `InferredTree { root, facts }` | `src/v4/compiler/04_infer.dag:96` | infer output; facts map keyed by `Node` |
-| `TargetModel` bundle | `src/v4/std/compilers/target_model.dag` | target as explicit value (grammar rows, inhabitants, …) |
-| `TargetSource` | `src/v4/compiler/07_target_carriers.dag` | emitted text carrier |
-| `Path` + `subterm_at` | `std/node.dag`, `v4/lens/application.dag` | structural subtree selection (lens section projection) |
-| `SectionRef` | `v4/lens/application.dag:67` | declaration / node scope handles (Path-backed, 🟡 identity evidence) |
-| `ChangedSubgraphFrontier` | `v4/lens/affected_set.dag` | **diff-driven** subgraph (incremental re-exec), orthogonal axis |
+| `emit = serialize_target ∘ translate` | `src/v2/compiler/05_emit.dag` | stage composition; **consumer** of `InferredTree` |
+| `InferredTree { root, facts }` | `src/v2/compiler/04_infer.dag:96` | infer output; facts map keyed by `Node` |
+| `TargetModel` bundle | `src/v2/std/compilers/target_model.dag` | target as explicit value (grammar rows, inhabitants, …) |
+| `TargetSource` | `src/v2/compiler/07_target_carriers.dag` | emitted text carrier |
+| `Path` + `subterm_at` | `std/node.dag`, `v2/lens/application.dag` | structural subtree selection (lens section projection) |
+| `SectionRef` | `v2/lens/application.dag:67` | declaration / node scope handles (Path-backed, 🟡 identity evidence) |
+| `ChangedSubgraphFrontier` | `v2/lens/affected_set.dag` | **diff-driven** subgraph (incremental re-exec), orthogonal axis |
 | Eval subgraph MVP | `eval_runtime_mvp.dag` | arbitrary `Node` as eval root — proves runtime can target a subgraph |
-| `ProjectionKind::EmitProjection` | `src/v4/std/projection.dag:15` | projection-as-data names emit; no partition carrier yet |
-| `TargetTypeExpressionProjection` rows | `src/v4/std/compilers/target_model.dag` | per-language type-tier spelling; pattern for static projectability checks |
+| `ProjectionKind::EmitProjection` | `src/v2/std/projection.dag:15` | projection-as-data names emit; no partition carrier yet |
+| `TargetTypeExpressionProjection` rows | `src/v2/std/compilers/target_model.dag` | per-language type-tier spelling; pattern for static projectability checks |
 | Cross-target coercion fold | `mvp_int_cross_target_coercion.dag` | `find_witness` over declared inhabitants across targets — Wave D seam (§6.4) |
 | Source-as-data pipeline bridge | `comprep_eval_by_execution.dag` | sanctioned compile-time body/subtree acquisition — no runtime reflection (§4.6) |
 
@@ -80,7 +80,7 @@ variants), not argv parsing.
 
 ### 4.1 `ProgramSegment` — how to name the slice (substrate-owned)
 
-Declared in `src/v4/std/program_segment.dag`:
+Declared in `src/v2/std/program_segment.dag`:
 
 ```
 type ProgramSegment
@@ -99,7 +99,7 @@ Rules:
 
 ### 4.2 `ProgramPartition` — resolved slice + boundary policy (compiler-owned)
 
-Declared in `src/v4/compiler/program_partition.dag`:
+Declared in `src/v2/compiler/program_partition.dag`:
 
 ```
 type ProgramPartition {
@@ -180,8 +180,8 @@ fn emit_for_target(program, segment, target, boundary) =
 
 ```
 // In a .dag test / workflow module:
-import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.compiler.program_partition {
+import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.compiler.program_partition {
   emit_for_target,
   program_segment_whole_program
 }
@@ -314,7 +314,7 @@ The existing `emit` composition (`serialize_target ∘ translate`) is unchanged 
 ### 6.1 Wave A — partition scaffold consumer (next PR)
 
 - Implement `facts_closure_fold` + `partition_boundary_free_ref` checks.
-- Wire `emit_partition` / `emit_for_target` in `src/v4/compiler/program_partition.dag` (or
+- Wire `emit_partition` / `emit_for_target` in `src/v2/compiler/program_partition.dag` (or
   thin `05_emit.dag` re-export if import cycles demand).
 - **Keystone claim:** emit only `Arrow.body` Behavior subtree for COMPREP add-fn (uses
   `SubtreeAtPath` or `SubtreeRoot`), whole module stays inferred once.

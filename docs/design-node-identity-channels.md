@@ -19,7 +19,7 @@
 |---|---|---|---|---|
 | **Brand identity** (A3/A4 nominal distinctness) | `binding_id` field | #4581 authority-direct stamping at type-env registration / resolve | **YES** — it *is* semantic identity; excluding it would re-open the spelling-collision false-accept | building (#4581 — the linchpin) |
 | **Reference** (use→def; callee; the dependency classifier's `BindsTo`) | **no new field** — a substrate fact carried on the `binding_id` channel (the T-9 rider: resolve materializes the use→def relation against the def's `binding_id`) | resolve, same seam as stamping | participates **as structure** (it is an edge/fact, not a field exclusion question) | queued immediately behind #4581 |
-| **Provenance** (source anchoring) | opaque `occurrence_id` field (`OccurrenceId` in `v4.std.node`; sole mint `v4.std.occurrence_id.alloc_occurrence_id`) | parse, allocator-issued (PROV wave 1); off-tree `SpanIndex` carries `OriginEvent` (design-provenance-span.md §4.5) | **NO** — bookkeeping, never identity; two occurrences of `1 + 1` stay structurally equal | building (PROV A-pivot Phase 0 model — field on `Node` lands Phase 1+2 atomically with #4604 span revert) |
+| **Provenance** (source anchoring) | opaque `occurrence_id` field (`OccurrenceId` in `v2.std.node`; sole mint `v2.std.occurrence_id.alloc_occurrence_id`) | parse, allocator-issued (PROV wave 1); off-tree `SpanIndex` carries `OriginEvent` (design-provenance-span.md §4.5) | **NO** — bookkeeping, never identity; two occurrences of `1 + 1` stay structurally equal | building (PROV A-pivot Phase 0 model — field on `Node` lands Phase 1+2 atomically with #4604 span revert) |
 
 ## Rules
 

@@ -1,0 +1,55 @@
+[package]
+name = "v1-compiler"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+text_lookup_work_counter = []
+
+[dependencies]
+# Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
+# (thread-confined, matching the Value Rc-discipline) crate providing BOTH
+# carriers v2.std.value_carrier declares: HashMap is a hash array mapped trie
+# (map_carrier: ^hash_array_mapped_trie) and Vector is a relaxed radix
+# balanced tree (list_carrier: ^relaxed_radix_balanced_tree, O(log n)
+# concatenation). rpds was the considered alternative; rejected because its
+# Vector has no concatenation, so it cannot realize the declared list carrier.
+im-rc = "15.1"
+stacker = "0.1"
+clap = { version = "4", features = ["derive"] }
+lazy_static = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[bin]]
+name = "regen_stage0"
+path = "src/bin/regen_stage0.rs"
+# cache-bust-v2-binary-20260526
+
+# Batch claim runner: resolve one --entry closure once, run many witnesses.
+# Hand-written CI tool (like regen_stage0); reuses the v1-compiler lib, does NOT
+# go through the generated main.rs / emit stage. Amortizes the per-row full-tree
+# resolve in the v2 node-frontier CI gate's green pass.
+[[bin]]
+name = "claim_batch"
+path = "src/bin/claim_batch.rs"
+
+# Batch claim executor: host transport for the v2.workflow.executor .dag. Reads
+# the executor-decided batches (List<List<ClaimRef>>) from a plan function and
+# runs the v2 claim suite batch-by-batch, claims-in-parallel. The .dag is the
+# batching authority; this bin consumes it (does not re-derive grouping/order).
+[[bin]]
+name = "claim_executor"
+path = "src/bin/claim_executor.rs"
+
+# Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
+# Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
+[[bin]]
+name = "discover_owned_data"
+path = "src/bin/discover_owned_data.rs"

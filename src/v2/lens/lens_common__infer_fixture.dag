@@ -1,0 +1,113 @@
+// Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
+
+module v2.test.lens_common.infer_fixture
+
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { Map }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.witness { Holds, StructuralPropertyWitness, Witness }
+
+fn claim_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn claim_canonical_grounding(
+  type_symbol: Symbol,
+  algebra_symbol: Symbol,
+) -> CanonicalGrounding {
+  let resolved = claim_atom_node(s: type_symbol)
+  let algebra = claim_atom_node(s: algebra_symbol)
+  CanonicalGrounding {
+    node: resolved,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: resolved
+      }
+    }
+  }
+}
+
+fn claim_inferred_facts_witness(
+  grounding: CanonicalGrounding,
+  descent: Witness<TerminationProof>
+) -> InferredFacts {
+  InferredFacts {
+    grounding: grounding,
+    descent: descent
+  }
+}
+
+fn claim_inferred_facts_from_nodes(
+  resolved: Node,
+  algebra: Node,
+  descent: Witness<TerminationProof>
+) -> InferredFacts {
+  claim_inferred_facts_witness(
+    grounding: CanonicalGrounding {
+      node: resolved,
+      witness: CanonicalGroundingWitness {
+        structural: StructuralPropertyWitness {
+          property: ^constraint_property_being_canonical,
+          evidence: algebra
+        },
+        closedness: StructuralPropertyWitness {
+          property: ^constraint_property_candidate_set_closedness,
+          evidence: resolved
+        }
+      }
+    },
+    descent: descent
+  )
+}
+
+fn claim_inferred_facts(
+  type_symbol: Symbol,
+  algebra_symbol: Symbol,
+  descent_symbol: Symbol,
+) -> InferredFacts {
+  claim_inferred_facts_witness(
+    grounding: claim_canonical_grounding(
+      type_symbol: type_symbol,
+      algebra_symbol: algebra_symbol,
+    ),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: descent_symbol }
+      }
+    }
+  )
+}
+
+fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: claim_inferred_facts_map(facts: facts)
+  }
+}
+
+fn claim_inferred_facts_for_tree(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}

@@ -23,11 +23,11 @@ none of them data:
 |---|---|---|
 | Rust runner | `tools/emit_host_runner/src/lib.rs:443-571` — `run_emit_host_rust` / `_python` / `_go` | three near-identical bodies: write fixture file(s) → spawn command(s) → bounded capture → `host_exit_from_bounded` → receipt. Only the file names and command lines differ. |
 | Stdout parse | `lib.rs:217-237` — `runtime_value_parse_rust` / `_python` / `_go` | `_python` and `_go` literally call `_rust` (five-byte check) — pure duplication |
-| `.dag` dispatch | `src/v4/compiler/emit_host.dag:234-250` (`run_emit_host`) and `:185-197` (`runtime_value_parse`) | if/else chains on **string equality against `authority_source_text` pins** (`:79-83`) — dispatch keyed on a source-text spelling, not an identity |
+| `.dag` dispatch | `src/v2/compiler/emit_host.dag:234-250` (`run_emit_host`) and `:185-197` (`runtime_value_parse`) | if/else chains on **string equality against `authority_source_text` pins** (`:79-83`) — dispatch keyed on a source-text spelling, not an identity |
 | Eval hooks | `src/v3/compiler/src/emit_host_eval.rs:45-302` — `try_dispatch_emit_host_rust` / `_go` / `_python`, chained at `lib.rs:1280-1305` | three per-target intercepts matched by declaration *name string* + file suffix; Python asymmetrically hand-reifies the receipt carriers (T-PB-B debt) instead of calling the `.dag` `emit_host_receipt_from_source` |
-| Tests | `v4_emit_host_harness_test.rs:866-900` | a surface roster asserting the three names exist — a declaration-shape mirror of the hand-list |
+| Tests | `v2_emit_host_harness_test.rs:866-900` | a surface roster asserting the three names exist — a declaration-shape mirror of the hand-list |
 
-`src/v4/std/` has **no** modeled `Command`/`Process`/`Transport` type at all — the entire
+`src/v2/std/` has **no** modeled `Command`/`Process`/`Transport` type at all — the entire
 "run an external program" concept lives only in hand Rust. #4621's TypeScript row would be
 hand-edit number four of each. Cost-of-change for target #19 must be **one descriptor row,
 zero Rust** (CLAUDE.md: the answer should be 1).
@@ -166,7 +166,7 @@ No behavior loosens; the change is *where the facts live*.
 
 ## 4. Refactor / dissolution plan (ordered, each step lands green)
 
-1. **Model first**: substrate types (§3.1) in `src/v4/std/host_run.dag` (they are the
+1. **Model first**: substrate types (§3.1) in `src/v2/std/host_run.dag` (they are the
    missing "command semantics" the explorer measured as absent) + four descriptor rows in
    `extdeps/languages/{rust,python,go,typescript}.dag`. Consumer lands same-PR (E-6/E-10):
    step 2's fold reads them.
@@ -183,7 +183,7 @@ No behavior loosens; the change is *where the facts live*.
    per-target `_transport` wrappers (the W3 parity runner takes the generic transport + a
    language argument instead of three function pointers). Gate: steps 1–3 landed green
    **and** the TS round-trip proven through the descriptor row, then go.
-5. **Tests**: the surface roster at `v4_emit_host_harness_test.rs:866-900` is a
+5. **Tests**: the surface roster at `v2_emit_host_harness_test.rs:866-900` is a
    declaration-shape mirror of the hand-list — per the white-box-tests-are-2FA policy it is
    **deleted**, not re-pointed. Behavior tests (emit-vs-eval, cross-target parity) re-route
    through the generic transport unchanged in what they assert; the discriminating receipt
@@ -193,7 +193,7 @@ No behavior loosens; the change is *where the facts live*.
    (their recorded dissolution condition — "substrate eval owns host dispatch" — is exactly
    what lands here).
 
-Receipts per step: `gunbc compile src/v4` zero diagnostics; emit-vs-eval claims stay green
+Receipts per step: `gunbc compile src/v2` zero diagnostics; emit-vs-eval claims stay green
 by execution; suite-delta 0 by conservation; plus the step-5 mutate-red.
 
 ## 5. Omni-ingestion symmetry (the obligation, scoped)

@@ -69,5 +69,5 @@ dimensions work the same as built-in ones, the mechanism is
 general. If they require special compiler support, the mechanism
 is incomplete.
 
-Design: [src/v2/dimensions-design.md](../../src/v2/dimensions-design.md)
+Design: [src/v1/dimensions-design.md](../../src/v1/dimensions-design.md)
 — the general mechanism abstracted from CX and ownership.

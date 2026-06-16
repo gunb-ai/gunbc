@@ -15,14 +15,14 @@ Pieces already landed or in flight:
 
 | Piece | Where | State |
 |---|---|---|
-| Runnable-frontier scheduler (`RunnableFrontier`, `SchedulerPlan`, readiness folds) | `src/v4/workflow/scheduler.dag` (#4566) | landed — decides *what is ready*, provider-agnostic |
+| Runnable-frontier scheduler (`RunnableFrontier`, `SchedulerPlan`, readiness folds) | `src/v2/workflow/scheduler.dag` (#4566) | landed — decides *what is ready*, provider-agnostic |
 | Executor batching | #4603 | in flight (rebasing) — decides *in what order/groups* |
-| Host-run receipts (`ExecutionEvidence` host arm, `EmitHostRunReceipt`) | `src/v4/std/host_run.dag`; ROADMAP T-22 bridge row | landed receipt carriers — dispatch reuses these, not a new receipt family |
+| Host-run receipts (`ExecutionEvidence` host arm, `EmitHostRunReceipt`) | `src/v2/std/host_run.dag`; ROADMAP T-22 bridge row | landed receipt carriers — dispatch reuses these, not a new receipt family |
 | **Dispatcher** — fire work on the chosen backend via its transport facts | nowhere | **the gap D names** |
 
 ## 2. The bridge (the operator-proposed shape, made contractual)
 
-Wave 1 dispatch rides the existing execution substrate instead of waiting for the v4
+Wave 1 dispatch rides the existing execution substrate instead of waiting for the v2
 runtime: **daglang emits the selected task graph; the `OaaS_v2` runner executes it.** This
 is the unify direction (B §5) and it rides v2's working emission — it does **not** need
 COMPREP. Per P5, a bridge is only legitimate with its receipts and trigger fixed up front:

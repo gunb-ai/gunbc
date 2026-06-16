@@ -1,0 +1,25 @@
+
+module v2.test.self_host.claim_t15_self_host_fixed_point
+
+import v2.bin.main {
+  stub_stage1_emitted_rust_digest_placeholder,
+  stub_stage2_emitted_rust_digest_placeholder
+}
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  EqualsClaim,
+  manual_claim_anchor
+}
+
+
+data claim_t15_self_host_fixed_point: TestClaim = EqualsClaim {
+  label: "v2 compiler is a fixed point — iteration N matches iteration N+1",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: stub_stage1_emitted_rust_digest_placeholder,
+  rhs: stub_stage2_emitted_rust_digest_placeholder,
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

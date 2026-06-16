@@ -20,11 +20,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use v2_compiler::cli_run::{
+use v1_compiler::cli_run::{
     build_multi_entry_index, discover_owned_data_decls, make_eval_context,
     resolve_entry_with_index, run_claim, ClaimOutcome, OwnedDataDeclInitializer,
 };
-use v2_compiler::v2_interpreter::{run_in_context_with_args, Value};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, Value};
 
 struct GateRow {
     label: String,
@@ -50,7 +50,7 @@ struct Config {
 
 // Mirror of discover_owned_data's default exclude set: the manifest/law files that
 // import the ephemeral discovery output would otherwise re-enter discovery acyclically.
-// Plus the manual lane: `src/v4/test/manual/` claims carry their own
+// Plus the manual lane: `src/v2/test/manual/` claims carry their own
 // ExpectPass|ExpectFail expected-outcome (some are pinned-red to tracking anchors,
 // e.g. witness_sg2_arrow ExpectFail{#4801}). A universal-green floor must NOT run them
 // as must-pass — excluded until expected-outcome is modeled at the claim level.
@@ -82,7 +82,7 @@ fn parse_args() -> Config {
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut perturb = false;
     let mut print_tsv_only = false;
-    let mut notice_title = "v4 CI claim gate".to_string();
+    let mut notice_title = "v2 CI claim gate".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -352,7 +352,7 @@ fn remap_entry_for_temp(source_root: &str, entry: &str) -> PathBuf {
     let prefix = format!("{source_root}/");
     if let Some(suffix) = entry.strip_prefix(&prefix) {
         PathBuf::from("src").join(suffix)
-    } else if let Some(suffix) = entry.strip_prefix("src/v4/") {
+    } else if let Some(suffix) = entry.strip_prefix("src/v2/") {
         PathBuf::from("src").join(suffix)
     } else {
         PathBuf::from(entry)

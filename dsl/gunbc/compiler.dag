@@ -363,7 +363,7 @@ fn clean_stage0_generated_command(find: FilePath, cycle: SelfHostingCycle) -> St
   let exclude_filter = cycle.generated.hand_maintained_src |> fold(init: "", f: (acc, f) =>
     concat(acc, " ! -name ", f)
   )
-  // <find_path> SRCDIR -maxdepth 1 -type f -name '*.rs' ! -name cli_run.rs ! -name v2_interpreter.rs -delete
+  // <find_path> SRCDIR -maxdepth 1 -type f -name '*.rs' ! -name cli_run.rs ! -name v1_interpreter.rs -delete
   concat(find, " ", cycle.generated.source_dir,
          " -maxdepth 1 -type f -name '*.rs'", exclude_filter,
          " -delete")

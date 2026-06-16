@@ -20,14 +20,14 @@ policy code: the selection is **derived from declared facts** (no per-provider b
 
 | Concept | Where | Use here |
 |---|---|---|
-| `find_witness` fold: closed `CandidateSet`, preservation predicate, fail-closed 0/≥2 | `src/v4/std/find_witness.dag` | the selection engine, reused as-is |
+| `find_witness` fold: closed `CandidateSet`, preservation predicate, fail-closed 0/≥2 | `src/v2/std/find_witness.dag` | the selection engine, reused as-is |
 | **`MultiplicityPolicy = UniqueOnly \| TargetSelection { policy }`** and **`TargetSelectionPolicy = TargetDeclaredPriority { priority: Node } \| UserSelected { selection }`** | `find_witness.dag:62-67` | **the selection seam, reused with its existing semantics unchanged** — both arms mean "this exact candidate" (`find_witness_realized` routes either into `resolve_selected_candidate` as `selection:`). C does **not** overload `priority` with an ordering meaning (review r3384872268 — one carrier with two type-indistinguishable meanings violates P2); the ordering lives entirely in the domain wrapper (§4.2), which hands `find_witness` the already-computed argmax as the selected candidate |
-| Domain-wrapper precedent: `constraints.dag` = "canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper)" | `src/v4/std/constraints.dag` | the pattern to copy: a thin domain module wrapping the shared fold — `compute_select` is the compute twin of `solve_constraints` |
-| Interval/ordering vocabulary | `v4.std.integer` interval specs; `design-value-set-lattice.md` | capacity facts are dimensioned intervals; satisfaction tests the **hard minimum** (`available ≥ request.min`, §3 — not whole-interval containment, per review r3385120097) |
-| Effect partition | `src/v4/std/effects.dag` | obligation discharge (preemptible ⇒ re-runnable) is a structural check on workload effect facts |
+| Domain-wrapper precedent: `constraints.dag` = "canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper)" | `src/v2/std/constraints.dag` | the pattern to copy: a thin domain module wrapping the shared fold — `compute_select` is the compute twin of `solve_constraints` |
+| Interval/ordering vocabulary | `v2.std.integer` interval specs; `design-value-set-lattice.md` | capacity facts are dimensioned intervals; satisfaction tests the **hard minimum** (`available ≥ request.min`, §3 — not whole-interval containment, per review r3385120097) |
+| Effect partition | `src/v2/std/effects.dag` | obligation discharge (preemptible ⇒ re-runnable) is a structural check on workload effect facts |
 | Rejection-priority / best-rejection fold | `find_witness.dag:291-320` | the refusal-report mechanism generalizes from "keep best rejection" to "keep all, located" (§4.3) |
 
-**Substrate target (P1):** `src/v4/std/compute_select.dag` — the satisfies-predicate, the
+**Substrate target (P1):** `src/v2/std/compute_select.dag` — the satisfies-predicate, the
 policy carriers, and the `compute_select` wrapper. The `find_witness` core is **untouched**
 (no fifth fold variant; the operator's fewer-variants ruling and dep-graph Q2 both bind
 here).
@@ -109,7 +109,7 @@ executable without any runtime work:
 
 1. `std/compute_request.dag` + `std/compute_provider.dag` + `std/compute_select.dag`;
    `extdeps/compute/{homelab,gcp}.dag` real instances (B §6).
-2. `TestClaim`s under `src/v4/test/claim/compute_select/`, run via `--claim-run`:
+2. `TestClaim`s under `src/v2/test/claim/compute_select/`, run via `--claim-run`:
    - **green — derive:** cost-minimizing policy selects the homelab over GCP for a small
      CPU request, with the selection witness carried;
    - **green — obligation discharge:** an idempotent workload accepts the preemptible GCP

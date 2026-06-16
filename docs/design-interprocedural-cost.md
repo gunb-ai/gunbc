@@ -9,7 +9,7 @@
 
 ## 1. The problem
 
-`base_cost_for_behavior(Transform) = unit_cost()` (`src/v4/lens/cost.dag:206`). The cost
+`base_cost_for_behavior(Transform) = unit_cost()` (`src/v2/lens/cost.dag:206`). The cost
 fold charges a call site one unit plus the fold of its *argument* children; the callee's
 body is never consulted. Consequence: any superlinear body hidden behind a helper call
 reads as constant at every caller. The S1/S2 gate is honest only because today's subjects
@@ -23,7 +23,7 @@ than the first roster subject that contains a call.
 
 `cost.dag` carries an operator-STOP header (additive consumers only). S3 does not edit the
 node-local fold. Instead it is a new additive lens module (working name
-`src/v4/lens/cost_call_graph.dag`) that composes the existing pieces:
+`src/v2/lens/cost_call_graph.dag`) that composes the existing pieces:
 
 1. **Summaries.** For each declaration reachable from the subject, compute
    `cost_lens(body)` — the existing node-local fold — yielding a *summary*:
@@ -110,7 +110,7 @@ The recursion taxonomy is **closed up front**, and the gate's posture toward
   around.
 - Declared-side `ClassUnknown` budget rows are NOT a green path either (operator
   2026-06-11): `complexity_bound_dominates` treats a declared `UnknownComplexity` as
-  lattice top — it dominates every computed class (`src/v4/lens/complexity.dag:340`) —
+  lattice top — it dominates every computed class (`src/v2/lens/complexity.dag:340`) —
   so an unrated roster row would pass silently. The family gate must therefore reject
   any row whose declared budget is `UnknownComplexity`: an unrated producer is an
   ERROR to surface and prioritize, never a silent pass and never an omission. End

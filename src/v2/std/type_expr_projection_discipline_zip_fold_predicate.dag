@@ -1,0 +1,142 @@
+// src/v2/std/type_expr_projection_discipline_zip_fold_predicate.dag
+// Scope: SG-2 fold — discipline-aware zip-fold over row envelope + child slots.
+// Anchor: connective_edges_conform (node.dag); type_expr_projection row child-slot schema.
+// Status: one uniform predicate — positional=by-index, labeled=by-name; no per-connective arms.
+
+
+module v2.std.type_expr_projection_discipline_zip_fold_predicate
+
+import v2.std.algebra { zip_eq }
+import v2.std.collection {
+  Absent,
+  List,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.node {
+  Atom,
+  Edge,
+  EdgeDiscipline,
+  LabeledEdges,
+  Named,
+  NoEdges,
+  Node,
+  PositionalEdges,
+  Symbol,
+  TypeNode,
+  edges_conform,
+  well_formed
+}
+import v2.std.type_expr_projection_row_schema {
+  target_type_expr_discipline_labeled,
+  target_type_expr_discipline_no_edges,
+  target_type_expr_discipline_positional,
+  target_type_expr_field_child_slot_discipline,
+  target_type_expr_field_child_slots
+}
+import v2.std.algebra { Empty }
+import v2.std.node_query {
+  find_named_child,
+  node_envelope_without_named_coordinate_go
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+
+fn type_expr_projection_discipline_from_atom(id: Symbol) -> EdgeDiscipline? {
+  if id == target_type_expr_discipline_no_edges {
+    optional_present(value: NoEdges)
+  } else if id == target_type_expr_discipline_labeled {
+    optional_present(value: LabeledEdges)
+  } else if id == target_type_expr_discipline_positional {
+    optional_present(value: PositionalEdges)
+  } else {
+    optional_absent()
+  }
+}
+
+fn type_expr_projection_child_slot_discipline_from_envelope(node: Node) -> EdgeDiscipline? {
+  match find_named_child(
+    root: node,
+    name: target_type_expr_field_child_slot_discipline
+  ) {
+    Accepted { value: discipline_node, diagnostics: _ } =>
+      match discipline_node.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          type_expr_projection_discipline_from_atom(id: id)
+        _ => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn type_expr_projection_edge_equal(left: Edge, right: Edge) -> Bool {
+  (left.label == right.label)
+    && exact_structural_equality_zip_fold(
+      source_facts: left.target,
+      candidate: right.target
+    )
+}
+
+fn type_expr_projection_edges_exact_equal(
+  left: List<Edge>,
+  right: List<Edge>
+) -> Bool {
+  zip_eq(
+    a: left,
+    b: right,
+    eq: fn(l, r) { type_expr_projection_edge_equal(left: l, right: r) }
+  )
+}
+
+fn type_expr_projection_row_envelope_exact_equal(
+  candidate: Node,
+  source_facts: Node
+) -> Bool {
+  match node_envelope_without_named_coordinate_go(
+    root: source_facts,
+    xs: source_facts.children,
+    coordinate: target_type_expr_field_child_slots,
+    acc: Empty,
+    saw_coordinate: false
+  ) {
+    Accepted { value: envelope, diagnostics: _ } =>
+      type_expr_projection_edges_exact_equal(
+        left: candidate.children,
+        right: envelope
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_expr_projection_discipline_zip_fold_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  match type_expr_projection_child_slot_discipline_from_envelope(node: candidate) {
+    Present { value: discipline } =>
+      match find_named_child(
+        root: source_facts,
+        name: target_type_expr_field_child_slots
+      ) {
+        Accepted { value: child_slots_node, diagnostics: _ } =>
+          let child_slots = child_slots_node.children
+          well_formed(n: source_facts)
+            && well_formed(n: candidate)
+            && well_formed(n: algebra)
+            && well_formed(n: child_slots_node)
+            && (algebra == source_facts)
+            && type_expr_projection_row_envelope_exact_equal(
+              candidate: candidate,
+              source_facts: source_facts
+            )
+            && edges_conform(children: child_slots, d: discipline)
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}

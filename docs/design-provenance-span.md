@@ -6,7 +6,7 @@
 > fixture-bound lanes — real-input affected-set (AFF), write-axis "show the correct code"
 > (WRITE), synthesis IR-edit handoff (SYN, ctrl#1499 §7).
 >
-> Path note: the Node declaration lives at `src/v4/std/node.dag:86` (briefs citing
+> Path note: the Node declaration lives at `src/v2/std/node.dag:86` (briefs citing
 > `00_core.dag` are stale).
 
 ## 1. Problem (the measured verdict, restated)
@@ -24,7 +24,7 @@ dep graph doesn't name: **what anchoring does to structural equality**.
 
 | Piece | Where | Role |
 |---|---|---|
-| `Locus = Textual { file, extent } \| NodeLocus`, `Extent = WholeFile \| ByteRange { start, end }` | `src/v4/std/diagnostic.dag:13-24` | **the span representation, already declared** — reuse, do not coin `SourceSpan` |
+| `Locus = Textual { file, extent } \| NodeLocus`, `Extent = WholeFile \| ByteRange { start, end }` | `src/v2/std/diagnostic.dag:13-24` | **the span representation, already declared** — reuse, do not coin `SourceSpan` |
 | Token spans (byte positions, `ByteRange`-consistent) | `01_tokenize.dag:490,502` | the producer-side facts, already flowing to the discard point |
 | A4 opacity `CharOffset ≠ ByteOffset` (landed #4554) | brand relation | the offset Ints in `ByteRange` upgrade to branded `ByteOffset` when convenient — a refinement, not a blocker |
 | The brand-channel architecture: opaque id stamped on Node + graph-global allocator + registry (`binding_id`, design #4579/#4587, impl #4581) | brand lane | **the playbook this design copies** for a second axis: identity-on-a-dedicated-channel, never identity-from-structure |
@@ -169,7 +169,7 @@ type OriginEvent
   (`affected_set_reading_from_git_diff` consuming byte-range edits), WRITE
   (emit-on-corrected-IR locating its output), SYN (ctrl#1499 §7 names this exact gap).
 - **Minimal slice:** parse stamps ids + builds the index for one real `.dag` file;
-  `TestClaim`s under `src/v4/test/claim/provenance/`:
+  `TestClaim`s under `src/v2/test/claim/provenance/`:
   **green** — a real byte-range edit resolves to the node it touches, by execution (the
   PROV green criterion verbatim);
   **green** — structural equality of two identical subtrees with different ids still holds

@@ -27,11 +27,11 @@ follow-on rows with explicit substrate gates — not M0 blockers.
 | Runtime algebra slot | `std/runtime.dag` — `BranchInterpreter.choose_branch` | `(Node, RuntimeValue, EvaluationEnvironment) → Outcome<Node>` selects arm subgraph |
 | Value emit kind (planned) | `design-value-emit-schema.md` §4.1 — `TargetValueExprConditional` | lands with producer (E-10); not in `target_model.dag` yet |
 | Surface grammar | `extdeps/languages/dag.dag` — `dag_production_if_then_form`, `dag_production_if_expr` | source forms the body producer must recognize |
-| v3 lowering precedent | `v3/compiler/src/lower.rs` — `SurfaceExpr::If` → `BranchNode` with `input` + 2 `BranchPath`s | semantic reference; v4 compresses to flat positional children (§3) |
+| v3 lowering precedent | `v3/compiler/src/lower.rs` — `SurfaceExpr::If` → `BranchNode` with `input` + 2 `BranchPath`s | semantic reference; v2 compresses to flat positional children (§3) |
 
-## 3. Proposed v4 Branch child layout (M0 convention)
+## 3. Proposed v2 Branch child layout (M0 convention)
 
-v3 `BranchNode` carries `input` + labeled `paths` with `BranchPattern`. v4 `Branch` today
+v3 `BranchNode` carries `input` + labeled `paths` with `BranchPattern`. v2 `Branch` today
 admits only **positional** children (`behavior_edges_conform`). M0 adopts a **fixed positional
 layout** for Bool `if`-then-else without opening the edge-discipline coproduct:
 
@@ -130,8 +130,8 @@ emission (same structure as `TargetValueExprPrimitiveApply`).
 | `choose_branch_bool_if_else` | `count(node.children)==3` + `runtime_bool(condition)` | `true` → `list_nth(children, 1).target`; `false` → `list_nth(children, 2).target` |
 | `eval_branch_node` | (existing) | `args[0]` = evaluated condition; delegate arm pick to `choose_branch`; `eval_runtime_node` on chosen arm |
 
-**Canonical runtime home:** `extdeps/runtimes/v4_evaluator.dag` (replace
-`v4_eval_wave1_choose_branch` reject stub for M0 claims) with dissolution mark tying stub
+**Canonical runtime home:** `extdeps/runtimes/v2_evaluator.dag` (replace
+`v2_eval_wave1_choose_branch` reject stub for M0 claims) with dissolution mark tying stub
 deletion to M0-B1 claim green.
 
 **Refusal cases (fail-closed):** wrong child count; condition not runtime Bool; arm index
@@ -149,8 +149,8 @@ parallel `if` matcher outside the algebra.
 
 ## 8. Open questions — escalate before implementation
 
-- **Q-B1 — match / pattern authority.** v4 `Branch` is positional-only; v3 `BranchPath.pattern`
-  has no v4 home. **Recommendation for M0:** desugar Bool `match` to M0-B1 `if` (row M0-B6);
+- **Q-B1 — match / pattern authority.** v2 `Branch` is positional-only; v3 `BranchPath.pattern`
+  has no v2 home. **Recommendation for M0:** desugar Bool `match` to M0-B1 `if` (row M0-B6);
   defer sum-type `match` (M0-B5) until edge-discipline extension is decided.
 - **Q-B2 — Branch infer row (TWO halves — fan-in ii PR).** (a) condition child `[0]` typed
   `Bool`; (b) then/else arm types **unify at Branch merge** → Branch result type = conditional

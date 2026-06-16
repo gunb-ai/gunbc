@@ -1,0 +1,399 @@
+// src/v2/compiler/program_partition.dag
+// Scope: resolve ProgramSegment against InferredTree → ProgramPartition; project emit input.
+// Status: Wave A — facts_closure_fold + boundary checks; emit_partition / emit_for_target wired.
+// Anchor: docs/design-in-language-emission-program-partition.md
+
+module v2.compiler.program_partition
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer {
+  InferredFacts,
+  InferredFactsEntry,
+  InferredTree,
+  admitted_inferred_facts_entry,
+  facts_map_from_entries
+}
+import v2.compiler.target_carriers { TargetSource }
+import v2.compiler.translate {
+  serialize_concrete_syntax_tokens_to_source,
+  translate_project_transform_in_arrow_scope
+}
+import v2.lens.application { subterm_at }
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.collection { List, Map }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_project_arrow_body_to_value_expression,
+  target_value_expr_arrow_has_value_expression_body,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.node {
+  ComputationNode,
+  Node,
+  Transform,
+  node_subtree_nodes,
+  well_formed
+}
+import v2.std.verification { node_in_subtree_by_identity }
+import v2.std.program_segment {
+  AmbientContextAvailable,
+  FailClosedOnFreeRefs,
+  PartitionBoundaryPolicy,
+  ProgramSegment,
+  SubtreeAtPath,
+  SubtreeRoot,
+  WholeProgram,
+  partition_boundary_free_ref,
+  partition_empty_segment,
+  partition_facts_miss,
+  partition_root_not_in_ambient,
+  partition_section_adapter_unavailable
+}
+import v2.std.witness { Holds, Violates }
+
+// Resolved emit slice: ambient infer output + chosen segment + boundary policy.
+// `root` is authoritative for translation; `segment` records provenance.
+type ProgramPartition {
+  ambient: InferredTree
+  segment: ProgramSegment
+  root: Node
+  boundary: PartitionBoundaryPolicy
+}
+
+fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: partition_root_not_in_ambient,
+    at: node_locus(node: segment_root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn partition_facts_miss_diagnostic(key: Node) -> Diagnostic {
+  Diagnostic {
+    reason: partition_facts_miss,
+    at: node_locus(node: key),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn partition_boundary_free_ref_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: partition_boundary_free_ref,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: partition_empty_segment,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟡 gated — feature:program-partition-subtree-containment — consumer:partition_subtree_root_contained_in_ambient —
+// bind: design-in-language-emission-program-partition.md Q-EP1 — dissolve-on-arrival: path witness via
+// subterm_at / content_hash containment replaces structural identity-in-subtree membership; forbidden:
+// steady-state identity-only containment without path witness.
+fn partition_subtree_root_contained_in_ambient(
+  ambient_root: Node,
+  segment_root: Node
+) -> Bool {
+  (segment_root == ambient_root)
+    || node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
+}
+
+fn partition_grounding_subject_in_segment(
+  segment_root: Node,
+  facts: InferredFacts
+) -> Bool {
+  node_in_subtree_by_identity(
+    root: segment_root,
+    needle: facts.grounding.node
+  )
+}
+
+fn partition_fail_closed_boundary_admits(
+  segment_root: Node,
+  boundary: PartitionBoundaryPolicy,
+  node: Node,
+  facts: InferredFacts
+) -> Bool {
+  match boundary {
+    AmbientContextAvailable => true
+    FailClosedOnFreeRefs =>
+      partition_grounding_subject_in_segment(segment_root: segment_root, facts: facts)
+  }
+}
+
+fn partition_closure_entry_for_node(
+  ambient: InferredTree,
+  segment_root: Node,
+  boundary: PartitionBoundaryPolicy,
+  node: Node
+) -> Outcome<InferredFactsEntry> {
+  match ambient.facts.lookup(node) {
+    Holds { value: facts } =>
+      if partition_fail_closed_boundary_admits(
+        segment_root: segment_root,
+        boundary: boundary,
+        node: node,
+        facts: facts
+      ) {
+        admitted_inferred_facts_entry(node: node, facts: facts)
+      } else {
+        outcome_rejected(d: partition_boundary_free_ref_diagnostic(node: node))
+      }
+    Violates { diagnostic: _ } =>
+      outcome_rejected(d: partition_facts_miss_diagnostic(key: node))
+  }
+}
+
+fn partition_empty_inferred_facts_entries() -> List<InferredFactsEntry> {
+  []
+}
+
+fn facts_closure_entries_fold(
+  ambient: InferredTree,
+  segment_root: Node,
+  boundary: PartitionBoundaryPolicy,
+  nodes: List<Node>
+) -> Outcome<List<InferredFactsEntry>> {
+  fold_list(
+    xs: nodes,
+    empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
+    cons: fn(acc, node) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: entries, diagnostics: _ } =>
+          bind_outcome(
+            o: partition_closure_entry_for_node(
+              ambient: ambient,
+              segment_root: segment_root,
+              boundary: boundary,
+              node: node
+            ),
+            f: fn(entry) {
+              outcome_accepted(
+                value: list_snoc_item(xs: entries, item: entry)
+              )
+            }
+          )
+      }
+    }
+  )
+}
+
+// Closure projection: retain ambient facts for nodes reachable from segment root.
+// Under FailClosedOnFreeRefs, reject grounding subjects that escape the segment subtree.
+fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, InferredFacts>> {
+  match partition.boundary {
+    AmbientContextAvailable =>
+      outcome_accepted(value: partition.ambient.facts)
+    FailClosedOnFreeRefs =>
+      bind_outcome(
+        o: facts_closure_entries_fold(
+          ambient: partition.ambient,
+          segment_root: partition.root,
+          boundary: partition.boundary,
+          nodes: node_subtree_nodes(root: partition.root)
+        ),
+        f: fn(entries) {
+          facts_map_from_entries(entries: entries)
+        }
+      )
+  }
+}
+
+fn resolve_program_segment_root(
+  program: InferredTree,
+  segment: ProgramSegment
+) -> Outcome<Node> {
+  match segment {
+    WholeProgram => outcome_accepted(value: program.root)
+    SubtreeAtPath { path: path } =>
+      subterm_at(root: program.root, path: path)
+    SubtreeRoot { root: root } =>
+      if partition_subtree_root_contained_in_ambient(
+        ambient_root: program.root,
+        segment_root: root
+      ) {
+        outcome_accepted(value: root)
+      } else {
+        outcome_rejected(d: partition_root_not_in_ambient_diagnostic(segment_root: root))
+      }
+  }
+}
+
+fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<InferredTree> {
+  if !well_formed(n: partition.root) {
+    outcome_rejected(d: partition_empty_segment_diagnostic(root: partition.root))
+  } else {
+    bind_outcome(
+      o: facts_closure_fold(partition: partition),
+      f: fn(facts) {
+        outcome_accepted(
+          value: InferredTree {
+            root: partition.root,
+            facts: facts
+          }
+        )
+      }
+    )
+  }
+}
+
+fn resolve_program_partition(
+  program: InferredTree,
+  segment: ProgramSegment,
+  boundary: PartitionBoundaryPolicy
+) -> Outcome<ProgramPartition> {
+  bind_outcome(
+    o: resolve_program_segment_root(program: program, segment: segment),
+    f: fn(root) {
+      outcome_accepted(value: ProgramPartition {
+        ambient: program,
+        segment: segment,
+        root: root,
+        boundary: boundary
+      })
+    }
+  )
+}
+
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:program-partition-arrow-body-behavior-segment — consumer:partition_segment_is_ambient_arrow_body_behavior —
+// bind: design-in-language-emission-program-partition.md §6.1 — dissolve-on-arrival: segment-root behavior
+// projects through std node-kind realization rows; forbidden: steady-state ComputationNode behavior Transform
+// match in partition emit routing.
+fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
+  match root.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
+  }
+}
+
+fn partition_segment_is_ambient_arrow_body_behavior(
+  partition: ProgramPartition
+) -> Bool {
+  match partition.segment {
+    SubtreeRoot { root: segment_root } =>
+      (segment_root != partition.ambient.root)
+        && target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
+        && node_in_subtree_by_identity(
+          root: partition.ambient.root,
+          needle: segment_root
+        )
+        && partition_segment_root_is_transform_computation(root: segment_root)
+    _ => false
+  }
+}
+
+// 🟡 gated — feature:program-partition-arrow-body-behavior-emit-seam — consumer:emit_partition_arrow_body_behavior_source —
+// bind: #4741 / ROADMAP §1.5 (06_value_expression → translate_algebra dissolve) — dissolve-on-arrival: repoint
+// this seam onto translate/serialize when ComputationNode roots are admitted directly; delete
+// emit_partition_arrow_body_behavior_source and value-expression/serialize imports here — forbidden:
+// steady-state parallel body-emit path after §1.5 lands (cementation risk).
+// Wave A interim: Arrow.body Behavior segments route through value-expression projection (design §6.1 keystone).
+fn emit_partition_arrow_body_behavior_source(
+  partition: ProgramPartition,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: partition.ambient.root,
+      target: target,
+      handle_transform: fn(a, b, t) {
+        translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+      }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          bind_outcome(
+            o: target_value_expression_tokens_from_target(
+              expr: expr,
+              target: target,
+              projection: projection
+            ),
+            f: fn(tokens) {
+              serialize_concrete_syntax_tokens_to_source(
+                target: target,
+                tokens: tokens
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn emit_partition(
+  partition: ProgramPartition,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
+    bind_outcome(
+      o: partition_inferred_tree(partition: partition),
+      f: fn(_tree) {
+        emit_partition_arrow_body_behavior_source(
+          partition: partition,
+          target: target
+        )
+      }
+    )
+  } else {
+    bind_outcome(
+      o: partition_inferred_tree(partition: partition),
+      f: fn(tree) {
+        emit(tree: tree, target: target)
+      }
+    )
+  }
+}
+
+fn emit_for_target(
+  program: InferredTree,
+  segment: ProgramSegment,
+  target: TargetModel,
+  boundary: PartitionBoundaryPolicy
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: resolve_program_partition(
+      program: program,
+      segment: segment,
+      boundary: boundary
+    ),
+    f: fn(partition) {
+      emit_partition(partition: partition, target: target)
+    }
+  )
+}
+
+// Lens SectionRef adapter — fail-closed until section_subject consumer lands (§4.3 / api-review #4792).
+fn program_segment_from_section_unavailable() -> Outcome<ProgramSegment> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: partition_section_adapter_unavailable,
+      at: port_locus(port: ^program_segment_from_section_port),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}

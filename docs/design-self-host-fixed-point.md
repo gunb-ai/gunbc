@@ -1,4 +1,4 @@
-# Design: Self-Host Fixed Point (v4 bootstrap-from-self ratchet)
+# Design: Self-Host Fixed Point (v2 bootstrap-from-self ratchet)
 
 > **Status: DESIGN — map, not territory** (INVARIANTS.md "Map vs territory"). Explicitly
 > **gated downstream of the emit ladder**: stages B–D below assume nothing about emit that
@@ -6,16 +6,16 @@
 > the no-compromise convergence gate is DB-8 per
 > [`design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md).
 >
-> Housekeeping: the governing prose lives at **`src/v3/SELF_HOSTING.md`** (not `src/v4/` — a
+> Housekeeping: the governing prose lives at **`src/v3/SELF_HOSTING.md`** (not `src/v2/` — a
 > commonly mis-cited path); THESIS describes a `hand_maintained_src` ratchet that
-> `src/v4/compiler/self_host.dag` does not yet carry. This doc is the design that closes both
+> `src/v2/compiler/self_host.dag` does not yet carry. This doc is the design that closes both
 > gaps.
 
 ## 1. Problem
 
 THESIS facet 2 commits to: *compiling `compiler.dag` produces bit-identical stage0; the
-`.dag` graph is the source of truth.* What exists in v4 today is a scaffold-against-contract
-(`src/v4/compiler/self_host.dag`): the witness shapes are landed (`StructurallyEqual`,
+`.dag` graph is the source of truth.* What exists in v2 today is a scaffold-against-contract
+(`src/v2/compiler/self_host.dag`): the witness shapes are landed (`StructurallyEqual`,
 `BootstrapRoundtripEqual`, `FixedPointEqual`, `PromotionWitness`) but every body returns
 `*_not_realized` `Violates`, and `self_host_fixed_point_validate` rejects unconditionally.
 `workflow/bootstrap.dag` carries the richer vocabulary (stage hashes, `BootstrapHashPin`,
@@ -36,11 +36,11 @@ Three things need designing, in dependency order:
 
 | Piece | Where | State |
 |---|---|---|
-| Witness shapes: `StageEmissionEquality = Witness<StructurallyEqual>`, roundtrip + fixed-point sub-checks, `PromotionWitness` | `src/v4/compiler/self_host.dag:25-64` | landed, bodies fail-closed `not_realized` |
+| Witness shapes: `StageEmissionEquality = Witness<StructurallyEqual>`, roundtrip + fixed-point sub-checks, `PromotionWitness` | `src/v2/compiler/self_host.dag:25-64` | landed, bodies fail-closed `not_realized` |
 | The dissolution marker for the equality body | `self_host.dag:51` — "dissolve-on: runner consumes **find_witness/coercion exact structural-equality** witness" | the wiring target is the landed `preservation_rule_exact_structural_equality_zip_fold` (`find_witness.dag`) — stage A below |
-| Stage algebra + pins: `v4_stage{0,1,2}_hash`, `pinned_v4_fixed_point_hash`, `BootstrapHashPin`, `CompileStage`, `FixptStage1Stage2`, `ConvergenceLadder` | `src/v4/workflow/bootstrap.dag:30-133` | landed carriers, no executing runner |
+| Stage algebra + pins: `v2_stage{0,1,2}_hash`, `pinned_v4_fixed_point_hash`, `BootstrapHashPin`, `CompileStage`, `FixptStage1Stage2`, `ConvergenceLadder` | `src/v2/workflow/bootstrap.dag:30-133` | landed carriers, no executing runner |
 | Trusting-trust carriers: `DiverseCompilationRun` / `IndependentCompilerPair` / `DiverseCompilationAgreement` | `bootstrap.dag:78-98` | landed shapes (stage D) |
-| Claim + harness consumers | `src/v4/test/claim/self_host/claim_t15_self_host_fixed_point.dag`; `src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs` | exist — the consumers stage A flips from shape-checks to executed comparisons |
+| Claim + harness consumers | `src/v2/test/claim/self_host/claim_t15_self_host_fixed_point.dag`; `src/v3/compiler/tests/integration/v2_t15_self_host_fixed_point_harness_test.rs` | exist — the consumers stage A flips from shape-checks to executed comparisons |
 | Governing prose: 0-floor, DB-8 convergence, N=0 runtime boundary | `docs/design-pure-bootstrap-zero.md`, `src/v3/SELF_HOSTING.md` | authority; this design implements, does not amend |
 | Precedent: v2 census (2 hand-maintained of 62 stage0 files), v3 SG-0 census test | THESIS self-hosting section; `src/v3/compiler/tests/integration/sg0_census_test.rs` | the census *mechanism* to port (declared list + structural sweep ⊆ list) |
 
@@ -54,7 +54,7 @@ Stage algebra (the classical ladder, over the carriers that already exist):
 
 - **stage0** — the trusted seed: today the v2 `gunbc` binary (emitted-and-committed Rust,
   itself ~97% self-emitted per the v2 census).
-- **stage1** = `stage0(compiler.dag)` — the artifact set produced by compiling the v4
+- **stage1** = `stage0(compiler.dag)` — the artifact set produced by compiling the v2
   compiler sources with the seed.
 - **stage2** = `stage1(compiler.dag)` — the same sources compiled by the stage1 artifact.
 
@@ -93,9 +93,9 @@ THESIS's promised mechanism, made concrete (ports the v2/SG-0 census pattern):
   pattern, the capability it still hand-provides (seed runtime, host transport, CI shim …),
   and a **named dissolution trigger** (P5 — an entry without a trigger is the
   scaffold-without-dissolution problem shape).
-- For v4 the list's character differs from v2's: `src/v4/**` is already 0 hand-maintained
-  `.rs` — the hand-maintained surface the v4 fixed point *rests on* is the **seed and
-  bridges**: v2 stage0 (the runtime executing v4 today), the v3 harness residuals
+- For v2 the list's character differs from v2's: `src/v2/**` is already 0 hand-maintained
+  `.rs` — the hand-maintained surface the v2 fixed point *rests on* is the **seed and
+  bridges**: v2 stage0 (the runtime executing v2 today), the v3 harness residuals
   (ROADMAP's T-22 bridge row, PB-Runtime deferral), and the hand-synced workflow shims
   (`release.yml` until YamlStatic emission). The list makes that dependency surface explicit
   instead of ambient.
@@ -133,7 +133,7 @@ Each stage names what it consumes and refuses to reach past it:
   (it cannot be gamed by typecheck — every row is an executed artifact comparison).
 - **Stage C — whole-compiler stage1/stage2 (consumes T6–T8).** Realize
   `self_host_fixed_point_validate`: run the stage algebra, produce `PromotionWitness`,
-  operator-gated pin rotation. Acceptance is THESIS's sentence verbatim: the v4 binary
+  operator-gated pin rotation. Acceptance is THESIS's sentence verbatim: the v2 binary
   compiles `compiler.dag` and produces bit-identical stage0 Rust plus bit-identical emitted
   artifacts.
 - **Stage D — diverse double-compilation (post-fixed-point, optional).** The
@@ -145,7 +145,7 @@ Each stage names what it consumes and refuses to reach past it:
 ## 6. Consumers and minimal slice (E-10 / seesaw)
 
 - **Consumers (exist):** `claim_t15_self_host_fixed_point.dag` (claim corpus);
-  `v4_t15_self_host_fixed_point_harness_test.rs` (v3 harness — itself a `hand_maintained_src`
+  `v2_t15_self_host_fixed_point_harness_test.rs` (v3 harness — itself a `hand_maintained_src`
   entry with PB-Runtime's deferral as its trigger); the bounded-bridge rows in ROADMAP.
 - **Minimal slice = stage A**, nothing more: equality wiring + census data + the T-15 claim
   executing green on fixtures with the perturbed-candidate red. The slice's risk is the
@@ -166,7 +166,7 @@ Each stage names what it consumes and refuses to reach past it:
 
 ## 8. Open questions — escalate, don't improvise
 
-- **Q-S1 — what stage1 *is* during the interpreted era.** Today v4 runs interpreted by the
+- **Q-S1 — what stage1 *is* during the interpreted era.** Today v2 runs interpreted by the
   v2 binary; whole-compiler Rust emission is the ladder's far end. Recommended framing:
   stage B rows compare *emitted artifacts per module* (meaningful immediately), and "stage1
   as a runnable binary" only becomes a concept at stage C — do not invent an intermediate
@@ -184,7 +184,7 @@ Each stage names what it consumes and refuses to reach past it:
   operator-GO per rotation, recorded as the `BootstrapHashPin` update commit; no
   auto-promotion ever.
 - **Q-S4 — prose authority location.** `src/v3/SELF_HOSTING.md` governs but lives in the
-  frozen tree and is cited (incorrectly) as `src/v4/SELF_HOSTING.md` in planning material.
+  frozen tree and is cited (incorrectly) as `src/v2/SELF_HOSTING.md` in planning material.
   Either move it to `docs/` or fix the citations; one authority, one path (P2).
 
 ## 9. Non-goals

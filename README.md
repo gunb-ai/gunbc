@@ -58,7 +58,7 @@ crate — end-to-end in four commands:
 
 ```bash
 git clone https://github.com/gunb-ai/daglang.git && cd daglang
-cargo build --release -p v2-compiler --bin gunbc
+cargo build --release -p v1-compiler --bin gunbc
 
 ./target/release/gunbc compile \
   --source-root dsl/examples/weather \
@@ -79,39 +79,35 @@ Swap `--target rust` for `python`, `go`, or `dag` to retarget the same source.
 and Go emit currently fail for programs using match-as-expression /
 nested-if-as-expression (hero demo `weather.dag` is affected); fixes in flight,
 expected v0.1.1.
-The release binary is `target/release/gunbc` (crate `v2-compiler`, bin defined
-in `src/v2/stage0/Cargo.toml`).
+The release binary is `target/release/gunbc` (crate `v1-compiler`, bin defined
+in `src/v1/stage0/Cargo.toml`).
 
 ```bash
-cargo test -p v2-compiler-tests             # compiler tests
+cargo test -p v1-compiler-tests             # compiler tests
 cargo clippy --all-targets -- -D warnings   # lint
 ```
 
-## Compiler status (v2, v3, v4)
+## Compiler status (v1, v2)
 
-The tree holds three compiler generations. **Quick Start above runs v2 today.** Active
-work is in v4. v3 is frozen reference material, not a supported path.
+The tree holds two compiler generations. **Quick Start above runs v1 today.** Active
+work is in v2. (The former v3 generation has been removed.)
 
-| | **v2** | **v3** | **v4** |
-|---|--------|--------|--------|
-| Path | [`src/v2/`](src/v2/) | [`src/v3/`](src/v3/) | [`src/v4/`](src/v4/) |
-| Role | Production compiler (`gunbc` CLI) | Frozen predecessor | Next substrate + pipeline |
-| Source | `.dag` pipelines + shrinking Rust `stage0` | Large `.dag` + Rust tree (prior generation) | `.dag` in the compiler tree; bootstrap seed shrinking |
-| What works today | Parse, infer, emit to Rust/Python/Go; large test suite | Reference only — not extended or shipped | `std/` / `extdeps/` model depth; pipeline `.dag` structurally compiles in CI |
+| | **v1** | **v2** |
+|---|--------|--------|
+| Path | [`src/v1/`](src/v1/) | [`src/v2/`](src/v2/) |
+| Role | Production compiler (`gunbc` CLI) | Next substrate + pipeline |
+| Source | `.dag` pipelines + shrinking Rust `stage0` | `.dag` in the compiler tree; v1 is the bootstrap seed |
+| What works today | Parse, infer, emit to Rust/Python/Go; large test suite | `std/` / `extdeps/` model depth; pipeline `.dag` structurally compiles in CI |
 
-**v2 — shipping.** Self-hosted from `.dag` (tokenize through emit, plus complexity and
+**v1 — shipping.** Self-hosted from `.dag` (tokenize through emit, plus complexity and
 ownership). Use `gunbc` with `dsl/std/` and `dsl/extdeps/` for your programs. The weather
-demo is v2 end-to-end.
+demo is v1 end-to-end.
 
-**v3 — frozen.** v3 explored behaviors, lenses, and substrate reflection; the tree
-remains under `src/v3/` for study and regression context. New modeling and compiler work
-live in v4 only.
-
-**v4 — in progress (honest).** v4 combines a typed Node + Behavior substrate with a
-full pipeline (tokenize → parse → resolve → infer → emit → translate). In CI, v2
-`gunbc` compiles and type-checks all of `src/v4` with zero diagnostics. Runnable v4
+**v2 — in progress (honest).** v2 combines a typed Node + Behavior substrate with a
+full pipeline (tokenize → parse → resolve → infer → emit → translate). In CI, v1
+`gunbc` compiles and type-checks all of `src/v2` with zero diagnostics. Runnable v2
 stage0, full multi-target emission, execute-verified structural tests, and the self-host
-fixed point are still landing — **v2 remains the reference for end-to-end emit until v4
+fixed point are still landing — **v1 remains the reference for end-to-end emit until v2
 closes that loop.** See [ROADMAP.md](ROADMAP.md).
 
 ## What gunbc proves
@@ -144,7 +140,7 @@ dsl/                Portable daglang vocabulary
   std/                Shared types, algebra, iteration
   extdeps/            External system models (cloud, git, shell)
 
-src/v2/             gunbc compiler (.dag source, shipping)
+src/v1/             gunbc compiler (.dag source, shipping)
   00_core.dag         Core types
   02_parse.dag        Tokenizer + parser
   04_infer.dag        Type inference + provenance
@@ -154,14 +150,14 @@ src/v2/             gunbc compiler (.dag source, shipping)
 
 src/v3/             Frozen predecessor (reference; not shipped)
 
-src/v4/             Next compiler generation (in progress)
+src/v2/             Next compiler generation (in progress)
   std/                Substrate vocabulary
   extdeps/            Language and transport models
   compiler/           Pipeline stages (tokenize … emit … translate)
   lens/               Correctness lenses
   test/claim/         Structural TestClaim corpus
 
-src/v2/tests/       v2 compiler test suite
+src/v1/tests/       v2 compiler test suite
   testing-strategy.md Testing philosophy
 ```
 
@@ -173,4 +169,4 @@ Read top-down. Each doc links to its parent and children.
 2. **[ROADMAP.md](ROADMAP.md)** — what's done, what's next
 3. **[INVARIANTS.md](INVARIANTS.md)** — rules that enforce soundness
 4. **[MODELING.md](MODELING.md)** — how to model new concepts
-5. Design docs in `docs/` and `src/v2/` — drill into specifics
+5. Design docs in `docs/` and `src/v1/` — drill into specifics

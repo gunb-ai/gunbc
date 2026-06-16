@@ -55,7 +55,7 @@ The translation is the unique algebra-preserving map (homomorphism).
 | `TypeCheckpoint` (manual name→type table) | Structural matching: source and target both inhabit the same algebra over the same bit-width. The mapping is discovered, not declared. |
 | `InhabitantDecl` (manual algebra→template table) | Target language declares its types with algebraic identity (same as .dag types do). The compiler finds the homomorphism. |
 | `coercion-design.md` resolution order (checkpoint → algebra → structural → fail) | One mechanism: walk the source type's algebraic identity, find the target type that inhabits the same structure. Structural types (Product, Coproduct) are the base case — they compose recursively. |
-| `src/v2/coercion.dag` dispatch functions | Dissolve into the emitter. There is no separate coercion phase. |
+| `src/v1/coercion.dag` dispatch functions | Dissolve into the emitter. There is no separate coercion phase. |
 
 ### What remains
 
@@ -88,7 +88,7 @@ touching zero compiler files.
 
 | Metric | Current | Target |
 |---|---|---|
-| Language mentions in `src/v2/*.dag` | 632 | 0 |
+| Language mentions in `src/v1/*.dag` | 632 | 0 |
 | Language-specific emitter files | 3 (8,081 lines) | 0 — deleted |
 | String concat calls producing target syntax | ~680 | 0 |
 | String-keyed metadata maps | 14 | 0 |
@@ -101,11 +101,11 @@ touching zero compiler files.
 
 | File | Lines | Problem |
 |---|---|---|
-| `src/v2/05_emit.dag` | 2,276 | Target-agnostic dispatch, but also ~77 concat calls that build target syntax |
-| `src/v2/05_emit_rust.dag` | 5,709 | Rust-specific rendering — 309 language mentions, string concat, serde heuristics, Rc wrapping |
-| `src/v2/05_emit_python.dag` | 1,172 | Python-specific rendering — 96 language mentions |
-| `src/v2/05_emit_go.dag` | 1,200 | Go-specific rendering — 84 language mentions |
-| `src/v2/coercion.dag` | 298 | Separate coercion dispatch — parallel to emission |
+| `src/v1/05_emit.dag` | 2,276 | Target-agnostic dispatch, but also ~77 concat calls that build target syntax |
+| `src/v1/05_emit_rust.dag` | 5,709 | Rust-specific rendering — 309 language mentions, string concat, serde heuristics, Rc wrapping |
+| `src/v1/05_emit_python.dag` | 1,172 | Python-specific rendering — 96 language mentions |
+| `src/v1/05_emit_go.dag` | 1,200 | Go-specific rendering — 84 language mentions |
+| `src/v1/coercion.dag` | 298 | Separate coercion dispatch — parallel to emission |
 
 The emitter decides: it branches on type names, checks hardcoded lists,
 and builds target syntax via string concatenation. Each of these is a fact
@@ -123,7 +123,7 @@ that was lost at an upstream boundary.
 | `dsl/extdeps/languages/python/emit.dag` | 108 | Python rendering data |
 | `dsl/extdeps/languages/go/types.dag` | 173 | Go type data |
 | `dsl/extdeps/languages/go/emit.dag` | 101 | Go rendering data |
-| `src/v2/languages.dag` | — | `LanguageSpec` type definitions (presentation facts) |
+| `src/v1/languages.dag` | — | `LanguageSpec` type definitions (presentation facts) |
 
 The data files are the seed of the right architecture. The schema types
 (`TypeCheckpoint`, `InhabitantDecl`) are bootstrap scaffolding — they
@@ -133,10 +133,10 @@ exist because the compiler can't yet discover homomorphisms structurally.
 
 ## Target State
 
-### Compiler core (`src/v2/`)
+### Compiler core (`src/v1/`)
 
 ```
-src/v2/
+src/v1/
   05_emit.dag          One emitter: (annotated graph + LanguageSpec) → text
                        Zero language mentions. Zero string concat for syntax.
                        Reads algebraic identity from the graph, finds the
@@ -478,4 +478,4 @@ automatically. No new infrastructure needed.
 | [ROADMAP.md](../ROADMAP.md) Track 13 | Status tracking — current state, blockers, progress |
 | [coercion-design.md](coercion-design.md) | Bootstrap design — describes the manual scaffolding (TypeCheckpoint, InhabitantDecl, resolution order). Accurate for the transitional state. Dissolves when Track 13 completes. |
 | [INVARIANTS.md](../INVARIANTS.md) | Governing rules — "Emission reads data, never decides," "No duplicate representations," "No parallel implementations" |
-| [src/v2/compiler-laws.md](../src/v2/compiler-laws.md) Lane C | Implementation plan — file-level changes, site counts, lane dependencies |
+| [src/v1/compiler-laws.md](../src/v1/compiler-laws.md) Lane C | Implementation plan — file-level changes, site counts, lane dependencies |

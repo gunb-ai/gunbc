@@ -10,7 +10,7 @@
 
 ## 1. Problem
 
-Self-host means compiling `src/v4/**` as one multi-module corpus — hundreds of modules with
+Self-host means compiling `src/v2/**` as one multi-module corpus — hundreds of modules with
 heavy same-spelling reuse (`Outcome`, `Node`, `Witness` declared once, imported everywhere;
 plus genuine same-spelling *distinct* declarations across modules). Phase 1 makes identity a
 stamped fact instead of a spelling within one graph. The phase-2 questions:
@@ -26,7 +26,7 @@ stamped fact instead of a spelling within one graph. The phase-2 questions:
 
 | Piece | Where | Role |
 |---|---|---|
-| Cross-file admission machinery: `Import`, `ImportVisibility`, `ResolutionSubject`, `Admission`, `AdmittedSubject`, `AdmissionState`, module-root validation | `src/v4/compiler/03_name_resolve.dag` (T-28-B) | **the seam**: admission is where cross-module references resolve — identity must ride through it as a fact |
+| Cross-file admission machinery: `Import`, `ImportVisibility`, `ResolutionSubject`, `Admission`, `AdmittedSubject`, `AdmissionState`, module-root validation | `src/v2/compiler/03_name_resolve.dag` (T-28-B) | **the seam**: admission is where cross-module references resolve — identity must ride through it as a fact |
 | Single-file use→def resolution (canonical-spelling substitution today) | `03_resolve.dag` (K-1) | phase-1's stamping site; phase 2 extends what admission *carries*, not how K-1 works |
 | `QualifiedName = FreeMonoid<Symbol>` | `std/qualified_name.dag` | the declared identifier of a module/declaration — the minting key's first half |
 | `binding_id` channel: allocator + stamping seam + equality participation (**YES**) | #4581 (out-of-clone impl) + `design-node-identity-channels.md` | the carrier; phase 2 adds no second identity vocabulary |

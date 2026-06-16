@@ -72,5 +72,5 @@ data default_profile: CargoProfile = "dev"
 // -- Service: shell transport wiring -----------------------------
 // The `cargo.Build` command service (build/test/clippy/doc/run) lives in
 // `extdeps.cargo_build` so this pure model can be imported by the compiler
-// (e.g. v2.compiler.stage0_crates) without dragging a shell-transport service
+// (e.g. v1.compiler.stage0_crates) without dragging a shell-transport service
 // into the bootstrap seed. The model here carries no transport.

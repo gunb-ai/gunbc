@@ -1,0 +1,1352 @@
+// v2 compiler pipeline -- the full .dag-to-files transform.
+
+module v1.compiler.compile
+
+import v1.std.core {
+  CompileResult, TextFile, SourceSpan, authored_name_at,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
+  Connective, NoConnective, Arrow, Cardinality,
+  resource_use_name_at, resource_use_resource,
+  param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
+  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
+  module_imports, module_items, import_is_all, import_specific_names_at,
+  FieldAccessStyle, FieldValueShape, FieldSummary,
+  InferredNode, Resolved, CompilerError, TypeVariable,
+  VarBindingKind, CallSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
+  ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern,
+  arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
+  LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
+  NewlineIndex, build_newline_index,
+  field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
+  InternTable, empty_intern_table, pre_intern_tokens
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseResult }
+import v1.compiler.resolve { resolve_modules, ModuleGraph }
+import v1.compiler.normalize { normalize_graph, NormalizeResult }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer { reconcile }
+import v1.compiler.infer_types { algebra_field_kind_name }
+import v1.compiler.emit { EmitResult, escape_json_string }
+import v1.compiler.emit_rust { emit_rust }
+import v1.compiler.emit_python { emit_python }
+import v1.compiler.emit_go { emit_go }
+import v1.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
+import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+import std.termination {
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
+}
+import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type SourceFile {
+  path: String
+  content: String
+}
+
+type PipelineResult {
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  artifact_plan: ArtifactPlan
+  newline_indices: List<NewlineIndex>
+}
+
+type FrontendResult {
+  graph: ModuleGraph?
+  diagnostics: List<ErrorNode>
+  newline_indices: List<NewlineIndex>
+  intern_table: InternTable
+}
+
+type FrontendAccum {
+  parse_results: List<ParseResult>
+  newline_indices: List<NewlineIndex>
+  intern_table: InternTable
+}
+
+type FrontendPrepared {
+  tokens: List<Token>
+  newline_index: NewlineIndex
+}
+
+// =========================================================================
+// Function extraction for pipeline analyses
+// =========================================================================
+
+fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
+  typed.modules
+    |> filter(m => m.items |> any(item => item.body != Absent))
+    |> flat_map(m =>
+      m.items |> filter(item => item.body != Absent) |> map(item =>
+        FuncEntry {
+          name: authored_name_at(source_indices: m.type_env.source_indices, node: item),
+          body: item.body.value,
+          params: item.params,
+          span: item.span,
+          is_tail_recursive: item.is_self_recursive && item.has_non_tail_self_call == false
+        }
+      )
+    )
+}
+
+fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
+  RecursionContext {}
+}
+
+fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
+  typed.modules
+    |> filter(m => m.items |> any(item => item.body != Absent))
+    |> flat_map(m =>
+      m.items |> filter(item => item.body != Absent) |> map(item =>
+        analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
+      )
+    )
+}
+
+fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
+  proofs |> flat_map(proof =>
+    proof.decisions |> flat_map(decision =>
+      match decision {
+        SharedError { binding: binding, consumer_count: count, sites: sites } =>
+          [make_error_node(diagnostic: OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
+        _ => []
+      }
+    )
+  )
+}
+
+// =========================================================================
+// Complexity analysis (opt-in; v2 emission gate unchanged)
+//
+// When enabled, classify_recursion_pattern / build_complexity_report can
+// surface ComplexityUnknown for non-descending self-calls (fn spin(n: n)).
+//
+// v2 does NOT fail-closed on those diagnostics today — emission gates on
+// typed_diags only (see type_errors filter below); main.rs and dag run
+// carve out ComplexityUnknown (00_core.dag is_interpreter_blocking_diagnostic,
+// cx-design.md C6). Tier-1 CX enforcement is v3 Pure Bootstrap scope.
+//
+// Default-off skips build_complexity_report (~356s full-src compile) because
+// the report is not consumed by emission. Callers that need the report or
+// CX diagnostics pass CompilePipelineOptions { analyze_complexity: true }.
+// =========================================================================
+
+type CompilePipelineOptions {
+  analyze_complexity: Bool
+}
+
+fn default_compile_pipeline_options() -> CompilePipelineOptions {
+  CompilePipelineOptions { analyze_complexity: false }
+}
+
+fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
+  let func_entries = extract_func_entries(typed: typed)
+  let recursion_ctx = build_recursion_context(typed: typed)
+  build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
+}
+
+fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
+  complexity.violations |> map(v =>
+    make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
+  )
+}
+
+// =========================================================================
+// Diagnostic collection
+// =========================================================================
+
+fn empty_artifact_plan() -> ArtifactPlan {
+  ArtifactPlan { artifacts: [], boundaries: [] }
+}
+
+fn compile_bundle_error(message: String) -> ErrorNode {
+  make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
+}
+
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+  match artifact.target {
+    Rust => emit_rust(typed: typed)
+    Python => emit_python(typed: typed)
+    Go => emit_go(typed: typed)
+    Dag => emit_dag_artifact(typed: typed)
+  }
+}
+
+fn json_quote(s: String) -> String {
+  concat("\"", escape_json_string(s: s), "\"")
+}
+
+fn json_list(items: List<String>) -> String {
+  concat("[", items |> join(separator: ", "), "]")
+}
+
+fn json_optional_string(value: String?) -> String {
+  match value {
+    Present { value: inner } => json_quote(s: inner)
+    Absent => "null"
+  }
+}
+
+// -------------------------------------------------------------------------
+// DAG artifact v0.2.0: collect each Node once, emit NodeId ($ref) elsewhere.
+// See v1.compiler.artifact { DagArtifact, DagNodeId } and audit doc.
+// -------------------------------------------------------------------------
+
+type DagCollectAcc {
+  seen: Map<String, String>
+  order: List<Node>
+  collision_errors: List<ErrorNode>
+}
+
+type DagCollectPending {
+  anchor: Node
+  key: String
+  fp: String
+}
+
+// Provisional location key until v2 content_hash (see DagNodeId 🟡 gate). Collection
+// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
+fn dag_node_key(node: Node) -> String {
+  let anchor = dag_node_collection_anchor(node: node)
+  concat(
+    anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+    match anchor.ident {
+      Present { value: id } => concat(":", to_string(i: id))
+      Absent => ""
+    })
+}
+
+// Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
+// Only NoExprData identity shells (type/import back-links) share the declaration anchor.
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
+// total on shells) so collection does not match expr_data × InferredNode here;
+// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
+fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
+  match node.expr_data {
+    NoExprData =>
+      match node.inferred {
+        Present { value: Resolved { node: _ } } =>
+          // Type/import back-links only — never peel nodes that carry structure.
+          node.body == none && node.transport == none
+            && (node.children |> count) == 0 && (node.params |> count) == 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn dag_node_collection_anchor(node: Node) -> Node {
+  if dag_node_is_resolved_identity_shell(node: node) {
+    match node.inferred {
+      Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
+      _ => node
+    }
+  } else {
+    node
+  }
+}
+
+fn inferred_fingerprint(value: InferredNode?) -> String {
+  match value {
+    Absent => "none"
+    Present { value: Resolved { node: _ } } => "Resolved"
+    Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
+    Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
+  }
+}
+
+fn expr_data_variant(data: ExprData) -> String {
+  match data {
+    NoExprData => "NoExprData"
+    ExprLiteral { value: _ } => "ExprLiteral"
+    ExprError { kind: _, message: _ } => "ExprError"
+    ExprVar { binding_kind: _ } => "ExprVar"
+    ExprFieldAccess { summary: _ } => "ExprFieldAccess"
+    ExprCall { call_semantics: _, descent_evidence: _ } => "ExprCall"
+    ExprMethodCall { method_semantics: _ } => "ExprMethodCall"
+    ExprMatch => "ExprMatch"
+    ExprIf => "ExprIf"
+    ExprLet => "ExprLet"
+    ExprRecordLit { parent_enum: _ } => "ExprRecordLit"
+    ExprListLit => "ExprListLit"
+    ExprBinOp { op: _, algebra_field: _ } => "ExprBinOp"
+    ExprUnaryOp { op: _ } => "ExprUnaryOp"
+    ExprLambda => "ExprLambda"
+    ExprStringInterp => "ExprStringInterp"
+    ExprBlock => "ExprBlock"
+    ExprCast => "ExprCast"
+    ExprForEach => "ExprForEach"
+    ExprIndex => "ExprIndex"
+    ExprSlice => "ExprSlice"
+    ExprReturn => "ExprReturn"
+  }
+}
+
+fn dag_node_surface_fingerprint(node: Node) -> String {
+  let child_names = node.children |> map(c => c.name) |> join(separator: ",")
+  let param_names = node.params |> map(p => p.name) |> join(separator: ",")
+  concat(
+    node.name, "|",
+    connective_name(value: node.connective), "|",
+    inferred_fingerprint(value: node.inferred), "|",
+    expr_data_variant(data: node.expr_data), "|",
+    child_names, "|",
+    param_names)
+}
+
+fn dag_node_fingerprint(node: Node) -> String {
+  dag_node_surface_fingerprint(node: dag_node_collection_anchor(node: node))
+}
+
+fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
+  let synthetic = span.start == 0 && span.end == 0
+  let detail = if synthetic {
+    " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
+  } else {
+    ""
+  }
+  make_error_node(
+    diagnostic: InternalError {
+      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
+      span: span
+    },
+    module_name: ""
+  )
+}
+
+fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
+  make_error_node(
+    diagnostic: InternalError {
+      message: concat("dag artifact: node missing from nodes table (key=", dag_node_key(node: node), ")"),
+      span: node.span
+    },
+    module_name: ""
+  )
+}
+
+fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match map_get(key_to_id, dag_node_key(node: node)) {
+    Present { value: _ } => []
+    Absent => [dag_node_missing_ref_error(node: node)]
+  }
+}
+
+fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Present { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
+    Absent => []
+  }
+}
+
+fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Present { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
+    _ => []
+  }
+}
+
+fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  concat(
+    if is_import_statement_node(n: node) {
+      []
+    } else {
+      node.children |> flat_map(c => dag_emit_check_ref_target(node: c, key_to_id: key_to_id))
+    },
+    if is_module_shell_node(n: node) {
+      []
+    } else {
+      node.params |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id))
+    },
+    node.uses |> flat_map(u => dag_emit_check_ref_target(node: u, key_to_id: key_to_id)),
+    dag_emit_check_optional_ref_target(value: node.body, key_to_id: key_to_id),
+    dag_emit_check_optional_ref_target(value: node.transport, key_to_id: key_to_id),
+    node.properties |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id)),
+    dag_emit_check_optional_ref_target(value: node.type_annotation, key_to_id: key_to_id),
+    dag_emit_check_inferred_ref_target(value: node.inferred, key_to_id: key_to_id)
+  )
+}
+
+fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  order |> flat_map(n => dag_emit_check_node_refs(node: n, key_to_id: key_to_id))
+}
+
+fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAcc {
+  nodes |> fold(init: acc, f: (a, n) => dag_collect_insert(node: n, acc: a))
+}
+
+fn dag_collect_optional_node(value: Node?, acc: DagCollectAcc) -> DagCollectAcc {
+  match value {
+    Present { value: inner } => dag_collect_insert(node: inner, acc: acc)
+    Absent => acc
+  }
+}
+
+fn dag_collect_inferred(value: InferredNode?, acc: DagCollectAcc) -> DagCollectAcc {
+  match value {
+    Present { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
+    _ => acc
+  }
+}
+
+fn dag_collect_match_pattern(pattern: MatchPattern, acc: DagCollectAcc) -> DagCollectAcc {
+  match pattern {
+    Bind { name: _ } => acc
+    LitPattern { value: _ } => acc
+    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
+      field_bindings |> fold(init: acc, f: (a, fb) => dag_collect_insert(node: fb, acc: a))
+    Wildcard => acc
+  }
+}
+
+fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_nodes_list(nodes: node.children, acc: acc)
+  let acc = if is_module_shell_node(n: node) {
+    acc
+  } else {
+    dag_collect_nodes_list(nodes: node.params, acc: acc)
+  }
+  let acc = dag_collect_nodes_list(nodes: node.uses, acc: acc)
+  let acc = dag_collect_optional_node(value: node.body, acc: acc)
+  let acc = dag_collect_optional_node(value: node.transport, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: node.properties, acc: acc)
+  let acc = dag_collect_optional_node(value: node.type_annotation, acc: acc)
+  let acc = dag_collect_inferred(value: node.inferred, acc: acc)
+  match node.match_pattern {
+    Present { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
+    Absent => acc
+  }
+}
+
+fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let anchor = dag_node_collection_anchor(node: node)
+  let key = dag_node_key(node: anchor)
+  let fp = dag_node_fingerprint(node: anchor)
+  match map_get(acc.seen, key) {
+    Present { value: prior } =>
+      if prior == fp {
+        acc
+      } else if anchor.span.start == 0 && anchor.span.end == 0 {
+        DagCollectAcc {
+          seen: acc.seen,
+          order: acc.order,
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
+        }
+      } else {
+        // Authored span: provisional key may alias; first canonical record wins until v2 content_hash.
+        acc
+      }
+    Absent => {
+      [DagCollectPending { anchor: anchor, key: key, fp: fp }]
+        |> fold(
+          init: acc,
+          f: (inner, pending) =>
+            dag_collect_node_tree(
+              node: pending.anchor,
+              acc: DagCollectAcc {
+                seen: map_insert(inner.seen, pending.key, pending.fp),
+                order: list_push(inner.order, pending.anchor),
+                collision_errors: inner.collision_errors
+              }
+            )
+        )
+    }
+  }
+}
+
+// Import statements (module.params) are not collected: module shell skips param walk,
+// imports serialize inline via imports[] (string names), and ref validation skips
+// module-shell params + import-statement children (T-37).
+fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_insert(node: module.module, acc: acc)
+  module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
+}
+
+fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
+  typed.modules
+    |> fold(init: DagCollectAcc { seen: empty_map(), order: [], collision_errors: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
+}
+
+fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
+  order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(i: pair.first)))
+  )
+}
+
+fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
+  typed.modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
+}
+
+// Only called after dag_emit_ref_errors passes (fail-closed preflight).
+fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
+  match map_get(key_to_id, dag_node_key(node: node)) {
+    Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
+    Absent => "{\"$ref\": null}"
+  }
+}
+
+fn json_optional_node_ref(value: Node?, key_to_id: Map<String, String>) -> String {
+  match value {
+    Present { value: inner } => serialize_node_ref(node: inner, key_to_id: key_to_id)
+    Absent => "null"
+  }
+}
+
+fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, String>) -> String {
+  match value {
+    Present { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
+    Absent => "null"
+  }
+}
+
+fn json_optional_span(value: SourceSpan?) -> String {
+  match value {
+    Present { value: inner } => serialize_span(span: inner)
+    Absent => "null"
+  }
+}
+
+fn json_bool(value: Bool) -> String {
+  if value { "true" } else { "false" }
+}
+
+fn connective_name(value: Connective) -> String {
+  match value {
+    Conj => "Conj"
+    Disj => "Disj"
+    NoConnective => "NoConnective"
+    Arrow => "Arrow"
+  }
+}
+
+fn cardinality_name(value: Cardinality) -> String {
+  match value {
+    Required => "Required"
+    CardOptional => "CardOptional"
+  }
+}
+
+fn field_access_style_name(value: FieldAccessStyle) -> String {
+  match value {
+    StoredField => "StoredField"
+    EnumAccessor => "EnumAccessor"
+    OptionalUnwrap => "OptionalUnwrap"
+    TupleFirst => "TupleFirst"
+    TupleSecond => "TupleSecond"
+  }
+}
+
+fn field_value_shape_name(value: FieldValueShape) -> String {
+  match value {
+    PlainValue => "PlainValue"
+    OptionalValue => "OptionalValue"
+  }
+}
+
+// (P5.3: severity_name and error_category_name deleted -- severity and category
+//  are now strings stored in diagnostic Node properties, not enum variants.)
+
+fn var_binding_kind_name(value: VarBindingKind) -> String {
+  match value {
+    LocalValueBinding => "LocalValueBinding"
+    FunctionValueBinding => "FunctionValueBinding"
+    VariantValueBinding { parent_enum: _ } => "VariantValueBinding"
+    MatchBoundBinding => "MatchBoundBinding"
+  }
+}
+
+fn call_semantics_name(value: CallSemantics) -> String {
+  match value {
+    PlainCallSemantics => "PlainCallSemantics"
+    LookupCallSemantics => "LookupCallSemantics"
+  }
+}
+
+fn expr_error_kind_name(value: ExprErrorKind) -> String {
+  match value {
+    ParseRecoveryError => "ParseRecoveryError"
+    SemanticExprError => "SemanticExprError"
+    InternalExprError => "InternalExprError"
+  }
+}
+
+fn bin_op_name(value: BinOp) -> String {
+  match value {
+    Add => "Add"
+    Sub => "Sub"
+    Mul => "Mul"
+    Div => "Div"
+    Mod => "Mod"
+    Eq => "Eq"
+    Ne => "Ne"
+    Lt => "Lt"
+    Gt => "Gt"
+    Le => "Le"
+    Ge => "Ge"
+    And => "And"
+    Or => "Or"
+    NullCoalesce => "NullCoalesce"
+  }
+}
+
+fn unary_op_name(value: UnaryOpKind) -> String {
+  match value {
+    Not => "Not"
+    Neg => "Neg"
+  }
+}
+
+fn serialize_span(span: SourceSpan) -> String {
+  concat("{\"start\": ", to_string(i: span.start), ", \"end\": ", to_string(i: span.end), "}")
+}
+
+fn serialize_import_node(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let names_json = if import_is_all(n: imp) {
+    "{\"kind\": \"ImportAll\"}"
+  } else {
+    concat(
+      "{\"kind\": \"ImportSpecific\", \"names\": ",
+      json_list(items: import_specific_names_at(n: imp, source_indices: source_indices) |> map(v => json_quote(s: v))),
+      "}")
+  }
+  concat(
+    "{\"module_path\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: imp)),
+    ", \"names\": ", names_json,
+    ", \"span\": ", serialize_span(span: imp.span),
+    "}")
+}
+
+fn serialize_field_summary(summary: FieldSummary) -> String {
+  concat(
+    "{\"access_style\": ", json_quote(s: field_access_style_name(value: summary.access_style)),
+    ", \"value_shape\": ", json_quote(s: field_value_shape_name(value: summary.value_shape)),
+    "}")
+}
+
+fn serialize_literal(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: inner } =>
+      concat("{\"kind\": \"LitStr\", \"value\": ", json_quote(s: inner), "}")
+    LitInt { value: inner } =>
+      concat("{\"kind\": \"LitInt\", \"value\": ", to_string(i: inner), "}")
+    LitFloat { value: inner } =>
+      concat("{\"kind\": \"LitFloat\", \"value\": ", json_quote(s: inner), "}")
+    LitBool { value: inner } =>
+      concat("{\"kind\": \"LitBool\", \"value\": ", json_bool(value: inner), "}")
+    LitNull => "{\"kind\": \"LitNull\"}"
+    LitSymbol { value: inner } =>
+      concat("{\"kind\": \"LitSymbol\", \"value\": ", json_quote(s: inner), "}")
+  }
+}
+
+fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(
+    "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_indices: source_indices)),
+    ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices),
+    "}")
+}
+
+fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
+  match pattern {
+    Bind { name: inner } =>
+      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: inner), "}")
+    LitPattern { value: inner } =>
+      concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
+    VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
+      concat(
+        "{\"kind\": \"VariantPattern\", \"name\": ", json_quote(s: inner),
+        ", \"parent_enum\": ", json_optional_string(value: parent_enum),
+        ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices))),
+        "}")
+    Wildcard => "{\"kind\": \"Wildcard\"}"
+  }
+}
+
+fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
+    ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
+    "}")
+}
+
+fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
+    ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
+    ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
+    "}")
+}
+
+fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
+    ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
+    "}")
+}
+
+fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  match part {
+    Text { value: inner } =>
+      concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
+    Interpolation { expr: inner } =>
+      concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node_ref(node: inner, key_to_id: key_to_id), "}")
+  }
+}
+
+fn serialize_call_semantics(value: CallSemantics?) -> String {
+  match value {
+    Present { value: inner } =>
+      concat("{\"kind\": ", json_quote(s: call_semantics_name(value: inner)), "}")
+    Absent => "null"
+  }
+}
+
+fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  match value {
+    Present { value: PlainMethodSemantics } =>
+      "{\"kind\": \"PlainMethodSemantics\"}"
+    Present { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
+      let mn = authored_name_at(source_indices: source_indices, node: method_def)
+      concat(
+        "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
+        json_quote(s: mn),
+        ", \"fold_accumulator_type\": ",
+        json_optional_node_ref(value: fold_accumulator_type, key_to_id: key_to_id),
+        "}")
+    Present { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
+      concat(
+        "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
+        json_quote(s: service_name),
+        ", \"op_params\": ",
+        json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),
+        "}")
+    Absent => "null"
+  }
+}
+
+fn serialize_recursion_shape(shape: RecursionShape) -> String {
+  match shape {
+    DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
+    ListRecursion => "{\"_variant\": \"ListRecursion\"}"
+    OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}"
+    SetRecursion => "{\"_variant\": \"SetRecursion\"}"
+    MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}"
+  }
+}
+
+fn serialize_inductive_field(field: InductiveField) -> String {
+  concat(
+    "{\"type_name\": ", json_quote(s: field.type_name),
+    ", \"variant_name\": ", json_quote(s: field.variant_name),
+    ", \"field_name\": ", json_quote(s: field.field_name),
+    ", \"shape\": ", serialize_recursion_shape(shape: field.shape),
+    "}")
+}
+
+fn serialize_positive_descent_amount(steps: PositiveDescentAmount) -> String {
+  match steps {
+    OneStep => "{\"_variant\": \"OneStep\"}"
+    AdditionalStep { previous: p } =>
+      concat("{\"_variant\": \"AdditionalStep\", \"previous\": ", serialize_positive_descent_amount(steps: p), "}")
+  }
+}
+
+fn serialize_proportional_divisor(d: ProportionalDivisor) -> String {
+  match d {
+    DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
+    StrictlyLarger { inner: i } =>
+      concat("{\"_variant\": \"StrictlyLarger\", \"inner\": ", serialize_proportional_divisor(d: i), "}")
+  }
+}
+
+fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
+  match factor {
+    UnitShrink => "{\"_variant\": \"UnitShrink\"}"
+    ConstantShrink { steps: s } =>
+      concat("{\"_variant\": \"ConstantShrink\", \"steps\": ", serialize_positive_descent_amount(steps: s), "}")
+    ProportionalShrink { divisor: d } =>
+      concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", serialize_proportional_divisor(d: d), "}")
+  }
+}
+
+fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
+  match rel {
+    StrictSubValue { field: f, factor: fac } =>
+      concat(
+        "{\"_variant\": \"StrictSubValue\", \"field\": ", serialize_inductive_field(field: f),
+        ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
+    IteratedSubValue { field: f } =>
+      concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
+    ArithmeticDescent { param: p, factor: fac } =>
+      concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
+    PreservedValue => "{\"_variant\": \"PreservedValue\"}"
+    NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
+    StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
+    MixedTop => "{\"_variant\": \"MixedTop\"}"
+    SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
+  }
+}
+
+fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
+  match de {
+    Present { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
+    Absent => "null"
+  }
+}
+
+fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  let ch = expr_node.children
+  let name = authored_name_at(source_indices: source_indices, node: expr_node)
+  match expr_node.expr_data {
+    NoExprData => "{\"kind\": \"NoExprData\"}"
+    ExprLiteral { value: value } =>
+      concat("{\"kind\": \"ExprLiteral\", \"value\": ", serialize_literal(value: value), "}")
+    ExprError { kind: kind, message: message } =>
+      concat(
+        "{\"kind\": \"ExprError\", \"error_kind\": ", json_quote(s: expr_error_kind_name(value: kind)),
+        ", \"message\": ", json_quote(s: message),
+        "}")
+    ExprVar { binding_kind: binding_kind } =>
+      concat(
+        "{\"kind\": \"ExprVar\", \"name\": ", json_quote(s: name),
+        ", \"binding_kind\": ",
+        match binding_kind {
+          Present { value: inner } =>
+            concat("{\"kind\": ", json_quote(s: var_binding_kind_name(value: inner)),
+              match inner {
+                VariantValueBinding { parent_enum: parent_enum } =>
+                  concat(", \"parent_enum\": ", json_quote(s: parent_enum))
+                _ => ""
+              },
+            "}")
+          Absent => "null"
+        },
+        "}")
+    ExprFieldAccess { summary: summary } =>
+      let field = field_access_field_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
+        ", \"summary\": ",
+        match summary {
+          Present { value: inner } => serialize_field_summary(summary: inner)
+          Absent => "null"
+        },
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
+      let func = expr_call_func_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
+        ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
+        ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprMethodCall { method_semantics: method_semantics } =>
+      let method = expr_method_name_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
+        ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics, source_indices: source_indices, key_to_id: key_to_id),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprBinOp { op: op, algebra_field: af } =>
+      concat(
+        "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
+        ", \"algebra_field\": ", match af { Present { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  Absent => "null" },
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprUnaryOp { op: op } =>
+      concat(
+        "{\"kind\": \"ExprUnaryOp\", \"op\": ", json_quote(s: unary_op_name(value: op)),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprLambda =>
+      let params = lambda_param_names_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprLet =>
+      concat(
+        "{\"kind\": \"ExprLet\", \"name\": ", json_quote(s: name),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprRecordLit { parent_enum: parent_enum } =>
+      let type_name = record_lit_type_name_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
+        ", \"parent_enum\": ", json_optional_string(value: parent_enum),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprForEach =>
+      let variable = foreach_variable_at(texpr: expr_node, source_indices: source_indices)
+      concat(
+        "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprMatch =>
+      concat(
+        "{\"kind\": \"ExprMatch\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprIf =>
+      concat(
+        "{\"kind\": \"ExprIf\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprListLit =>
+      concat(
+        "{\"kind\": \"ExprListLit\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprStringInterp =>
+      concat(
+        "{\"kind\": \"ExprStringInterp\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprBlock =>
+      concat(
+        "{\"kind\": \"ExprBlock\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprCast =>
+      concat(
+        "{\"kind\": \"ExprCast\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprIndex =>
+      concat(
+        "{\"kind\": \"ExprIndex\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprSlice =>
+      concat(
+        "{\"kind\": \"ExprSlice\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+    ExprReturn =>
+      concat(
+        "{\"kind\": \"ExprReturn\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
+        "}")
+  }
+}
+
+fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, String>) -> String {
+  match inferred {
+    Resolved { node: node } =>
+      concat("{\"kind\": \"Resolved\", \"node\": ", serialize_node_ref(node: node, key_to_id: key_to_id), "}")
+    CompilerError { message: message, span: span } =>
+      concat(
+        "{\"kind\": \"CompilerError\", \"message\": ", json_quote(s: message),
+        ", \"span\": ", serialize_span(span: span),
+        "}")
+    TypeVariable { id: id } =>
+      concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
+  }
+}
+
+fn serialize_resource_use(resource_use: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
+    ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
+    ", \"span\": ", serialize_span(span: resource_use.span),
+    "}")
+}
+
+fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
+    ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
+    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
+    ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
+    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
+    ", \"span\": ", serialize_span(span: field_node_span(n: field)),
+    "}")
+}
+
+fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
+    ", \"type_expr\": ", serialize_node_ref(node: param_node_type_expr(n: param), key_to_id: key_to_id),
+    ", \"default_value\": ", json_optional_node_ref(value: param_node_default_value(n: param), key_to_id: key_to_id),
+    ", \"span\": ", serialize_span(span: param_node_span(n: param)),
+    "}")
+}
+
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// Shape-filter on module shell (all params are import slots); not a semantic Module tag.
+fn is_module_shell_node(n: Node) -> Bool {
+  n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
+    && n.transport == none && n.uses |> count == 0
+    && n.params |> all(p => is_import_slot_node(p: p))
+}
+
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+fn is_import_slot_node(n: Node) -> Bool {
+  import_is_all(n: n) || (
+    n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
+}
+
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// Shape-filter for import statements (import_is_all OR specific-import name children),
+// NOT a general semantic discriminator — safe here because callers gate on traversal
+// context (dag_emit_check_node_refs on collected order nodes; module.params slots).
+fn is_import_statement_node(n: Node) -> Bool {
+  import_is_all(n: n) || (
+    (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData
+      && (n.params |> count) == 0)
+}
+
+fn serialize_node_params_json(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  if is_module_shell_node(n: node) {
+    "[]"
+  } else {
+    json_list(items: node.params |> map(param => serialize_param(param: param, source_indices: source_indices, key_to_id: key_to_id)))
+  }
+}
+
+fn serialize_module_imports_json(node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let imports = module_imports(n: node)
+  if imports |> count == 0 {
+    "[]"
+  } else if imports |> all(imp => imp.params |> count == 0) {
+    json_list(items: imports |> map(imp => serialize_import_node(imp: imp, source_indices: source_indices)))
+  } else {
+    "[]"
+  }
+}
+
+fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
+    ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
+    ", \"span\": ", serialize_span(span: node.span),
+    ", \"ident_span\": ", json_optional_span(value: node.ident_span),
+    ", \"children\": ", json_list(items: node.children |> map(child => serialize_node_ref(node: child, key_to_id: key_to_id))),
+    ", \"connective\": ",
+    match node.connective {
+      Conj => json_quote(s: connective_name(value: Conj))
+      Disj => json_quote(s: connective_name(value: Disj))
+      NoConnective => "null"
+      Arrow => json_quote(s: connective_name(value: Arrow))
+    },
+    ", \"params\": ", serialize_node_params_json(node: node, source_indices: source_indices, key_to_id: key_to_id),
+    ", \"inferred\": ", json_optional_inferred_node_ref(value: node.inferred, key_to_id: key_to_id),
+    ", \"return_cardinality\": ", json_quote(s: cardinality_name(value: node.return_cardinality)),
+    ", \"uses\": ", json_list(items: node.uses |> map(item => serialize_resource_use(resource_use: item, source_indices: source_indices, key_to_id: key_to_id))),
+    ", \"body\": ", json_optional_node_ref(value: node.body, key_to_id: key_to_id),
+    ", \"transport\": ", json_optional_node_ref(value: node.transport, key_to_id: key_to_id),
+    ", \"properties\": ", json_list(items: node.properties |> map(prop => serialize_field_init(field_init: prop, source_indices: source_indices, key_to_id: key_to_id))),
+    ", \"type_annotation\": ", json_optional_node_ref(value: node.type_annotation, key_to_id: key_to_id),
+    ", \"is_self_recursive\": ", json_bool(value: node.is_self_recursive),
+    ", \"has_non_tail_self_call\": ", json_bool(value: node.has_non_tail_self_call),
+    ", \"expr_data\": ", serialize_expr_data(expr_node: node, source_indices: source_indices, key_to_id: key_to_id),
+    "}")
+}
+
+fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
+    ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
+    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
+    "}")
+}
+
+fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  order |> enumerate |> map(pair =>
+    concat(
+      json_quote(s: concat("n", to_string(i: pair.first))),
+      ": ",
+      serialize_node_record(node: pair.second, source_indices: source_indices, key_to_id: key_to_id))
+  ) |> join(separator: ", ")
+}
+
+fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
+  let severity = "error"
+  concat(
+    "{\"severity\": ", json_quote(s: severity),
+    ", \"message\": ", json_quote(s: diagnostic_to_message(d: diagnostic.diagnostic)),
+    ", \"span\": ", serialize_span(span: diagnostic_to_span(d: diagnostic.diagnostic)),
+    ", \"module_name\": ", json_optional_string(value: Present { value: diagnostic.module_name }),
+    ", \"category\": ", "null",
+    "}")
+}
+
+fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
+  let collected = collect_dag_nodes(typed: typed)
+  if collected.collision_errors |> count > 0 {
+    return EmitResult { files: [], diagnostics: collected.collision_errors }
+  }
+  let order = collected.order
+  let key_to_id = build_dag_key_to_id(order: order)
+  let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
+  if ref_errors |> count > 0 {
+    return EmitResult { files: [], diagnostics: ref_errors }
+  }
+  let source_indices = dag_graph_source_indices(typed: typed)
+  let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
+  let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
+  let diagnostics_json = typed.diagnostics |> map(d => serialize_diagnostic(diagnostic: d)) |> join(separator: ", ")
+  let item_registry_json = map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
+  let json = concat(
+    "{\n  \"version\": \"0.2.0\",\n  \"nodes\": {", nodes_json,
+    "},\n  \"modules\": [", modules_json,
+    "],\n  \"item_registry_keys\": [", item_registry_json,
+    "],\n  \"diagnostics\": [", diagnostics_json,
+    "],\n  \"files\": []\n}"
+  )
+  EmitResult {
+    files: [TextFile { path: "dag-artifact.json", content: json }],
+    diagnostics: []
+  }
+}
+
+fn boundary_ref_error(names: List<String>, ref_name: String) -> List<ErrorNode> {
+  if names |> any(n => n == ref_name) { [] }
+  else { [compile_bundle_error(message: concat("boundary references unknown artifact '", ref_name, "'"))] }
+}
+
+fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
+  let names = plan.artifacts |> map(a => a.name)
+  plan.boundaries |> flat_map(b =>
+    concat(
+      boundary_ref_error(names: names, ref_name: b.from_artifact),
+      boundary_ref_error(names: names, ref_name: b.to_artifact)
+    )
+  )
+}
+
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  if artifact_plan.artifacts |> count == 0 {
+    return EmitResult {
+      files: [],
+      diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")]
+    }
+  }
+  let boundary_diags = validate_boundaries(plan: artifact_plan)
+  if boundary_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: boundary_diags }
+  }
+  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
+  let all_files = results |> flat_map(r => r.files)
+  let all_diags = results |> flat_map(r => r.diagnostics)
+  EmitResult { files: all_files, diagnostics: all_diags }
+}
+
+fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
+  fold(parse_results, init: [], f: (acc, pr) =>
+    match pr.error {
+      Present { value: diag } => list_push(acc, diag)
+      Absent => acc
+    }
+  )
+}
+
+fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
+  let prepared = sources |> map(s =>
+    let tokens = tokenize(source: s.content, file: s.path)
+    let si = build_newline_index(file: s.path, source: s.content)
+    FrontendPrepared { tokens: tokens, newline_index: si }
+  )
+  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
+    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+    FrontendAccum {
+      parse_results: list_push(acc.parse_results, parsed.result),
+      newline_indices: list_push(acc.newline_indices, p.newline_index),
+      intern_table: parsed.intern_table
+    }
+  )
+  let parse_results = parsed.parse_results
+  let newline_indices = parsed.newline_indices
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_parse_errors = parse_results |> any(p => p.error != Absent)
+  if has_parse_errors {
+    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
+  } else {
+    let modules = parse_results |> map(p => p.module.value)
+    let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+    let graph = resolve_modules(modules: modules, source_indices: source_indices)
+    FrontendResult {
+      graph: Present { value: graph },
+      diagnostics: concat(parse_diagnostics, graph.diagnostics),
+      newline_indices: newline_indices,
+      intern_table: parsed.intern_table
+    }
+  }
+}
+
+// =========================================================================
+// Full pipeline
+// =========================================================================
+
+fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
+  let frontend = front_end_sources(sources: sources)
+  CompileResult { files: [], diagnostics: frontend.diagnostics }
+}
+
+fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+  compile_sources_with_options(
+    sources: sources,
+    target: target,
+    options: default_compile_pipeline_options()
+  )
+}
+
+fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
+  emit_resolved_for_target(
+    resolved: compile_to_resolved_with_options(sources: sources, options: options),
+    target: target
+  )
+}
+
+type ResolvedPipelineResult {
+  graph: ResolvedGraph?
+  diagnostics: List<ErrorNode>
+  source_indices: Map<String, NewlineIndex>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  newline_indices: List<NewlineIndex>
+}
+
+fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
+  compile_to_resolved_with_options(
+    sources: sources,
+    options: default_compile_pipeline_options()
+  )
+}
+
+fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
+  let frontend = front_end_sources(sources: sources)
+  let newline_indices = frontend.newline_indices
+  match frontend.graph {
+    Absent =>
+      ResolvedPipelineResult {
+        graph: none,
+        diagnostics: frontend.diagnostics,
+        source_indices: empty_map(),
+        complexity: empty_complexity_report(),
+        ownership: [],
+        newline_indices: newline_indices
+      }
+    Present { value: graph } => {
+      let graph_diags = graph.diagnostics
+      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if resolve_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: frontend.diagnostics,
+          source_indices: empty_map(),
+          complexity: empty_complexity_report(),
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+      let norm = normalize_graph(graph: graph, source_indices: source_indices)
+      let norm_diags = norm.diagnostics
+      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if norm_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags),
+          source_indices: source_indices,
+          complexity: empty_complexity_report(),
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let typed_diags = typed.diagnostics
+      let complexity = if options.analyze_complexity {
+        run_complexity_analysis(typed: typed, source_indices: source_indices)
+      } else {
+        empty_complexity_report()
+      }
+      let complexity_diags = if options.analyze_complexity {
+        complexity_diagnostics(complexity: complexity)
+      } else {
+        []
+      }
+      let all_diags = concat(typed_diags, complexity_diags)
+
+      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if type_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
+          source_indices: source_indices,
+          complexity: complexity,
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let ownership = extract_ownership_proofs(typed: typed)
+      let ownership_diags = ownership_diagnostics(proofs: ownership)
+      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if ownership_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
+          source_indices: source_indices,
+          complexity: complexity,
+          ownership: ownership,
+          newline_indices: newline_indices
+        }
+      }
+
+      ResolvedPipelineResult {
+        graph: typed,
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
+        source_indices: source_indices,
+        complexity: complexity,
+        ownership: ownership,
+        newline_indices: newline_indices
+      }
+    }
+  }
+}
+
+fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+  match resolved.graph {
+    Absent =>
+      PipelineResult {
+        files: [],
+        diagnostics: resolved.diagnostics,
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: empty_artifact_plan(),
+        newline_indices: resolved.newline_indices
+      }
+    Present { value: typed } => {
+      let artifact_plan = default_artifact_plan(
+        root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
+        target: target
+      )
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_files = emit_result.files
+      let emit_diags = emit_result.diagnostics
+      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+      PipelineResult {
+        files: final_files,
+        diagnostics: concat(resolved.diagnostics, emit_diags),
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: artifact_plan,
+        newline_indices: resolved.newline_indices
+      }
+    }
+  }
+}

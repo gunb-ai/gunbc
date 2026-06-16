@@ -1,0 +1,81 @@
+// src/v2/workflow/probe_selector_affected_tests.dag
+// WF-AFFECTED-TESTS — CI domain call site over ONE probe_select kernel.
+
+module v2.workflow.probe_selector_affected_tests
+
+import v2.std.algebra { count_equal, length }
+import v2.std.change { AffectedSet }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.probe_selector {
+  CostBudget,
+  DiagnosticCapabilityFacts,
+  SuspectedCausePrior,
+  diagnostic_capability_ci_in_repo,
+  host_health_hypothesis_reachability,
+  probe_ci_unbounded_budget,
+  probe_select_affected_test_claims,
+  probe_select_host_health
+}
+import v2.std.verification { TestClaim }
+import v2.test.workflow.affected_set_ci_runner {
+  ci_runner_claim_touched,
+  ci_runner_fail_closed_affected,
+  ci_runner_fixture_roster,
+  ci_runner_narrow_rerun_nodes
+}
+import v2.workflow.affected_set_selection { ci_select_from_rerun_nodes }
+
+fn wf_affected_tests_enumerate_available() -> DiagnosticCapabilityFacts {
+  diagnostic_capability_ci_in_repo()
+}
+
+fn wf_affected_tests_select_claims(
+  roster: List<TestClaim>,
+  affected: AffectedSet
+) -> List<TestClaim> {
+  probe_select_affected_test_claims(
+    roster: roster,
+    affected: affected,
+    budget: probe_ci_unbounded_budget,
+    available: wf_affected_tests_enumerate_available()
+  )
+}
+
+fn wf_affected_tests_one_kernel_ci_fail_closed_holds() -> Bool {
+  let selected = probe_select_affected_test_claims(
+    roster: ci_runner_fixture_roster,
+    affected: ci_runner_fail_closed_affected,
+    budget: probe_ci_unbounded_budget,
+    available: diagnostic_capability_ci_in_repo()
+  )
+  length(xs: selected) == 3
+}
+
+fn wf_affected_tests_one_kernel_ci_narrow_holds() -> Bool {
+  let selected = ci_select_from_rerun_nodes(
+    roster: ci_runner_fixture_roster,
+    rerun: ci_runner_narrow_rerun_nodes
+  )
+  (length(xs: selected) == 1)
+    && count_equal(
+      xs: selected,
+      item: ci_runner_claim_touched,
+      eq: fn(left, right) { left == right }
+    ) != 0
+}
+
+fn wf_affected_tests_one_kernel_host_health_holds() -> Bool {
+  let selected = probe_select_host_health(
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_reachability },
+    budget: CostBudget { max_cost: 100 },
+    available: diagnostic_capability_ci_in_repo()
+  )
+  length(xs: selected) > 0
+}
+
+fn wf_affected_tests_one_kernel_with_host_health_holds() -> Bool {
+  wf_affected_tests_one_kernel_ci_fail_closed_holds()
+    && wf_affected_tests_one_kernel_ci_narrow_holds()
+    && wf_affected_tests_one_kernel_host_health_holds()
+}

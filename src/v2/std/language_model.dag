@@ -1,0 +1,107 @@
+// src/v2/std/language_model.dag
+// Scope: canonical LanguageModel carrier shared by compiler stages, workflow bootstrap, and extdeps.
+// Status: P1/P2 dissolution — replaces v2.compiler.target_carriers `LanguageModel = Node` hollow alias.
+
+module v2.std.language_model
+
+import v2.std.collection { Set }
+import v2.std.grammar {
+  ParseGrammar,
+  VoidGrammar,
+  grammar_atom,
+  grammar_empty_node,
+  grammar_to_node
+}
+import v2.std.compilers.lexing { LexRules, VoidLexRules, lex_rules_to_node }
+import v2.std.model_core {
+  ModelCore,
+  model_core_first_primitive_substrate,
+  wave1_void
+}
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+
+
+// Field edge keys — single authority per INVARIANTS P2.
+data language_model_field_lex: Symbol = language_model_field_lex
+data language_model_field_grammar: Symbol = language_model_field_grammar
+data language_model_field_language_identity: Symbol = language_model_field_language_identity
+data language_model_field_canonical_symbols: Symbol = language_model_field_canonical_symbols
+data language_model_field_core: Symbol = language_model_field_core
+
+
+// Canonical LanguageModel fact-bundle (Shape A — lex/grammar/identity/symbols/core).
+// Per-language *LanguageModel types in extdeps/languages/*.dag are spec-authored inhabitants
+// of this carrier shape; compiler ingest authority is this std/ type, not Node.
+type LanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+
+fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
+
+
+fn language_model_empty_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(_) {
+      false
+    }
+  }
+}
+
+
+fn void_language_model(identity: Symbol) -> LanguageModel {
+  LanguageModel {
+    lex: VoidLexRules,
+    grammar: VoidGrammar,
+    language_identity: identity,
+    canonical_symbols: language_model_empty_canonical_symbols(),
+    core: wave1_void()
+  }
+}
+
+
+// 🟡 gated — feature:canonical-symbols-set-node-projection — bind gunbc#4766 —
+// Set<Symbol> is a predicate closure; Node substrate has no edge kind for function values.
+// Dissolve-on: reify Set<Symbol> as explicit membership list type (same gate as grammar_root_sync_tokens).
+fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {
+  grammar_empty_node()
+}
+
+
+fn language_model_to_node(lm: LanguageModel) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      language_model_named_edge(
+        name: language_model_field_lex,
+        target: lex_rules_to_node(rules: lm.lex)
+      ),
+      language_model_named_edge(
+        name: language_model_field_grammar,
+        target: grammar_to_node(grammar: lm.grammar)
+      ),
+      language_model_named_edge(
+        name: language_model_field_language_identity,
+        target: grammar_atom(identity: lm.language_identity)
+      ),
+      language_model_named_edge(
+        name: language_model_field_canonical_symbols,
+        target: language_model_canonical_symbols_to_node(symbols: lm.canonical_symbols)
+      ),
+      language_model_named_edge(
+        name: language_model_field_core,
+        target: model_core_first_primitive_substrate(core: lm.core)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}

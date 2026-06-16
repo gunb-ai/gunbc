@@ -7,9 +7,9 @@
 
 ## 1. The question, grounded
 
-`ModelCorePrimitiveFactAxis` (`src/v4/std/model_core.dag:38`) is the closed core-fact
+`ModelCorePrimitiveFactAxis` (`src/v2/std/model_core.dag:38`) is the closed core-fact
 vocabulary: `Width | Signedness | Range | Encoding | OverflowDisposition` (core) +
-`SurfaceSpelling` (surface). R3 (`project_to_core`, `src/v4/std/project_to_core_predicate.dag`)
+`SurfaceSpelling` (surface). R3 (`project_to_core`, `src/v2/std/project_to_core_predicate.dag`)
 compares fact-bundles **on core axes only** — surface facts drop out of the projection.
 
 The *carrier* — which substrate `Node` a fact-bundle grounds to — is today a **field**, not

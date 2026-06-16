@@ -1,0 +1,308 @@
+// src/v2/std/cardinality.dag
+// Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
+// Anchor: https://en.wikipedia.org/wiki/Cardinality
+// Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
+
+
+module v2.std.cardinality
+
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  node_locus,
+  Unavailable
+}
+import v2.std.nat { Nat }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Named,
+  Node,
+  NodeFold,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node,
+  loop_behavior_edges_conform,
+  loop_bound_measure_target,
+  loop_bound_edge,
+  name_occurrences
+}
+import v2.std.witness { Holds, Violates, Witness }
+// 🟢 coproduct dissolution
+type Never
+type Unit
+type NonZeroNat {
+  prev: Nat
+}
+// 🟢 coproduct dissolution — CP-3229-NAT-LE-WITNESS.
+type NatLeWitness
+  = LeqZero { upper: Nat }
+  | LeqSucc { inner: NatLeWitness }
+type UpperBoundedNat {
+  le: NatLeWitness
+}
+type PositiveNatLeWitness
+  = PositiveLeqSucc { inner: NatLeWitness }
+type PositiveUpperBoundedNat {
+  le: PositiveNatLeWitness
+}
+fn nat_le_witness_lower(w: NatLeWitness) -> Nat {
+  match w {
+    LeqZero { upper: _ } => Zero
+    LeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+  }
+}
+fn nat_le_witness_upper(w: NatLeWitness) -> Nat {
+  match w {
+    LeqZero { upper } => upper
+    LeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+  }
+}
+fn positive_nat_le_witness_lower(w: PositiveNatLeWitness) -> Nat {
+  match w {
+    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+  }
+}
+fn positive_nat_le_witness_upper(w: PositiveNatLeWitness) -> Nat {
+  match w {
+    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+  }
+}
+fn upper_bounded_nat_value(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_lower(w: b.le)
+}
+fn upper_bounded_nat_inclusive_max(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_upper(w: b.le)
+}
+fn positive_upper_bounded_nat_value(b: PositiveUpperBoundedNat) -> Nat {
+  positive_nat_le_witness_lower(w: b.le)
+}
+fn positive_upper_bounded_nat_inclusive_max(b: PositiveUpperBoundedNat) -> Nat {
+  positive_nat_le_witness_upper(w: b.le)
+}
+fn nat_le_witness_well_formed(w: NatLeWitness) -> Bool {
+  match w {
+    LeqZero { upper: _ } => true
+    LeqSucc { inner } => nat_le_witness_well_formed(w: inner)
+  }
+}
+fn upper_bounded_nat_well_formed(b: UpperBoundedNat) -> Bool {
+  nat_le_witness_well_formed(w: b.le)
+}
+fn positive_nat_le_witness_well_formed(w: PositiveNatLeWitness) -> Bool {
+  match w {
+    PositiveLeqSucc { inner } => nat_le_witness_well_formed(w: inner)
+  }
+}
+fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
+  positive_nat_le_witness_well_formed(w: b.le)
+}
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type DescentEvidence
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
+type RankingDimension {
+  measured: Symbol
+}
+type TerminationProof {
+  non_increasing: List<RankingDimension>
+  strict: RankingDimension
+}
+// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: loop-bound-interval-parent — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent for measure + descent evidence (v3 substrate direction); forbidden: terminal LoopBound coproduct duplicating measure per arm.
+// LoopBound records the iteration-measure witness for Loop computation nodes.
+// `measure` is the single authoritative bound node via substrate `loop_bound_edge`;
+// `termination` is the descent-proof coordinate (Holds/Violates), not a coproduct arm.
+type LoopBound {
+  measure: Node
+  termination: Witness<TerminationProof>
+}
+
+data cardinality_loop_bound_undeclared: Symbol = cardinality_loop_bound_undeclared
+data cardinality_loop_bound_ambiguous: Symbol = cardinality_loop_bound_ambiguous
+data cardinality_loop_bound_malformed: Symbol = cardinality_loop_bound_malformed
+data cardinality_loop_bound_not_loop: Symbol = cardinality_loop_bound_not_loop
+
+fn loop_bound_measure(bound: LoopBound) -> Node {
+  bound.measure
+}
+
+fn loop_bound_undeclared_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_loop_bound_undeclared,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_bound_ambiguous_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_loop_bound_ambiguous,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_bound_malformed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_loop_bound_malformed,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_loop_bound_not_loop,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: cardinality-loop-bound-measure-witness — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent owns Loop measure witness minting; forbidden: hand-rolled EdgeLabel walks outside std.node loop_bound_measure_target.
+fn loop_measure_node(n: Node) -> Witness<Node> {
+  match n.kind {
+    ComputationNode { behavior: Loop } => {
+      let bound_count = name_occurrences(name: loop_bound_edge, children: n.children)
+      if bound_count == 0 {
+        Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+      } else if bound_count > 1 {
+        Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+      } else if !loop_behavior_edges_conform(children: n.children) {
+        Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
+      } else {
+        match loop_bound_measure_target(children: n.children) {
+          Found { target: measure } => Holds { value: measure }
+          Ambiguous => Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+          Absent => Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+        }
+      }
+    }
+    _ => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+  }
+}
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type Multiplicity
+  = Bounded
+  | RequiresTerminationProof
+  | ProvenTermination { proof: TerminationProof }
+
+data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
+data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
+
+fn structural_node_size_dimension() -> RankingDimension {
+  RankingDimension { measured: cardinality_structural_node_size }
+}
+
+fn structural_node_size_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: structural_node_size_dimension()
+  }
+}
+
+fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<TerminationProof> {
+  match m {
+    Bounded => Holds { value: structural_node_size_termination_proof() }
+    RequiresTerminationProof =>
+      Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
+    ProvenTermination { proof } => Holds { value: proof }
+  }
+}
+
+fn connective_multiplicity(c: Connective) -> Multiplicity {
+  match c {
+    Atom { identity: _ } => Bounded
+    Conj => Bounded
+    Disj => Bounded
+    Arrow => Bounded
+    Cardinality => RequiresTerminationProof
+    Instantiation => Bounded
+  }
+}
+
+fn behavior_multiplicity(b: Behavior) -> Multiplicity {
+  match b {
+    Value => Bounded
+    Transform => Bounded
+    Branch => Bounded
+    Loop => RequiresTerminationProof
+    Bind => Bounded
+  }
+}
+
+fn node_multiplicity(n: Node) -> Multiplicity {
+  match n.kind {
+    TypeNode { connective: c } => connective_multiplicity(c: c)
+    ComputationNode { behavior: b } => behavior_multiplicity(b: b)
+  }
+}
+
+fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_descent_not_proven,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
+  multiplicity_termination_witness(n: n, m: node_multiplicity(n: n))
+}
+
+fn termination_proof_fold_step(
+  acc: Witness<TerminationProof>,
+  _: Edge,
+  child: Witness<TerminationProof>
+) -> Witness<TerminationProof> {
+  match acc {
+    Violates { diagnostic: _ } => acc
+    Holds { value: proof } =>
+      match child {
+        Violates { diagnostic: _ } => child
+        Holds { value: _ } => Holds { value: proof }
+      }
+  }
+}
+
+fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        local_termination_proof_witness(n: n0)
+      },
+      step: fn(acc, e, child) {
+        termination_proof_fold_step(acc: acc, e: e, child: child)
+      }
+    }
+  )
+}
+
+fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
+  match loop_measure_node(n: n) {
+    Holds { value: measure } =>
+      Holds {
+        value: LoopBound {
+          measure: measure,
+          termination: termination_proof_witness_for_node(n: n)
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}

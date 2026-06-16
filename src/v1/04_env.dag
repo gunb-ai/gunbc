@@ -1,0 +1,139 @@
+// v2 type environment -- structural type bindings and lookup.
+module v1.compiler.infer_env
+
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type TypeEnv {
+  bindings: Map<Int, TypeBinding>
+  recursive_types: List<Int>
+  recursive_type_set: Map<Int, Bool>
+  inductive_fields: Map<String, List<InductiveField>>
+  source_indices: Map<String, NewlineIndex>
+  intern_table: InternTable
+}
+
+type TypeBinding {
+  name: String
+  resolved: Node
+  provenance: SubValueRelation
+}
+
+// =========================================================================
+// Environment operations
+// =========================================================================
+
+fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
+  match map_get(env.recursive_type_set, ident) {
+    Present { value: _ } => true
+    _ => false
+  }
+}
+
+fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
+  match intern_find(table: env.intern_table, s: name) {
+    Present { value: id } => is_recursive_type(env: env, ident: id)
+    Absent => false
+  }
+}
+
+fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
+  match map_get(env.bindings, ident) {
+    Present { value: binding } => Present { value: binding.resolved }
+    Absent => Absent
+  }
+}
+
+fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
+  match intern_find(table: env.intern_table, s: name) {
+    Present { value: id } => lookup_type(env: env, ident: id)
+    Absent => Absent
+  }
+}
+
+fn authored_name(env: TypeEnv, node: Node) -> String {
+  authored_name_at(source_indices: env.source_indices, node: node)
+}
+
+fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
+  match node.ident {
+    Present { value: id } => lookup_type(env: env, ident: id)
+    Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+  }
+}
+
+fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
+  match node.ident {
+    Present { value: id } => is_recursive_type(env: env, ident: id)
+    Absent => is_recursive_type_by_name(env: env, name: authored_name(env: env, node: node))
+  }
+}
+
+fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
+  match map_get(env.inductive_fields, type_name) {
+    Present { value: fields } => fields
+    Absent => []
+  }
+}
+
+fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, field_name: String) -> Bool {
+  inductive_fields_for(env: env, type_name: type_name)
+    |> any(f => f.variant_name == variant_name && f.field_name == field_name)
+}
+
+fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
+  let existing = match map_get(fields, type_name) {
+    Present { value: fs } => fs
+    Absent => []
+  }
+  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }]))
+}
+
+fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
+  let existing = match map_get(fields, type_name) {
+    Present { value: fs } => fs
+    Absent => []
+  }
+  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }]))
+}
+
+fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+  right |> map_keys |> fold(init: left, f: (acc, type_name) =>
+    match map_get(right, type_name) {
+      Present { value: incoming } =>
+        let existing = match map_get(acc, type_name) {
+          Present { value: fs } => fs
+          Absent => []
+        }
+        map_insert(acc, type_name, concat(existing, incoming))
+      Absent => acc
+    }
+  )
+}
+
+fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
+  fields |> fold(init: empty_map(), f: (acc, field) =>
+    let existing = match map_get(acc, field.type_name) {
+      Present { value: fs } => fs
+      Absent => []
+    }
+    map_insert(acc, field.type_name, concat(existing, [field]))
+  )
+}
+
+fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
+  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
+  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
+  let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
+  let merged_intern_table = match envs |> first {
+    Present { value: first_env } => first_env.intern_table
+    Absent => empty_intern_table()
+  }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+}

@@ -1,10 +1,10 @@
-// src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag
+// src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag
 // Scope: git diff → edit_locus Node resolver receipts (path-regex bindings).
 // Status: T-21 wire claim; host git projection lands with BinaryShim runner.
 
-module v4.test.claim.lens_affected_set.edit_locus_resolver
+module v2.test.claim.lens_affected_set.edit_locus_resolver
 
-import v4.lens.edit_locus {
+import v2.lens.edit_locus {
   EditLocusBinding,
   EditLocusRead,
   GitDiffNameOnly,
@@ -14,41 +14,41 @@ import v4.lens.edit_locus {
   affected_set_reading_from_git_diff_provenance,
   resolve_edit_locus
 }
-import v4.compiler.source_authority {
+import v2.compiler.source_authority {
   DagSource,
   DagSourceReadWitness,
   source_ir_artifact_provenance,
   source_ir_node_artifact_provenance
 }
-import v4.std.artifact { Artifact, SourceFile }
-import v4.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
-import v4.std.logic { Bool }
-import v4.std.algebra { Empty, count_equal, length }
-import v4.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccurrence, well_formed }
-import v4.std.provenance { SpanIndex, span_index_resolve_textual_locus }
-import v4.std.text { String }
-import v4.std.witness { Holds, Violates, Witness }
-import v4.test.claim.lens_affected_set.node_precision {
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.logic { Bool }
+import v2.std.algebra { Empty, count_equal, length }
+import v2.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccurrence, well_formed }
+import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.test.claim.lens_affected_set.node_precision {
   affected_set_claim_tree,
   affected_set_mid,
   affected_set_mid_to_leaf_frontier_dependency,
   affected_set_root_to_mid_frontier_dependency
 }
-import v4.test.claim.lens_common.infer_fixture {
+import v2.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
 
 
-import v4.std.verification {
+import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
-data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
+data edit_locus_path_src_v4_affected_set: RepoPath = "src/v2/lens/affected_set.dag"
+data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/test/claim/lens_affected_set/source_producer_fixture.dag"
 data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_source_producer_fixture_compilation_unit
-data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
+data edit_locus_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
 data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + y }"
@@ -279,7 +279,7 @@ data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resol
 // Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_narrow_resolution_holds
   }
 }
@@ -288,7 +288,7 @@ data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
 // Co-located with `edit_locus_fail_closed_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_fail_closed_holds
   }
 }
@@ -297,7 +297,7 @@ data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
 // Co-located with `edit_locus_source_provenance_producer_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_source_provenance_producer_holds
   }
 }
@@ -306,7 +306,7 @@ data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = Boo
 // Co-located with `edit_locus_source_provenance_affected_set_wire_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_affected_set_wire: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_source_provenance_affected_set_wire_holds
   }
 }
@@ -315,7 +315,7 @@ data unified_claim_edit_locus_source_provenance_affected_set_wire: UnifiedTestCl
 // Co-located with `edit_locus_source_provenance_producer_rejects_malformed_source_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_producer_rejects_malformed_source: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
     function: edit_locus_source_provenance_producer_rejects_malformed_source_holds
   }
 }

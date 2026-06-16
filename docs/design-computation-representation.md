@@ -1,4 +1,4 @@
-# Sizing: Computation Representation — Function Bodies in the v4 Pipeline (COMPREP)
+# Sizing: Computation Representation — Function Bodies in the v2 Pipeline (COMPREP)
 
 > **Status: SIZING — measured audit + wave decomposition, 2026-06-09.** Proposed as a
 > first-class hard-problems node (sibling of STAGE-ADOPTION, feeder of SELFHOST), not a
@@ -17,17 +17,17 @@ landed as **consumable shapes with zero producers**:
 | Carriers | `Behavior = Value\|Transform\|Branch\|Loop\|Bind` landed in `std/node.dag`; **no `FunctionRef` carrier exists**; `canonical_tag_transform` exists for hashing only |
 | Producers | **none** — `02_parse` constructs no `ComputationNode`; `03_normalize`/`05_eval` only *match* the kind; resolve handles `Arrow` only as the *type connective* (param-scope resolution of signatures) |
 | The keystone, actually | `rust_mvp1_fixture_emitted_add_fn` (`extdeps/languages/rust.dag:1035`) is `TypeNode Arrow` + three positional `i32` edges — **a signature**. The fixture's own header says it: "full source-ingest compile remains blocked on ingest staging" |
-| Consequence for the ladder receipts | T0 / RTADD #4544 / T1 #4545 are **signature/type-expr-tier** receipts. Real and discriminating at that tier — but "emit(add)" language oversells until bodies exist. (v2 emits real bodies; v4's ladder so far proves type-expr translation.) |
+| Consequence for the ladder receipts | T0 / RTADD #4544 / T1 #4545 are **signature/type-expr-tier** receipts. Real and discriminating at that tier — but "emit(add)" language oversells until bodies exist. (v2 emits real bodies; v2's ladder so far proves type-expr translation.) |
 | Eval | `05_eval` (1,936 lines) has the `InterpretationAlgebra` behavior-dispatch skeleton, but the Transform arm is `transform.call_primitive(node, args, environment)` (`05_eval.dag:1204`) — a **primitive-interpreter slot**; there is no user-function callee path because there are no callees |
 | Infer | `InferredFacts { grounding, descent }` — the descent witness channel exists (the termination design extends it); body-shaped facts absent |
 
 So COMPREP = **the missing producer half of the pipeline**: parse bodies → Behavior trees,
 resolve them, infer over them, evaluate them, and (later) translate them. It is the largest
-unbuilt producer in v4.
+unbuilt producer in v2.
 
 ## 2. What it gates (why it's a node, not a footnote)
 
-- **SELFHOST facets 1–2** — `compiler.dag` cannot be compiled *by v4* without function
+- **SELFHOST facets 1–2** — `compiler.dag` cannot be compiled *by v2* without function
   bodies; COMPREP is a co-equal gate with the emit ladder for the fixed point (the dep
   graph's `SPINE → SELFHOST` edge implicitly assumes it; it should be explicit:
   `COMPREP → SELFHOST`).
@@ -75,7 +75,7 @@ render closures), so T7 ingest of bodies is the forward interpreter, not new wor
 independently sizable — ladder-coupled by design.
 
 **Wave 4 — compiler-self breadth (the long tail).** Enough expression-surface coverage that
-v4's own modules are representable — the SELFHOST/STAGE-ADOPTION feeder. Dominated by
+v2's own modules are representable — the SELFHOST/STAGE-ADOPTION feeder. Dominated by
 surface breadth, not new mechanism; the FRONTEND-SUSTAINABILITY census (adhoc-9ad4147d) is
 the natural scoping input. Size emerges from waves 1–2 velocity; do not estimate it now.
 

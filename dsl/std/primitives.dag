@@ -5,7 +5,7 @@
 // to reason about runtime bounds.
 //
 // Primitives are built into the evaluator (eval_core.rs, eval_stack.rs)
-// and the runtime shim (v2_runtime_shim.rs). This file is the single
+// and the runtime shim (v1_runtime_shim.rs). This file is the single
 // authority for their cost semantics. Adding a new primitive requires
 // adding its contract here.
 //
@@ -15,7 +15,7 @@
 // The `certainty` field marks whether the bound is proven or amortized.
 // The `carrier_cost` field (ctrl#1533 M-B) declares whether — and how —
 // the cost depends on the persistence kind of the declared value carrier
-// (v4.std.value_carrier).
+// (v2.std.value_carrier).
 //
 // Size variables follow the ROADMAP Track D convention:
 //   n = primary input size (e.g., string length, list length)
@@ -36,7 +36,7 @@ type Certainty = Proven | Amortized | Expected | Conservative
 
 // Carrier-cost sensitivity (ctrl#1533 M-B): whether a primitive's work
 // depends on the persistence kind of the M-A value carrier declared in
-// v4.std.value_carrier (Map: hash array mapped trie, List: relaxed radix
+// v2.std.value_carrier (Map: hash array mapped trie, List: relaxed radix
 // balanced tree). For sensitive primitives both arms are declared:
 // `ephemeral_work` is the cost when an immutable-value host implements the
 // collection with an Ephemeral carrier (full copy before update — what the

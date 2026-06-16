@@ -1,0 +1,53 @@
+// src/v2/lens/identical_variant_payload.dag
+// Scope: L1.4 IdenticalVariantPayload sub-signature (Carrier-clone family).
+// Catches coproduct arms whose canonical payload signatures are identical
+// within one decl (tag-not-recoverable; SG-2 / #3962 class includes nullary
+// or same-tuple arms such as ProjectionPresent | ProjectionAbsent shims).
+// Anchor: docs/design-dissolution-lens.md §5 L1.4 / §5.1 — shares
+//         `coverage_defect_carrier_clone` with parent + L1.4.b; diagnostic
+//         payload carries `CarrierCloneTrigger::IdenticalVariantPayload`.
+// Status: scaffold — carrier types + verdict shape only. Enforcement gated on
+//         (a) `v2.lens.structural_similarity` per-variant field-shape facts,
+//         (b) equivalence-class-wide payload-signature injectivity check.
+//         Until (a) lands, `identical_variant_payload_fact_for_type` returns
+//         Unrealized for every type — substrate row exists so coverage,
+//         registry consumers, and dissolution receipts reference typed
+//         authority rather than prose pointers. Does NOT block #3962 collapse.
+
+module v2.lens.identical_variant_payload
+
+
+import v2.std.node { Node, Symbol }
+
+
+// 🟢 family discriminator — shared by L1.4 parent, L1.4.b, and this sub-signature.
+type CarrierCloneTrigger
+  = WholeCarrierClone
+  | VariantParameterClone
+  | IdenticalVariantPayload
+
+
+// 🟢 verdict — fail-closed until structural_similarity lands.
+type IdenticalVariantPayloadVerdict
+  = Unrealized
+  | NotDuplicatePayload
+  | DuplicatePayloadArms {
+      coproduct: Symbol
+      trigger: CarrierCloneTrigger
+    }
+
+
+// 🟢 lens fact — one row per scanned type-decl locus.
+type IdenticalVariantPayloadFact {
+  type_locus: Node
+  verdict: IdenticalVariantPayloadVerdict
+}
+
+
+// 🟡 gated — feature:lens-structural-similarity — bind PR #3962 class / design-dissolution-lens.md L1.4 — dissolve-on-arrival: identical_variant_payload_fact_for_type consumes v2.lens.structural_similarity TypeShape.variant_set and runs equivalence-class payload-signature injectivity; delete Unrealized default in that same PR; forbidden: permanent scaffold returning Unrealized after producer lands.
+fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantPayloadFact {
+  IdenticalVariantPayloadFact {
+    type_locus: type_node,
+    verdict: Unrealized
+  }
+}

@@ -1,7 +1,7 @@
-//! Hermetic pass/fail fixtures over live `v2-compiler compile` (candidate-B bridge transport).
+//! Hermetic pass/fail fixtures over live `v1-compiler compile` (candidate-B bridge transport).
 //!
 //! Requires `gunbc` on PATH or at `target/{debug,release}/gunbc` relative to workspace root,
-//! or `V2_COMPILER` env override (same contract as `.github/ci-floor/v4-rust-full-tree-emit-probe.sh`).
+//! or `V2_COMPILER` env override (same contract as `.github/ci-floor/v2-rust-full-tree-emit-probe.sh`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,17 +9,17 @@ use std::path::{Path, PathBuf};
 use compile_host_runner::{compile_accepted, run_compile_host_v2, CompileHostTransportInputs};
 
 const PASS_FIXTURE: &str = r#"// compile_host_runner hermetic pass fixture
-module v4.test.compile_host_fixture_pass
+module v2.test.compile_host_fixture_pass
 
-import v4.std.logic { Bool }
+import v2.std.logic { Bool }
 
 data witness_ok: Bool = true
 "#;
 
 const FAIL_FIXTURE: &str = r#"// compile_host_runner hermetic fail fixture
-module v4.test.compile_host_fixture_fail
+module v2.test.compile_host_fixture_fail
 
-import v4.std.logic { Bool }
+import v2.std.logic { Bool }
 
 data broken: Bool = definitely_not_valid_syntax!!!
 "#;
@@ -45,7 +45,7 @@ fn resolve_v2_compiler() -> PathBuf {
         }
     }
     panic!(
-        "gunbc not found: build with `cargo build -p v2-compiler --release --bin gunbc` \
+        "gunbc not found: build with `cargo build -p v1-compiler --release --bin gunbc` \
          or set V2_COMPILER"
     );
 }
@@ -73,11 +73,11 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// v4-only dependency closure — avoid scanning `src/v3` (duplicate module paths in fixtures).
+/// v2-only dependency closure — avoid scanning `src/v3` (duplicate module paths in fixtures).
 fn materialize_v4_deps_root(work: &Path) -> PathBuf {
     let deps_root = work.join("deps");
-    copy_dir_all(&workspace_root().join("src/v4"), &deps_root.join("v4"))
-        .expect("copy src/v4 deps");
+    copy_dir_all(&workspace_root().join("src/v2"), &deps_root.join("v2"))
+        .expect("copy src/v2 deps");
     deps_root
 }
 
@@ -107,7 +107,7 @@ fn run_fixture_compile(
 
 #[test]
 fn hermetic_compile_pass_fixture_accepted() {
-    let receipt = run_fixture_compile("v4/test/compile_host_fixture_pass.dag", PASS_FIXTURE);
+    let receipt = run_fixture_compile("v2/test/compile_host_fixture_pass.dag", PASS_FIXTURE);
     assert!(
         compile_accepted(&receipt),
         "expected clean compile receipt; exit={:?} receipt={:?} log={:?}",
@@ -119,7 +119,7 @@ fn hermetic_compile_pass_fixture_accepted() {
 
 #[test]
 fn hermetic_compile_fail_fixture_rejected() {
-    let receipt = run_fixture_compile("v4/test/compile_host_fixture_fail.dag", FAIL_FIXTURE);
+    let receipt = run_fixture_compile("v2/test/compile_host_fixture_fail.dag", FAIL_FIXTURE);
     assert!(
         !compile_accepted(&receipt),
         "expected compile failure or nonzero diagnostics; exit={:?} receipt={:?} log={:?}",

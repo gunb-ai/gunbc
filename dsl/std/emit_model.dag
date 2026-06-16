@@ -1,0 +1,33 @@
+// dsl/v3/std/emit_model.dag — v2 CI / `dag run --source-root dsl` facade for
+// `MethodTemplateContract` and friends.
+//
+// Canonical substrate: `src/v3/std/emit_model.dag` (v3 compiler). The v2 interpreter
+// indexes only `--source-root` trees and cannot parse full v3 std syntax, so this file
+// supplies a v2-parseable `module std.emit_model` when dsl sources import it.
+//
+// Keep field names and variant tags aligned with the canonical module so drift is
+// obvious at review time.
+//
+// **🟡 Scaffold — dissolution trigger:** delete this facade when CI / `dag run` can
+// index `src/v3/std/emit_model.dag` without v2 parse failures (e.g. `src/v3` as an
+// additional `--source-root` with v3 semantics, or v2 retirement), or when
+// `v3.std.emit_model` no longer needs to resolve under `--source-root dsl` alone.
+
+module std.emit_model
+
+// Stand-in for `v3.spec.v3_l1::DeclarationRef` — bootstrap rows are empty;
+// the real ref type is owned by the v3 spec pipeline.
+type DeclarationRef = String
+
+type PlaceholderConvention
+  = IndexedArgs
+  | NamedArg
+
+// Mirrors `src/v3/std/emit_model.dag` MethodTemplateContract (P1 substrate).
+type MethodTemplateContract {
+  dag_method: DeclarationRef
+  runtime_template: String
+  emit_template: String
+  wraps_result: Bool
+  placeholder_convention: PlaceholderConvention
+}

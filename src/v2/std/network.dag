@@ -1,0 +1,146 @@
+// src/v2/std/network.dag
+// Scope: network boundary carriers.
+// Status: T-26 modeled.
+
+
+module v2.std.network
+
+
+import v2.std.collection { Optional }
+import v2.std.text { String }
+import v2.std.nat { Nat }
+
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc9110.html#name-methods + https://www.rfc-editor.org/rfc/rfc5789.html
+// 🟢 coproduct dissolution — T-26-HttpMethod.
+type HttpMethod
+  = GET
+  | POST
+  | PUT
+  | PATCH
+  | DELETE
+  | HEAD
+  | OPTIONS
+  | CONNECT
+  | TRACE
+
+type Rfc3986AbnfProduction {
+  name: String,
+  expression: String,
+}
+
+data rfc3986_scheme_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "scheme",
+  expression: "ALPHA *( ALPHA / DIGIT / plus / hyphen / dot )",
+}
+
+data rfc3986_userinfo_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "userinfo",
+  expression: "*( unreserved / pct-encoded / sub-delims / colon )",
+}
+
+data rfc3986_host_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "host",
+  expression: "IP-literal / IPv4address / reg-name",
+}
+
+data rfc3986_port_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "port",
+  expression: "*DIGIT",
+}
+
+data rfc3986_path_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "path",
+  expression: "path-abempty / path-absolute / path-noscheme / path-rootless / path-empty",
+}
+
+data rfc3986_query_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "query",
+  expression: "*( pchar / slash / question )",
+}
+
+data rfc3986_fragment_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "fragment",
+  expression: "*( pchar / slash / question )",
+}
+
+type UriScheme {
+  normalized: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriUserInfo {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriHost {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriPort {
+  value: Nat,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriAuthority {
+  userinfo: Optional<UriUserInfo>,
+  host: UriHost,
+  port: Optional<UriPort>,
+}
+
+type UriPath {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+// 🟢 coproduct dissolution — T-26-UriHierPart.
+type UriHierPart
+  = UriHierAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriHierPathAbsolute { path: UriPath }
+  | UriHierPathRootless { path: UriPath }
+  | UriHierPathEmpty
+
+type UriQuery {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriFragment {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3
+type Url {
+  scheme: UriScheme,
+  hier_part: UriHierPart,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
+}
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-4.2
+// 🟢 coproduct dissolution — T-26-UriRelativePart.
+type UriRelativePart
+  = UriRelativeAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriRelativePathAbsolute { path: UriPath }
+  | UriRelativePathNoScheme { path: UriPath }
+  | UriRelativePathEmpty
+
+type UriRelativeReference {
+  relative_part: UriRelativePart,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
+}
+
+// 🟢 coproduct dissolution — T-26-UriReference.
+type UriReference
+  = UriReferenceAbsolute { uri: Url }
+  | UriReferenceRelative { relative: UriRelativeReference }
+
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3.2
+type NetworkAddress {
+  authority: UriAuthority,
+}

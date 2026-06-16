@@ -5,14 +5,14 @@
 > behind the recurring Map gap: #4564 (`43b7516`) fixed the runtime symptom (structural-key
 > `Map==` false even vs itself); the model-side incoherence that produced it is still in the
 > tree, and three live interim markers are waiting on exactly this design:
-> `feature:B-MAP-LOOKUP-OPTION-C-1` (`src/v4/std/collection.dag:65` — "dissolve-on-arrival:
+> `feature:B-MAP-LOOKUP-OPTION-C-1` (`src/v2/std/collection.dag:65` — "dissolve-on-arrival:
 > **unified runtime representation** so lookup ops need no per-site bridge"),
 > `feature:B-LOOKUP-1` (`collection.dag:107`, `lens/affected_set.dag:627`), and
 > `feature:finite-set-uniqueness-witness` (`collection.dag:157`).
 
 ## 1. Problem
 
-`v4.std.collection` declares:
+`v2.std.collection` declares:
 
 ```dag
 type Map<K, V> { lookup: fn(K) -> Witness<V> }     // collection.dag:69
@@ -54,10 +54,10 @@ Option bridge); the gap resurfaces because the model type misstates what a Map i
 | `FiniteSet<T>` + pending uniqueness witness (`feature:finite-set-uniqueness-witness`) | `collection.dag:157-161` | the key-set concept: a map's domain *is* a finite set; the uniqueness witness this marker wants is the same one map keys need |
 | `List<T> = FreeMonoid<T>`, `Set<T> = PointwisePower<T>` | `collection.dag:63-64` | the extensional family Map joins |
 | `TotalMap<K,V>` / `TotalPolicy<…>` (stored-closure carriers) | `collection.dag:162-167` | genuinely intensional — they stay function-shaped but stop sharing the "Map" family name (§4.4) |
-| Runtime precedent: native `Value::Map`, `CanonKey` delegating `Eq` to `Value::eq`, fail-closed un-keyable insert, fail-closed non-String JSON keys, extensional `==` | #4564 (`src/v2/stage0/src/v2_interpreter.rs`) + claim `test/claim/manual/map_structural_key_equality.dag` | **the semantics already proven by execution** — the model catches up to it, not vice versa |
+| Runtime precedent: native `Value::Map`, `CanonKey` delegating `Eq` to `Value::eq`, fail-closed un-keyable insert, fail-closed non-String JSON keys, extensional `==` | #4564 (`src/v1/stage0/src/v1_interpreter.rs`) + claim `test/claim/manual/map_structural_key_equality.dag` | **the semantics already proven by execution** — the model catches up to it, not vice versa |
 | Consumers at the gap | `affected_set.dag:599-643` (`mark_rerun`/`mark_excluded`, B-LOOKUP-1 site), `02_parse` `parse_table_lookup`, `model_core.PrimitiveFactBundle.spec_facts` | the executing consumers for the slice |
 
-**Substrate target named (P1):** `v4.std.collection` — `Map<K,V>` re-shaped in place; one new
+**Substrate target named (P1):** `v2.std.collection` — `Map<K,V>` re-shaped in place; one new
 honestly-named carrier `PartialFunction<K,V>` for what the old shape actually was; the v2
 `raw_map_lookup` chokepoint and the `map_get` Option-bridge delete. No connective/behavior
 change.
@@ -151,7 +151,7 @@ fixed-point artifact comparisons ([`design-self-host-fixed-point.md`](design-sel
 ## 5. Migration (behavioral, atomic where it touches the contract — P5, no second bridge)
 
 - **Census first (measure-first):** count direct `.lookup(` call sites on `Map`-typed values
-  across `src/v4` (distinct from `map_get` callers, which migrate for free since the
+  across `src/v2` (distinct from `map_get` callers, which migrate for free since the
   signature holds). Direct intension-callers either switch to `map_get` or actually want
   `PartialFunction` — each is a one-line, mechanical decision, but the *count* decides
   whether the swap is one PR or a short sequence with the old constructor briefly
@@ -177,9 +177,9 @@ fixed-point artifact comparisons ([`design-self-host-fixed-point.md`](design-sel
   model-honest); `parse_table_lookup` claims.
 - **Minimal slice:**
   1. re-shape `Map` + derived `map_get` body + `PartialFunction` carrier + `TotalMap` rename
-     in `v4.std.collection`; migrate the censused direct-lookup sites;
+     in `v2.std.collection`; migrate the censused direct-lookup sites;
   2. delete the v2 `raw_map_lookup` dual dispatch + `match_pattern` map bridge;
-  3. claims under `src/v4/test/claim/std_collection/` (plus the existing manual claim):
+  3. claims under `src/v2/test/claim/std_collection/` (plus the existing manual claim):
      **green** — whole-map structural-key `==` reflexive and order-independent, *in `.dag`*,
      over a map built by `map_insert`; **green** — map→PartialFunction projection derives
      and looks up; **red (discriminating)** — duplicate-key construction is unrepresentable

@@ -19,7 +19,7 @@ hand-written glue.
 From the repo root (build the compiler once):
 
 ```bash
-cargo build --release -p v2-compiler --bin gunbc
+cargo build --release -p v1-compiler --bin gunbc
 ```
 
 Then compile and type-check the emitted crate:
@@ -43,6 +43,6 @@ All logic lives in [`weather.dag`](weather.dag). The compiler pulls in
 
 ## Tests in this repo
 
-`src/v2/tests` includes structural checks over the emitted Rust (L4
+`src/v1/tests` includes structural checks over the emitted Rust (L4
 bootstrap). That path is heavier than the gate above; the gate is the
 fast public smoke test.

@@ -1,0 +1,82 @@
+
+module v2.test.lens_application.rejecting_lens_blocks_before_compile
+
+import v2.compiler.compile {
+  CompileOutput,
+  CompileLens,
+  TranslateTo,
+  Validated,
+  compile_lens_gate_rejected,
+  compile_lens_gate_rejected_diagnostic,
+  validate_then_compile
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
+import v2.std.logic { Bool }
+import v2.std.algebra { Empty }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Witness }
+import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+data rejecting_lens_target_model_stub: TargetModel = TargetModel {
+  bundle: Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+},
+  authority_source_text: Empty
+}
+
+data rejecting_lens_authority_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^rejecting_lens_claim_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
+  outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: ^rejecting_lens_gate_at })
+  )
+}
+
+data rejecting_lens: CompileLens = CompileLens { gate: rejecting_lens_gate }
+
+fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
+  match validate_then_compile(
+    source: fixture_add_resolved_tree(),
+    lenses: [rejecting_lens],
+    mode: TranslateTo { target: rejecting_lens_target_model_stub }
+  ) {
+    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn rejecting_lens_blocks_before_compile_claim_rhs() -> Node {
+  if rejecting_lens_blocks_before_compile_claim_holds() {
+    rejecting_lens_authority_node
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
+  label: "lens_application/rejecting_lens_blocks_before_compile: rejecting lens blocks compile",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: rejecting_lens_authority_node,
+  rhs: rejecting_lens_blocks_before_compile_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -1,14 +1,14 @@
-//! v4 `compiler/emit_host.dag` Rust host row — compile + execute emitted artifacts.
+//! v2 `compiler/emit_host.dag` Rust host row — compile + execute emitted artifacts.
 //!
 //! **Modeled authority:** `run_emit_host_rust`, `runtime_value_parse_rust` in
-//! `src/v4/compiler/emit_host.dag`. Executable host-process boundary for W3; substrate `.dag`
+//! `src/v2/compiler/emit_host.dag`. Executable host-process boundary for W3; substrate `.dag`
 //! models receipt assembly while `emit_host_bridge.rs` dispatches this crate until T-22 eval
 //! wires host transport directly.
 //!
 //! **Host boundary (INVARIANTS §P2):** outcomes are typed carriers — setup failure is
 //! `HostExitOutcome::Rejected(HostSetupFailure)`, logical child outcome is
 //! `HostExitOutcome::Accepted(ExitWitness::Holds|Violates)`. No free-form `String` authority.
-//! **W3 dissolution:** map `HostExit` / `HostLogicalRun` into `v4.std.host_run` carriers when
+//! **W3 dissolution:** map `HostExit` / `HostLogicalRun` into `v2.std.host_run` carriers when
 //! `run_emit_host_rust` transport lands (dissolves `emit_host_transport_not_wired`).
 //!
 //! Child processes use wall-clock timeouts and per-stream byte caps so a buggy emitted program
@@ -110,7 +110,7 @@ pub enum HostExitOutcome {
     Rejected(HostSetupFailure),
 }
 
-/// Mirrors `v4.std.host_run.HostExit` — typed setup vs logical exit separation.
+/// Mirrors `v2.std.host_run.HostExit` — typed setup vs logical exit separation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostExit {
     pub outcome: HostExitOutcome,

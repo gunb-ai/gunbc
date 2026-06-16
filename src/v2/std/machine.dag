@@ -1,0 +1,36 @@
+// src/v2/std/machine.dag
+// Scope: machine representation widths and words.
+// Anchor: https://en.wikipedia.org/wiki/Word_(computer_architecture)
+// Status: T-3 modeled.
+
+
+module v2.std.machine
+
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+type Bit = Bool
+type Byte {
+  bits: List<Bit>
+}
+type Word8 {
+  bytes: List<Byte>
+}
+
+type Word16 {
+  bytes: List<Byte>
+}
+
+type Word32 {
+  bytes: List<Byte>
+}
+
+type Word64 {
+  bytes: List<Byte>
+}
+
+type Word128 {
+  bytes: List<Byte>
+}
+type MachineWidth<bits>
+type PointerWidth

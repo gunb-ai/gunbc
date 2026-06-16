@@ -1,0 +1,1107 @@
+// Compiler-local language-spec projection.
+//
+// Imports shared types from `dsl/std/languages.dag` (the single authority for
+// language facts) and adds compiler-specific types (SerializationSpec,
+// TestConventions, SharingStrategy, IndexingSemantics, AnnotationRequirements)
+// that the emitter needs but that are not (yet) in std.
+//
+// Accessor functions route RenderTarget → concrete extdep data.
+
+module v1.compiler.languages
+
+import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+import v1.std.core {
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue
+}
+import std.syntax {
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  OperatorSpec, SyntaxSpec,
+  AlgebraFieldKind,
+  BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
+  ServiceBody, ResourceBody
+}
+// NamingCase: mirrors std.languages.NamingCase (single authority).
+// Cannot import directly — std/languages.dag contains CommentSyntax
+// with String? fields the bootstrap compiler doesn't yet emit correctly.
+// Import from std.languages once bootstrap handles optional string fields.
+
+import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
+import extdeps.languages.python.syntax { python_operators, python_item_forms }
+import extdeps.languages.go.syntax { go_operators, go_item_forms }
+import extdeps.languages.dag.syntax { dag_operators }
+
+import extdeps.languages.rust.emit {
+  rust_keywords, rust_container_templates,
+  rust_reserved, rust_reserved_escape_suffix,
+  rust_struct_derives, rust_struct_derives_copy,
+  rust_enum_derives, rust_enum_derives_copy,
+  rust_serde_tag, rust_serde_rename_template,
+  rust_source_extension, rust_source_dir, rust_visibility,
+  rust_string_types,
+  rust_method_templates,
+  rust_func_keyword, rust_async_prefix, rust_struct_keyword,
+  rust_enum_keyword, rust_type_alias_keyword,
+  rust_param_separator, rust_return_arrow,
+  rust_param_type_sep,
+  rust_module_keyword, rust_import_keyword, rust_import_from_keyword,
+  rust_lambda_template, rust_error_expr_template,
+  rust_list_literal_empty, rust_list_literal_template,
+  rust_null_coalesce_template, rust_error_type_template,
+  rust_type_arg_open, rust_type_arg_close, rust_void_type,
+  rust_tuple_empty, rust_tuple_pair_template, rust_tuple_multi_template, rust_tuple_separator
+}
+
+import extdeps.languages.python.emit {
+  python_keywords,
+  python_reserved, python_reserved_escape_suffix,
+  python_derive_attribute, python_default_value,
+  python_source_extension, python_module_init,
+  python_method_templates,
+  python_string_types,
+  python_func_keyword, python_async_prefix, python_struct_keyword,
+  python_enum_keyword, python_type_alias_keyword,
+  python_param_separator, python_return_arrow,
+  python_param_type_sep,
+  python_module_keyword, python_import_keyword, python_import_from_keyword,
+  python_lambda_template, python_error_expr_template,
+  python_list_literal_empty, python_list_literal_template,
+  python_null_coalesce_template, python_error_type_template,
+  python_type_arg_open, python_type_arg_close, python_void_type,
+  python_tuple_empty, python_tuple_pair_template, python_tuple_multi_template, python_tuple_separator
+}
+
+import extdeps.languages.go.emit {
+  go_keywords,
+  go_reserved, go_reserved_escape_suffix,
+  go_manifest_file,
+  go_source_extension,
+  go_method_templates,
+  go_string_types,
+  go_func_keyword, go_async_prefix, go_struct_keyword,
+  go_enum_keyword, go_type_alias_keyword,
+  go_param_separator, go_return_arrow,
+  go_param_type_sep,
+  go_module_keyword, go_import_keyword, go_import_from_keyword,
+  go_lambda_template, go_error_expr_template,
+  go_list_literal_empty, go_list_literal_template,
+  go_null_coalesce_template, go_error_type_template,
+  go_type_arg_open, go_type_arg_close, go_void_type,
+  go_tuple_empty, go_tuple_pair_template, go_tuple_multi_template, go_tuple_separator
+}
+
+import extdeps.languages.dag.emit {
+  dag_keywords, dag_container_templates,
+  dag_reserved,
+  dag_string_types,
+  dag_func_keyword, dag_async_prefix, dag_struct_keyword,
+  dag_enum_keyword, dag_type_alias_keyword,
+  dag_param_separator, dag_return_arrow,
+  dag_param_type_sep,
+  dag_module_keyword, dag_import_keyword, dag_import_from_keyword,
+  dag_source_extension,
+  dag_lambda_template, dag_error_expr_template,
+  dag_list_literal_empty, dag_list_literal_template,
+  dag_null_coalesce_template, dag_error_type_template,
+  dag_type_arg_open, dag_type_arg_close, dag_void_type,
+  dag_tuple_empty, dag_tuple_pair_template, dag_tuple_multi_template, dag_tuple_separator
+}
+
+type ReservedWordStrategy
+  = PrefixEscape { prefix: String }
+  | SuffixEscape { suffix: String }
+  | NoEscape
+
+type ReservedWords {
+  keywords: List<String>
+  strategy: ReservedWordStrategy
+}
+
+type ProjectScaffold {
+  manifest_file: String?
+  module_init_file: String?
+  source_file_extension: String
+  source_dir: String?
+}
+
+type SerializationSpec {
+  struct_derives: String?
+  struct_derives_copy: String?
+  enum_derives: String?
+  enum_derives_copy: String?
+  tag_attribute: String?
+  rename_attribute_template: String?
+  derive_attribute: String?
+  default_value: String?
+}
+
+type TestNameStyle = SnakeCaseTestNames | PascalCaseTestNames
+
+type TestConventions {
+  file_prefix: String
+  file_suffix: String
+  file_dir: String?
+  function_prefix: String
+  name_style: TestNameStyle
+  async_decorator: String?
+}
+
+
+type ImportTrigger
+  = TypeUsageTrigger { type_name: String }
+  | TraitImplTrigger { trait_name: String }
+  | DeriveMacroTrigger { macro_name: String }
+  | ContainerUsageTrigger { container: String }
+  | AsyncUsageTrigger
+
+type ImportRule {
+  trigger: ImportTrigger
+  import_path: String
+}
+
+type SharingStrategy {
+  needs_sharing: Bool // Rust: true (ownership), Python/Go: false (GC)
+  wrap_template: String
+  // Clone templates: {0}=value, {1}=field (for field_clone).
+  // In GC'd languages these are identity — no ownership transfer needed.
+  clone_value: String
+  deref_clone: String
+  field_clone: String
+  iter_owned: String
+  clone_suffix: String
+  // Borrow templates: {0}=type (param) or {0}=expr (arg).
+  // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
+  borrow_param_template: String // wraps param type: Rust "&Rc<T>", Go/Python identity
+  borrow_arg_template: String
+}
+
+type IndexingSemantics {
+  list_index: String
+  map_index: String
+  string_index: String
+  list_slice: String?
+  string_slice: String?
+}
+
+type AnnotationRequirements {
+  let_binding_inferred: String
+  let_binding_annotated: String
+  lambda_param_typed: String
+  lambda_param_untyped: String
+}
+
+type ServiceFieldTemplates {
+  rest_decl: String
+  auth_decl: String
+  shell_decl: String
+  file_decl: String
+  rest_ctor: String
+  auth_ctor: String
+  shell_ctor: String
+  file_ctor: String
+}
+
+
+// -- Block syntax: structural formatting facts per target language -----------
+// Two authorities:
+//   Language spec — block delimiters, statement terminators, significant
+//     whitespace. These are correctness requirements (Python).
+//   Style spec — indent unit, readability conventions. These are readability
+//     requirements (correctness during bootstrap; optional post-bootstrap
+//     via gofmt/rustfmt).
+type BlockSyntax {
+  block_open: String
+  block_close: String
+  else_clause: String
+  match_keyword: String
+  case_keyword: String
+  arm_separator: String
+  stmt_terminator: String
+  significant_whitespace: Bool
+}
+
+type ForEachSyntax {
+  prefix: String
+  separator: String
+}
+
+type IfValueForm
+  = IfExpression
+  | ConditionalTernary
+  | IfStatement
+
+type MatchValueForm
+  = MatchExpression
+  | MatchStatementArmReturn
+
+type ExpressionSemantics {
+  if_value_form: IfValueForm
+  match_value_form: MatchValueForm
+  wildcard_case: String?
+  variant_pattern: VariantPatternSyntax?
+  guard_prefix: String?
+  empty_return_value: String
+  return_suffix: String
+  suppress_unit_return: Bool
+}
+
+type VariantPatternSyntax {
+  open: String
+  close: String
+  binding_sep: String
+  empty_suffix: String
+}
+
+type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
+
+type VisibilitySpec
+  = KeywordVisibility { prefix: String }
+  | CaseVisibility { export_case: NamingCase }
+
+type TcoSyntax {
+  loop_keyword: String
+  break_return: String
+  continue_str: String
+  temp_var_prefix: String
+  temp_decl_prefix: String
+  temp_assign_op: String
+}
+
+type ServiceMethodStrategy
+  = SelfInParams { self_param: String }
+  | ExternalReceiver { var_name: String }
+
+type ServiceReturnStrategy
+  = ArrowReturn
+  | ErrorTupleReturn { error_type: String }
+
+fn service_self_param(spec: LanguageSpec) -> String {
+  match spec.service_method {
+    SelfInParams { self_param: sp } => sp
+    ExternalReceiver { var_name: _ } => ""
+  }
+}
+
+// TODO: receiver_template on LanguageSpec — Go receiver syntax "(c *Name) "
+// is hardcoded here. Phase 5: move to a data-driven rendering template.
+fn service_receiver_str(spec: LanguageSpec, service_name: String) -> String {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => ""
+    ExternalReceiver { var_name: v } => concat("(", v, " *", service_name, ") ")
+  }
+}
+
+fn service_method_depth(spec: LanguageSpec) -> Int {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => 1
+    ExternalReceiver { var_name: _ } => 0
+  }
+}
+
+fn service_methods_inside_class(spec: LanguageSpec) -> Bool {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => true
+    ExternalReceiver { var_name: _ } => false
+  }
+}
+
+// TODO: return_template on LanguageSpec — error tuple format "(T, error)"
+// is hardcoded here. Phase 5: move to fully data-driven rendering.
+fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
+  match spec.service_return {
+    ArrowReturn => concat(spec.items.return_arrow, ret_type)
+    ErrorTupleReturn { error_type: et } => concat(" (", ret_type, ", ", et, ")")
+  }
+}
+
+// Item definition facts — individual tokens the emitter composes.
+// Not templates: each field is one language fact.
+//
+// RELATION TO SyntaxSpec: SyntaxSpec.ItemForm.keyword is the PARSING
+// keyword (what to recognize). ItemKeywords.*_keyword is the EMISSION
+// keyword (what to produce). For same-language compilation (Rust→Rust)
+// these are identical. For cross-language (.dag→Rust) they differ
+// (parse "fn", emit "fn"/"def"/"func"). When each target language has
+// a full SyntaxSpec, ItemKeywords should derive from it (single authority).
+type ItemKeywords {
+  func_keyword: String
+  async_prefix: String
+  struct_keyword: String
+  enum_keyword: String
+  type_alias_keyword: String
+  param_separator: String
+  return_arrow: String
+  param_type_sep: String
+  module_keyword: String
+  import_keyword: String
+  import_from_keyword: String
+}
+
+// Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
+// Fails closed with an error marker if no matching ItemForm exists.
+// M5: "No fallbacks that fabricate" — missing item form is a data bug
+// that should cause visible compilation failure, not silent "" emission.
+fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
+  let matching = forms |> filter(f => f.kind == kind)
+  match matching |> first {
+    Present { value: f } => f.keyword
+    Absent => "__MISSING_ITEM_KEYWORD__"
+  }
+}
+
+type LanguageSpec {
+  target_name: String
+  reserved_words: ReservedWords
+  scaffold: ProjectScaffold
+  serialization: SerializationSpec
+  test_conventions: TestConventions
+  visibility: VisibilitySpec
+  sharing: SharingStrategy
+  indexing: IndexingSemantics
+  annotations: AnnotationRequirements
+  method_templates: Map<String, String>?
+  service_fields: ServiceFieldTemplates
+  block_syntax: BlockSyntax
+  for_each_syntax: ForEachSyntax
+  tco: TcoSyntax
+  items: ItemKeywords
+  expression_semantics: ExpressionSemantics
+  lambda_template: String
+  error_expr_template: String
+  list_literal_empty: String
+  list_literal_template: String
+  null_coalesce_template: String
+  error_type_template: String
+  type_arg_open: String
+  type_arg_close: String
+  void_type: String
+  tuple_syntax: TupleSyntax
+  string_interp: StringInterpSyntax
+  // Callable type rendering: non-null overrides CallableRepr.template entirely.
+  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
+  callable_type_template: String?
+  naming_case: NamingCase
+  async_call_prefix: String
+  bridge_method_prefix: String
+  bridge_method_case: NamingCase
+  bridge_method_overrides: Map<String, String>
+  record_lit: RecordLitSyntax
+  service_method: ServiceMethodStrategy
+  service_return: ServiceReturnStrategy
+}
+
+type TupleSyntax {
+  empty: String
+  pair_template: String
+  multi_template: String
+  separator: String
+  first_accessor: String
+  second_accessor: String
+}
+
+type RecordLitSyntax {
+  named_open: String
+  named_close: String
+  named_empty: String
+  named_field_sep: String
+  named_field_join: String
+  anon_empty: String
+  anon_prefix: String
+  anon_suffix: String
+  anon_field_indent: String
+}
+
+// String interpolation — three structurally different models:
+//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
+//   InlineExpr: inline interpolation (Python f-strings)
+// C-1: dissolves `match target` in emit_simple_string_interp.
+// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
+type InterpStyle
+  = FormatArgs { placeholder: String }
+  | InlineExpr
+
+type EscapePair {
+  from: String
+  to: String
+}
+
+type StringInterpSyntax {
+  style: InterpStyle
+  format_template: String
+  plain_template: String
+  escape_pairs: List<EscapePair>
+}
+
+// =========================================================================
+// SyntaxSpec — unified with std.syntax (single authority)
+// ItemForm, OperatorSpec, SyntaxSpec, BodyKind imported above.
+// =========================================================================
+
+fn rust_spec() -> LanguageSpec {
+  LanguageSpec {
+    target_name: "rust",
+    reserved_words: ReservedWords {
+      keywords: rust_reserved,
+      strategy: SuffixEscape { suffix: rust_reserved_escape_suffix }
+    },
+    scaffold: ProjectScaffold {
+      manifest_file: "Cargo.toml",
+      module_init_file: null,
+      source_file_extension: rust_source_extension,
+      source_dir: rust_source_dir
+    },
+    serialization: SerializationSpec {
+      struct_derives: rust_struct_derives,
+      struct_derives_copy: rust_struct_derives_copy,
+      enum_derives: rust_enum_derives,
+      enum_derives_copy: rust_enum_derives_copy,
+      tag_attribute: rust_serde_tag,
+      rename_attribute_template: rust_serde_rename_template,
+      derive_attribute: null,
+      default_value: null
+    },
+    test_conventions: TestConventions {
+      file_prefix: "",
+      file_suffix: "_test",
+      file_dir: "tests/",
+      function_prefix: "test_",
+      name_style: SnakeCaseTestNames,
+      async_decorator: "#[tokio::test]"
+    },
+    visibility: KeywordVisibility { prefix: rust_visibility },
+    sharing: SharingStrategy {
+      needs_sharing: true,
+      wrap_template: "Rc<{0}>",
+      clone_value: "{0}.clone()",
+      deref_clone: "(*{0}).clone()",
+      field_clone: "{0}.{1}.clone()",
+      iter_owned: "{0}.iter().cloned()",
+      clone_suffix: ".cloned()",
+      borrow_param_template: "&{0}",
+      borrow_arg_template: "&{0}"
+    },
+    indexing: IndexingSemantics {
+      list_index: "{0}[({1}) as usize].clone()",
+      map_index: "({0}).get(&{1}).cloned()",
+      string_index: "v1_rt::char_at(&{0}, {1})",
+      list_slice: null,
+      string_slice: "v1_rt::substring(&{0}, {1}, {2})"
+    },
+    annotations: AnnotationRequirements {
+      let_binding_inferred: "let {0} = {1};",
+      let_binding_annotated: "let {0}: {1} = {2};",
+      lambda_param_typed: "{0}: {1}",
+      lambda_param_untyped: "{0}"
+    },
+    method_templates: rust_method_templates(),
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "    pub base_url: String,\n",
+      auth_decl: "    pub auth_token: String,\n",
+      shell_decl: "    pub working_dir: Option<String>,\n",
+      file_decl: "    pub base_path: String,\n",
+      rest_ctor: "        base_url: \"{0}\".to_string(),\n",
+      auth_ctor: "        auth_token: String::new(),\n",
+      shell_ctor: "        working_dir: None,\n",
+      file_ctor: "        base_path: \".\".to_string(),\n"
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "match ", case_keyword: "",
+      arm_separator: ",", stmt_terminator: ";",
+      significant_whitespace: false
+    },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
+    tco: TcoSyntax {
+      loop_keyword: "loop",
+      break_return: "break",
+      continue_str: "continue;",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "let ",
+      temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: FuncForm),
+      async_prefix: rust_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: TypeAliasForm),
+      param_separator: rust_param_separator, return_arrow: rust_return_arrow,
+      param_type_sep: rust_param_type_sep,
+      module_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: ModuleForm),
+      import_keyword: rust_import_keyword,
+      import_from_keyword: rust_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfExpression,
+      match_value_form: MatchExpression,
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Present { value: " if " },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
+    },
+    lambda_template: rust_lambda_template,
+    error_expr_template: rust_error_expr_template,
+    list_literal_empty: rust_list_literal_empty,
+    list_literal_template: rust_list_literal_template,
+    null_coalesce_template: rust_null_coalesce_template,
+    error_type_template: rust_error_type_template,
+    type_arg_open: rust_type_arg_open,
+    type_arg_close: rust_type_arg_close,
+    void_type: rust_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: rust_tuple_empty,
+      pair_template: rust_tuple_pair_template,
+      multi_template: rust_tuple_multi_template,
+      separator: rust_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "{}" },
+      format_template: "format!(\"{0}\", {1})",
+      plain_template: "\"{0}\".to_string()",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    naming_case: SnakeCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    },
+    service_method: SelfInParams { self_param: "&self" },
+    service_return: ArrowReturn
+  }
+}
+
+fn python_spec() -> LanguageSpec {
+  LanguageSpec {
+    target_name: "python",
+    reserved_words: ReservedWords {
+      keywords: python_reserved,
+      strategy: SuffixEscape { suffix: python_reserved_escape_suffix }
+    },
+    scaffold: ProjectScaffold {
+      manifest_file: "requirements.txt",
+      module_init_file: python_module_init,
+      source_file_extension: python_source_extension,
+      source_dir: null
+    },
+    serialization: SerializationSpec {
+      struct_derives: null,
+      struct_derives_copy: null,
+      enum_derives: null,
+      enum_derives_copy: null,
+      tag_attribute: null,
+      rename_attribute_template: null,
+      derive_attribute: python_derive_attribute,
+      default_value: python_default_value
+    },
+    test_conventions: TestConventions {
+      file_prefix: "test_",
+      file_suffix: "",
+      file_dir: "tests/",
+      function_prefix: "test_",
+      name_style: SnakeCaseTestNames,
+      async_decorator: null
+    },
+    visibility: KeywordVisibility { prefix: "" },
+    sharing: SharingStrategy {
+      needs_sharing: false,
+      wrap_template: "{0}",
+      clone_value: "{0}",
+      deref_clone: "{0}",
+      field_clone: "{0}.{1}",
+      iter_owned: "{0}",
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
+    },
+    indexing: IndexingSemantics {
+      list_index: "{0}[{1}]",
+      map_index: "{0}[{1}]",
+      string_index: "{0}[{1}]",
+      list_slice: "{0}[{1}:{2}]",
+      string_slice: "{0}[{1}:{2}]"
+    },
+    annotations: AnnotationRequirements {
+      let_binding_inferred: "{0} = {1}",
+      let_binding_annotated: "{0}: {1} = {2}",
+      lambda_param_typed: "{0}: {1}",
+      lambda_param_untyped: "{0}"
+    },
+    method_templates: python_method_templates,
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "base_url: str",
+      auth_decl: "auth_token: str",
+      shell_decl: "working_dir: str | None = None",
+      file_decl: "base_path: str",
+      rest_ctor: "self.base_url = base_url",
+      auth_ctor: "self.auth_token = auth_token",
+      shell_ctor: "self.working_dir = working_dir",
+      file_ctor: "self.base_path = base_path"
+    },
+    block_syntax: BlockSyntax {
+      block_open: ":\n", block_close: "",
+      else_clause: "else:\n",
+      match_keyword: "match ", case_keyword: "case ",
+      arm_separator: "\n", stmt_terminator: "\n",
+      significant_whitespace: true
+    },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
+    tco: TcoSyntax {
+      loop_keyword: "while True",
+      break_return: "return",
+      continue_str: "continue\n",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "",
+      temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: item_keyword_for_kind(forms: python_item_forms, kind: FuncForm),
+      async_prefix: python_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: python_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: python_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: python_item_forms, kind: TypeAliasForm),
+      param_separator: python_param_separator, return_arrow: python_return_arrow,
+      param_type_sep: python_param_type_sep,
+      module_keyword: item_keyword_for_kind(forms: python_item_forms, kind: ModuleForm),
+      import_keyword: python_import_keyword,
+      import_from_keyword: python_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: ConditionalTernary,
+      match_value_form: MatchStatementArmReturn,
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
+      guard_prefix: Present { value: " if " },
+      empty_return_value: "None",
+      return_suffix: "",
+      suppress_unit_return: false
+    },
+    lambda_template: python_lambda_template,
+    error_expr_template: python_error_expr_template,
+    list_literal_empty: python_list_literal_empty,
+    list_literal_template: python_list_literal_template,
+    null_coalesce_template: python_null_coalesce_template,
+    error_type_template: python_error_type_template,
+    type_arg_open: python_type_arg_open,
+    type_arg_close: python_type_arg_close,
+    void_type: python_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: python_tuple_empty,
+      pair_template: python_tuple_pair_template,
+      multi_template: python_tuple_multi_template,
+      separator: python_tuple_separator,
+      first_accessor: "[0]",
+      second_accessor: "[1]"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "f\"{0}\"",
+      plain_template: "f\"{0}\"",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: null,
+    naming_case: SnakeCase,
+    async_call_prefix: "await ",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: map_insert(empty_map(), "with", "with_update"),
+    record_lit: RecordLitSyntax {
+      named_open: "(", named_close: ")", named_empty: "()",
+      named_field_sep: "=", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    },
+    service_method: SelfInParams { self_param: "self" },
+    service_return: ArrowReturn
+  }
+}
+
+fn go_spec() -> LanguageSpec {
+  LanguageSpec {
+    target_name: "go",
+    reserved_words: ReservedWords {
+      keywords: go_reserved,
+      strategy: SuffixEscape { suffix: go_reserved_escape_suffix }
+    },
+    scaffold: ProjectScaffold {
+      manifest_file: "go.mod",
+      module_init_file: null,
+      source_file_extension: ".go",
+      source_dir: null
+    },
+    serialization: SerializationSpec {
+      struct_derives: null,
+      struct_derives_copy: null,
+      enum_derives: null,
+      enum_derives_copy: null,
+      tag_attribute: null,
+      rename_attribute_template: null,
+      derive_attribute: null,
+      default_value: null
+    },
+    test_conventions: TestConventions {
+      file_prefix: "",
+      file_suffix: "_test",
+      file_dir: null,
+      function_prefix: "Test",
+      name_style: PascalCaseTestNames,
+      async_decorator: null
+    },
+    visibility: CaseVisibility { export_case: PascalCase },
+    sharing: SharingStrategy {
+      needs_sharing: false,
+      wrap_template: "{0}",
+      clone_value: "{0}",
+      deref_clone: "{0}",
+      field_clone: "{0}.{1}",
+      iter_owned: "{0}",
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
+    },
+    indexing: IndexingSemantics {
+      list_index: "{0}[{1}]",
+      map_index: "{0}[{1}]",
+      string_index: "{0}[{1}]",
+      list_slice: "{0}[{1}:{2}]",
+      string_slice: "{0}[{1}:{2}]"
+    },
+    annotations: AnnotationRequirements {
+      let_binding_inferred: "{0} := {1}",
+      let_binding_annotated: "var {0} {1} = {2}",
+      lambda_param_typed: "{0} {1}",
+      lambda_param_untyped: "{0} interface{}"
+    },
+    method_templates: go_method_templates,
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "\tBaseURL string",
+      auth_decl: "\tAuthToken string",
+      shell_decl: "\tWorkingDir string",
+      file_decl: "\tBasePath string",
+      rest_ctor: "",
+      auth_ctor: "",
+      shell_ctor: "",
+      file_ctor: ""
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "switch ", case_keyword: "case ",
+      arm_separator: "\n", stmt_terminator: "",
+      significant_whitespace: false
+    },
+    for_each_syntax: ForEachSyntax { prefix: "for _, ", separator: " := range " },
+    tco: TcoSyntax {
+      loop_keyword: "for",
+      break_return: "return",
+      continue_str: "continue",
+      temp_var_prefix: "tco",
+      temp_decl_prefix: "",
+      temp_assign_op: " := "
+    },
+    items: ItemKeywords {
+      func_keyword: item_keyword_for_kind(forms: go_item_forms, kind: FuncForm),
+      async_prefix: go_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: go_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: go_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: go_item_forms, kind: TypeAliasForm),
+      param_separator: go_param_separator, return_arrow: go_return_arrow,
+      param_type_sep: go_param_type_sep,
+      module_keyword: item_keyword_for_kind(forms: go_item_forms, kind: ModuleForm),
+      import_keyword: go_import_keyword,
+      import_from_keyword: go_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfStatement,
+      match_value_form: MatchStatementArmReturn,
+      wildcard_case: Present { value: "default" },
+      variant_pattern: Absent,
+      guard_prefix: Absent,
+      empty_return_value: "struct{}{}, nil",
+      return_suffix: ", nil",
+      suppress_unit_return: true
+    },
+    lambda_template: go_lambda_template,
+    error_expr_template: go_error_expr_template,
+    list_literal_empty: go_list_literal_empty,
+    list_literal_template: go_list_literal_template,
+    null_coalesce_template: go_null_coalesce_template,
+    error_type_template: go_error_type_template,
+    type_arg_open: go_type_arg_open,
+    type_arg_close: go_type_arg_close,
+    void_type: go_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: go_tuple_empty,
+      pair_template: go_tuple_pair_template,
+      multi_template: go_tuple_multi_template,
+      separator: go_tuple_separator,
+      first_accessor: ".First",
+      second_accessor: ".Second"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "%v" },
+      format_template: "fmt.Sprintf(\"{0}\", {1})",
+      plain_template: "\"{0}\"",
+      escape_pairs: [EscapePair { from: "%", to: "%%" }]
+    },
+    callable_type_template: null,
+    naming_case: CamelCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "v2rt.",
+    bridge_method_case: PascalCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: "\{", named_close: "\}", named_empty: "\{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
+      anon_field_indent: "\t"
+    },
+    service_method: ExternalReceiver { var_name: "c" },
+    service_return: ErrorTupleReturn { error_type: "error" }
+  }
+}
+
+fn dag_spec() -> LanguageSpec {
+  LanguageSpec {
+    target_name: "dag",
+    reserved_words: ReservedWords {
+      keywords: dag_reserved,
+      strategy: NoEscape
+    },
+    scaffold: ProjectScaffold {
+      manifest_file: null,
+      module_init_file: null,
+      source_file_extension: dag_source_extension,
+      source_dir: null
+    },
+    serialization: SerializationSpec {
+      struct_derives: null,
+      struct_derives_copy: null,
+      enum_derives: null,
+      enum_derives_copy: null,
+      tag_attribute: null,
+      rename_attribute_template: null,
+      derive_attribute: null,
+      default_value: null
+    },
+    test_conventions: TestConventions {
+      file_prefix: "test_",
+      file_suffix: "",
+      file_dir: "tests/",
+      function_prefix: "test_",
+      name_style: SnakeCaseTestNames,
+      async_decorator: null
+    },
+    visibility: KeywordVisibility { prefix: "" },
+    sharing: SharingStrategy {
+      needs_sharing: true,
+      wrap_template: "Rc<{0}>",
+      clone_value: "{0}.clone()",
+      deref_clone: "(*{0}).clone()",
+      field_clone: "{0}.{1}.clone()",
+      iter_owned: "{0}.iter().cloned()",
+      clone_suffix: ".cloned()",
+      borrow_param_template: "&{0}",
+      borrow_arg_template: "&{0}"
+    },
+    indexing: IndexingSemantics {
+      list_index: "{0}[({1}) as usize].clone()",
+      map_index: "({0}).get(&{1}).cloned()",
+      string_index: "v1_rt::char_at(&{0}, {1})",
+      list_slice: null,
+      string_slice: "v1_rt::substring(&{0}, {1}, {2})"
+    },
+    annotations: AnnotationRequirements {
+      let_binding_inferred: "let {0} = {1}",
+      let_binding_annotated: "let {0}: {1} = {2}",
+      lambda_param_typed: "{0}: {1}",
+      lambda_param_untyped: "{0}"
+    },
+    method_templates: rust_method_templates(),
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "    pub base_url: String,\n",
+      auth_decl: "    pub auth_token: String,\n",
+      shell_decl: "    pub working_dir: Option<String>,\n",
+      file_decl: "    pub base_path: String,\n",
+      rest_ctor: "        base_url: \"{0}\".to_string(),\n",
+      auth_ctor: "        auth_token: String::new(),\n",
+      shell_ctor: "        working_dir: None,\n",
+      file_ctor: "        base_path: \".\".to_string(),\n"
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "match ", case_keyword: "",
+      arm_separator: ",", stmt_terminator: ";",
+      significant_whitespace: false
+    },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
+    tco: TcoSyntax {
+      loop_keyword: "loop",
+      break_return: "break",
+      continue_str: "continue;",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "let ",
+      temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: dag_func_keyword,
+      async_prefix: dag_async_prefix,
+      struct_keyword: dag_struct_keyword,
+      enum_keyword: dag_enum_keyword,
+      type_alias_keyword: dag_type_alias_keyword,
+      param_separator: dag_param_separator, return_arrow: dag_return_arrow,
+      param_type_sep: dag_param_type_sep,
+      module_keyword: dag_module_keyword,
+      import_keyword: dag_import_keyword,
+      import_from_keyword: dag_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfExpression,
+      match_value_form: MatchExpression,
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Present { value: " if " },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
+    },
+    lambda_template: dag_lambda_template,
+    error_expr_template: dag_error_expr_template,
+    list_literal_empty: dag_list_literal_empty,
+    list_literal_template: dag_list_literal_template,
+    null_coalesce_template: dag_null_coalesce_template,
+    error_type_template: dag_error_type_template,
+    type_arg_open: dag_type_arg_open,
+    type_arg_close: dag_type_arg_close,
+    void_type: dag_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: dag_tuple_empty,
+      pair_template: dag_tuple_pair_template,
+      multi_template: dag_tuple_multi_template,
+      separator: dag_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "\"\{0\}\"",
+      plain_template: "\"\{0\}\"",
+      escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
+    },
+    callable_type_template: null,
+    naming_case: AsAuthored,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    },
+    service_method: SelfInParams { self_param: "" },
+    service_return: ArrowReturn
+  }
+}
+
+fn language_spec_for_target(target: RenderTarget) -> LanguageSpec {
+  match target {
+    Rust => rust_spec()
+    Go => go_spec()
+    Python => python_spec()
+    Dag => dag_spec()
+  }
+}
+
+fn target_keyword(target: RenderTarget, key: String) -> String {
+  match target {
+    Rust => match lookup(rust_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Go => match lookup(go_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Python => match lookup(python_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Dag => key
+  }
+}
+
+fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
+  match target {
+    Rust => rust_operators
+    Python => python_operators
+    Go => go_operators
+    Dag => dag_operators
+  }
+}
+
+fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind?) -> String? {
+  let ops = target_operators(target: target)
+  let op_matching = ops |> filter(spec => match spec.binop {
+    Present { value: b } => b == op
+    Absent => false
+  })
+  let specific = match algebra_field {
+    Present { value: af } =>
+      op_matching |> filter(spec => match spec.algebra_field { Present { value: sf } => sf == af  _ => false }) |> first
+    Absent => none
+  }
+  let result = match specific {
+    Present { value: _ } => specific
+    Absent => op_matching |> filter(spec => spec.algebra_field == none) |> first
+  }
+  match result {
+    Present { value: spec } => Present { value: spec.symbol }
+    Absent => none
+  }
+}
+
+fn is_string_like(target: RenderTarget, name: String) -> Bool {
+  match target {
+    Rust => rust_string_types |> any(t => t == name)
+    Go => go_string_types |> any(t => t == name)
+    Python => python_string_types |> any(t => t == name)
+    Dag => false
+  }
+}
+
+fn scaffold_for_target(target: RenderTarget) -> ProjectScaffold {
+  language_spec_for_target(target: target).scaffold
+}
+
+fn serialization_for_target(target: RenderTarget) -> SerializationSpec {
+  language_spec_for_target(target: target).serialization
+}
+
+fn test_conventions_for_target(target: RenderTarget) -> TestConventions {
+  language_spec_for_target(target: target).test_conventions
+}
+
+fn visibility_for_target(target: RenderTarget) -> VisibilitySpec {
+  language_spec_for_target(target: target).visibility
+}
+
+fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
+  language_spec_for_target(target: target).sharing
+}
+
+fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
+  language_spec_for_target(target: target).expression_semantics
+}
+
+// Apply sharing wrap template to a type string.
+// Rust: "Rc<{0}>" → "Rc<MyType>", Python/Go: "{0}" → "MyType"
+fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
+  let tmpl = sharing_for_target(target: target).wrap_template
+  replace(tmpl, "{0}", inner)
+}

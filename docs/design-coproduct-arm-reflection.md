@@ -53,24 +53,24 @@ type Connective = Atom { identity: Symbol } | Conj | Disj | Arrow | Cardinality 
 
 | File | Mark(s) | What it mirrors |
 |---|---|---|
-| `src/v4/std/node.dag` | :46 | `ConnectiveCoproductVariant` enum + `connective_coproduct_variant_keys()` + `behavior_coproduct_variants()` — hand-lists of `Connective`/`Behavior` arms |
-| `src/v4/std/verification.dag` | :93 | `impossible_bug_class_coproduct_variants()` — hand-list of `ImpossibleBugClass` arms |
+| `src/v2/std/node.dag` | :46 | `ConnectiveCoproductVariant` enum + `connective_coproduct_variant_keys()` + `behavior_coproduct_variants()` — hand-lists of `Connective`/`Behavior` arms |
+| `src/v2/std/verification.dag` | :93 | `impossible_bug_class_coproduct_variants()` — hand-list of `ImpossibleBugClass` arms |
 | ″ | :134 | `impossible_bug_class_from_diagnostic_reason()` — reason→class bridge |
 | ″ | :195/:197 | `TestClaimCoproductVariant` — key-enum mirror of `TestClaim` arms |
 | ″ | :210/:212 | `ClaimAnchorKey` manual/generated union (anchor split) |
 | ″ | :275 | `test_claim_label()` — hand-enumerated `TestClaim`→label projection |
 | ″ | :287 | `test_claim_coproduct_variant()` — hand-enumerated `TestClaim`→key projection |
-| `src/v4/test/claim/generated/coproduct_exhaustiveness.dag` | :53/:63/:92 | hand-rolled arm-discriminant checks (DiagnosticClaim / GeneratedClaimAnchor / 4-arm `TestClaimCoproductVariant` equality) |
-| `src/v4/test/claim/generated/algebra_law_conformance.dag` | :32 | local nat-expression node shape-tags |
-| `src/v4/lens/coverage.dag` | :947 | impossible-bug reason membership (consumes verification's projection) |
-| `src/v4/test/claim/manual/manual_corpus_roster.dag` | :4 | "item-registry reflection replaces explicit import roster" |
+| `src/v2/test/claim/generated/coproduct_exhaustiveness.dag` | :53/:63/:92 | hand-rolled arm-discriminant checks (DiagnosticClaim / GeneratedClaimAnchor / 4-arm `TestClaimCoproductVariant` equality) |
+| `src/v2/test/claim/generated/algebra_law_conformance.dag` | :32 | local nat-expression node shape-tags |
+| `src/v2/lens/coverage.dag` | :947 | impossible-bug reason membership (consumes verification's projection) |
+| `src/v2/test/claim/manual/manual_corpus_roster.dag` | :4 | "item-registry reflection replaces explicit import roster" |
 
 **Broader family (~12, same shape, not #4759-bound):** arm-tables /
 variant-discriminant marks in `lens/coverage`, `lens_cost/*`, `lens_complexity/*`
 (per-arm cost & complexity tables). Surfaced as a Phase-3 consumer cluster;
 lower priority than the core.
 
-**The ban line itself:** `src/v4/test/claim/extdeps/coordination_claims.dag:18`
+**The ban line itself:** `src/v2/test/claim/extdeps/coordination_claims.dag:18`
 — "reflection banned; decl-shape mirrors are 2FA-for-code."
 
 **Why this is debt (live invariants).** Each mirror is a *second authority* for
@@ -125,13 +125,13 @@ a *structural query over a `Disj` node's edges* — the same shape as the existi
 variant type in a Disj coproduct by label"), confirming arms are label→payload
 edges.
 
-So the primitive **attaches to `v4.std.node`** as a derived operation over the
+So the primitive **attaches to `v2.std.node`** as a derived operation over the
 existing `Disj` connective. INVARIANTS P2 prescribes extending substrate
 reflection *before* migrating consumers; here that means adding the capability to
-**v4 `.dag` substrate** (`std/node.dag`), not extending the v3-Rust
+**v2 `.dag` substrate** (`std/node.dag`), not extending the v3-Rust
 `substrate_reflection` seed (`lens_declaration_apply.rs` — see §4.3). INVARIANTS
 §"Reflection evidence" (:385) "extend the `substrate_reflection` submodule"
-refers to that v3 seed submodule; this lane's deliverable is the v4 analogue. It
+refers to that v3 seed submodule; this lane's deliverable is the v2 analogue. It
 adds **no 7th connective and no 6th behavior**, so it does not trip the THESIS
 substrate-extension stop-signal.
 
@@ -199,11 +199,11 @@ site to the declaration's `Disj` node and project its arm edges. This
 resolution-and-projection is the **primary Phase-2 build risk** and is exactly
 what the §5 conformance gate protects.
 
-**Layer-boundary precision (design-sign condition 2).** This is **new v4
+**Layer-boundary precision (design-sign condition 2).** This is **new v2
 substrate**, *analogous to* — not an extension of — the existing v3-Rust
 `substrate_reflection` submodule (`lens_declaration_apply.rs`). That v3 surface
-is **bootstrap seed**: per src/v3/SELF_HOSTING.md the seed *shrinks* while v4
-substrate *grows*. The v4 primitive is authored as v4 `.dag` substrate + v4
+is **bootstrap seed**: per src/v3/SELF_HOSTING.md the seed *shrinks* while v2
+substrate *grows*. The v2 primitive is authored as v2 `.dag` substrate + v2
 compiler support; it does not inherit from or call the v3 seed. The v3 reflection
 is relevant only as (a) a shape precedent and (b) a *cross-generation* check
 factor in the gate (§5.2), never as the home of the new capability.
@@ -233,8 +233,8 @@ the reflection builtin must NOT also corrupt the witness, or the gate is
 guards). The factors below are graded by that independence test.
 
 **Why the obvious factor fails (the load-bearing correction).** The natural
-candidate — v4 type-checker match-exhaustiveness — is **NOT independent on its
-own.** v4 inference and the v4 reflection builtin **both resolve `T` to the same
+candidate — v2 type-checker match-exhaustiveness — is **NOT independent on its
+own.** v2 inference and the v2 reflection builtin **both resolve `T` to the same
 parsed `Disj` node**; a common-mode resolver/parse arm-drop corrupts *both*
 sides, and the gate passes falsely. So exhaustiveness-count is **common-mode with
 the thing it is checking** and cannot be the gate's independent factor.
@@ -258,7 +258,7 @@ following *path-distinct* witnesses must hold by execution:
   Key-set equality catches drop, add, and relabel. This is the genuine second
   factor.
 - **Cross-generation check (where v3 covers the carrier).** For carriers the v3
-  seed reflects, `v4 coproduct_arm_keys(Behavior) == v3 reflect_behavior_list`
+  seed reflects, `v2 coproduct_arm_keys(Behavior) == v3 reflect_behavior_list`
   arm set. Two generations, two independent code paths — a strong factor for the
   Behavior/Connective carriers v3 already covers, usable in addition to Path 3.
 - **Frontier-discovery equality (roster clusters only — the D1c seam).** The CI
@@ -270,7 +270,7 @@ following *path-distinct* witnesses must hold by execution:
   (consumer-side derivation) and the strongest factor *there*, but roster-scoped,
   not a general gate.
 
-**Explicitly rejected as the gate's independent factor:** v4 exhaustiveness-count
+**Explicitly rejected as the gate's independent factor:** v2 exhaustiveness-count
 alone (common-mode), and the v3 reflection posture alone (the gate being built).
 The exhaustiveness check may still run as a *consistency* signal, but it does not
 discharge the independence obligation.
@@ -382,7 +382,7 @@ anticipated "proper mechanism," not its repeal.
   DESIGN-SIGN + operator BAN-LIFT ruling.
 - **Phase 2a (gated).** Build `CoproductArm` + `coproduct_arms` /
   `coproduct_arm_keys` / `coproduct_nullary_inhabitants` in `std/node.dag` (new
-  v4 substrate) + the compiler resolution support, and the **corrected §5.2
+  v2 substrate) + the compiler resolution support, and the **corrected §5.2
   conformance gate** (Path 3 syntactic arm key-set + cross-generation where v3 covers).
   Inhabit on real coproducts first (`Connective`/`Behavior`) with the gate green
   by execution before any consumer migrates (facts-before-abstraction).
@@ -400,13 +400,13 @@ anticipated "proper mechanism," not its repeal.
 ## 10. Design-sign resolutions (snappy-crab-849, CONDITIONAL sign — issuecomment-4700373336)
 
 1. **Conformance-gate independence — RESOLVED (the load-bearing condition).**
-   v4 exhaustiveness-count alone is **NOT** an independent factor — it is
+   v2 exhaustiveness-count alone is **NOT** an independent factor — it is
    common-mode with the reflection builtin (both resolve `T` to the same parsed
    `Disj` node), and the v3 reflection posture is the gate being *built*, not a
    pre-existing factor. **REQUIRED:** the gate's independent factor is the
    **syntactic arm key-set (Path 3)** — `|`-separated arm labels from the parse
    tree set-compared to `coproduct_arm_keys(T)`, not a cardinality count — for
-   every gated coproduct, and/or the **cross-generation check** (`v4
+   every gated coproduct, and/or the **cross-generation check** (`v2
    coproduct_arm_keys == v3 reflect_behavior_list`) where v3 covers the carrier;
    rosters additionally use the frontier-discovery equality. Rewritten in §5.2.
    Exhaustiveness may run as a consistency signal but does not discharge
@@ -421,9 +421,9 @@ anticipated "proper mechanism," not its repeal.
 4. **Value-inhabitant boundary — CONFIRMED.** All-nullary only;
    payload arms → fail closed; no inhabit-with-holes.
 
-**Doc-precision condition (condition 2) — APPLIED:** the primitive is **new v4
+**Doc-precision condition (condition 2) — APPLIED:** the primitive is **new v2
 substrate**, analogous to (not an extension of) the v3-Rust `substrate_reflection`
-seed, which shrinks while v4 grows (§4.3).
+seed, which shrinks while v2 grows (§4.3).
 
 **§5.2 re-read — CONFIRMED (snappy-crab-849, post-0071c645):** design-sign
 carries on the corrected gate. Binding sharpening applied: Path 3 is a **syntactic
