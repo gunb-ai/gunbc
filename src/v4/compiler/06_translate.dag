@@ -79,7 +79,6 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Value,
   arrow_body_edge,
   fold_node,
   node_rebuild,
@@ -939,45 +938,12 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 
-// Callee-free effect-IO roundtrip Transform — mirrors eval_node_is_effect_io_roundtrip (05_eval.dag)
-// but gates on canonical AST shape (Transform + callee-free + two Value leaf operands), not runtime
-// marker atoms. 🟡 dissolve-on: dedicated EffectIoRoundtrip behavior variant (bind gunbc#4757).
-fn translate_node_is_callee_reference(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
-fn translate_transform_has_callee_reference(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: child } => translate_node_is_callee_reference(node: child)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
-fn translate_node_is_value_leaf(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Value } => length(xs: node.children) == 0
-    _ => false
-  }
-}
-
+// Callee-free 2-arg Transform — mirrors `eval_node_is_effect_io_roundtrip` shape gate (05_eval.dag).
+// 🟡 HOLD: identity-gate rework coordinated cross-lane (stern-seal-727 / EffectSemanticsDecl); do not
+// ad-hoc tighten here until substrate dispatch direction lands.
 fn translate_transform_is_effect_io_roundtrip_shape(node: Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Transform } =>
-      !translate_transform_has_callee_reference(node: node)
-        && length(xs: node.children) == 2
-        && fold(
-          node_positional_child_targets(node: node),
-          init: true,
-          f: fn(acc, child) { acc && translate_node_is_value_leaf(node: child) }
-        )
+    ComputationNode { behavior: Transform } => length(xs: node.children) == 2
     _ => false
   }
 }
