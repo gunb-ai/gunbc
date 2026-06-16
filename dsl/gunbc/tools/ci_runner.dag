@@ -50,6 +50,10 @@ fn ensure_claim_batch_binary() -> String {
   "test -x target/release/claim_batch || cargo build -p v2-compiler --release --bin claim_batch"
 }
 
+fn ensure_claim_executor_binary() -> String {
+  "test -x target/release/claim_executor || cargo build -p v2-compiler --release --bin claim_executor"
+}
+
 fn ensure_discover_owned_data_binary() -> String {
   "test -x target/release/discover_owned_data || cargo build -p v2-compiler --release --bin discover_owned_data"
 }
@@ -157,6 +161,7 @@ fn affected_tests_shell() -> String {
       ensure_gunbc_binary(), " && ",
       ensure_ci_claim_gate_binary(), " && ",
       ensure_claim_batch_binary(), " && ",
+      ensure_claim_executor_binary(), " && ",
       ensure_discover_owned_data_binary(), " && ",
       run_logged_script(
         inner: "bash scripts/v4-affected-tests-gate.sh",
