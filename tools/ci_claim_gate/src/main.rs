@@ -191,15 +191,16 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
         }
     }
 
-    // Single-representation `test fn NAME()` tests. The v2 parser drops the
-    // contextual `test` keyword, so the gate detects the marker in source text
-    // (same posture as the `data unified_claim_` scan) and runs NAME. Dual-mode
-    // with the loop above so claims migrate off `unified_claim_*` one at a time.
+    // Single-representation `test fn NAME()` / `test data NAME` tests. The v2
+    // parser drops the contextual `test` keyword, so the gate detects the marker
+    // in source text (same posture as the `data unified_claim_` scan) and runs
+    // NAME. Dual-mode with the loop above so claims migrate off `unified_claim_*`
+    // one at a time.
     //
-    // Convention, enforced fail-closed: `test fn` may live ONLY in `*_test.dag`
-    // files. The whole source root is scanned (so manual/ and implementation files
-    // are covered), and a `test fn` found anywhere else is a hard error — tests do
-    // not live in implementation files.
+    // Convention, enforced fail-closed: a `test` declaration may live ONLY in
+    // `*_test.dag` files. The whole source root is scanned (so manual/ and
+    // implementation files are covered), and a `test` decl found anywhere else is
+    // a hard error — tests do not live in implementation files.
     let mut test_fn_violations: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
@@ -209,7 +210,7 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
             let entry = path.to_string_lossy().into_owned();
             let content =
                 fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            let names = scan_test_fn_names(&content);
+            let names = scan_test_decl_names(&content);
             if names.is_empty() {
                 continue;
             }
@@ -231,7 +232,7 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
     if !test_fn_violations.is_empty() {
         test_fn_violations.sort();
         return Err(format!(
-            "`test fn` tests must live in `*_test.dag` files; found `test fn` in: {}",
+            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
             test_fn_violations.join(", ")
         ));
     }
@@ -415,11 +416,16 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Extract `NAME` from every `test fn NAME(...)` declaration in source text.
-fn scan_test_fn_names(content: &str) -> Vec<String> {
+/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
+/// declaration in source text.
+fn scan_test_decl_names(content: &str) -> Vec<String> {
     let mut names = Vec::new();
     for line in content.lines() {
-        if let Some(rest) = line.trim_start().strip_prefix("test fn ") {
+        let trimmed = line.trim_start();
+        let rest = trimmed
+            .strip_prefix("test fn ")
+            .or_else(|| trimmed.strip_prefix("test data "));
+        if let Some(rest) = rest {
             let name: String = rest
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')

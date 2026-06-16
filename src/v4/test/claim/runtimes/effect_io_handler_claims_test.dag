@@ -1,0 +1,117 @@
+// src/v4/test/claim/runtimes/effect_io_handler_claims.dag
+// Scope: Wave-2 M-E2 gate — per-backend ReadResource→WriteResource round-trip via
+//   EffectHandlerBinding dispatch (single default locator per backend; not multi-resource
+//   discrimination). Pure/test + host bundle wiring. Executable Bool witnesses for --claim-run.
+// Status: E-10 consumer for v4.extdeps.runtimes.v4_effect_io_{pure,host}.dag.
+
+module v4.test.claim.runtimes.effect_io_handler_claims
+
+import v4.extdeps.runtimes.v4_effect_io_host {
+  HostHttpContext,
+  effect_io_host_runtime_wave2
+}
+import v4.extdeps.runtimes.v4_effect_io_pure {
+  EffectIoResourceBackend,
+  EffectIoResourceLocator,
+  FileResourceBackend,
+  HttpResourceBackend,
+  StorageResourceBackend,
+  effect_io_pure_invoke_handler,
+  effect_io_pure_read_request,
+  effect_io_pure_read_write_roundtrip,
+  effect_io_pure_unit_type_node
+}
+import v4.std.algebra { Cons, Empty }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.runtime {
+  ReadResource,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  effect_handler_for_kind
+}
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+
+fn effect_io_claim_locator(backend: EffectIoResourceBackend) -> EffectIoResourceLocator {
+  EffectIoResourceLocator {
+    backend: backend,
+    identity: ^effect_io_pure_default_locator
+  }
+}
+
+fn effect_io_claim_locator_arg() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: effect_io_pure_unit_type_node()
+    }
+  }
+}
+
+fn effect_io_claim_payload() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: effect_io_pure_unit_type_node()
+    }
+  }
+}
+
+// Wave-2: one default locator — proves file-backend binding dispatch round-trip, not distinct resources.
+test fn effect_io_pure_file_roundtrip_holds() -> Bool {
+  effect_io_pure_read_write_roundtrip(
+    backend: FileResourceBackend,
+    locator: effect_io_claim_locator(backend: FileResourceBackend),
+    payload: effect_io_claim_payload(),
+    locator_arg: effect_io_claim_locator_arg()
+  )
+}
+
+// Wave-2: one default locator — proves http-backend binding dispatch round-trip.
+test fn effect_io_pure_http_roundtrip_holds() -> Bool {
+  effect_io_pure_read_write_roundtrip(
+    backend: HttpResourceBackend,
+    locator: effect_io_claim_locator(backend: HttpResourceBackend),
+    payload: effect_io_claim_payload(),
+    locator_arg: effect_io_claim_locator_arg()
+  )
+}
+
+// Wave-2: one default locator — proves storage-backend binding dispatch round-trip.
+test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
+  effect_io_pure_read_write_roundtrip(
+    backend: StorageResourceBackend,
+    locator: effect_io_claim_locator(backend: StorageResourceBackend),
+    payload: effect_io_claim_payload(),
+    locator_arg: effect_io_claim_locator_arg()
+  )
+}
+
+// Host bundle: dispatch through EffectHandlerBinding; file backend fail-closed until host_run lands.
+test fn effect_io_host_read_fail_closed_holds() -> Bool {
+  let runtime = effect_io_host_runtime_wave2(backend: FileResourceBackend)
+  let read_args = Cons {
+    head: effect_io_claim_locator_arg(),
+    tail: Empty
+  }
+  let read_handler = effect_handler_for_kind(binding: runtime.handlers, kind: ReadResource)
+  match effect_io_pure_invoke_handler(
+    handler: read_handler,
+    request: effect_io_pure_read_request(args: read_args)
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// Discriminating: HTTP runtime wires HttpResourceBackend + HostHttpContext (not file defaults).
+test fn effect_io_host_http_backend_routes_http_holds() -> Bool {
+  let runtime = effect_io_host_runtime_wave2(backend: HttpResourceBackend)
+  match runtime.declared_backend {
+    HttpResourceBackend =>
+      match runtime.backend_context {
+        HostHttpContext { context: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

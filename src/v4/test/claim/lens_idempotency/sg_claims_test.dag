@@ -1,0 +1,26 @@
+// src/v4/test/claim/lens_idempotency/sg_claims.dag
+// Scope: discriminating claim-run witness for T-38B idempotency write-effect
+// behavioral receipt migrated from v4_lens_idempotency_claim_dag_smoke_test.rs.
+// Status: execute-the-carrier; routed through v2 `dag run --claim-run`.
+
+module v4.test.claim.lens_idempotency.sg_claims
+
+
+import v4.std.logic { Bool }
+import v4.test.claim.lens_idempotency.write_effect {
+  idempotency_write_effect_claim_holds
+}
+
+
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+test fn lens_idempotency_write_effect_holds() -> Bool {
+  idempotency_write_effect_claim_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_idempotency_write_effect_holds` so glob discovery finds the witness without the central roster.

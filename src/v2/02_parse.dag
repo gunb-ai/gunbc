@@ -351,13 +351,13 @@ fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List<Tok
     tokens
   }
 }
-// Contextual `test` marker for test-declaration sugar: `test fn NAME(...)`.
-// The leading `test` is dropped here so the function parses as a normal `fn`;
-// the CI claim gate discovers tests by the `test fn` source marker. `test` stays
-// a normal identifier everywhere except immediately before `fn` (same contextual
-// shape as the `nominal_opaque` type modifier above).
+// Contextual `test` marker for test declarations: `test fn NAME(...)` and
+// `test data NAME: ...`. The leading `test` is dropped here so the declaration
+// parses normally; the CI claim gate discovers tests by the `test fn`/`test data`
+// source marker. `test` stays a normal identifier except immediately before a
+// declaration keyword (same contextual shape as the `nominal_opaque` modifier).
 fn drop_leading_test_marker(tokens: List<Token>) -> List<Token> {
-  if tok_is_ident_text(tok: tokens |> first, text: "test") && tok_is_keyword(tok: tokens |> skip(1) |> first, kw: "fn") {
+  if tok_is_ident_text(tok: tokens |> first, text: "test") && (tok_keyword_text(tok: tokens |> skip(1) |> first) != "") {
     tokens |> skip(1)
   } else {
     tokens

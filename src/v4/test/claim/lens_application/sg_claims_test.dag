@@ -1,0 +1,82 @@
+// src/v4/test/claim/lens_application/sg_claims.dag
+// Scope: discriminating claim-run witnesses for lens application + synthesis
+// behavioral receipts migrated from v4_lens_application_dag_smoke_test.rs parse/import greps.
+// Status: execute-the-carrier pos+neg arms; routed through v2 `dag run --claim-run`.
+
+module v4.test.claim.lens_application.sg_claims
+
+
+import v4.lens.application {
+  DeclarationId,
+  DeclarationScope,
+  LensEnforce,
+  SeverityError,
+  apply_advisory_lens
+}
+import v4.lens.synthesis { decision_tree_synthesis_advisory_lens }
+import v4.std.diagnostic { Accepted, Rejected, node_locus }
+import v4.std.logic { Bool }
+import v4.std.node { Path }
+import v4.std.report { Report, SynthesisGapDecisionTree, report_reason_to_diagnostic_reason }
+import v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory {
+  apply_lens_introspect_rejection_is_advisory_claim_holds
+}
+import v4.test.claim.lens_synthesis.synthesis_gap_polynomial {
+  synthesis_gap_poly_input,
+  synthesis_gap_poly_lens_non_empty
+}
+
+
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+data lens_application_synthesis_root_path: Path = Path { steps: [] }
+
+data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId {
+  path: lens_application_synthesis_root_path
+}
+
+
+test fn lens_application_introspect_advisory_holds() -> Bool {
+  apply_lens_introspect_rejection_is_advisory_claim_holds()
+}
+
+
+fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
+  match apply_advisory_lens(
+    lens: decision_tree_synthesis_advisory_lens,
+    section: DeclarationScope { declaration: lens_application_synthesis_root_declaration },
+    root: synthesis_gap_poly_input,
+    config: LensEnforce {
+      budget: Report {
+        reason: SynthesisGapDecisionTree,
+        at: node_locus(node: synthesis_gap_poly_input)
+      },
+      diagnostic_severity: SeverityError {}
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == report_reason_to_diagnostic_reason(reason: SynthesisGapDecisionTree)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+
+test fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
+  synthesis_gap_poly_lens_non_empty()
+}
+
+
+test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
+  lens_application_synthesis_gap_enforce_rejects()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_introspect_advisory_holds` so glob discovery finds the witness without the central roster.
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_synthesis_gap_polynomial_holds` so glob discovery finds the witness without the central roster.
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_synthesis_gap_enforce_rejection_holds` so glob discovery finds the witness without the central roster.

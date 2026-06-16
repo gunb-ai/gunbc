@@ -1,0 +1,177 @@
+// src/v4/test/claim/lens_testgen/dag_input_surface.dag
+// Scope: T-19 lens_testgen activation — generated testgen surface accepts .dag language inputs.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+// Status: activated — structural EqualsClaim + witness receipts prove scheduled/bootstrap .dag LBE input surface.
+// W4 fold-delete: witness_lens_testgen_schedules_dag_input_surface_green and
+// witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green promoted to
+// v4_roster_pilot (mutation-proven claim-run; retires smoke string-ratchet slices).
+
+module v4.test.claim.lens_testgen.dag_input_surface
+
+import v4.lens.testgen {
+  Generator,
+  LanguageBehaviorEquivalence,
+  TestgenConcept,
+  bootstrap_claim_generator_for_manual_anchor,
+  lbe_frozen_snapshot_conj_dag_surface,
+  lbe_frozen_snapshot_disj_dag_surface,
+  lbe_frozen_snapshot_transform_dag_surface,
+  lbe_io_mock_conj_dag_surface,
+  lbe_io_mock_disj_dag_surface,
+  lbe_io_mock_transform_dag_surface,
+  lbe_subject_conj_dag_surface,
+  lbe_subject_disj_dag_surface,
+  lbe_subject_transform_dag_surface,
+  testgen_scheduled_language_behavior_generators
+}
+import v4.std.algebra { any, for_all, length }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  ManualLbeConjDagSurface,
+  TestClaimCompilesClaimVariant,
+  TestClassification,
+  TestClaim,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+  stub_empty_transform
+}
+fn lens_testgen_marker_node(marker: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: marker } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn language_behavior_generator_uses_conj_dag_input(g: Generator<TestgenConcept>) -> Bool {
+  match g.slot {
+    LanguageBehaviorEquivalence { subject, mock } =>
+      subject == lbe_subject_conj_dag_surface() &&
+        subject.language == ^dag_language_model_surface_id &&
+        mock == lbe_io_mock_conj_dag_surface() &&
+        mock.snapshot == lbe_frozen_snapshot_conj_dag_surface() &&
+        mock.snapshot.language == ^dag_language_model_surface_id &&
+        mock.snapshot.input_node == stub_empty_conj &&
+        mock.snapshot.expected_value == stub_empty_conj
+    _ => false
+  }
+}
+
+fn language_behavior_generator_uses_disj_dag_input(g: Generator<TestgenConcept>) -> Bool {
+  match g.slot {
+    LanguageBehaviorEquivalence { subject, mock } =>
+      subject == lbe_subject_disj_dag_surface() &&
+        subject.language == ^dag_language_model_surface_id &&
+        mock == lbe_io_mock_disj_dag_surface() &&
+        mock.snapshot == lbe_frozen_snapshot_disj_dag_surface() &&
+        mock.snapshot.language == ^dag_language_model_surface_id &&
+        mock.snapshot.input_node == stub_empty_disj &&
+        mock.snapshot.expected_value == stub_empty_disj
+    _ => false
+  }
+}
+
+fn language_behavior_generator_uses_transform_dag_input(g: Generator<TestgenConcept>) -> Bool {
+  match g.slot {
+    LanguageBehaviorEquivalence { subject, mock } =>
+      subject == lbe_subject_transform_dag_surface() &&
+        subject.language == ^dag_language_model_surface_id &&
+        mock == lbe_io_mock_transform_dag_surface() &&
+        mock.snapshot == lbe_frozen_snapshot_transform_dag_surface() &&
+        mock.snapshot.language == ^dag_language_model_surface_id &&
+        mock.snapshot.input_node == stub_empty_transform &&
+        mock.snapshot.expected_value == stub_empty_transform
+    _ => false
+  }
+}
+
+fn language_behavior_generator_uses_dag_input(g: Generator<TestgenConcept>) -> Bool {
+  language_behavior_generator_uses_conj_dag_input(g: g) ||
+    language_behavior_generator_uses_disj_dag_input(g: g) ||
+    language_behavior_generator_uses_transform_dag_input(g: g)
+}
+
+fn scheduled_language_behavior_generators_cover_dag_inputs() -> Bool {
+  let scheduled = testgen_scheduled_language_behavior_generators()
+  length(xs: scheduled) == 3 &&
+    for_all(
+      xs: scheduled,
+      predicate: fn(g) { language_behavior_generator_uses_dag_input(g: g) }
+    ) &&
+    any(
+      xs: scheduled,
+      predicate: fn(g) { language_behavior_generator_uses_conj_dag_input(g: g) }
+    ) &&
+    any(
+      xs: scheduled,
+      predicate: fn(g) { language_behavior_generator_uses_disj_dag_input(g: g) }
+    ) &&
+    any(
+      xs: scheduled,
+      predicate: fn(g) { language_behavior_generator_uses_transform_dag_input(g: g) }
+    )
+}
+
+fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
+  match bootstrap_claim_generator_for_manual_anchor(key: ManualLbeConjDagSurface) {
+    Accepted { value: g, diagnostics: _ } =>
+      g.kind == TestClaimCompilesClaimVariant &&
+        g.classification == TestClassification { tier: Tier1, layer: Unit } &&
+        g.anchor == manual_claim_anchor(anchor: ManualLbeConjDagSurface) &&
+        language_behavior_generator_uses_conj_dag_input(g: g)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lens_testgen_dag_input_surface_rhs() -> Node {
+  if scheduled_language_behavior_generators_cover_dag_inputs() {
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_ok)
+  } else {
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_failed)
+  }
+}
+
+fn lens_testgen_dag_generator_surface_rhs() -> Node {
+  if bootstrap_generator_has_conj_dag_input_surface() {
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_ok)
+  } else {
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_failed)
+  }
+}
+
+data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim {
+  label: "lens_testgen/dag_input_surface: scheduled LBE generators include .dag input surface",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_ok),
+  rhs: lens_testgen_dag_input_surface_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim {
+  label: "lens_testgen/dag_input_surface: bootstrap generator reifies .dag input surface",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_ok),
+  rhs: lens_testgen_dag_generator_surface_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test data witness_lens_testgen_schedules_dag_input_surface_green: Bool = scheduled_language_behavior_generators_cover_dag_inputs()
+
+test data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool = bootstrap_generator_has_conj_dag_input_surface()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_schedules_dag_input_surface_green` so glob discovery finds the witness without the central roster.
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green` so glob discovery finds the witness without the central roster.

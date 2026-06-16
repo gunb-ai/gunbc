@@ -1198,7 +1198,8 @@ pub fn drop_leading_type_modifier(
 
 pub fn drop_leading_test_marker(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     if (tok_is_ident_text(tokens.clone().first().cloned(), "test".to_string())
-        && tok_is_keyword(tokens.clone().get(1 as usize).cloned(), "fn".to_string()))
+        && (tok_keyword_text(tokens.clone().get(1 as usize).cloned()).as_str()
+            != "".to_string().as_str()))
     {
         Rc::new(
             tokens

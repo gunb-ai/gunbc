@@ -1,0 +1,329 @@
+// src/v4/test/claim/grounding_typescript/sg_claims.dag
+// Scope: W4.2 G.2 TypeScript executable grounding claims over landed G.0/G.1.4 substrate.
+// Status: T-38B family — SG-1 positive receipts, G.1.4 registry receipt, SG-2 positive projection receipt, SG-5 fail-closed absence receipt.
+
+module v4.test.claim.grounding_typescript.sg_claims
+
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_test_claim_subject,
+  run_test_claim
+}
+import v4.compiler.translate {
+  ProjectionPresent,
+  collection_realization_from_target,
+  free_monoid_collection_realization_from_target,
+  translate_type_expression_project,
+  target_bundle_child_optional_type_expr_projection
+}
+import v4.extdeps.languages.typescript {
+  ts_build_per_language_fact_bundle_registry,
+  ts_sg2_foobar_xy_emitted,
+  ts_sg2_instantiation_source_type_node,
+  ts_sg2_type_expr_target_model,
+  ts_std_text_string_type_node,
+  ts_target_atom_realization_catalog,
+  ts_type_expression_projection
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.grounding {
+  GroundingEvidenceSchema,
+  Sg1Evidence,
+  Sg2Evidence,
+  Sg5Evidence
+}
+import v4.std.logic { Bool, bool_node }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
+import v4.std.runtime { RuntimeValue }
+import v4.std.compilers.target_model {
+  symbol_kernel_type_node,
+  target_atom_realization_lookup_in_catalog,
+  target_carrier_free_monoid_node,
+  target_collection_set_carrier_node
+}
+import v4.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v4.test.claim.manual.eval_runtime_mvp {
+  eval_mvp2_add_subgraph,
+  eval_mvp2_context,
+  eval_mvp2_inferred_tree
+}
+fn ts_g2_claim_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^ts_g2_claim_fail_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_g2_executable_claim_input(ok: Bool) -> Node {
+  if ok {
+    eval_mvp2_add_subgraph()
+  } else {
+    ts_g2_claim_fail_node()
+  }
+}
+
+fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
+  content_hash(n: a) == content_hash(n: b)
+}
+
+// 🟡 predicate dissolution — feature:G-2-grounding-evidence-bool-bridge — bind ROADMAP.md T-PB-B /
+// T-38B grounding_typescript roster — dissolve-on: std/grounding exports canonical
+// grounding-evidence variant/source_carrier queries; local GroundingEvidenceSchema Bool
+// match projections delete.
+fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: symbol_kernel_type_node() }
+}
+
+fn ts_g2_sg1_bool_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: bool_node() }
+}
+
+fn ts_g2_sg1_text_string_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: ts_std_text_string_type_node() }
+}
+
+fn ts_g2_sg2_evidence() -> GroundingEvidenceSchema {
+  Sg2Evidence { source_carrier: symbol_kernel_type_node() }
+}
+
+fn ts_g2_sg5_set_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_collection_set_carrier_node() }
+}
+
+fn ts_g2_sg5_free_monoid_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_carrier_free_monoid_node() }
+}
+
+fn ts_g2_sg1_symbol_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_symbol_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg1_bool_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_bool_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: bool_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg1_text_string_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_text_string_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: ts_std_text_string_type_node()
+      )
+    _ => false
+  }
+}
+
+fn ts_g2_sg2_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg2_evidence() {
+    Sg2Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg5_set_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_set_absence_evidence() {
+    Sg5Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_collection_set_carrier_node()
+      )
+    _ => false
+  }
+}
+
+fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_free_monoid_absence_evidence() {
+    Sg5Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_carrier_free_monoid_node()
+      )
+    _ => false
+  }
+}
+
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 /
+// G.2 grounding_typescript run_test_claim roster — dissolve-on: T-22 claim runner evaluates
+// Outcome and lookup results directly without Accepted=>true / Rejected=>false Bool projection.
+fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
+  match target_atom_realization_lookup_in_catalog(
+    catalog: ts_target_atom_realization_catalog,
+    source_carrier: source_carrier
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_g2_sg1_atom_realizations_hold() -> Bool {
+  ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_bool_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_text_string_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: symbol_kernel_type_node())
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: bool_node())
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: ts_std_text_string_type_node())
+}
+
+fn ts_g2_g14_fact_registry_accepts() -> Bool {
+  match ts_build_per_language_fact_bundle_registry() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_g2_sg2_project_instantiation_emitted() -> Node {
+  match translate_type_expression_project(
+    node: ts_sg2_instantiation_source_type_node(),
+    target: ts_sg2_type_expr_target_model(),
+    projection: ts_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => ts_g2_claim_fail_node()
+  }
+}
+
+fn ts_g2_sg2_instantiation_projection_matches_golden() -> Bool {
+  content_hash(n: ts_g2_sg2_project_instantiation_emitted()) ==
+    content_hash(n: ts_sg2_foobar_xy_emitted())
+}
+
+fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
+  ts_g2_sg2_evidence_targets_canonical_carrier()
+    && match target_bundle_child_optional_type_expr_projection(
+      target: ts_sg2_type_expr_target_model()
+    ) {
+      Accepted { value: ProjectionPresent, diagnostics: _ } => true
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
+    && ts_g2_sg2_instantiation_projection_matches_golden()
+}
+
+fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
+  ts_g2_sg5_set_absence_evidence_targets_canonical_carrier()
+    && ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier()
+    && match collection_realization_from_target(target: ts_sg2_type_expr_target_model()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+    && match free_monoid_collection_realization_from_target(
+      target: ts_sg2_type_expr_target_model()
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+}
+
+data claim_ts_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
+  label: "TypeScript G.2 SG-1 atom realization evidence is executable through run_test_claim",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg1_atom_realizations_hold()),
+  rhs: eval_mvp2_add_subgraph(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data subject_ts_g2_sg1_atom_realizations: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_ts_g2_sg1_atom_realizations_executable,
+  context: eval_mvp2_context(),
+  tree: eval_mvp2_inferred_tree(),
+  evaluator_pin: ^eval_mvp2_evaluator_pin
+)
+
+data run_ts_g2_sg1_atom_realizations: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_ts_g2_sg1_atom_realizations
+)
+
+data claim_ts_g2_g14_fact_registry_executable: TestClaim = EqualsClaim {
+  label: "TypeScript G.2 G.1.4 fact bundle registry folds through fail-closed insert",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_g2_executable_claim_input(ok: ts_g2_g14_fact_registry_accepts()),
+  rhs: eval_mvp2_add_subgraph(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data subject_ts_g2_g14_fact_registry: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_ts_g2_g14_fact_registry_executable,
+  context: eval_mvp2_context(),
+  tree: eval_mvp2_inferred_tree(),
+  evaluator_pin: ^eval_mvp2_evaluator_pin
+)
+
+data run_ts_g2_g14_fact_registry: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_ts_g2_g14_fact_registry
+)
+
+data claim_ts_g2_sg2_type_expression_projection_executable: TestClaim = EqualsClaim {
+  label: "TypeScript G.2 SG-2 evidence records present type-expression projection edge and golden instantiation",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg2_type_expression_projection_holds()),
+  rhs: eval_mvp2_add_subgraph(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data subject_ts_g2_sg2_type_expression_projection: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_ts_g2_sg2_type_expression_projection_executable,
+  context: eval_mvp2_context(),
+  tree: eval_mvp2_inferred_tree(),
+  evaluator_pin: ^eval_mvp2_evaluator_pin
+)
+
+data run_ts_g2_sg2_type_expression_projection: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_ts_g2_sg2_type_expression_projection
+)
+
+data claim_ts_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
+  label: "TypeScript G.2 SG-5 evidence records absent collection realization edge fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg5_collection_realization_absence_holds()),
+  rhs: eval_mvp2_add_subgraph(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data subject_ts_g2_sg5_collection_absence: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_ts_g2_sg5_collection_absence_executable,
+  context: eval_mvp2_context(),
+  tree: eval_mvp2_inferred_tree(),
+  evaluator_pin: ^eval_mvp2_evaluator_pin
+)
+
+data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_ts_g2_sg5_collection_absence
+)
+
+// Wave-A route-through-v2 partial additive named tests: discriminating claim-run witnesses (E-10).
+// Positive narrow resolution — symbol SG-1 evidence targets the canonical symbol kernel.
+test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
+  ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+}
+
+// Fail-closed discrimination — SG-5 absence records reject collection realization edges.
+test fn ts_g2_sg5_absence_fail_closed_holds() -> Bool {
+  ts_g2_sg5_collection_realization_absence_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `ts_g2_sg1_symbol_carrier_holds` so glob discovery finds the witness without the central roster.
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `ts_g2_sg5_absence_fail_closed_holds` so glob discovery finds the witness without the central roster.
