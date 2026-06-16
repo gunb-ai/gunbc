@@ -727,7 +727,7 @@ fn performance_ratchet() {
     assert!(
         elapsed.as_secs() < PERF_RATCHET_SECONDS,
         "performance regression: pipeline took {:?}, budget is {}s. \
-         See INVARIANTS.md 'Facts Flow Forward' for diagnosis.",
+         See DESIGN.md for diagnosis.",
         elapsed,
         PERF_RATCHET_SECONDS
     );
@@ -979,7 +979,7 @@ fn ci_performance_ratchet() {
     assert!(
         pass1.elapsed.as_secs() < PERF_RATCHET_SECONDS,
         "performance regression: pipeline took {:?}, budget is {}s. \
-         See INVARIANTS.md 'Facts Flow Forward' for diagnosis.",
+         See DESIGN.md for diagnosis.",
         pass1.elapsed,
         PERF_RATCHET_SECONDS
     );

@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +0
-
-SG-0 pairing: (c) extends existing `EXPECTED_HAND_AUTHORED_TEST` row `v2_emit_host_harness_test.rs` (#3958 / #4063 / #4167) with Go L1 `go_l1_nat_semiring_rung2` compiler-slice claim parse surface (+0 paths). Pairs with `scripts/v2-nat-semiring-go-compiler-slice-gate.sh` chained from `v2-nat-semiring-rung-gate.sh`. INVARIANTS §P5(b) Mechanism (b) in PR body + census comment. Dissolve-on-arrival: lane **T-PB-B**, concrete row `ROADMAP.md` § **Nine lanes** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`); retire when Go L1 `go_l1_nat_semiring_rung2` compiler-slice receipt is exercised from `.dag` `TestClaim` / generated harness without this host Rust parse ratchet — gunb-ai/gunbc#4229.
