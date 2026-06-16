@@ -7,7 +7,7 @@
 //! 1. **Shared-entry batch** (original #4719 pattern): one `--entry` with
 //!    many `--function`/`--functions` flags.  The import closure is resolved
 //!    once; all named functions run against the same graph.  This is the shape
-//!    the `v4-affected-set-node-frontier-gate.sh` `batch_green_pass` uses.
+//!    the node-frontier rows-fn's green pass (gate-3) uses.
 //!
 //! 2. **Multi-entry batch** (lens-gate extension, #4719 follow-on): multiple
 //!    `--entry` flags each followed by its own `--function`/`--functions`
