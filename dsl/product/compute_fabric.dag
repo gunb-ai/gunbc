@@ -1,4 +1,9 @@
-// std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
+// product/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
+//
+// LAYER: product, not std. This is a DOMAIN MODEL (a compute supply/demand/placement
+// market), not a standard-library primitive. It imports std/ only and is consumed by
+// applications/tests; the operator's CONCRETE fleet instances live further out still
+// (ctrl plans.fabric.operator_fleet), and vendor catalogs in extdeps.{cpu,cloud}.
 //
 // Authority: this module (.dag self-authoritative; worksheet refs retired).
 // Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
@@ -6,10 +11,9 @@
 // Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
 // authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
 
-module std.compute_fabric
+module product.compute_fabric
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
-import extdeps.cloud.hetzner { cax41_catalog }
 import std.os.types {
   FileSystemSemantics,
   KernelFamily,
@@ -20,18 +24,15 @@ import std.os.types {
   ProcessSemantics,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, hertz, MoneyMicros, money_micros }
-import std.currency { CurrencyCode, Eur }
+import std.measure { Measure, Time, DataRate, One, ByteSize, MoneyMicros }
+import std.currency { CurrencyCode }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
-  CpuDeploymentFacts,
   CpuFacts,
   CpuArchitecture,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads
 }
-import std.memory.types { HostRamSupplyFacts }
-import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram, supply_srv1_observed_ram_bytes, supply_srv2_observed_ram_bytes }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
@@ -455,47 +456,21 @@ type ExecutionReceipt<T> {
   finished_at: LogicalTime
 }
 
-// --- §7 falsification supply rows (cases 1–3 skeleton) -----------------------
+// --- §7 isolation-lattice witnesses (concept-only example fixtures) ----------
+//
+// The cross-provider isolation proofs below run on GENERIC example offers, not on
+// any real machine. The operator's actual fleet (srv1/srv2) and the Hetzner CAX41
+// offer are *instances* that ground this concept; they live in the operator
+// deployment repo (ctrl), which imports this module plus the extdeps vendor
+// models. std/ owns the shape and the proof that the lattice behaves — it does
+// not own the computers.
 
-data supply_srv1_host_identity: HostIdentity = "srv1"
-data supply_srv2_host_identity: HostIdentity = "srv2"
+data example_host_identity: HostIdentity = "example-host"
+data example_shared_host_provider: ProviderIdentity = "example-shared-host"
+data example_vm_provider: ProviderIdentity = "example-vm"
+data example_availability_open: LogicalTime = "example:always-open"
 
-// Operator fleet CPUs: Ampere Altra Max M128-30 (LGA4926, 183W). Catalog:
-// std.cpu.ampere. DIMM populations: std.memory.operator_fleet.
-// OS distro/version: operator-private (gunb-ai/ctrl) — not in gunbc std/.
-data supply_srv1_cpu: CpuFacts = CpuFacts {
-  identity: AmpereCpu { model: AltraMaxM12830 },
-  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
-}
-
-data supply_srv2_cpu: CpuFacts = CpuFacts {
-  identity: AmpereCpu { model: AltraMaxM12830 },
-  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
-}
-
-// RAM authority: supply_srv{1,2}_ram (population + nominal vs observed usable).
-data supply_srv1_placement_row: PlacementSupplyRow = placement_supply_row(
-  supply_srv1_host_identity,
-  supply_srv1_cpu,
-  supply_srv1_observed_ram_bytes
-)
-
-data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
-  supply_srv2_host_identity,
-  supply_srv2_cpu,
-  supply_srv2_observed_ram_bytes
-)
-
-// §7 cases 7–8: isolation-lattice witnesses on grounded fleet values (srv1/srv2 = SharedHostHome).
-// Typed+reviewed, not executed (no dsl/std interpreter yet) — zero-arg Bool for `--claim-run`.
-// Full ComputeOffer inhabitation: supply_srv{1,2}_offer + supply_hetzner_cax41_offer (PR #4805 follow-up).
-
-// --- §7 supply inhabitation (operator fleet + Hetzner CAX41) -------------------
-
-data operator_fleet_provider: ProviderIdentity = "operator-fleet"
-
-// Kernel/fs/process class only — distro/version None until ctrl operator-fleet binding lands.
-data operator_fleet_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+data example_linux_os_surface: OperatingSystemSurface = OperatingSystemSurface {
   kernel: Linux,
   distro_or_product: none,
   version: none,
@@ -503,8 +478,8 @@ data operator_fleet_os_surface: OperatingSystemSurface = OperatingSystemSurface 
   process_semantics: PosixProcess,
 }
 
-data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
-  os: operator_fleet_os_surface,
+data example_shared_host_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: example_linux_os_surface,
   isolation: SharedHostHome,
   container_runtime: none,
   toolchains: [],
@@ -512,80 +487,8 @@ data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
   network: [],
 }
 
-// P-CF-BYTESIZE: `ram` is the explicit authority handle (also via placement_supply_row)
-// until ComputeHost.memory[] is populated by Measure value-typing.
-fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts, ram: HostRamSupplyFacts) -> ComputeHost {
-  ComputeHost {
-    identity: identity,
-    processors: [CpuProcessor { cpu: cpu }],
-    // RAM authority via ram.observed_usable_bytes; memory [] until value-typing lands.
-    memory: [],
-    storage: [],
-    network_interfaces: [],
-  }
-}
-
-data operator_fleet_owned_cost: CostModel = CostModel {
-  cost_class: OwnedMarginalZero,
-  rates: ProviderCostModel { placeholder: true },
-}
-
-data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open"
-
-// Operator-fleet CI runner slot counts (nodes.json commentary: srv1=20, srv2=30).
-// CF-M1 dogfood: fleet compile dispatch cap for CI throttle consumer (.github/workflows/ci.yml).
-// Dissolves onto RunnerPoolFacts when CF-M1 supply projection (#4976) lands.
-data operator_fleet_srv1_ci_runner_count: Int = 20
-data operator_fleet_srv2_ci_runner_count: Int = 30
-
-data operator_fleet_runner_slot_total: Int =
-  operator_fleet_srv1_ci_runner_count + operator_fleet_srv2_ci_runner_count
-
-// Interim GHA compile-admission shard count (K). Tuned ~ fleet cores / CARGO_BUILD_JOBS-per-job
-// (smart-hawk-763 consumer validation); NOT runner_slot_total. Queue semantics (pending, not
-// refused). Dissolves to supply-modeled WorkDemand admission (CF-M2 dogfood follow-on).
-data operator_fleet_ci_compile_dispatch_cap: Int = 16
-
-data supply_srv1_offer: ComputeOffer = ComputeOffer {
-  provider: operator_fleet_provider,
-  supply: ComputeSupplyFacts {
-    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
-    execution: operator_fleet_execution_surface,
-    cost: Present { value: operator_fleet_owned_cost },
-    observed_performance: [],
-  },
-  available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
-  cost_quote: none,
-  constraints: [],
-}
-
-data supply_srv2_offer: ComputeOffer = ComputeOffer {
-  provider: operator_fleet_provider,
-  supply: ComputeSupplyFacts {
-    physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu, supply_srv2_ram),
-    execution: operator_fleet_execution_surface,
-    cost: Present { value: operator_fleet_owned_cost },
-    observed_performance: [],
-  },
-  available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
-  cost_quote: none,
-  constraints: [],
-}
-
-// Hetzner CAX41 — ephemeral VM, per-second billed (hourly rate + monthly cap per vendor docs).
-// Shared/fractional Ampere vCPUs: ground vcpu + RAM from cax41_catalog only — no AltraMax Hz claim.
-data hetzner_cax41_host_identity: HostIdentity = "hetzner:cax41"
-
-data hetzner_linux_os_surface: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: Linux,
-  distro_or_product: none,
-  version: none,
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
-}
-
-data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
-  os: hetzner_linux_os_surface,
+data example_vm_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: example_linux_os_surface,
   isolation: Vm,
   container_runtime: none,
   toolchains: [],
@@ -593,48 +496,48 @@ data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
   network: [],
 }
 
-data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
-  identity: hetzner_cax41_host_identity,
-  // P-CF-BYTESIZE: cax41_catalog vcpus/memory_bytes/disk_bytes not yet in processors[]/memory[];
-  // physical facts deferred — cost_quote.unit_price is the only catalog field wired today.
+data example_compute_host: ComputeHost = ComputeHost {
+  identity: example_host_identity,
   processors: [],
   memory: [],
   storage: [],
   network_interfaces: [],
 }
 
-data hetzner_per_second_cost: CostModel = CostModel {
-  cost_class: PerSecondBilled,
+data example_owned_cost: CostModel = CostModel {
+  cost_class: OwnedMarginalZero,
   rates: ProviderCostModel { placeholder: true },
 }
 
-data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
-  model: hetzner_per_second_cost,
-  // Std-boundary projection of the extdeps raw `hourly_eur_micros: Int` onto the
-  // money carrier (extdeps stays spec-faithful per the §4.3 fidelity carve-out;
-  // the wrap happens here, not in `hetzner.dag`).
-  unit_price: money_micros(cax41_catalog.hourly_eur_micros),
-  currency: Eur,
-}
-
-data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"
-
-data hetzner_provider: ProviderIdentity = "hetzner"
-
-data supply_hetzner_cax41_offer: ComputeOffer = ComputeOffer {
-  provider: hetzner_provider,
+// A generic SharedHostHome offer — exercises the lattice, names no real machine.
+data example_shared_host_offer: ComputeOffer = ComputeOffer {
+  provider: example_shared_host_provider,
   supply: ComputeSupplyFacts {
-    physical: hetzner_cax41_compute_host,
-    execution: hetzner_cax41_execution_surface,
-    cost: Present { value: hetzner_per_second_cost },
+    physical: example_compute_host,
+    execution: example_shared_host_execution_surface,
+    cost: Present { value: example_owned_cost },
     observed_performance: [],
   },
-  available_window: AvailabilityWindow { open: hetzner_api_availability_open, close: none },
-  cost_quote: Present { value: hetzner_cax41_cost_quote },
+  available_window: AvailabilityWindow { open: example_availability_open, close: none },
+  cost_quote: none,
   constraints: [],
 }
 
-// Cross-provider Vm demand: operator fleet (SharedHostHome) rejects; Hetzner (Vm) admits.
+// A generic Vm offer — the stronger isolation boundary.
+data example_vm_offer: ComputeOffer = ComputeOffer {
+  provider: example_vm_provider,
+  supply: ComputeSupplyFacts {
+    physical: example_compute_host,
+    execution: example_vm_execution_surface,
+    cost: Present { value: example_owned_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: example_availability_open, close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+// Generic Vm demand used by the cross-provider witnesses below.
 data vm_isolation_work_demand: WorkDemand = WorkDemand {
   resources: ResourceEnvelope {
     cpu: none,
@@ -666,26 +569,17 @@ fn witness_vm_admits_shared_host_home() -> Bool {
   isolation_satisfies(supply: Vm, demand: SharedHostHome)
 }
 
-// Cross-provider: grounded srv1 offer rejects Vm demand (operator fleet SharedHostHome).
-fn witness_srv1_offer_rejects_vm_demand() -> Bool {
-  match satisfies(offer: supply_srv1_offer, demand: vm_isolation_work_demand) {
+// Cross-provider, full-offer: a SharedHostHome offer rejects a Vm demand.
+fn witness_shared_host_offer_rejects_vm_demand() -> Bool {
+  match satisfies(offer: example_shared_host_offer, demand: vm_isolation_work_demand) {
     Rejected { reason: _ } => true
     Eligible { witness: _ } => false
   }
 }
 
-// Cross-provider: grounded srv2 offer rejects Vm demand (operator fleet SharedHostHome).
-fn witness_srv2_offer_rejects_vm_demand() -> Bool {
-  match satisfies(offer: supply_srv2_offer, demand: vm_isolation_work_demand) {
-    Rejected { reason: _ } => true
-    Eligible { witness: _ } => false
-  }
-}
-
-// Cross-provider: Hetzner Vm isolation admits Vm demand — isolation-lattice only until
-// hetzner_cax41_compute_host physical facts are plumbed from cax41_catalog (P-CF-BYTESIZE).
-fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
-  match satisfies(offer: supply_hetzner_cax41_offer, demand: vm_isolation_work_demand) {
+// Cross-provider, full-offer: a Vm offer admits a Vm demand.
+fn witness_vm_offer_admits_vm_demand() -> Bool {
+  match satisfies(offer: example_vm_offer, demand: vm_isolation_work_demand) {
     Eligible { witness: _ } => true
     Rejected { reason: _ } => false
   }

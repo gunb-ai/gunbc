@@ -2,9 +2,7 @@
 //
 // find, printenv: POSIX.1 utilities.
 // which: common extension (not POSIX; POSIX uses `command -v`).
-// Exec: `sh -lc` — `-c` is POSIX; `-l` (login shell) is a bash/zsh extension, not
-// POSIX `sh`. Kept so subprocesses inherit login-profile PATH (cargo/rustup) when
-// the parent did not; scripts must avoid bash-only syntax beyond `/bin/sh`.
+// Exec: `sh -c` — POSIX subprocess. (Formerly `sh -lc`; login shell dropped CI PATH.)
 //
 // These are facts about the host OS, not about any specific
 // external service.
@@ -79,8 +77,10 @@ service shell.Exec {
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    // `-l`: login-shell flag (bash/zsh); not POSIX sh — see file header.
-    transport shell { argv: ["sh", "-lc", "{script}"] }
+    // Use `sh -c` (not `-lc`): login shells reset PATH on CI runners and break
+    // nested floor gates when the parent process already inherited GITHUB_ENV
+    // (cargo/rustup). `-c` preserves the interpreter's environment.
+    transport shell { argv: ["sh", "-c", "{script}"] }
     exit {
       0 => Unit
       nonzero => String "Script failed"
@@ -95,7 +95,7 @@ service shell.Exec {
     output { exists: Bool from "exit_success" }
     readonly
     // `-l`: login-shell flag (bash/zsh); not POSIX sh — see file header.
-    transport shell { argv: ["sh", "-lc", "{command}"] }
+    transport shell { argv: ["sh", "-c", "{command}"] }
     exit {
       0 => Unit
       nonzero => String "Command failed"

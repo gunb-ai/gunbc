@@ -1,83 +1,37 @@
 // gunbc/ci.dag — CI gate declarations with structural gate kind.
 //
-// Every gate command derives from gunbc.compiler facts. Commands are
-// still string-typed (that's the transport) but each gate carries a
-// structural GateSource variant that names what the gate actually
-// proves — lint / test / ratchet / freshness / fixed-point. The closed
-// GateSource coproduct makes it possible to reason about gate kind
-// without parsing command strings.
-//
-// Tool resolution: gate commands are constructed with resolved cargo
-// path as input. A future dag run of the pipeline would resolve tools
-// once at the top, then build gate commands from the resolved set.
-// For the current CI transport (ci.yml shim), commands are assembled
-// lazily inside the interpreter or pre-rendered with `cargo` bare name
-// since CI runners have cargo on PATH by convention.
-//
-// The two script gates (l1, freshness) will become dag run invocations
-// once tools/ratchet.dag and tools/freshness.dag execute reliably in
-// any environment (blocked on tool upsert landing end-to-end).
-//
-// Related modules:
-//   dsl/extdeps/github/ci.dag — repository-relative workflow file path facts (GitHub `.github/workflows/`).
+// Floor membership (operator bankruptcy, final): exactly 3 blocking gates —
+// dsl compile-clean (full tree minus enumerated allowlist), fmt,
+// affected-tests (fail-safe over-inclusive selector). No demote spine;
+// corpus/lens/layering are tests gate-3 runs when affected.
 //
 // Consumers:
-//   .github/workflows/ci.yml — sole live Actions transport for gunbc CI (single authority).
-//   dsl/gunbc/ci.dag — compiler-intent gates (`CIPipeline` / `CIGate`) and gate dependency graph.
-//   dsl/gunbc/ci_emission.dag — WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions`
-//     (BinaryShim transport only until T-24 YamlStatic emission lands).
-//   future: dag run ci_pipeline — interpreter execution of compiler-intent gates.
+//   dsl/gunbc/tools/ci_runner.dag — runtime execution via run_ci_pipeline()
+//   .github/workflows/ci.yml — thin shim (checkout + run_ci_pipeline)
+//   dsl/gunbc/ci_emission.dag — BinaryShim workflow projection
 
 module gunbc.ci
 
 import std.list { List }
-import gunbc.compiler {
-  compiler_cycle, test_package,
-  lint_command, test_command, ignored_test_command
+import std.types { FilePath }
+
+type SourceRoot {
+  path: FilePath
 }
 
-// ── Ratchet kind ────────────────────────────────────────────────────
-
-// Direction of a ratchet gate. Down = monotonically decreasing (we
-// track regressions); Stable = must remain at the threshold value.
-type RatchetDirection = Down | Stable
-
-// Closed set of ratchet metrics — no opaque strings. Each corresponds
-// to a specific measurement the compiler produces or a script computes.
-// Adding a new ratchet is a new variant, not a new string.
-type RatchetMetric
-  = DiagnosticCount       // total compile-time diagnostics (CX)
-  | L1TypeKnowledge       // type constructors and name comparisons in .dag
-  | Performance           // self-compile pipeline duration
-  | FixedPointConvergence // bootstrap stage1 == stage2
+data dsl_root: SourceRoot = { path: "dsl" }
 
 // ── Gate kind ───────────────────────────────────────────────────────
 
-// What a gate is structurally. Closed coproduct — every variant is a
-// category of gate with its own invariant. Consumers that need to
-// reason about gate category (e.g., "how many ratchet gates are there?")
-// pattern-match on this rather than parsing command strings.
-//
-// RatchetGate intentionally does NOT carry a threshold value. The
-// numeric threshold is enforced by whatever runs the gate (a Rust test
-// const, a shell script comparison). Duplicating it here would create
-// a second authority that drifts (the original ci.dag had 424, while
-// the bootstrap test had 354 — exactly the kind of dual-authority
-// problem the invariants forbid). The structural fact is "this is a
-// ratchet on metric M with direction D"; the threshold value is
-// operational data that lives with the enforcer.
 type GateSource
-  = LintGate
-  | TestSuiteGate { test_name: String }  // empty means run all tests
-  | RatchetGate { metric: RatchetMetric, direction: RatchetDirection }
-  | FreshnessGate                        // proves committed stage0 == compile(source)
-  | FixedPointGate                       // proves regen(regen(source)) == regen(source)
+  = DslCompileCleanGate { root: SourceRoot }
+  | FmtGate
+  | AffectedTestsGate
 
 type CICommand
-  = LintCommand
-  | TestCommand
-  | IgnoredTestCommand { test_name: String }
-  | ShellCommand { command: String }
+  = DslCompileCleanCommand { root: SourceRoot }
+  | FmtCommand
+  | AffectedTestsCommand
 
 type CIGate {
   id: String
@@ -92,97 +46,57 @@ type CIPipeline {
   gates: List<CIGate>
 }
 
-// CI workflow as a DAG, separate from GitHub Actions transport. `pipeline.gates`
-// is the single gate-membership authority; edges are prerequisite relationships
-// between gates carried by the pipeline.
-//
-// Scaffold boundary: until a real projection function derives provider
-// transports from this graph, `CIWorkflowDag` is the modeled authority for gate
-// dependency shape. Demo mirrors must be drift-checked against this row rather
-// than treated as an independent source of truth.
 type CIGateEdge {
   from: CIGate
   to: CIGate
 }
 
-// `.github/workflows/ci.yml` remains the hand-edited source of truth until the T-24 CI model
-// emits it. Gate topology (`pipeline` / `edges`) is the sole authority in this module; Actions
-// transport projection is deferred to T-24 `src/v4/workflow/ci.dag` (INVARIANTS P2).
 type CIWorkflowDag {
   pipeline: CIPipeline
   edges: List<CIGateEdge>
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands are structural intent, not rendered shell text. The coproduct keeps
-// invalid field combinations unrepresentable for the current gate set. ROADMAP
-// F12 tracks the broader typed command-record carrier that can add declaration
-// edges to gunbc.compiler command renderers and package facts.
 
-data lint_gate: CIGate = {
-  id: "lint",
-  name: "Lint",
-  command: LintCommand,
+data dsl_compile_clean_gate: CIGate = {
+  id: "dsl-compile-clean",
+  name: "DSL full-tree parse-clean",
+  command: DslCompileCleanCommand { root: dsl_root },
   blocking: true,
-  source: LintGate
+  source: DslCompileCleanGate { root: dsl_root }
 }
 
-data test_gate: CIGate = {
-  id: "tests",
-  name: "Tests",
-  command: TestCommand,
+data fmt_gate: CIGate = {
+  id: "fmt",
+  name: "cargo fmt",
+  command: FmtCommand,
   blocking: true,
-  source: TestSuiteGate { test_name: "" }
+  source: FmtGate
 }
 
-// Script gates — will become `dag run` invocations once the tool
-// workflows execute reliably in any environment.
-
-data l1_gate: CIGate = {
-  id: "l1-ratchet",
-  name: "L1 Type Knowledge Ratchet",
-  command: ShellCommand { command: "gunbc run --source-root dsl --function run_l1_ratchet" },
+data affected_tests_gate: CIGate = {
+  id: "affected-tests",
+  name: "affected TestClaim selection + run",
+  command: AffectedTestsCommand,
   blocking: true,
-  source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
-}
-
-// Consolidated compile gate — 4 hermetic tests sharing a single
-// compilation via LazyLock (ci_diagnostic_ratchet, ci_performance_ratchet,
-// ci_freshness, ci_fixed_point). Run in one process via prefix match.
-// Pass 1 compiles once for diagnostic/perf/freshness checks;
-// pass 2 builds stage1 and compiles again for fixed-point.
-// Replaces 4 separate gates that each independently built + compiled
-// (6 self-compiles → 2).
-
-data compile_gates_gate: CIGate = {
-  id: "compile-gates",
-  name: "Compile Gates",
-  command: IgnoredTestCommand { test_name: "ci_" },
-  blocking: true,
-  source: FixedPointGate
+  source: AffectedTestsGate
 }
 
 // ── Pipeline assembly ───────────────────────────────────────────────
 
 data ci_pipeline: CIPipeline = {
   name: "gunbc-ci",
-  // compile_gates first: build_stage0() hits the clean release cache
-  // from ci.yml's Build Compiler step. Running clippy before this would
-  // invalidate cargo's release fingerprints, forcing a full rebuild.
   gates: [
-    compile_gates_gate,
-    lint_gate,
-    test_gate,
-    l1_gate
+    dsl_compile_clean_gate,
+    fmt_gate,
+    affected_tests_gate
   ]
 }
 
 data ci_workflow_dag: CIWorkflowDag = {
   pipeline: ci_pipeline,
   edges: [
-    { from: compile_gates_gate, to: lint_gate },
-    { from: compile_gates_gate, to: test_gate },
-    { from: lint_gate, to: l1_gate },
-    { from: test_gate, to: l1_gate }
+    { from: dsl_compile_clean_gate, to: fmt_gate },
+    { from: fmt_gate, to: affected_tests_gate }
   ]
 }

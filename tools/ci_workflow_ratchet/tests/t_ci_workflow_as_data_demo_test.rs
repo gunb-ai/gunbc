@@ -500,36 +500,18 @@ fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
     &gate57_ci_artifacts().dag
 }
 
-/// Single structural claim: `ci_workflow_dag` prerequisite edges expose exactly one 2-successor
-/// fan-out, and it matches gunbc-ci’s `compile-gates` → `lint` + `tests` fork (no `WorkflowEffect`
-/// staging — read-only mirror of the lowered `data ci_workflow_dag` carrier).
-fn assert_ci_prereq_graph_has_single_parallel_fanout(input: &CiWorkflowDagInput) {
-    let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
-    for (from, to) in &input.edges {
-        outgoing.entry(from.clone()).or_default().push(to.clone());
-    }
-
-    let mut two_branch: Vec<(String, Vec<String>)> = Vec::new();
-    for (from, mut kids) in outgoing {
-        kids.sort();
-        kids.dedup();
-        if kids.len() == 2 {
-            two_branch.push((from, kids));
-        }
-    }
-    two_branch.sort_by(|a, b| a.0.cmp(&b.0));
-    match two_branch.as_slice() {
-        [(parent, kids)] => {
-            assert_eq!(parent.as_str(), "compile-gates");
-            assert_eq!(kids, &vec!["lint".to_string(), "tests".to_string()]);
-        }
-        [] => panic!(
-            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found none"
-        ),
-        found => panic!(
-            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found {found:?}"
-        ),
-    }
+/// Floor prerequisite chain: `dsl-compile-clean` → `fmt` → `affected-tests`.
+fn assert_ci_floor_prereq_chain(input: &CiWorkflowDagInput) {
+    let edges: Vec<_> = input
+        .edges
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    assert_eq!(
+        edges,
+        vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
+        "blocking floor must be a linear prerequisite chain"
+    );
 }
 
 fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
@@ -565,10 +547,9 @@ fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue
     };
 
     for label in [
-        "LintCommand",
-        "TestCommand",
-        "IgnoredTestCommand",
-        "ShellCommand",
+        "DslCompileCleanCommand",
+        "FmtCommand",
+        "AffectedTestsCommand",
     ] {
         if *constructor == disj_variant_constructor_id(dag, sum_name, label) {
             return label;
@@ -695,18 +676,13 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 
     assert_eq!(
         node_ids,
-        vec!["compile-gates", "lint", "tests", "l1-ratchet"],
+        vec!["dsl-compile-clean", "fmt", "affected-tests",],
         "CI workflow DAG must carry one node per structural gate"
     );
 
     assert_eq!(
         edges,
-        vec![
-            ("compile-gates", "lint"),
-            ("compile-gates", "tests"),
-            ("lint", "l1-ratchet"),
-            ("tests", "l1-ratchet"),
-        ],
+        vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
     );
 
@@ -727,16 +703,7 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
             let id = literal_string(structural_field(gate, "id"));
             let command = structural_field(gate, "command");
             let label = variant_label(&ci, "CICommand", command);
-            let payload = match command {
-                FieldValue::Variant { payload, .. } => payload.as_slice(),
-                _ => unreachable!(),
-            };
-            let payload_text = payload
-                .iter()
-                .map(literal_string)
-                .collect::<Vec<_>>()
-                .join("|");
-            (id, label, payload_text)
+            (id, label)
         })
         .collect::<Vec<_>>();
     commands.sort_by_key(|(id, ..)| *id);
@@ -744,14 +711,9 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
     assert_eq!(
         commands,
         vec![
-            ("compile-gates", "IgnoredTestCommand", "ci_".to_string()),
-            (
-                "l1-ratchet",
-                "ShellCommand",
-                "gunbc run --source-root dsl --function run_l1_ratchet".to_string()
-            ),
-            ("lint", "LintCommand", String::new()),
-            ("tests", "TestCommand", String::new()),
+            ("affected-tests", "AffectedTestsCommand"),
+            ("dsl-compile-clean", "DslCompileCleanCommand"),
+            ("fmt", "FmtCommand"),
         ],
         "CICommand must keep impossible field combinations out of authored gate data"
     );
@@ -772,13 +734,8 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
         workflow_topology(&ci, structural_value_body(&ci, "ci_workflow_dag")),
         (
             "gunbc-ci",
-            vec!["compile-gates", "lint", "tests", "l1-ratchet"],
-            vec![
-                ("compile-gates", "lint"),
-                ("compile-gates", "tests"),
-                ("lint", "l1-ratchet"),
-                ("tests", "l1-ratchet"),
-            ],
+            vec!["dsl-compile-clean", "fmt", "affected-tests",],
+            vec![("dsl-compile-clean", "fmt"), ("fmt", "affected-tests"),],
         ),
         "dsl/gunbc/ci.dag must remain the single CI DAG topology authority"
     );
@@ -797,7 +754,8 @@ fn recursive_flex_demonstration_landed() {
         "gate #59: `CIWorkflowDag` must not carry a hand-synced Actions workflow carrier"
     );
     assert!(
-        GUNBC_CI_EMISSION_SOURCE.contains("type WorkflowRuntime = BinaryShim"),
+        GUNBC_CI_EMISSION_SOURCE.contains("type WorkflowRuntime = | BinaryShim")
+            || GUNBC_CI_EMISSION_SOURCE.contains("type WorkflowRuntime = BinaryShim"),
         "{GUNBC_CI_EMISSION_FILE} must keep BinaryShim as the sole WorkflowRuntime until T-24 YamlStatic emission"
     );
     assert!(
@@ -901,14 +859,32 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
     let affected = select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll)
         .expect("affected-set selection must succeed on gunbc-ci topology");
     assert_eq!(
-        affected,
-        vec![
-            "compile-gates".to_string(),
-            "lint".to_string(),
-            "tests".to_string(),
-            "l1-ratchet".to_string(),
-        ],
-        "TouchAll must schedule the full gunbc-ci gate roster in prerequisite topo order"
+        affected.len(),
+        3,
+        "TouchAll must schedule the full gunbc-ci gate roster"
+    );
+    for id in ["dsl-compile-clean", "fmt", "affected-tests"] {
+        assert!(
+            affected.iter().any(|g| g == id),
+            "TouchAll roster must include `{id}`"
+        );
+    }
+    let fmt_pos = affected.iter().position(|g| g == "fmt").expect("fmt");
+    let dsl_pos = affected
+        .iter()
+        .position(|g| g == "dsl-compile-clean")
+        .expect("dsl-compile-clean");
+    let affected_pos = affected
+        .iter()
+        .position(|g| g == "affected-tests")
+        .expect("affected-tests");
+    assert!(
+        dsl_pos < fmt_pos,
+        "dsl-compile-clean must precede fmt in topo order"
+    );
+    assert!(
+        fmt_pos < affected_pos,
+        "fmt must precede affected-tests in topo order"
     );
 }
 
@@ -920,13 +896,13 @@ fn ci_uses_affected_set_selection_binary_shim_narrow_on_gunbc_ci_topology() {
     let g = gate57_ci_artifacts();
     let receipt = CiBinaryShimAffectedSetReceipt {
         narrowing_available: true,
-        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+        proven_direct_gate_touches: BTreeSet::from([String::from("fmt")]),
     };
     let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
         .expect("binary shim selection must succeed on gunbc-ci topology");
     let touch = select_affected_gates(
         &g.input,
-        &CiWorkflowDiff::TouchedGates(BTreeSet::from([String::from("tests")])),
+        &CiWorkflowDiff::TouchedGates(BTreeSet::from([String::from("fmt")])),
     )
     .expect("baseline touched-gates selection");
     assert_eq!(plan, touch);
@@ -937,7 +913,7 @@ fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
     let g = gate57_ci_artifacts();
     let receipt = CiBinaryShimAffectedSetReceipt {
         narrowing_available: false,
-        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+        proven_direct_gate_touches: BTreeSet::from([String::from("fmt")]),
     };
     let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
         .expect("binary shim selection must succeed on gunbc-ci topology");
@@ -1022,7 +998,7 @@ fn workflow_no_path_regex_policy_ci_yml() {
 #[test]
 fn lens_self_application_demonstrated_ci_prereq_fanout_from_carrier() {
     let g = gate57_ci_artifacts();
-    assert_ci_prereq_graph_has_single_parallel_fanout(&g.input);
+    assert_ci_floor_prereq_chain(&g.input);
 }
 
 #[test]
