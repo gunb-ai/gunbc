@@ -39,7 +39,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_emit.rs",
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
-    "generated_method_template_projection.rs",
     "lib.rs",
     "main.rs",
     "std_algebra.rs",
@@ -145,8 +144,6 @@ const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
     "inferred_fingerprint",
     "json_quote",
 ];
-
-use v1_compiler::method_template_projection_source::GENERATED_METHOD_TEMPLATE_PROJECTION_DAG;
 
 fn main() -> ExitCode {
     match run() {
@@ -489,20 +486,9 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let generated_root = temp_dir("v2-regen-stage0-generated-root");
-    let generated_dir = generated_root.join("generated");
-    fs::create_dir_all(&generated_dir)
-        .map_err(|e| format!("create {}: {e}", generated_dir.display()))?;
-    fs::write(
-        generated_dir.join("method_template_projection.dag"),
-        GENERATED_METHOD_TEMPLATE_PROJECTION_DAG,
-    )
-    .map_err(|e| format!("write generated method-template projection: {e}"))?;
-
     let roots = vec![
         workspace.join("src/v1"),
         workspace.join("dsl"),
-        generated_root.clone(),
     ];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
@@ -1286,17 +1272,6 @@ mod tests {
                 "{file_name} must not be touched by regen_stage0"
             );
         }
-    }
-
-    #[test]
-    fn projection_fixture_carries_required_v2_import_surface() {
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG
-            .contains("module generated.method_template_projection"));
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data rust_method_template_emit"));
-        assert!(
-            GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data python_method_template_emit")
-        );
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data go_method_template_emit"));
     }
 
     #[test]
