@@ -1,6 +1,6 @@
 // extdeps/cron/schedule_model.dag — POSIX crontab schedule field grammar (carriers + wire render).
 //
-// Fidelity — `dsl/extdeps/extdeps.md` invariant (cite source + declare version):
+// Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
 //   Spec: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html
 //   Version: POSIX.1-2017 (IEEE Std 1003.1-2017; Open Group Issue 7, 2018 edition online snapshot)
 //
@@ -45,7 +45,7 @@ import std.list { List }
 //      mis-model the field grammar.
 //
 // **🟡 YELLOW (scaffold — bounded refinements deferred)** — payloads still admit **ill-formed**
-// crontab facts this module does not rule out at the type layer (P2 / `extdeps.md` fidelity gap):
+// crontab facts this module does not rule out at the type layer (P2 / extdeps fidelity gap):
 //   - `Listed` may be an **empty** list (no corresponding empty-list field token in portable grammar).
 //   - `Ranged` may have **start > end** (inverted range — not a valid portable range token).
 //   - `Exact`, list elements, range endpoints, and step coordinates may sit **outside each field's

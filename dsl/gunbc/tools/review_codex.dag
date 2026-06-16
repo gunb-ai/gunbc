@@ -46,14 +46,13 @@ data github_auth: CredentialSource = EnvVar { name: "GITHUB_TOKEN" }
 data openai_auth: CredentialSource = EnvVar { name: "OPENAI_API_KEY" }
 
 // ── Review prompt ─────────────────────────────────────────────
-// The prompt template. References THESIS.md, INVARIANTS.md, MODELING.md,
-// and std/ files by path — the codex CLI reads them from the working
-// directory (the repo checkout).
+// The prompt template. References DESIGN.md and std/ files by path — the
+// codex CLI reads them from the working directory (the repo checkout).
 
 data review_instructions: String = "You are a reviewer for the gunbc project (a DAG compiler).
 
-FIRST: Read THESIS.md — it defines the project's core thesis. All feedback is
-grounded in this thesis. Read relevant reference files selectively.
+FIRST: Read DESIGN.md — it defines the project's objective and principles. All
+feedback is grounded in it. Read relevant reference files selectively.
 
 STEP 0 — CLASSIFY this PR:
   (a) Code (.rs, stage0): compiler implementation
@@ -66,7 +65,7 @@ RESOLVED|comment_id|one sentence
 
 STEP 2 — REVIEW on axes matching the classification:
 
-FOR CODE: apply the six principles from docs/modeling-discipline.md as active checks:
+FOR CODE: apply the principles from DESIGN.md as active checks:
   1. FAIL-CLOSED (no silent failures)
   2. ILLEGAL STATES UNREPRESENTABLE
   3. FACTS FLOW FORWARD (no silent drops across stage boundaries)
@@ -77,13 +76,13 @@ FOR CODE: apply the six principles from docs/modeling-discipline.md as active ch
      or shifting debt? Track scaffold delta, cross-layer pattern recurrence,
      cheating signals, real consumer enablement. End with LOOP|CONVERGING|
      STAGNANT|ACCUMULATING_DEBT|reason.
-Also check INVARIANTS.md and CODING.md. For CODING.md comment discipline,
+Also check DESIGN.md. For comment discipline,
 new code should speak through clear names, small functions, structured types,
 and readable control flow instead of explanatory comments. Accept narrow
 comments only for non-obvious boundaries, genuinely complex decisions,
 historical/performance context, or load-bearing headers.
 FOR .DAG: fidelity to external spec, composition from std/ primitives, layering (L0-L5), M9 grounding, coproduct dissolution.
-FOR DESIGN/DOCS: challenge the design against the thesis. What's missing? Where are the load-bearing assumptions? Does it reinvent something in std/ or v3 sources?
+FOR DESIGN/DOCS: challenge the design against DESIGN.md. What's missing? Where are the load-bearing assumptions? Does it reinvent something in std/?
 
 CONSTRAINTS:
 - SCOPE: stay within the PR's scope.
@@ -107,14 +106,10 @@ VERDICT|REQUEST_CHANGES|one sentence (blocking exists)
 Nothing else. No headers, no preamble.
 
 --- Reference files (read from repo as needed) ---
-THESIS.md — project thesis. Read this FIRST.
-INVARIANTS.md — project invariants.
-MODELING.md — M1-M9 modeling principles.
-CODING.md — implementation style and comment discipline.
+DESIGN.md — objective, principles, and modeling discipline. Read this FIRST.
 dsl/std/algebra.dag — Semiring, Lattice, Monoid, FreeMonoid, etc.
 dsl/std/termination.dag — DescentEvidence, RankingDimension
-dsl/std/types.dag — kernel types, container types
-dsl/extdeps/extdeps.md — layer model and fidelity invariant"
+dsl/std/types.dag — kernel types, container types"
 
 // ── Pure functions ────────────────────────────────────────────
 
