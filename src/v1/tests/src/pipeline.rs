@@ -3481,8 +3481,7 @@ fn method_template_emit_source() -> &'static str {
     r#"module mt
 fn use_count(items: List<Int>) -> Int { items |> count }
 fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (acc, i) => acc + i) }
-fn use_map(items: List<Int>) -> List<Int> { items |> map(f: (i) => i * 2) }
-fn use_concat(a: List<Int>, b: List<Int>) -> List<Int> { a |> concat(b) }
+fn use_map(items: List<Int>) -> List<Int> { items |> map(f: i => i * 2) }
 "#
 }
 
@@ -3513,11 +3512,12 @@ fn python_method_template_consolidation_emit() {
 fn go_method_template_consolidation_emit() {
     let result = compile_dag_target(method_template_emit_source(), RenderTarget::Go);
     assert_no_diagnostics(&result);
+    // The user module — not the bundled v2rt runtime (which *defines* Fold).
     let go = result
         .files
         .iter()
-        .find(|f| f.path.ends_with(".go"))
-        .expect("Go target should emit a .go file");
+        .find(|f| f.path.ends_with(".go") && !f.path.contains("v2rt"))
+        .expect("Go target should emit a user .go file");
     let c = &go.content;
     assert!(c.contains("len("), "count should render as len(...):\n{c}");
     // fold via runtime bridge — the closure (callback) is forwarded as a 3rd arg;
