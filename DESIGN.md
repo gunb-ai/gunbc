@@ -13,10 +13,15 @@ git-history receipt; open threads are collected at the end.
 
 ## 1. The objective (the axiom)
 
-Redundant work is never wanted — by definition of *redundant*: **duplicated**, **unnecessary**, or
-**irrelevant**. A theoretically perfect DRY process is therefore the optimal one — safety, cost, and
-speed jointly maximized for the domain's constraints. So the whole project reduces to one objective:
-**minimize redundancy.** Everything below is a consequence.
+To *solve a problem* is to find its **minimal, safe, efficient solution** — and those three are not
+preferences we layer on; they fall out of the meaning of "problem" itself:
+
+- **minimize cost** — input sustainability (cheap to run and to feed);
+- **maximize safety** — harm reduction (it never silently does the wrong thing);
+- **minimize complexity** — solution + maintenance sustainability (it stays cheap to change).
+
+The whole project optimizes these three jointly. Everything below is a mechanism for one or more of
+them.
 
 ## 2. The two axes of minimization (the objective, decomposed)
 
