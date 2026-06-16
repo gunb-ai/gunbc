@@ -497,7 +497,7 @@ A model, function, type, or field is written ahead of anything that uses it — 
 
 **Adoption stance:** applies to new code and refactors (same live-state stance as `CODING.md`). Existing consumer-less code is archive-debt — sweep to `src/v4/experimental/` on touch — not an instant repo-wide failure.
 
-**Receipt:** the v4 compiler grew to a ~4,300-line `06_translate` that cannot emit `fn add` (step-zero: >600s, no output) because its only "consumers" were typecheck + text-grep. Dissolution path: rebuild emit behind a real executed witness; archive what no executing consumer touches. See [`docs/v4-compiler-migration.md`](docs/v4-compiler-migration.md) Part 0 + governing invariant.
+**Receipt (resolved — the dissolution worked):** the v4 compiler grew to a ~4,900-line `06_translate` whose only "consumers" were typecheck + text-grep — and it could not emit `fn add` (step-zero: >600s, no output). The dissolution path was applied and is now **green by execution**: emit was rebuilt as `serialize ∘ translate` behind a real executed witness (`run(emit(add)) == "fn add(x: i32, y: i32) -> i32 { x + y }"`, ~20s), and `06_translate` collapsed toward folds (~4,900 → ~3,973 lines). The lesson stands: typecheck + grep masked a non-running subsystem until an executed consumer exposed — and then fixed — it.
 
 #### Reviewer's three questions (operationalizes [E-10](#e-10))
 

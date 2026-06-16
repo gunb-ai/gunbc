@@ -136,7 +136,7 @@ inhabitants prove it (resolve #1, sccache #2, provisioning #3). Same ≥2 restra
   kernel**, not the realize step or oracle (legitimately handler-parameterized). Matches the
   operator rule: same code among our own code for the kernel; handlers may differ.
 
-**ARC — critical path sequencing** *(authority: [ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern); threaded in [gunbc ROADMAP.md](../../ROADMAP.md) §Cross-cutting — superseded 2026-06-14 the prior “cross-layer #2 = §10 only” line):*
+**ARC — critical path sequencing** *(authority: [ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern); threaded in [gunbc ROADMAP.md](../ROADMAP.md) §Cross-cutting — superseded 2026-06-14 the prior “cross-layer #2 = §10 only” line):*
 
 1. **Resolve (inhabitant #1).** `resolve-cost PR2` (#4878) — receipt + falsifier + reconcile
    on the compute handler; grounds staged `cache_interface` dims. PR1 (#4867) merged.
