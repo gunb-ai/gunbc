@@ -2,13 +2,16 @@
 //!
 //! The CI floor invokes this binary directly (no bash gate script, no `.dag`
 //! shell-out). The roster is sourced one of two ways:
-//!   - `--roster-from-discovery --scan-dir <dir>`: reflection over the discovered
-//!     `unified_claim_*` BoolWitness corpus — the dissolution target, no hand-list.
-//!   - `--gate-entry <dag> --rows-fn <fn>`: legacy modeled `*_rows_tsv()` projection
-//!     (retained for per-gate rosters not yet migrated to discovery).
+//!
+//! - `--roster-from-discovery --scan-dir <dir>`: reflection over the discovered
+//!   `unified_claim_*` BoolWitness corpus — the dissolution target, no hand-list.
+//! - `--gate-entry <dag> --rows-fn <fn>`: legacy modeled `*_rows_tsv()` projection
+//!   (retained for per-gate rosters not yet migrated to discovery).
+//!
 //! Either way it then runs:
-//!   1. GREEN pass — one `claim_batch`-style multi-entry resolve (module index once)
-//!   2. PERTURB pass (optional) — per-row temp-tree witness body → `false`, must fail
+//!
+//! 1. GREEN pass — one `claim_batch`-style multi-entry resolve (module index once)
+//! 2. PERTURB pass (optional) — per-row temp-tree witness body → `false`, must fail
 //!
 //! Exit codes: 0 = all witnesses passed (+ perturb receipts when requested);
 //! 1 = witness failure or perturb did not go red; 2 = usage / transport error.
