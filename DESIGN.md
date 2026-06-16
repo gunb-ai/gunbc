@@ -25,6 +25,13 @@ answer is time-to-recover — paid later, at interest. Time is the one quantity 
 values (**time is life**), which is what makes minimal/safe/efficient an intersubjectively grounded
 objective (§4), not a house preference.
 
+The aim, stated at its limit, is to **reduce intersubjectivity to physics** — physics being the
+efficient, time-bound description of interactions that satisfies a goal (i.e. §1 itself, turned on
+grounding). Every convention replaced by necessity is agreement that no longer has to be negotiated,
+and the shared framework §4 points at is, at the floor, physics — the description nothing arbitrary
+survives in. This is the deep reason §3 models the universal frameworks and real upstream rather than
+re-coining them: a nickname is convention standing where physics was available.
+
 The whole project optimizes these three jointly. Everything below is a mechanism for one or more of
 them.
 
