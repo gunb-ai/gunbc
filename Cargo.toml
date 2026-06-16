@@ -13,7 +13,6 @@ members = [
     "tools/ci_timings_collector",
     "tools/ci_claim_gate",
     "tools/layering_imports_scan",
-    "tools/ci_workflow_ratchet",
     "tools/compile_host_runner",
     "tools/emit_host_runner",
     "src/v3/grounding_inhabitance_mirror",

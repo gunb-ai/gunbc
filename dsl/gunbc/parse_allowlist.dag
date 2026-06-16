@@ -1,8 +1,8 @@
 // gunbc/parse_allowlist.dag — enumerated v2 parse-debt allowlist for gate-1.
 //
-// Produced by-execution on post-#4954 main (231 dsl files; 2 v2-parser-debt entries
-// after folding file-level fixes in todo_service + schedule_model). Shrink-only ratchet:
-// paying debt removes entries; growth requires explicit justification.
+// Shrink-only ratchet on v2 parser debt (1 entry remaining; the ci_emission.dag entry
+// was retired with the CI-track rework). Paying debt removes entries; growth requires
+// explicit justification.
 
 module gunbc.parse_allowlist
 
@@ -17,13 +17,6 @@ type ParseAllowlistEntry {
 }
 
 data dsl_v2_parse_allowlist: List<ParseAllowlistEntry> = [
-  {
-    path: { path: "dsl/gunbc/ci_emission.dag" },
-    tag: V2ParserDebt {
-      reason: "record-literal Workflow body after = requires v2 brace-body support",
-      ref: "gunbc/ci_emission.dag gunbc_ci_emission_binary_shim_workflow"
-    }
-  },
   {
     path: { path: "dsl/std/unicode.dag" },
     tag: V2ParserDebt {
