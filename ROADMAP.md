@@ -138,7 +138,7 @@ Earlier release-program lanes (complexity parity, testgen, multi-target emit, pu
 
 | ID | Target | Dissolution trigger |
 |----|--------|---------------------|
-| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v4.*` and `v2.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when `scripts/v4-lens-ci-gate.sh` and `.github/ci-floor/v4-rust-full-tree-emit-probe.sh` pass with the skip removed — v4/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
+| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v4.*` and `v2.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when the v4 lens CI rows-fn (invoked from `scripts/v4-affected-tests-gate.sh`) and `.github/ci-floor/v4-rust-full-tree-emit-probe.sh` pass with the skip removed — v4/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
 | `PB-Runtime-External-Toolchain-TestClaims` | Hand-authored Rust boundary tests that spawn external target toolchains while v4 leaf-model verification still uses host runners. | Delete the Rust boundary test when its corresponding `src/v4/test/claim/**` row is exercised by substrate `run_target_verification` / `ExecuteCommand`-style `.dag` `TestClaim` execution with typed verdicts. |
 
 ## How to read the tree

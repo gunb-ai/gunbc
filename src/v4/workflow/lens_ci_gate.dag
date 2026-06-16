@@ -6,7 +6,7 @@
 // That ~6,300-line model was a descriptive-only CI mirror with no runtime consumer (see
 // docs/planning/thin-shim-ci-a3-runall-blocker-report-2026-06-08.md) and was deleted wholesale per
 // operator GO. The only fragment with a real consumer is this lens-CI claim-run roster: the must-pass
-// `v4_lens_gate` CI job (`scripts/v4-lens-ci-gate.sh` → uniform `ci-claim-gate` host) evaluates
+// `v4_lens_gate` CI job (`the ci-claim-gate host (gate-3)` → uniform `ci-claim-gate` host) evaluates
 // `lens_ci_claim_run_rows_tsv` via the v2 interpreter — no shell awk/grep text projection. `.github/workflows/ci.yml`
 // is the direct hand-edited CI authority; this file owns only the lens claim-run roster the gate consumes.
 

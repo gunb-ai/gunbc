@@ -11,9 +11,9 @@ The following witness families are **not** enrolled (each with a one-line reason
 | Excluded family | Reason |
 |-----------------|--------|
 | Full `src/v4/test/claim/**` Bool witness scan (~524 `fn () -> Bool` rows) | Budget: sequential execution would exceed the ~20m lens-job ceiling at current per-witness latency |
-| `v4_lens_gate` rows (`lens_ci_gate.dag`) | Already gated by `scripts/v4-lens-ci-gate.sh` with perturb-check |
-| `v4_lens_ci` node-frontier rows (`affected_set_ci_runner.dag`) | Already gated by `scripts/v4-affected-set-node-frontier-gate.sh` with perturb-check |
-| `probe_selector_ci_runner` keystone rows (`probe_selector_ci_runner.dag`) | Already gated by `scripts/v4-probe-selector-keystone-gate.sh` with perturb-check (v4_lens_ci) |
+| `v4_lens_gate` rows (`lens_ci_gate.dag`) | Already gated by the lens CI rows-fn in `scripts/v4-affected-tests-gate.sh` (gate-3) with perturb-check |
+| `v4_lens_ci` node-frontier rows (`affected_set_ci_runner.dag`) | Already gated by the node-frontier rows-fn in `scripts/v4-affected-tests-gate.sh` (gate-3) with perturb-check |
+| `probe_selector_ci_runner` keystone rows (`probe_selector_ci_runner.dag`) | Already gated by the probe-selector keystone rows-fn in `scripts/v4-affected-tests-gate.sh` (gate-3) with perturb-check (v4_lens_ci) |
 | Glob-discovery smoke roster (`v4-discover-owned-data.sh` transport) | Separate discovery-law transport; not manifest-pinned expectations |
 | T-38 manual TestClaim corpus eval (`manual_corpus_eval_expected.dag`) | TestClaim-run_fn transport; separate T-38 lane (`#4765`) |
 | Executor batch-runner dogfood (`batch_runner.dag` / `claim_executor`) | Already gated by `scripts/v4-batch-executor-gate.sh` |
