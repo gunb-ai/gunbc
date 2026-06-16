@@ -110,7 +110,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "v1_compiler_dag_collect.rs",
-        "method_template_projection_source.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
