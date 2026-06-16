@@ -20,7 +20,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use v2_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim, ClaimOutcome,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context, resolve_entry_with_index,
+    run_claim, ClaimOutcome, OwnedDataDeclInitializer,
 };
 use v2_compiler::v2_interpreter::{run_in_context_with_args, Value};
 
@@ -30,19 +31,37 @@ struct GateRow {
     function: String,
 }
 
+/// Roster source: either a modeled `*_rows_tsv()` fn (legacy per-gate hand-list)
+/// or reflection over the discovered `unified_claim_*` BoolWitness decls. The
+/// discovery path is the dissolution target — no hand-typed roster, no rows-fn.
+enum RosterSource {
+    RowsFn { gate_entry: String, rows_fn: String },
+    Discovery { scan_dirs: Vec<String> },
+}
+
 struct Config {
     source_roots: Vec<String>,
-    gate_entry: String,
-    rows_fn: String,
+    roster: RosterSource,
     perturb: bool,
     print_tsv_only: bool,
     notice_title: String,
 }
 
+// Mirror of discover_owned_data's default exclude set: the manifest/law files that
+// import the ephemeral discovery output would otherwise re-enter discovery acyclically.
+const DISCOVERY_EXCLUDES: &[&str] = &[
+    "impossible_bug",
+    "glob_discovery.dag",
+    "glob_discovery_law.dag",
+    "host_discovered_owned_data_manifest.dag",
+    "unified_test_claim_substrate_equivalence.dag",
+];
+
 fn usage() -> ! {
     eprintln!(
         "usage: ci-claim-gate --source-root <dir> [--source-root <dir> ...] \\\n\
-         \x20       --gate-entry <file.dag> --rows-fn <function> \\\n\
+         \x20       ( --gate-entry <file.dag> --rows-fn <function>          \\\n\
+         \x20       | --roster-from-discovery --scan-dir <dir> [--scan-dir <dir> ...] ) \\\n\
          \x20       [--perturb-check] [--print-tsv-only] [--notice-title <title>]"
     );
     std::process::exit(2);
