@@ -1,11 +1,12 @@
 //! `ci-claim-gate` — uniform `.dag`-driven CI Bool-witness gate host.
 //!
-//! Replaces the duplicated awk/grep roster projection that the former per-gate
-//! wrapper shells once carried; the lens-ci, probe-selector, and node-frontier
-//! rows-fns are now invoked directly from `scripts/v4-affected-tests-gate.sh`
-//! (gate-3). The gate model owns the row
-//! list; this host evaluates a modeled `*_rows_tsv()` function via the v2 interpreter
-//! (the #4804 / `claim_batch` Option-B precedent), then runs:
+//! The CI floor invokes this binary directly (no bash gate script, no `.dag`
+//! shell-out). The roster is sourced one of two ways:
+//!   - `--roster-from-discovery --scan-dir <dir>`: reflection over the discovered
+//!     `unified_claim_*` BoolWitness corpus — the dissolution target, no hand-list.
+//!   - `--gate-entry <dag> --rows-fn <fn>`: legacy modeled `*_rows_tsv()` projection
+//!     (retained for per-gate rosters not yet migrated to discovery).
+//! Either way it then runs:
 //!   1. GREEN pass — one `claim_batch`-style multi-entry resolve (module index once)
 //!   2. PERTURB pass (optional) — per-row temp-tree witness body → `false`, must fail
 //!
@@ -20,8 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use v2_compiler::cli_run::{
-    build_multi_entry_index, discover_owned_data_decls, make_eval_context, resolve_entry_with_index,
-    run_claim, ClaimOutcome, OwnedDataDeclInitializer,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context,
+    resolve_entry_with_index, run_claim, ClaimOutcome, OwnedDataDeclInitializer,
 };
 use v2_compiler::v2_interpreter::{run_in_context_with_args, Value};
 
@@ -72,6 +73,8 @@ fn parse_args() -> Config {
     let mut source_roots = Vec::new();
     let mut gate_entry = None;
     let mut rows_fn = None;
+    let mut roster_from_discovery = false;
+    let mut scan_dirs: Vec<String> = Vec::new();
     let mut perturb = false;
     let mut print_tsv_only = false;
     let mut notice_title = "v4 CI claim gate".to_string();
@@ -91,6 +94,11 @@ fn parse_args() -> Config {
                 i += 1;
                 rows_fn = Some(args.get(i).cloned().unwrap_or_else(|| usage()));
             }
+            "--roster-from-discovery" => roster_from_discovery = true,
+            "--scan-dir" => {
+                i += 1;
+                scan_dirs.push(args.get(i).cloned().unwrap_or_else(|| usage()));
+            }
             "--perturb-check" => perturb = true,
             "--print-tsv-only" => print_tsv_only = true,
             "--notice-title" => {
@@ -105,20 +113,84 @@ fn parse_args() -> Config {
         i += 1;
     }
 
+    let roster = if roster_from_discovery {
+        if rows_fn.is_some() || gate_entry.is_some() {
+            eprintln!(
+                "ci-claim-gate: --roster-from-discovery is exclusive with --gate-entry/--rows-fn"
+            );
+            usage();
+        }
+        if scan_dirs.is_empty() {
+            eprintln!("ci-claim-gate: --roster-from-discovery requires at least one --scan-dir");
+            usage();
+        }
+        RosterSource::Discovery { scan_dirs }
+    } else {
+        RosterSource::RowsFn {
+            gate_entry: gate_entry.unwrap_or_else(|| {
+                eprintln!(
+                    "ci-claim-gate: --gate-entry is required (or use --roster-from-discovery)"
+                );
+                usage();
+            }),
+            rows_fn: rows_fn.unwrap_or_else(|| {
+                eprintln!("ci-claim-gate: --rows-fn is required (or use --roster-from-discovery)");
+                usage();
+            }),
+        }
+    };
+
     Config {
         source_roots,
-        gate_entry: gate_entry.unwrap_or_else(|| {
-            eprintln!("ci-claim-gate: --gate-entry is required");
-            usage();
-        }),
-        rows_fn: rows_fn.unwrap_or_else(|| {
-            eprintln!("ci-claim-gate: --rows-fn is required");
-            usage();
-        }),
+        roster,
         perturb,
         print_tsv_only,
         notice_title,
     }
+}
+
+/// Reflection roster: every discovered `unified_claim_*` BoolWitness decl across
+/// the scan dirs becomes a gate row (label = decl name minus the `unified_claim_`
+/// prefix, entry/function = the modeled witness). No hand-typed roster, no rows-fn.
+fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<GateRow>, String> {
+    let excludes: Vec<String> = DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let mut rows: Vec<GateRow> = Vec::new();
+    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
+    for scan_dir in scan_dirs {
+        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        for rec in discovery.records {
+            if let OwnedDataDeclInitializer::BoolWitnessClaim {
+                witness_entry,
+                witness_function,
+            } = rec.initializer
+            {
+                if witness_entry.is_empty() || witness_function.is_empty() {
+                    return Err(format!(
+                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
+                        rec.decl_name
+                    ));
+                }
+                if seen.insert((witness_entry.clone(), witness_function.clone())) {
+                    let label = rec
+                        .decl_name
+                        .strip_prefix("unified_claim_")
+                        .unwrap_or(&rec.decl_name)
+                        .to_string();
+                    rows.push(GateRow {
+                        label,
+                        entry: witness_entry,
+                        function: witness_function,
+                    });
+                }
+            }
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    Ok(rows)
 }
 
 fn evaluate_rows_tsv(
@@ -303,25 +375,43 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let tsv = match evaluate_rows_tsv(&cfg.gate_entry, &cfg.rows_fn, &cfg.source_roots) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("ci-claim-gate: {e}");
-            return ExitCode::from(2);
+    let rows = match &cfg.roster {
+        RosterSource::RowsFn {
+            gate_entry,
+            rows_fn,
+        } => {
+            let tsv = match evaluate_rows_tsv(gate_entry, rows_fn, &cfg.source_roots) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("ci-claim-gate: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            if cfg.print_tsv_only {
+                print!("{tsv}");
+                return ExitCode::SUCCESS;
+            }
+            parse_rows_tsv(&tsv)
+        }
+        RosterSource::Discovery { scan_dirs } => {
+            let rows = match discover_roster(&cfg.source_roots, scan_dirs) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("ci-claim-gate: discovery roster failed: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            if cfg.print_tsv_only {
+                for r in &rows {
+                    println!("{}\t{}\t{}", r.label, r.entry, r.function);
+                }
+                return ExitCode::SUCCESS;
+            }
+            rows
         }
     };
-
-    if cfg.print_tsv_only {
-        print!("{tsv}");
-        return ExitCode::SUCCESS;
-    }
-
-    let rows = parse_rows_tsv(&tsv);
     if rows.is_empty() {
-        eprintln!(
-            "ci-claim-gate: {rows_fn} produced no rows",
-            rows_fn = cfg.rows_fn
-        );
+        eprintln!("ci-claim-gate: roster produced no rows (empty corpus → fail closed)");
         return ExitCode::from(2);
     }
 
