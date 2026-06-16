@@ -372,6 +372,10 @@ fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
     optional_present(value: "C1")
   } else if ident == ^v1 {
     optional_present(value: "V1")
+  } else if ident == ^vin {
+    optional_present(value: "vin")
+  } else if ident == ^mid {
+    optional_present(value: "mid")
   } else if ident == ^n1 {
     optional_present(value: "n1")
   } else if ident == ^n2 {

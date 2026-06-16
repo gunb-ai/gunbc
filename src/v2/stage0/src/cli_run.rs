@@ -772,6 +772,29 @@ pub fn run_value(
     v2_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
+/// Decode a `String` (`FreeMonoid<Char>`) interpreter value to Rust `String`.
+pub fn value_to_freemonoid_string(
+    ctx: &v2_interpreter::InterpContext,
+    val: &v2_interpreter::Value,
+) -> Result<String, String> {
+    v2_interpreter::with_active_context(ctx, || {
+        let items = v2_interpreter::free_monoid_to_vec(val)
+            .ok_or_else(|| "expected String FreeMonoid value".to_string())?;
+        let mut out = String::new();
+        for item in items {
+            match item {
+                v2_interpreter::Value::Int(codepoint) => {
+                    let ch = char::from_u32(codepoint as u32)
+                        .ok_or_else(|| format!("invalid String codepoint {codepoint}"))?;
+                    out.push(ch);
+                }
+                _ => return Err("expected Int codepoints in String FreeMonoid".into()),
+            }
+        }
+        Ok(out)
+    })
+}
+
 /// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(
     source_roots: Vec<String>,

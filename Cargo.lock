@@ -1401,6 +1401,7 @@ name = "v2-compiler"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "emit_host_runner",
  "im-rc",
  "lazy_static",
  "serde",

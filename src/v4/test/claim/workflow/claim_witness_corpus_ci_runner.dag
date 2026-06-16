@@ -511,6 +511,13 @@ data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_spice_rc_ngspice_op_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "spice RC passive deck emit authority for ngspice .op oracle",
+  entry: "src/v4/test/claim/formats/spice_rc_ngspice_op.dag",
+  function: "spice_rc_ngspice_op_holds",
+  expected: ExpectPass
+}
+
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -578,5 +585,6 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_self_host_stage_emission_equality_violates,
   corpus_ci_gate_row_spice_rc_ngspice_op,
   corpus_ci_gate_row_spice_rc_ngspice_nonempty,
-  corpus_ci_gate_row_spice_rc_passive_deck_authority
+  corpus_ci_gate_row_spice_rc_passive_deck_authority,
+  corpus_ci_gate_row_spice_rc_ngspice_op_emit
 ]

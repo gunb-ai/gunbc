@@ -15,7 +15,8 @@ import v4.extdeps.formats.spice {
   Op,
   Resistor,
   SpiceNetlist,
-  SpiceValue
+  SpiceValue,
+  spice_emit
 }
 
 // Topology: vin --[R1]-- mid --[C1]-- ground; .op for DC operating-point analysis.
@@ -42,4 +43,10 @@ data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
       directive: Op
     }
   ]
+}
+
+data spice_rc_passive_deck_emitted: String = spice_emit(netlist: spice_rc_passive_deck)
+
+fn spice_rc_passive_deck_cir_text() -> String {
+  spice_emit(netlist: spice_rc_passive_deck)
 }

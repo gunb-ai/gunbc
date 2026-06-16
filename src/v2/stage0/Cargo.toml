@@ -22,6 +22,7 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 ureq = { version = "2", features = ["json"] }
+emit_host_runner = { path = "../../../tools/emit_host_runner" }
 
 [[bin]]
 name = "gunbc"
@@ -53,3 +54,8 @@ path = "src/bin/claim_executor.rs"
 [[bin]]
 name = "discover_owned_data"
 path = "src/bin/discover_owned_data.rs"
+
+# ngspice batch oracle: evaluate spice_rc_passive_deck emit, write .cir, run ngspice -b.
+[[bin]]
+name = "spice_ngspice_oracle"
+path = "src/bin/spice_ngspice_oracle.rs"

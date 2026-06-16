@@ -30,6 +30,8 @@ static WORK_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 pub const HOST_BUILD_TIMEOUT: Duration = Duration::from_secs(300);
 /// Wall-clock bound for running the compiled fixture binary.
 pub const HOST_RUN_TIMEOUT: Duration = Duration::from_secs(30);
+/// Wall-clock bound for ngspice batch-mode `.op` oracle runs.
+pub const NGSPICE_BATCH_TIMEOUT: Duration = Duration::from_secs(60);
 /// Per-stream capture cap (stdout and stderr each).
 pub const HOST_STREAM_BYTE_CAP: usize = 1 << 20;
 
@@ -702,6 +704,47 @@ pub fn default_work_dir(prefix: &str) -> PathBuf {
 pub fn unique_work_dir(prefix: &str) -> PathBuf {
     let seq = WORK_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
     default_work_dir(&format!("{prefix}_{}_{seq}", std::process::id()))
+}
+
+/// Resolve ngspice binary: `NGSPICE_BIN` override, else `ngspice` on PATH.
+pub fn resolve_ngspice_binary() -> Result<String, HostSetupFailure> {
+    std::env::var("NGSPICE_BIN").or_else(|_| {
+        which_ngspice_on_path().ok_or_else(|| HostSetupFailure::SpawnFailed {
+            phase: HostPhase::FixtureRun,
+            source: "ngspice binary not found (set NGSPICE_BIN or install ngspice)".into(),
+        })
+    })
+}
+
+fn which_ngspice_on_path() -> Option<String> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join("ngspice");
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+/// Write `netlist_text` to `deck.cir` under `work_dir` and run `ngspice -b` (batch mode).
+pub fn run_ngspice_batch_netlist(
+    netlist_text: &str,
+    work_dir: &Path,
+) -> Result<HostExit, HostSetupFailure> {
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+    let cir_path = work_dir.join("deck.cir");
+    fs::write(&cir_path, netlist_text).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let ngspice = resolve_ngspice_binary()?;
+    let mut cmd = Command::new(&ngspice);
+    cmd.arg("-b").arg(&cir_path);
+    let run = run_command_bounded(cmd, NGSPICE_BATCH_TIMEOUT, HostPhase::FixtureRun)?;
+    Ok(host_exit_from_bounded(&run, HostPhase::FixtureRun))
 }
 
 #[cfg(test)]

@@ -1,0 +1,41 @@
+// src/v4/test/claim/formats/spice_rc_ngspice_op.dag
+// Scope: ngspice oracle witness — spice_rc_passive_deck (#4967) emits runnable .cir with .op.
+// Anchor: spice_emit + scripts/v4-spice-ngspice-op-gate.sh (ngspice -b E-10 consumer;
+//   enrolled in Gate-3 via scripts/v4-affected-tests-gate.sh).
+
+module v4.test.claim.formats.spice_rc_ngspice_op
+
+import v4.extdeps.formats.spice { spice_emit }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v4.test.fixture.spice_rc_passive_deck {
+  spice_rc_passive_deck,
+  spice_rc_passive_deck_emitted
+}
+
+data spice_rc_passive_deck_expected_cir: String = "RC passive series deck\nR1 vin mid 1k\nC1 mid 0 1u\n.op"
+
+fn spice_rc_passive_deck_emit_matches_expected_cir_holds() -> Bool {
+  spice_emit(netlist: spice_rc_passive_deck) == spice_rc_passive_deck_expected_cir
+}
+
+fn spice_rc_passive_deck_emit_matches_data_holds() -> Bool {
+  spice_emit(netlist: spice_rc_passive_deck) == spice_rc_passive_deck_emitted
+}
+
+// Structural emit authority for claim-run; ngspice -b execution is the host gate consumer.
+fn spice_rc_ngspice_op_holds() -> Bool {
+  spice_rc_passive_deck_emit_matches_data_holds()
+    && spice_rc_passive_deck_emit_matches_expected_cir_holds()
+}
+
+data unified_claim_spice_rc_ngspice_op: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_rc_ngspice_op.dag",
+    function: spice_rc_ngspice_op_holds
+  }
+}
