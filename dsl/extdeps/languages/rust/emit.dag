@@ -1,7 +1,8 @@
 // extdeps/languages/rust/emit.dag -- Rust language facts for the v2 emitter.
 //
 // Single source of truth for Rust-specific data consumed by the emitter.
-// No imports -- these are leaf data declarations.
+// Imports only the shared SimpleMethodSpec carrier from std; the rest are
+// leaf data declarations.
 //
 // Ref: The Rust Reference (doc.rust-lang.org/reference)
 //      Rust Standard Library (doc.rust-lang.org/std)
@@ -11,6 +12,8 @@
 //   v2/05_emit_rust.dag  -- reserved words, runtime function tables
 
 module extdeps.languages.rust.emit
+
+import std.emit_model { SimpleMethodSpec }
 
 // -- Keyword/operator translation ----------------------------------------
 // DAG keywords/operators -> Rust syntax.
@@ -43,12 +46,7 @@ data rust_container_templates: Map<String, String> = {
 // Single authority: SimpleMethodSpec carries both the template and
 // wraps_result flag. Derived maps feed LanguageSpec (template only)
 // and Rust emitter (wrapping). Same pattern as HigherOrderMethodSpec.
-
-type SimpleMethodSpec {
-  method_name: String
-  template: String
-  wraps_result: Bool
-}
+// The type itself lives in std.emit_model (shared by Python/Go too).
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },

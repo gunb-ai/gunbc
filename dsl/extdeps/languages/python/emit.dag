@@ -1,7 +1,8 @@
 // extdeps/languages/python/emit.dag -- Python language facts for the v2 emitter.
 //
 // Single source of truth for Python-specific data consumed by the emitter.
-// No imports -- these are leaf data declarations.
+// Imports only the shared SimpleMethodSpec carrier from std; the rest are
+// leaf data declarations.
 //
 // Ref: Python Language Reference (docs.python.org/3/reference)
 //      Python Standard Library (docs.python.org/3/library)
@@ -10,6 +11,8 @@
 //   v2/05_emit.dag -- type mapping, keywords, container templates
 
 module extdeps.languages.python.emit
+
+import std.emit_model { SimpleMethodSpec }
 
 // -- Keyword/operator translation ----------------------------------------
 // DAG keywords/operators -> Python syntax.
@@ -84,26 +87,39 @@ data python_string_types: List<String> = ["String", "Secret"]
 // Named-placeholder templates for algebra method calls.
 // \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.
 // Ref: Python standard library, builtins, functools.
-data python_method_templates: Map<String, String> = {
-  "count": "len(\{recv\})",
-  "join": "\{arg\}.join(\{recv\})",
-  "split": "\{recv\}.split(\{arg\})",
-  "last": "\{recv\}[-1] if \{recv\} else None",
-  "first": "\{recv\}[0] if \{recv\} else None",
-  "enumerate": "list(enumerate(\{recv\}))",
-  "chars": "[ord(c) for c in \{recv\}]",
-  "string_contains": "\{arg\} in \{recv\}",
-  "concat": "\{recv\} + \{arg\}",
-  "map": "[\{arg\}(x) for x in \{recv\}]",
-  "filter": "[x for x in \{recv\} if \{arg\}(x)]",
-  "any": "any(\{arg\}(x) for x in \{recv\})",
-  "all": "all(\{arg\}(x) for x in \{recv\})",
-  "flat_map": "[y for x in \{recv\} for y in \{arg\}(x)]",
-  "skip": "\{recv\}[\{arg\}:]",
-  "take": "\{recv\}[:\{arg\}]",
-  "fold": "functools.reduce(\{arg\}, \{recv\})",
-  "sort_by": "sorted(\{recv\}, key=\{arg\})",
-  "append": "\{recv\} + [\{arg\}]"
+//
+// Single authority: `python_simple_method_specs` carries the flat-templatable
+// (unary `{recv}`/`{arg}`) methods, exactly the set the emitter renders by
+// template. `map`/`fold`/`concat` are deliberately NOT here — they are binary+
+// (`fold(coll, init, f)` per dsl/std/algebra.dag) and route through the runtime
+// bridge, which forwards every argument (a flat one-arg template would drop
+// fold's accumulator/callback). `python_method_templates_flat()` derives the
+// emit map from this list. Mirrors #5039's Rust slice.
+data python_simple_method_specs: List<SimpleMethodSpec> = [
+  { method_name: "count",            template: "len(\{recv\})",                          wraps_result: false },
+  { method_name: "join",             template: "\{arg\}.join(\{recv\})",                 wraps_result: false },
+  { method_name: "split",            template: "\{recv\}.split(\{arg\})",                wraps_result: false },
+  { method_name: "last",             template: "\{recv\}[-1] if \{recv\} else None",     wraps_result: false },
+  { method_name: "first",            template: "\{recv\}[0] if \{recv\} else None",      wraps_result: false },
+  { method_name: "enumerate",        template: "list(enumerate(\{recv\}))",              wraps_result: false },
+  { method_name: "chars",            template: "[ord(c) for c in \{recv\}]",             wraps_result: false },
+  { method_name: "string_contains",  template: "\{arg\} in \{recv\}",                    wraps_result: false },
+  { method_name: "filter",           template: "[x for x in \{recv\} if \{arg\}(x)]",    wraps_result: false },
+  { method_name: "any",              template: "any(\{arg\}(x) for x in \{recv\})",      wraps_result: false },
+  { method_name: "all",              template: "all(\{arg\}(x) for x in \{recv\})",      wraps_result: false },
+  { method_name: "flat_map",         template: "[y for x in \{recv\} for y in \{arg\}(x)]", wraps_result: false },
+  { method_name: "skip",             template: "\{recv\}[\{arg\}:]",                     wraps_result: false },
+  { method_name: "take",             template: "\{recv\}[:\{arg\}]",                     wraps_result: false },
+  { method_name: "sort_by",          template: "sorted(\{recv\}, key=\{arg\})",          wraps_result: false },
+  { method_name: "append",           template: "\{recv\} + [\{arg\}]",                   wraps_result: false }
+]
+
+// Derived: the flat templatable map the emitter reads (single authority above).
+// `map`/`fold`/`concat` are absent → they route via the runtime bridge (correct
+// argument forwarding).
+fn python_method_templates_flat() -> Map<String, String> {
+  python_simple_method_specs
+    |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
 }
 
 // -- Expression syntax templates ------------------------------------------

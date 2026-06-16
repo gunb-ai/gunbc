@@ -3468,6 +3468,66 @@ fn python_emit_snake_case_functions() {
     }
 }
 
+/// End-to-end execution oracle for the Python/Go method-template consolidation
+/// (the #5039 Rust slice extended to Python/Go). Confirms by running the real
+/// compile+emit pipeline that:
+///   - flat-templatable methods (`count`) render via the SimpleMethodSpec-derived
+///     template map (`len(...)`);
+///   - the binary+ methods (`fold`/`map`/`concat`) route through the runtime
+///     bridge, which forwards EVERY argument — NOT the flat one-arg template.
+/// The `fold` case is the regression sentinel: a flat `functools.reduce({arg},
+/// {recv})` / `v2rt.Fold({recv},{arg})` template would drop fold's callback.
+fn method_template_emit_source() -> &'static str {
+    r#"module mt
+fn use_count(items: List<Int>) -> Int { items |> count }
+fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (acc, i) => acc + i) }
+fn use_map(items: List<Int>) -> List<Int> { items |> map(f: i => i * 2) }
+"#
+}
+
+#[test]
+fn python_method_template_consolidation_emit() {
+    let result = compile_dag_target(method_template_emit_source(), RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let py = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
+        .expect("Python target should emit a .py file");
+    let c = &py.content;
+    // Flat template (SimpleMethodSpec-derived).
+    assert!(c.contains("len("), "count should render as len(...):\n{c}");
+    // fold via runtime bridge — callback forwarded; NOT the flat reduce template.
+    assert!(
+        !c.contains("functools.reduce"),
+        "fold must NOT use the flat one-arg `functools.reduce` template (it drops the callback):\n{c}"
+    );
+    assert!(
+        c.contains("fold(") && c.contains("lambda"),
+        "fold should render as a bridge call forwarding the lambda:\n{c}"
+    );
+}
+
+#[test]
+fn go_method_template_consolidation_emit() {
+    let result = compile_dag_target(method_template_emit_source(), RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    // The user module — not the bundled v2rt runtime (which *defines* Fold).
+    let go = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".go") && !f.path.contains("v2rt"))
+        .expect("Go target should emit a user .go file");
+    let c = &go.content;
+    assert!(c.contains("len("), "count should render as len(...):\n{c}");
+    // fold via runtime bridge — the closure (callback) is forwarded as a 3rd arg;
+    // the flat `v2rt.Fold({recv},{arg})` template would emit only two args.
+    assert!(
+        c.contains("v2rt.Fold(") && c.contains("func("),
+        "fold should render as a v2rt.Fold bridge call forwarding the closure:\n{c}"
+    );
+}
+
 #[test]
 fn rust_typed_string_interp_escapes_format_text() {
     let source = r#"module interp_emit
