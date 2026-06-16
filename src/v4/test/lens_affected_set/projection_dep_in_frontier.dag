@@ -1,0 +1,56 @@
+
+module v4.test.lens_affected_set.projection_dep_in_frontier
+
+import v4.lens.affected_set { dependency_in_lens_frontier }
+import v4.std.dependency { DependencyView, ProjectionDependsOn }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn projection_dep_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data projection_dep_root: Node = projection_dep_node(s: ^projection_dep_root_symbol)
+
+data projection_dep_dependency: DependencyView = DependencyView {
+  source: projection_dep_root,
+  dependent: projection_dep_node(s: ^projection_dep_child_symbol),
+  kind: ProjectionDependsOn,
+  usage_site: projection_dep_node(s: ^projection_dep_child_symbol)
+}
+
+fn projection_dep_in_frontier_claim_holds() -> Bool {
+  dependency_in_lens_frontier(dependency: projection_dep_dependency)
+}
+
+fn projection_dep_in_frontier_claim_rhs() -> Node {
+  if projection_dep_in_frontier_claim_holds() {
+    projection_dep_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+data claim_projection_dep_in_frontier: TestClaim = EqualsClaim {
+  label: "lens_affected_set/projection_dep_in_frontier: ProjectionDependsOn in frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: projection_dep_root,
+  rhs: projection_dep_in_frontier_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -1,0 +1,73 @@
+// Status: generated rows route through testgen_emit_witness_validity_claim; RoundTripClaim Deferred until eval interpretation-algebra lands.
+
+module v4.test.generated.witness_validity
+
+
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Symbol }
+import v4.std.witness { StructuralPropertyWitness }
+import v4.std.find_witness {
+  PreservationPredicate,
+  preservation_rule_constraint_satisfaction
+}
+import v4.std.verification { TestClaim }
+import v4.lens.testgen { testgen_emit_witness_validity_claim }
+import v4.test.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
+data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
+    label: "witness-validity: constraint-satisfaction holds (positive)",
+    source_facts: stub_empty_conj,
+    candidate: stub_empty_conj,
+    predicate: PreservationPredicate {
+      algebra: stub_empty_conj,
+      preservation_rule: preservation_rule_constraint_satisfaction,
+    },
+    witness: StructuralPropertyWitness {
+      property: preservation_rule_constraint_satisfaction,
+      evidence: stub_empty_conj,
+    }
+  )
+
+
+data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
+    label: "witness-validity: property symbol mismatch (invalid witness)",
+    source_facts: stub_empty_conj,
+    candidate: stub_empty_conj,
+    predicate: PreservationPredicate {
+      algebra: stub_empty_conj,
+      preservation_rule: preservation_rule_constraint_satisfaction,
+    },
+    witness: StructuralPropertyWitness {
+      property: ^witness_validity_unrealized_rule,
+      evidence: stub_empty_conj,
+    }
+  )
+
+
+data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
+    label: "witness-validity: evidence node mismatch (invalid witness)",
+    source_facts: stub_empty_conj,
+    candidate: stub_empty_conj,
+    predicate: PreservationPredicate {
+      algebra: stub_empty_conj,
+      preservation_rule: preservation_rule_constraint_satisfaction,
+    },
+    witness: StructuralPropertyWitness {
+      property: preservation_rule_constraint_satisfaction,
+      evidence: stub_empty_disj,
+    }
+  )
+
+
+data row_witness_validity_rule_not_realized: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
+    label: "witness-validity: preservation rule not realized",
+    source_facts: stub_empty_conj,
+    candidate: stub_empty_conj,
+    predicate: PreservationPredicate {
+      algebra: stub_empty_conj,
+      preservation_rule: ^witness_validity_unrealized_rule,
+    },
+    witness: StructuralPropertyWitness {
+      property: ^witness_validity_unrealized_rule,
+      evidence: stub_empty_conj,
+    }
+  )

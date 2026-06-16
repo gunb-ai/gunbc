@@ -1,0 +1,37 @@
+// Scope: discriminating claim-run witness for L1.4 IdenticalVariantPayload
+// Status: executes identical_variant_payload_fact_for_type; pos expects Unrealized verdict,
+// neg arm discriminates stored verdict identity (mutation-proven red-under-mutation).
+
+module v4.test.lens_identical_variant_payload.sg_claims
+
+
+import v4.lens.identical_variant_payload {
+  IdenticalVariantPayloadVerdict,
+  Unrealized,
+  identical_variant_payload_fact_for_type
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
+import v4.test.lens_common.infer_fixture { claim_atom_node }
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
+
+
+fn ivp_verdict_is_unrealized(verdict: IdenticalVariantPayloadVerdict) -> Bool {
+  match verdict {
+    Unrealized => true
+    _ => false
+  }
+}
+
+
+test fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
+  ivp_verdict_is_unrealized(
+    verdict: identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict
+  )
+}

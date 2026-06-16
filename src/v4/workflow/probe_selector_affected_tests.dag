@@ -18,7 +18,7 @@ import v4.std.probe_selector {
   probe_select_host_health
 }
 import v4.std.verification { TestClaim }
-import v4.test.claim.workflow.affected_set_ci_runner {
+import v4.test.workflow.affected_set_ci_runner {
   ci_runner_claim_touched,
   ci_runner_fail_closed_affected,
   ci_runner_fixture_roster,

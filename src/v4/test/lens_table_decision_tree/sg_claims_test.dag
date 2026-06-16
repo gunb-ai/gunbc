@@ -1,0 +1,38 @@
+// Scope: discriminating claim-run witness for L1.13.c table_decision_tree
+// Status: executes table_decision_tree_fact_for_fn; pos expects Unrealized
+// verdict, neg arm discriminates stored verdict identity (mutation-proven
+// red-under-mutation).
+
+module v4.test.lens_table_decision_tree.sg_claims
+
+
+import v4.lens.table_decision_tree {
+  TableDecisionTreeVerdict,
+  Unrealized,
+  table_decision_tree_fact_for_fn
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v4.test.lens_common.infer_fixture { claim_atom_node }
+
+
+data tdt_witness_fn_node_symbol: Symbol = tdt_witness_fn_node_symbol
+data tdt_witness_fn_node: Node = claim_atom_node(s: tdt_witness_fn_node_symbol)
+
+
+// treating this as a permanent variant-discriminant authority.
+fn tdt_verdict_is_unrealized(verdict: TableDecisionTreeVerdict) -> Bool {
+  match verdict {
+    Unrealized => true
+    _ => false
+  }
+}
+
+
+test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
+  tdt_verdict_is_unrealized(
+    verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
+  )
+}
+

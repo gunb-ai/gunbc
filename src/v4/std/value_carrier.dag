@@ -89,7 +89,7 @@ data list_carrier: CarrierDeclaration = {
 // synchronization premise.
 //
 // The law is declared as EXECUTABLE WITNESSES, not a data type
-// (v4.test.claim.std_grounding.value_carrier_laws): a sharing-receipt type
+// (v4.test.std_grounding.value_carrier_laws): a sharing-receipt type
 // would have no constructor until the phase-2 swap lands, and dead vocabulary
 // is the Practice-4 failure mode. If phase 2 needs a receipt, it lands with
 // its first producer.

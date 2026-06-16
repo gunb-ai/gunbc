@@ -1,0 +1,19 @@
+// Status: compile-only anchor.
+
+module v4.test.manual.swift_language_model_anchor
+
+import v4.extdeps.languages.swift {
+  SwiftLanguageModel,
+  swift_language_model_wave1,
+  swift_language_model_wave2b,
+  swift_model_core_wave1,
+  swift_model_core_wave2b
+}
+import v4.std.model_core { ModelCore }
+
+type swift_anchor_language_model = SwiftLanguageModel
+
+data swift_anchor_wave1: swift_anchor_language_model = swift_language_model_wave1()
+data swift_anchor_core: ModelCore = swift_model_core_wave1()
+data swift_anchor_wave2b: swift_anchor_language_model = swift_language_model_wave2b()
+data swift_anchor_core_wave2b: ModelCore = swift_model_core_wave2b()

@@ -1,0 +1,56 @@
+// Scope: discriminating claim-run witnesses for lens registry query
+// Status: executes lens_registry_v0 query surface; pos+neg discriminates singleton resolution.
+
+module v4.test.lens_registry.sg_claims
+
+
+import v4.lens.registry {
+  Complexity,
+  Cost,
+  EffectEnumeration,
+  Idempotency,
+  LensIdV0,
+  Parallelism,
+  Provenance,
+  StructuralResolution,
+  TableDecisionTree,
+  UnusedParameters,
+  lens_registry_bound_row_count,
+  lens_registry_id_resolves,
+  lens_registry_ids_resolve,
+  lens_registry_row_count
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+
+
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+data lens_registry_v0_required_ids: List<LensIdV0> = [
+  Complexity,
+  Cost,
+  Parallelism,
+  EffectEnumeration,
+  Idempotency,
+  Provenance,
+  UnusedParameters,
+  StructuralResolution,
+  TableDecisionTree
+]
+
+
+test fn lens_registry_required_ids_resolve_holds() -> Bool {
+  lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
+}
+
+
+test fn lens_registry_singleton_row_counts_holds() -> Bool {
+  lens_registry_row_count(lens_id: Complexity) == 1
+    && lens_registry_bound_row_count(lens_id: Complexity) == 1
+    && lens_registry_id_resolves(lens_id: StructuralResolution)
+    && lens_registry_id_resolves(lens_id: TableDecisionTree)
+}

@@ -1,9 +1,0 @@
-// Pilot for single-representation tests: the function IS the test. Declared with
-
-module v4.test.claim.test_fn_pilot.pilot_tests
-
-import v4.std.logic { Bool }
-
-test fn test_fn_pilot_holds() -> Bool {
-  true
-}

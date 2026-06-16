@@ -1,0 +1,79 @@
+// Scope: B1 unit-modeling lens — PASS/clean witness for the Information/BitWidth
+//        token. The SAME `pointer_width` field attached to the BitWidth carrier
+//        (Measure<Information,One>, measure.dag:192) — NOT a bare `Int` leaf —
+//        MUST pass (gate Accepted). Pairs with bitwidth_flat_scalar_flagged.dag;
+//        identical field name, only the leaf type differs, so the lens
+//        discriminates on the resolved type for the width tokens too. Also guards
+//        against conflating BitWidth (Information) with ByteSize (Memory).
+
+module v4.test.lens_unit_modeling.bitwidth_modeled_passes
+
+import v4.lens.unit_modeling { unit_modeling_gate }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+// Target resolves to the BitWidth carrier (Measure<Information,One>), not the
+// bare kernel Int — so `edge_field_type_name` returns `^BitWidth`, the field is
+// correctly modeled, and it is not a violation.
+data bitwidth_carrier_target: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^BitWidth } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bitwidth_modeled_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^pointer_width },
+      target: bitwidth_carrier_target
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn bitwidth_modeled_passes_holds() -> Bool {
+  match unit_modeling_gate(node: bitwidth_modeled_input) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bitwidth_modeled_passes_rhs() -> Node {
+  if bitwidth_modeled_passes_holds() {
+    bitwidth_modeled_input
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data claim_bitwidth_modeled_passes: TestClaim = EqualsClaim {
+  label: "lens_unit_modeling/bitwidth_pass: pointer_width attached to BitWidth carrier is accepted",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: bitwidth_modeled_input,
+  rhs: bitwidth_modeled_passes_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

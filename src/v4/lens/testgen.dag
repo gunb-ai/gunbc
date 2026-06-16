@@ -135,7 +135,7 @@ import v4.std.verification {
   test_claim_classification,
   test_claim_anchor
 }
-import v4.test.claim.manual.connective_anchors {
+import v4.test.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj,
   stub_empty_transform,
@@ -151,7 +151,7 @@ import v4.test.claim.manual.connective_anchors {
   claim_loop_empty_rejected,
   claim_bind_zero_children_rejected
 }
-import v4.test.claim.manual.nat_law_anchors {
+import v4.test.manual.nat_law_anchors {
   claim_nat_add_associativity,
   claim_nat_add_left_identity,
   claim_nat_add_right_identity,

@@ -50,13 +50,13 @@ struct Config {
 
 // Mirror of discover_owned_data's default exclude set: the manifest/law files that
 // import the ephemeral discovery output would otherwise re-enter discovery acyclically.
-// Plus the manual lane: `src/v4/test/claim/manual/` claims carry their own
+// Plus the manual lane: `src/v4/test/manual/` claims carry their own
 // ExpectPass|ExpectFail expected-outcome (some are pinned-red to tracking anchors,
 // e.g. witness_sg2_arrow ExpectFail{#4801}). A universal-green floor must NOT run them
 // as must-pass — excluded until expected-outcome is modeled at the claim level.
 const DISCOVERY_EXCLUDES: &[&str] = &[
     "impossible_bug",
-    "test/claim/manual/",
+    "test/manual/",
     "glob_discovery.dag",
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",

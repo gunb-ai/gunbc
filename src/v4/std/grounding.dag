@@ -356,8 +356,8 @@ type HostVerdictSurfaceExecutionStatus
 // TargetModel authority lives on EmitHostRunReceipt.target only (P2; no second target field that
 // could disagree). Carries the modeled corpus verdict surface as a VerdictTally (the per-row
 // `TestClaimRun` verdicts folded by `corpus_report_tally`) plus the execution-provenance
-// discriminator. The concrete `CorpusEvalReport` binding lives in the v4.test.claim.workflow layer
-// so std/ stays free of v4.compiler / v4.test.claim imports (same layering rule as
+// discriminator. The concrete `CorpusEvalReport` binding lives in the v4.test.workflow layer
+// so std/ stays free of v4.compiler / v4.test imports (same layering rule as
 // test_claim_falsification.dag's Subj carrier).
 type PerTargetTestClaimReceipt {
   host_run: EmitHostRunReceipt
