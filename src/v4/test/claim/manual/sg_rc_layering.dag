@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/sg_rc_layering.dag
-// Scope: SG-RC-LAYERING falsification F1–F6 per docs/planning/v4-sg-rc-layering-worksheet-2026-05-31.md §4.
+// Scope: SG-RC-LAYERING falsification F1–F6.
 // Status: structural receipts — per-use-site reference_layer drives type + value emit together.
 
 module v4.test.claim.manual.sg_rc_layering

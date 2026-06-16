@@ -1,5 +1,5 @@
 // src/v4/test/claim/language_model/rust_r1.dag
-// Scope: Phase 1 R1 — rust.dag i32 surface spelling vs rustc (docs/planning/v4-leaf-model-verification-2026-05-30.md §7).
+// Scope: Phase 1 R1 — rust.dag i32 surface spelling vs rustc.
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-rust-r1-verify.sh exercises rustc.
 
 module v4.test.claim.language_model.rust_r1
