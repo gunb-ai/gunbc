@@ -3,7 +3,7 @@
 
 use self::Stage0CrateKind::*;
 use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
-pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
+pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
 pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -32,6 +32,7 @@ pub struct Stage0CrateSpec {
     pub header_doc: String,
     pub modules: Rc<Vec<String>>,
     pub dependencies: Rc<Vec<Rc<CargoDependency>>>,
+    pub features: Rc<Vec<Rc<CargoFeature>>>,
     pub carries_non_empty_wrappers: bool,
 }
 
@@ -103,6 +104,52 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     }
 }
 
+pub fn render_stage0_crate_feature(feature: Rc<CargoFeature>) -> String {
+    if ((feature.dependencies.clone().len() as i64) == 0) {
+        v1_rt::concat(feature.name.clone(), " = []\n".to_string())
+    } else {
+        {
+            let dep_names = Rc::new({
+                let mut __result = Vec::new();
+                for d in feature.dependencies.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat("\"".to_string(), d.clone()),
+                        "\"".to_string(),
+                    ));
+                }
+                __result
+            })
+            .join(&", ".to_string());
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(feature.name.clone(), " = [".to_string()),
+                    dep_names,
+                ),
+                "]\n".to_string(),
+            )
+        }
+    }
+}
+
+pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>) -> String {
+    if ((features.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
+            Rc::new(
+                features
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .map(render_stage0_crate_feature)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&"".to_string()),
+        )
+    }
+}
+
 pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
     {
         let deps = Rc::new(
@@ -117,10 +164,16 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
         let content = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    "[package]\nname = \"".to_string(),
-                    spec.package_name.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "[package]\nname = \"".to_string(),
+                            spec.package_name.clone(),
+                        ),
+                        "\"\nversion = \"0.1.0\"\nedition = \"2021\"".to_string(),
+                    ),
+                    render_stage0_crate_features_section(spec.features.clone()),
                 ),
-                "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n".to_string(),
+                "\n\n[dependencies]\n".to_string(),
             ),
             deps,
         );
@@ -278,6 +331,10 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         }),
                     }),
                 ]),
+                features: Rc::new(vec![Rc::new(CargoFeature {
+                    name: "text_lookup_work_counter".to_string(),
+                    dependencies: Rc::new(vec![]),
+                })]),
                 carries_non_empty_wrappers: true,
             }),
             Rc::new(Stage0CrateSpec {
@@ -316,6 +373,7 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         }),
                     }),
                 ]),
+                features: Rc::new(vec![]),
                 carries_non_empty_wrappers: false,
             }),
         ]),

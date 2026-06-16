@@ -425,13 +425,20 @@ fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source
   }
 }
 
-fn rust_nominal_ord_type_name_eligible(type_name: String) -> Bool {
-  type_name == "Symbol" || type_name == "DiffId"
+// Bare `Set<DiffId>` / `Set<Symbol>` element nodes are name-only references (no
+// children); parameterized spellings like `Symbol<Float>` carry a type-arg child
+// and must fail-closed here instead of inheriting the whitelist by name alone.
+fn rust_nominal_ord_type_ref_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let type_name = authored_name_at(source_indices: source_indices, node: elem_node)
+  (elem_node.children |> count) == 0
+    && (elem_node.params |> count) == 0
+    && elem_node.connective == NoConnective
+    && (type_name == "Symbol" || type_name == "DiffId")
 }
 
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   rust_nominal_identity_carrier_shape_eligible(n: elem_node, source_indices: source_indices)
-    || rust_nominal_ord_type_name_eligible(type_name: authored_name_at(source_indices: source_indices, node: elem_node))
+    || rust_nominal_ord_type_ref_eligible(elem_node: elem_node, source_indices: source_indices)
     || rust_diff_id_ord_carrier_shape_eligible(name: authored_name_at(source_indices: source_indices, node: elem_node), children: elem_node.children, source_indices: source_indices)
 }
 

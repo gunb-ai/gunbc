@@ -2,6 +2,10 @@
 name = "v1-stage0-core"
 version = "0.1.0"
 edition = "2021"
+[features]
+default = []
+text_lookup_work_counter = []
+
 
 [dependencies]
 stacker = "0.1"
