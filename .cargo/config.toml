@@ -5,7 +5,7 @@
 jobs = 2                          # max parallel rustc/linker invocations per cargo run
 
 [env]
-# v3 integration tests build large `Dag` fixtures; default thread stack overflows (WSL / ctrl-build).
-# GitHub Actions sets this explicitly; workspace default keeps local + remote runners aligned.
+# v1/v2 tests build large `Dag` fixtures; the default thread stack overflows (WSL / ctrl-build).
+# Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it).
 RUST_MIN_STACK = { value = "16777216", force = false }
 RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary

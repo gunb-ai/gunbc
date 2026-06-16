@@ -73,8 +73,8 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// v2-only dependency closure — avoid scanning `src/v3` (duplicate module paths in fixtures).
-fn materialize_v4_deps_root(work: &Path) -> PathBuf {
+/// v2-only dependency closure.
+fn materialize_v2_deps_root(work: &Path) -> PathBuf {
     let deps_root = work.join("deps");
     copy_dir_all(&workspace_root().join("src/v2"), &deps_root.join("v2"))
         .expect("copy src/v2 deps");
@@ -88,7 +88,7 @@ fn run_fixture_compile(
     let work = compile_host_runner::default_work_dir("compile_host_hermetic");
     fs::remove_dir_all(&work).ok();
     let entry_root = work.join("entry");
-    let deps_root = materialize_v4_deps_root(&work);
+    let deps_root = materialize_v2_deps_root(&work);
     let output_dir = work.join("out");
     write_entry_fixture(&entry_root, entry_fixture_rel, source);
 

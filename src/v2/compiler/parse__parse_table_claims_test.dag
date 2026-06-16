@@ -1,8 +1,8 @@
 // Scope: v2.compiler.parse `token_position_indices` as a discriminating
 // claim-run witness, routed through v2 (`dag run --claim-run`).
-// Migrates the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append
-// receipt in src/v3/compiler/tests/integration/v2_compiler_parse_table_dag_smoke_test.rs
-// (formerly the host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) into a
+// Carries the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append
+// receipt — the executable receipt is now the in-file claim witness below, run in-process by
+// the ci_claim_gate binary (formerly a host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) — as a
 // `fn -> Bool` witness that EXECUTES token_position_indices over a fixed token list and
 // DISCRIMINATES the produced 0..N index sequence: a duplicate final append (the regressed
 // shape) yields an extra index, turning the witness red. Mutating the fold turns it red.

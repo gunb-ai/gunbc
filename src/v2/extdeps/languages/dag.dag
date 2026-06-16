@@ -3076,9 +3076,7 @@ fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
 // sub-node, then delegating to qualified_name_from_node in std/.
 // std/qualified_name.dag cannot import ^dag_surface_module_header_qualified_name (extdeps/ → std/ only),
 // so this wrapper lives in extdeps/. compiler/00_compile.dag admission calls this function on each
-// batch entry (post-normalize module Node). std/module_batch.dag batch_delete/batch_lookup cannot
-// use this wrapper (std/ layering barrier); they call qualified_name_from_node as best-effort and
-// always receive Rejected for post-normalize module Nodes — kept as non-match per delete policy.
+// batch entry (post-normalize module Node).
 // 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
 // segment extracted from a real parse tree carries ^dag_token_ident (identifier identity unavailable);
 // this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).

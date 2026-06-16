@@ -49,10 +49,9 @@ data string_chars_template: String = "[ord(c) for c in \{recv\}]"
 // `MethodTranslation` + `collection_method_translations` retired in
 // T-Ground-LanguageSpec scope E Phase 2 (#1196 follow-up): zero v2
 // consumers, zero stage0 references, fully dead. Method-template
-// authority is now `python_method_template_contracts` at
-// `src/v3/std/python_method_template_contracts.dag` (registry-backed
-// `MethodTemplateContract` rows). v2's emit pipeline still reads the
-// `python_method_templates: Map` below — Phase 2 retirement of THAT
+// authority is the registry-backed `MethodTemplateContract` rows
+// (type at `dsl/std/emit_model.dag`). v2's emit pipeline still reads
+// the `python_method_templates: Map` below — Phase 2 retirement of THAT
 // path folds into Pure-Bootstrap-Zero / v2 retirement scope (manager
 // dispatch #1133 inbox 4344956791).
 

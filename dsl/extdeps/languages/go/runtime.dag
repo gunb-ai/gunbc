@@ -49,11 +49,10 @@ data string_slice_template: String = "\{recv\}[\{start\}:\{end\}]"
 // `MethodTranslation` + `collection_method_translations` retired in
 // T-Ground-LanguageSpec scope E Phase 2 (#1196 follow-up): zero v2
 // consumers, zero stage0 references, fully dead. Method-template
-// authority is now `go_method_template_contracts` at
-// `src/v3/std/go_method_template_contracts.dag` (registry-backed
-// `MethodTemplateContract` rows). v2's emit pipeline still reads the
-// `go_method_templates: Map` below — Phase 2 retirement of THAT
-// path folds into Pure-Bootstrap-Zero / v2 retirement scope (manager
+// authority is now the registry-backed `MethodTemplateContract` rows
+// (type owned by `dsl/std/emit_model.dag`). v2's emit pipeline still
+// reads the `go_method_templates: Map` below — Phase 2 retirement of
+// THAT path folds into Pure-Bootstrap-Zero / v2 retirement scope (manager
 // dispatch #1133 inbox 4344956791).
 
 // Ref: Go Spec "Appending to and copying slices"
