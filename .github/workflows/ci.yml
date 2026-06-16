@@ -1,5 +1,5 @@
 # The whole CI floor is one `.dag` binary: ci-claim-gate discovers the
-# single-representation `test fn`/`test data` corpus under src/v4/test and evaluates
+# single-representation `test fn`/`test data` corpus under src/v2/test and evaluates
 # every claim in-interpreter — no shell gate, no hand roster, no `.dag` shell-out.
 # Branch protection should require job id `ci`.
 name: ci
@@ -56,4 +56,4 @@ jobs:
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: CI floor (.dag claim gate)
-        run: cargo run -p ci_claim_gate --release -- --source-root src/v4 --roster-from-discovery --scan-dir src/v4/test --notice-title "v4 claim corpus"
+        run: cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"

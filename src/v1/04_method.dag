@@ -1,0 +1,134 @@
+// v2 method helpers -- builtin call type inference and type constructors.
+//
+// Intrinsic/bridge method classification was deleted 2026-03-28 (48 string
+// branches replaced by algebra registry + Tier 0 lookup_structural_method).
+// What remains: builtin_function_registry for free-function call syntax and
+// type constructor helpers used by inference.
+//
+// Dependency: v1.compiler.infer_types (Node constructors)
+
+module v1.compiler.infer_method
+
+import std.types { SourceSpan }
+import v1.std.core {
+  Node, TypeVariable, Resolved,
+  NoConnective,
+  Required,
+  NoExprData,
+  ErrorNode,
+  make_span, with_optional_cardinality,
+  unit_type, bool_type, string_type, hash_type, int_type
+}
+import v1.compiler.infer_types {
+  make_container_type, make_map_type
+}
+
+// =========================================================================
+// Builtin call type inference
+//
+// Method classification (intrinsic/bridge) and method return type inference
+// were deleted 2026-03-28. Methods resolve structurally through Tier 0
+// lookup_structural_method; return types come from algebra fields +
+// AlgebraTypeVariable instantiation (M2 Phase C).
+// =========================================================================
+
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn map_of_type_variables() -> Node {
+  make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
+}
+
+fn list_of_type_variable(id: String) -> Node {
+  make_container_type(kind_name: "List", element: type_variable_node(id: id)).ty
+}
+
+fn list_of_element(element: Node) -> Node {
+  make_container_type(kind_name: "List", element: element).ty
+}
+
+fn witness_of_element(element: Node) -> Node {
+  make_container_type(kind_name: "Witness", element: element).ty
+}
+
+// Builtin function return type registry.
+//
+// BRIDGE: This map_insert chain is a duplicate authority over facts that
+// should come from .dag function declarations (extern fn signatures).
+// Deletion point: when builtins are actual .dag definitions that the
+// compiler loads and resolves, this registry is deleted. See review
+// feedback on BuiltinReturnKind — the proper model is definition nodes,
+// not a return-type proxy enum.
+fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
+  map_insert(empty_map(), key, value)
+}
+
+fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
+  concat(
+    concat(
+      make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,
+      make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")).diagnostics
+    ),
+    make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).diagnostics
+  )
+}
+
+fn builtin_function_registry() -> Map<String, Node> {
+  let m = seed_node_map(key: "count", value: int_type)
+  let m = map_insert(m, "string_length", int_type)
+  let m = map_insert(m, "code_point", int_type)
+  let m = map_insert(m, "to_int", int_type)
+  let m = map_insert(m, "scan_while", int_type)
+  let m = map_insert(m, "scan_string_end", int_type)
+  let m = map_insert(m, "scan_to_eol", int_type)
+  let m = map_insert(m, "skip_horizontal_ws", int_type)
+  let m = map_insert(m, "parse_int", with_optional_cardinality(n: int_type))
+  let m = map_insert(m, "char_at", string_type)
+  let m = map_insert(m, "substring", string_type)
+  let m = map_insert(m, "from_code_point", string_type)
+  let m = map_insert(m, "chars_to_string", string_type)
+  let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
+  let m = map_insert(m, "to_string", string_type)
+  // `discriminant(v)` reifies a coproduct/record value's own constructor name as a Symbol
+  // (interned string). One intrinsic dissolves every hand-written `fn ..._discriminant(v) ->
+  // Symbol { match v { Ctor{..} => ctor_tag ... } }` bridge that shadows a coproduct's arm-set
+  // with a parallel `data ctor_tag: Symbol` vocabulary. Symbol is operationally a String
+  // (Value::Str at runtime; the `data X: Symbol = X` idiom resolves to its interned name).
+  let m = map_insert(m, "discriminant", string_type)
+  let m = map_insert(m, "concat", string_type)
+  let m = map_insert(m, "map_insert", map_of_type_variables())
+  let m = map_insert(m, "map_merge", map_of_type_variables())
+  let m = map_insert(m, "with", map_of_type_variables())
+  let set_ty = make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty
+  let m = map_insert(m, "empty_set", set_ty)
+  let m = map_insert(m, "set_insert", set_ty)
+  let m = map_insert(m, "set_union", set_ty)
+  let m = map_insert(m, "map_contains_key", bool_type)
+  let m = map_insert(m, "map_has", bool_type)
+  let m = map_insert(m, "emit_map_has", bool_type)
+  let m = map_insert(m, "set_contains", bool_type)
+  let m = map_insert(m, "lookup", witness_of_element(element: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "map_get", with_optional_cardinality(n: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "Some", with_optional_cardinality(n: type_variable_node(id: "some_inner")))
+  let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "map_values", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "reverse", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "list_push", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "hash_combine", hash_type)
+  let m = map_insert(m, "atom_identity_hash", hash_type)
+  m
+}
+
+// NOTE: builtin_function_registry() constructs the map on each call in .dag
+// source. The stage0 Rust caches it via thread_local! to avoid O(N×M) rebuild.
+fn infer_builtin_call_type(name: String) -> Node? {
+  map_get(builtin_function_registry(), name)
+}
+
+fn resolve_builtin_call_type(name: String) -> Node {
+  match infer_builtin_call_type(name: name) {
+    Present { value: v } => v
+    Absent => unit_type
+  }
+}

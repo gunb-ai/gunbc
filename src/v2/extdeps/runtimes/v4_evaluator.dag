@@ -1,0 +1,305 @@
+// src/v2/extdeps/runtimes/v2_evaluator.dag
+// Scope: Concrete v2 evaluator runtime fact-bundle.
+// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
+
+module v2.extdeps.runtimes.v2_evaluator
+
+import v2.std.collection { List, Map, map_insert }
+import v2.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.model_core {
+  EffectSignature,
+  ModelCore,
+  PrimitiveOperationRef,
+  ResourceAccess,
+  wave1_model_core
+}
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.runtime {
+  AllocationSemantics,
+  BindInterpreter,
+  BoundaryAllowance,
+  BranchInterpreter,
+  CallSemantics,
+  ControlSemantics,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationCall,
+  EvaluationEnvironment,
+  EvaluationFrame,
+  ExecutionSemantics,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  Raise,
+  ResourceEffectBoundary,
+  Return,
+  RuntimeValue,
+  Suspend,
+  TransformInterpreter,
+  ValueInterpreter,
+  ValueRepresentationModel,
+  runtime_value_resolved_type
+}
+import v2.std.witness { Violates, Witness }
+type V4EvaluatorRuntime {
+  runtime_identity: Symbol
+  core: ModelCore
+  values: ValueRepresentationModel
+  execution: ExecutionSemantics
+  boundary: ResourceEffectBoundary
+}
+
+fn v2_eval_wave1_unit_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_unit_type_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn v2_eval_wave1_boundary_operation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_boundary_operation_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn v2_eval_wave1_effect_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_boundary_effect_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn v2_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^v2_eval_wave1_semantics_deferred,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn v2_eval_wave1_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^v2_eval_wave1_binding_miss,
+      at: port_locus(port: ^v2_eval_wave1_binding_miss),
+      correction: Unavailable { reason: AmbiguousIntent }
+    }
+  }
+}
+
+fn v2_eval_wave1_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  Map {
+    lookup: v2_eval_wave1_binding_lookup_miss
+  }
+}
+
+fn v2_eval_wave1_empty_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: v2_eval_wave1_empty_bindings()
+  }
+}
+
+fn v2_eval_wave1_empty_frame() -> EvaluationFrame {
+  EvaluationFrame {
+    current: v2_eval_wave1_unit_type_node(),
+    environment: v2_eval_wave1_empty_environment()
+  }
+}
+
+fn v2_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+}
+
+fn v2_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
+  Accepted { value: value, diagnostics: None }
+}
+
+fn v2_eval_wave1_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  v2_eval_wave1_represent_literal(node: node, env: env)
+}
+
+fn v2_eval_wave1_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+}
+
+fn v2_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+}
+
+fn v2_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+}
+
+fn v2_eval_wave1_bind_value(
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted {
+    value: EvaluationEnvironment {
+      bindings: map_insert(m: env.bindings, key: key, value: value)
+    },
+    diagnostics: None
+  }
+}
+
+fn v2_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
+  Accepted { value: value, diagnostics: None }
+}
+
+fn v2_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: call.callee))
+}
+
+fn v2_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  Accepted { value: Return { value: value }, diagnostics: None }
+}
+
+// 🟡 gated — wave-1 interim (Practice 10) — feature: faithful RuntimeValue-to-EvaluationFrame reification —
+// dissolve-on-arrival: T-22 or T-8 providing RuntimeValue→Node reification (runtime_value_node_projection
+// returns non-Unrepresentable) or EvaluationFrame gains a RuntimeValue result slot.
+// Wave-1: Continue/Return reject until value reification is modeled — type-only projection into
+// frame.current would fabricate a successful frame missing the value fact (P3).
+fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+  match control {
+    Continue { value: v } =>
+      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+    Return { value: v } =>
+      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+    Raise { diagnostic: d } =>
+      outcome_rejected(d: d)
+    Suspend { continuation: c } =>
+      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: c.current))
+  }
+}
+
+fn v2_eval_wave1_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
+  match control {
+    Continue { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    Return { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    Raise { diagnostic: d } =>
+      outcome_rejected(d: d)
+    Suspend { continuation: c } =>
+      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: c.current))
+  }
+}
+
+fn v2_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
+  BoundaryAllowance {
+    operation: PrimitiveOperationRef {
+      operation: v2_eval_wave1_boundary_operation_node(),
+      effect_signature: EffectSignature {
+        signature: v2_eval_wave1_effect_signature_node()
+      }
+    },
+    resource: ResourceAccess {
+      resource: v2_eval_wave1_boundary_operation_node()
+    },
+    allowed: allowed
+  }
+}
+
+fn v2_eval_wave1_resource_boundary() -> ResourceEffectBoundary {
+  ResourceEffectBoundary {
+    ffi: v2_eval_wave1_boundary_allowance(allowed: false),
+    exceptions: v2_eval_wave1_boundary_allowance(allowed: false),
+    async: v2_eval_wave1_boundary_allowance(allowed: false),
+    concurrency: v2_eval_wave1_boundary_allowance(allowed: false),
+    identity_reference: v2_eval_wave1_boundary_allowance(allowed: false)
+  }
+}
+
+fn v2_evaluator_model_core_wave1() -> ModelCore {
+  wave1_model_core()
+}
+
+fn v2_evaluator_value_representation_wave1() -> ValueRepresentationModel {
+  ValueRepresentationModel {
+    represent_literal: v2_eval_wave1_represent_literal,
+    represent_result: v2_eval_wave1_represent_result
+  }
+}
+
+// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes fully typed interpretation; Wave-1 hooks realized (T-34), richer primitive semantics gated on T-22.
+fn v2_evaluator_interpretation_wave1() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: v2_eval_wave1_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: v2_eval_wave1_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: v2_eval_wave1_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: v2_eval_wave1_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: v2_eval_wave1_bind_value
+    }
+  }
+}
+
+fn v2_evaluator_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^v2_eval_wave1_allocate_literal_sym,
+    call_primitive: ^v2_eval_wave1_call_primitive_sym,
+    choose_branch: ^v2_eval_wave1_choose_branch_sym,
+    step_loop: ^v2_eval_wave1_step_loop_sym,
+    bind_value: ^v2_eval_wave1_bind_value_sym
+  }
+}
+
+fn v2_evaluator_execution_wave1() -> ExecutionSemantics {
+  ExecutionSemantics {
+    allocation: AllocationSemantics {
+      allocate: v2_eval_wave1_allocate
+    },
+    calls: CallSemantics {
+      call: v2_eval_wave1_call,
+      return_value: v2_eval_wave1_return_value
+    },
+    control: ControlSemantics {
+      transfer: v2_eval_wave1_transfer,
+      terminal_value: v2_eval_wave1_terminal_value
+    }
+  }
+}
+
+fn v2_evaluator_boundary_wave1() -> ResourceEffectBoundary {
+  v2_eval_wave1_resource_boundary()
+}
+
+fn v2_evaluator_runtime_wave1() -> V4EvaluatorRuntime {
+  V4EvaluatorRuntime {
+    runtime_identity: ^v2_evaluator_runtime_id,
+    core: v2_evaluator_model_core_wave1(),
+    values: v2_evaluator_value_representation_wave1(),
+    execution: v2_evaluator_execution_wave1(),
+    boundary: v2_evaluator_boundary_wave1()
+  }
+}

@@ -1,0 +1,313 @@
+// v2 emit core support -- target-independent backend helper surface.
+//
+// This module owns leaf helpers used by multiple emit backends.  It is the
+// .dag-authored successor to the temporary Rust-only
+// `v1_compiler_emit_core_support` facade.
+
+module v1.compiler.emit_core_support
+
+import v1.std.core {
+  Node, ErrorNode, TextFile, NewlineIndex,
+  authored_name_at, field_init_node_name_at,
+  Connective, NoConnective
+}
+import v1.compiler.artifact { RenderTarget }
+import v1.compiler.infer_items { ResolvedGraph }
+import v1.compiler.infer_service { UniqueAccum }
+import v1.compiler.infer_types { resolved_type, emit_map_has }
+import v1.compiler.languages {
+  LanguageSpec, SnakeCaseTestNames, PascalCaseTestNames,
+  language_spec_for_target, test_conventions_for_target
+}
+
+// =========================================================================
+// Backend result/test carriers shared by all emit backends.
+// =========================================================================
+
+type EmitResult {
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+}
+
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  inferred: Node
+  params: List<Node>
+  mock_field_inits: List<Node>
+  source_indices: Map<String, NewlineIndex>
+}
+
+fn escape_json_string(s: String) -> String {
+  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+fn module_to_filename(name: String) -> String {
+  name |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn make_indent(level: Int) -> String {
+  if level <= 0 {
+    ""
+  } else {
+    concat("    ", make_indent(level: level - 1))
+  }
+}
+
+fn unique_strings(items: List<String>) -> List<String> {
+  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+    if emit_map_has(m: acc.seen, key: item) { acc }
+    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
+  })
+  result.result
+}
+
+fn to_string(value: Int) -> String {
+  if value < 0 {
+    concat("-", to_string(value: 0 - value))
+  } else if value == 0 {
+    "0"
+  } else {
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    to_string_helper(value: value, acc: []) |> join(separator: "")
+  }
+}
+
+fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
+  if value == 0 {
+    acc
+  } else {
+    let rest = value / 10
+    let digit = value - (rest * 10)
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
+      Present { value: p } => p.second
+      Absent => "?"
+    }
+    to_string_helper(value: rest, acc: concat([ch], acc))
+  }
+}
+
+fn to_snake(name: String) -> String {
+  let chars_list = name |> chars
+  let result = chars_list |> enumerate |> map(pair =>
+    let idx = pair.first
+    let ch = pair.second
+    if is_upper(ch: ch) {
+      if idx == 0 {
+        to_lower_char(ch: ch)
+      } else {
+        concat("_", to_lower_char(ch: ch))
+      }
+    } else {
+      from_code_point(cp: ch)
+    }
+  )
+  result |> join(separator: "")
+}
+
+fn to_screaming_snake(name: String) -> String {
+  let snake = to_snake(name: name)
+  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+}
+
+fn is_upper(ch: Int) -> Bool {
+  ch >= 65 && ch <= 90
+}
+
+fn to_lower_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 65 && cp <= 90 {
+    let lower_cp = cp + 32
+    from_code_point(cp: lower_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn to_upper_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 97 && cp <= 122 {
+    let upper_cp = cp - 32
+    from_code_point(cp: upper_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn sanitize_service_name(name: String) -> String {
+  let parts = name |> split(delimiter: ".")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
+}
+
+fn capitalize_first(s: String) -> String {
+  let chars_list = s |> chars
+  if chars_list |> count == 0 {
+    ""
+  } else {
+    chars_list |> enumerate |> map(pair =>
+      if pair.first == 0 {
+        to_upper_char(ch: pair.second)
+      } else {
+        from_code_point(cp: pair.second)
+      }
+    ) |> join(separator: "")
+  }
+}
+
+fn service_var_name(service_name: String) -> String {
+  to_snake(name: sanitize_service_name(name: service_name))
+}
+
+fn to_pascal(name: String) -> String {
+  let snake = to_snake(name: name)
+  let parts = snake |> split(delimiter: "_")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
+}
+
+fn test_function_name(projection: TestProjection, target: RenderTarget) -> String {
+  let conventions = test_conventions_for_target(target: target)
+  let formatted = match conventions.name_style {
+    SnakeCaseTestNames => concat(
+      to_snake(name: sanitize_service_name(name: projection.service_name)),
+      "_",
+      to_snake(name: projection.operation_name)
+    )
+    PascalCaseTestNames => concat(
+      to_pascal(name: sanitize_service_name(name: projection.service_name)),
+      to_pascal(name: projection.operation_name)
+    )
+  }
+  concat(conventions.function_prefix, formatted)
+}
+
+fn apply_type_template1(template: String, arg0: String) -> String {
+  template |> split(delimiter: "{0}") |> join(separator: arg0)
+}
+
+fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
+  let parts = template |> split(delimiter: "{0}")
+  let replaced = parts |> map(p => p |> split(delimiter: "{1}") |> join(separator: arg1))
+  replaced |> join(separator: arg0)
+}
+
+fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
+  let parts0 = template |> split(delimiter: "{0}")
+  let replaced = parts0 |> map(p0 =>
+    let parts1 = p0 |> split(delimiter: "{1}")
+    let inner = parts1 |> map(p1 => p1 |> split(delimiter: "{2}") |> join(separator: arg2))
+    inner |> join(separator: arg1)
+  )
+  replaced |> join(separator: arg0)
+}
+
+fn apply_named_template(template: String, bindings: Map<String, String>) -> String {
+  apply_named_template_nested(template: template, bindings: bindings, keys: map_keys(bindings))
+}
+
+fn apply_named_template_nested(template: String, bindings: Map<String, String>, keys: List<String>) -> String {
+  match keys |> first {
+    Absent => template
+    Present { value: key } =>
+      let rest = keys |> skip(1)
+      let placeholder = concat("{", key, "}")
+      match map_get(bindings, key) {
+        Present { value: val } =>
+          let parts = template |> split(delimiter: placeholder)
+          let processed = parts |> map(part => apply_named_template_nested(template: part, bindings: bindings, keys: rest))
+          processed |> join(separator: val)
+        Absent =>
+          concat("TEMPLATE_ERROR_MISSING_BINDING_", key)
+      }
+  }
+}
+
+fn language_spec(target: RenderTarget) -> LanguageSpec {
+  language_spec_for_target(target: target)
+}
+
+fn escape_string_literal_body(s: String) -> String {
+  let escaped_backslash = s
+    |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let escaped_quote = escaped_backslash
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+  let escaped_newline = escaped_quote
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+  let escaped_return = escaped_newline
+    |> split(delimiter: "\r") |> join(separator: "\\r")
+  escaped_return
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+fn has_mock_prefix(name: String) -> Bool {
+  if string_length(s: name) < 5 { false }
+  else { substring(s: name, start: 0, end: 5) == "mock_" }
+}
+
+fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
+  typed.modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => is_service_item(item: item))
+      |> flat_map(item =>
+        item.children
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
+          |> map(c => TestProjection {
+            module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
+            service_name: authored_name_at(source_indices: tm.type_env.source_indices, node: item),
+            operation_name: authored_name_at(source_indices: tm.type_env.source_indices, node: c),
+            inferred: resolved_type(n: c),
+            params: c.params,
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
+            source_indices: tm.type_env.source_indices
+          })
+      )
+  )
+}
+
+fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) != "Unit"
+}
+
+fn is_service_item(item: Node) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+fn is_type_def_item(item: Node) -> Bool {
+  item.connective != NoConnective && item.transport == none
+}
+
+fn is_bare_leaf_item(item: Node) -> Bool {
+  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+}
+
+fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+}
+
+fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
+}
+
+fn is_function_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation == none
+}
+
+fn is_data_def_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation != none
+}
+
+fn is_service_def_item(item: Node) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+fn is_resource_def_item(item: Node) -> Bool {
+  (item.transport == none && item.children |> count > 0)
+  || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
+}

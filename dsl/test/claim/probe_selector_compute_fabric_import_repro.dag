@@ -5,8 +5,8 @@
 // (the Option substrate gap dissolved in #4887; the Nat-mul algebra
 // resolution landed alongside this row). Was an ExpectFail pin (adhoc-20b17ff7-932);
 // now enrolled ExpectPass directly in corpus shard b (--source-root dsl). `Bool`
-// is kernel-available under dsl/-root, so no v4.std.logic import is needed (matches
-// corpus_gate_dsl_root_probe.dag). Lives under dsl/ so M1 src/v4 emit skips it.
+// is kernel-available under dsl/-root, so no v2.std.logic import is needed (matches
+// corpus_gate_dsl_root_probe.dag). Lives under dsl/ so M1 src/v2 emit skips it.
 
 module test.claim.probe_selector_compute_fabric_import_repro
 

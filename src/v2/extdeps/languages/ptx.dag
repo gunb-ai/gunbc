@@ -1,0 +1,274 @@
+// src/v2/extdeps/languages/ptx.dag
+// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).
+// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
+// Status: import v2.std.nat Nat; v2.std.cardinality PositiveUpperBoundedNat.
+// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
+// 🟡
+
+module v2.extdeps.languages.ptx
+
+
+
+
+import v2.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v2.std.nat { Nat }
+import v2.std.cardinality { PositiveUpperBoundedNat }
+import v2.std.node { Symbol }
+
+
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ParamScope
+  = ParamEntry
+  | ParamFunc
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SharedScope
+  = SharedCta
+  | SharedCluster
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type StateSpace
+  = Reg
+  | SReg
+  | Const
+  | Global
+  | Local
+  | Param { scope: ParamScope }
+  | Shared { scope: SharedScope }
+  | Tex
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type BarrierScope
+  = Cta
+  | Cluster
+  | Gpu
+  | System
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ThreadAxis
+  = X
+  | Y
+  | Z
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ThreadCoordSource
+  = ThreadInCta
+  | CtaInCluster
+  | ClusterInGrid
+  | CtaInGrid
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type BitsWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type IntegerWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FloatWidth
+  = Bits16
+  | Bits32
+  | Bits64
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type RegisterScalarKind
+  = Bits
+  | Unsigned
+  | Signed
+  | Float
+  | Predicate
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type RegisterStateSpace
+  = ResReg
+  | ResConst
+  | ResGlobal
+  | ResLocal
+  | ResParam { scope: ParamScope }
+  | ResShared { scope: SharedScope }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type RegisterScalar
+  = BitsScalar { width: BitsWidth, state_space: RegisterStateSpace }
+  | UnsignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
+  | SignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
+  | FloatScalar { width: FloatWidth, state_space: RegisterStateSpace }
+  | PredicateScalar
+
+
+// 🟢 grounded.
+type Dim3 {
+  x: PositiveUpperBoundedNat
+  y: PositiveUpperBoundedNat
+  z: PositiveUpperBoundedNat
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ThreadHierarchyShape
+  = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
+  | ImplicitClusterLaunch { grid_dim: Dim3, block_dim: Dim3 }
+  | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
+
+
+// 🟢 grounded.
+type ThreadCoord {
+  source: ThreadCoordSource
+  axis: ThreadAxis
+}
+
+
+// 🟢 grounded.
+type PtxCost {
+  instruction_cost: Nat
+  occupancy_cost: Nat
+}
+fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn ptx_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn ptx_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn ptx_identifier_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn ptx_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        ptx_lex_token(token_class: ^ptx_token_ident, pattern: ptx_identifier_pattern()),
+        ptx_lex_token(token_class: ^ptx_token_kw_entry, pattern: KeywordPattern { text: ".entry" }),
+        ptx_lex_token(token_class: ^ptx_token_lparen, pattern: LiteralPattern { text: "(" }),
+        ptx_lex_token(token_class: ^ptx_token_rparen, pattern: LiteralPattern { text: ")" }),
+        ptx_lex_token(token_class: ^ptx_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        ptx_lex_token(token_class: ^ptx_token_rbrace, pattern: LiteralPattern { text: "}" })
+      ]
+    }
+  }
+}
+
+
+fn ptx_entry_kernel_expr() -> GrammarExpr {
+  ptx_grammar_sequence(
+    left: ptx_grammar_terminal(token_class: ^ptx_token_kw_entry),
+    right: ptx_grammar_sequence(
+      left: ptx_grammar_terminal(token_class: ^ptx_token_ident),
+      right: ptx_grammar_sequence(
+        left: ptx_grammar_terminal(token_class: ^ptx_token_lparen),
+        right: ptx_grammar_sequence(
+          left: ptx_grammar_terminal(token_class: ^ptx_token_rparen),
+          right: ptx_grammar_sequence(
+            left: ptx_grammar_terminal(token_class: ^ptx_token_lbrace),
+            right: ptx_grammar_terminal(token_class: ^ptx_token_rbrace)
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ptx_wave1_grammar() -> ParseGrammar {
+  let start = GrammarProduction {
+    name: ^ptx_production_entry_kernel,
+    expression: ptx_entry_kernel_expr(),
+    emitted: grammar_atom(identity: ^ptx_surface_entry_kernel)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^ptx_production_entry_kernel,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn ptx_entry_kernel_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
+    rhs: [
+      grammar_formal_terminal(identity: ^ptx_token_kw_entry),
+      grammar_formal_terminal(identity: ^ptx_token_ident),
+      grammar_formal_terminal(identity: ^ptx_token_lparen),
+      grammar_formal_terminal(identity: ^ptx_token_rparen),
+      grammar_formal_terminal(identity: ^ptx_token_lbrace),
+      grammar_formal_terminal(identity: ^ptx_token_rbrace)
+    ]
+  }
+}
+
+
+fn ptx_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: ptx_wave1_lex(),
+    grammar: ptx_wave1_grammar()
+  }
+}
+
+
+fn ptx_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: ptx_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: ".entry k() {}",
+      production: ptx_entry_kernel_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ^ptx_surface_entry_kernel)
+    }
+  }
+}

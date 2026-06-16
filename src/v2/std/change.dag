@@ -1,0 +1,71 @@
+// src/v2/std/change.dag
+// Scope: change-consequence substrate and recomputation plan carrier.
+// Status: Wave-2-A substrate.
+
+module v2.std.change
+
+import v2.std.collection { List }
+import v2.std.dependency { DependencyKind, DependencyView, ReadinessLayer }
+import v2.std.diagnostic { NonEmptyDiagnostics, Outcome }
+import v2.std.node { Node, Path, Symbol }
+
+// 🟢 coproduct dissolution
+type ChangeKind
+  = NodeChanged
+  | NodeAdded
+  | NodeRemoved
+  | ProjectionChanged
+  | ArtifactChanged
+
+type Change {
+  kind: ChangeKind
+  subject: Node
+  at: Path
+}
+
+type ChangeSet {
+  changes: List<Change>
+}
+
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21/T-24 — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
+type DependencyEndpoint
+  = DependencySource
+  | DependencyDependent
+
+
+type AffectedDependency {
+  change: Change
+  dependency: DependencyView
+  target: DependencyEndpoint
+}
+
+type AffectedExclusion {
+  change: Change
+  dependency: DependencyView
+  usage_site: Node
+  changed_dimension: Symbol
+}
+
+// 🟡 coproduct dissolution — feature:t21-affected-set-testclaims.
+type AffectedSetEvidence
+  = AffectedSetReason { reason: Symbol }
+  | AffectedSetDiagnostics { diagnostics: NonEmptyDiagnostics }
+
+// 🟢 coproduct dissolution — Wave-2-A affected-set success/fail-closed boundary.
+type AffectedSet
+  = AffectedSetProduced {
+      changes: ChangeSet,
+      affected: List<AffectedDependency>,
+      exclusions: List<AffectedExclusion>,
+      restricted_to: List<DependencyKind>
+    }
+  | AffectedSetFailClosed {
+      changes: ChangeSet,
+      evidence: AffectedSetEvidence
+    }
+
+type RecomputePlan {
+  affected: AffectedSet
+  layers: List<ReadinessLayer>
+  diagnostic: Outcome<Symbol>
+}

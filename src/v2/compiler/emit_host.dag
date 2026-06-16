@@ -1,0 +1,441 @@
+// src/v2/compiler/emit_host.dag
+// Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
+// Status: T-22 rust/go rows — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
+//   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
+//   T-22 python row — eval intercept dispatches `run_emit_host_python` → `emit_host_runner` and
+//   hand-reifies `v2.std.host_run` in `emit_host_eval.rs` (claim-only transport pins).
+//   `emit_host_bridge.rs` remains for W3 harness until T-PB-B dissolution (SG-0 receipts).
+// Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
+// Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
+
+module v2.compiler.emit_host
+
+
+import v2.compiler.emit { emit }
+import v2.extdeps.languages.typescript {
+  ts_host_transport_mvp1_descriptor,
+  ts_host_transport_mvp1_identity,
+  ts_mvp1_source_text_authority
+}
+import v2.extdeps.languages.rust { rust_mvp1_source_text_authority }
+import v2.extdeps.languages.python { python_mvp1_source_text }
+import v2.extdeps.languages.go { go_mvp1_source_text }
+import v2.compiler.eval {
+  Inputs,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  accepted_runtime_value_outcome_eq,
+  eval,
+  eval_context_interpretation,
+  inputs_for_emit_host,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_cache_receipt_node
+}
+import v2.compiler.target_carriers { TargetSource }
+import v2.std.collection { List, optional_present }
+import v2.std.host_transport { HostTransportDescriptor }
+import v2.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton,
+  port_locus,
+  node_locus,
+  outcome_rejected
+}
+import v2.std.host_run {
+  BuildLog,
+  ByteString,
+  EmitHostRunReceipt,
+  HostExit,
+  HostLogicalRun,
+  HostRunStdout,
+  ValueDiff,
+  host_logical_run_from_exit
+}
+import v2.std.test_claim_falsification {
+  ExecutionEvidence,
+  FalsificationReceipt,
+  Host
+}
+import v2.std.integer { Int }
+import v2.std.machine { Byte }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.runtime { RuntimeValue, RuntimePrimitive }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.text { String }
+import v2.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
+import v2.std.verification {
+  test_claim_input,
+  EqualsClaim,
+  CompilesClaim
+}
+import v2.std.witness { Holds, Violates }
+
+
+data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
+data emit_host_transport_port: Symbol = emit_host_transport_port
+data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
+data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
+data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
+data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
+data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
+data emit_host_ts_i32_symbol: Symbol = emit_host_ts_i32_symbol
+
+fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_transport_not_wired,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_parse_unsupported_target_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_parse_unsupported_target,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_run_unsupported_target,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_emit_vs_eval_deferred,
+    at: node_locus(node: at),
+    correction: None
+  }
+}
+
+fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_exit_not_ok,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
+  match exit.outcome {
+    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
+      outcome_rejected(d: d)
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+  }
+}
+
+fn emit_host_rust_i64_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn emit_host_ts_i32_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: emit_host_ts_i32_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn emit_host_receipt_from_source(
+  target: TargetModel,
+  source: TargetSource,
+  exit: HostExit,
+  stdout_bytes: ByteString,
+  stderr_bytes: ByteString,
+  build_log: BuildLog
+) -> EmitHostRunReceipt {
+  EmitHostRunReceipt {
+    target: target,
+    source_text: source,
+    exit: exit,
+    logical_run: host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
+    stderr_bytes: stderr_bytes,
+    build_log: build_log
+  }
+}
+
+fn runtime_value_parse_rust(bytes: ByteString) -> Outcome<RuntimeValue> {
+  if count(bytes) == 5 {
+    Accepted {
+      value: RuntimePrimitive {
+        value: {
+          primitive_type: emit_host_rust_i64_node(),
+          bytes: bytes
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+    }
+  }
+}
+
+fn runtime_value_parse_python(bytes: ByteString) -> Outcome<RuntimeValue> {
+  runtime_value_parse_rust(bytes: bytes)
+}
+
+fn runtime_value_parse_go(bytes: ByteString) -> Outcome<RuntimeValue> {
+  runtime_value_parse_rust(bytes: bytes)
+}
+
+fn runtime_value_parse_signed_i32_le(bytes: ByteString) -> Outcome<RuntimeValue> {
+  if count(bytes) == 4 {
+    Accepted {
+      value: RuntimePrimitive {
+        value: {
+          primitive_type: emit_host_ts_i32_node(),
+          bytes: bytes
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+    }
+  }
+}
+
+fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
+  if target.authority_source_text == rust_mvp1_source_text_authority() {
+    runtime_value_parse_rust(bytes: stdout.bytes)
+  } else if target.authority_source_text == python_mvp1_source_text {
+    runtime_value_parse_python(bytes: stdout.bytes)
+  } else if target.authority_source_text == go_mvp1_source_text {
+    runtime_value_parse_go(bytes: stdout.bytes)
+  } else if target.authority_source_text == ts_mvp1_source_text_authority() {
+    runtime_value_parse_signed_i32_le(bytes: stdout.bytes)
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+    }
+  }
+}
+
+// Decode SignedI32Le stdout carrier — substrate stub; eval intercept reads primitive bytes.
+fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
+  outcome_rejected(d: emit_host_parse_unsupported_target_diagnostic())
+}
+
+// Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
+// `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
+fn run_emit_host_rust(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
+// Substrate row: body stays fail-closed; T-22 eval intercept hand-reifies `v2.std.host_run`
+// in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
+// Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
+fn run_emit_host_python(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
+fn run_emit_host_go(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
+// B3 omni-emission — one generic primitive; eval intercept runs `emit_host_runner::run_host_process`.
+fn run_host_process(
+  descriptor: HostTransportDescriptor,
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
+fn run_emit_host(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
+  if target.authority_source_text == ts_mvp1_source_text_authority() {
+    run_host_process(
+      descriptor: ts_host_transport_mvp1_descriptor(),
+      target: target,
+      source: source,
+      fixture_inputs: fixture_inputs
+    )
+  } else if target.authority_source_text == rust_mvp1_source_text_authority() {
+    run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else if target.authority_source_text == python_mvp1_source_text {
+    run_emit_host_python(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else if target.authority_source_text == go_mvp1_source_text {
+    run_emit_host_go(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
+    }
+  }
+}
+
+fn run_test_claim_emit_vs_eval_verdict(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  host_receipt: EmitHostRunReceipt,
+  host_actual: RuntimeValue,
+  expected: Outcome<RuntimeValue>
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match expected {
+    Accepted { value: exp_val, diagnostics: None } =>
+      if accepted_runtime_value_outcome_eq(
+        a: Accepted { value: host_actual, diagnostics: None },
+        b: expected
+      ) {
+        Pass
+      } else {
+        Fail {
+          actual: Accepted { value: host_actual, diagnostics: None },
+          falsification: optional_present(
+            value: FalsificationReceipt {
+              subject: subject,
+              expected: exp_val,
+              actual: host_actual,
+              divergence: ValueDiff { expected: exp_val, actual: host_actual },
+              evidence: Host { receipt: host_receipt }
+            }
+          )
+        }
+      }
+    _ =>
+      verdict_fail(actual: expected)
+  }
+}
+
+// claim_input_root: lhs / CompilesClaim input (evaluator_input — FACTS FLOW FORWARD).
+// expected_eval_root: rhs / expected_value (matches run_test_claim_runtime_assert).
+fn run_test_claim_emit_vs_eval_for_claim(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  claim_input_root: Node,
+  expected_eval_root: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  let at = test_claim_input(c: subject.claim)
+  let interpretation = eval_context_interpretation(context: subject.context)
+  let expected = eval(
+    tree: subject.tree,
+    interpretation: interpretation,
+    inputs: inputs_root_only(root: expected_eval_root)
+  )
+  match emit(tree: subject.tree, target: target) {
+    Accepted { value: source, diagnostics: _ } =>
+      match run_emit_host(
+        target: target,
+        source: source,
+        fixture_inputs: inputs_for_emit_host(
+          claim_input_root: claim_input_root,
+          expected_eval_root: expected_eval_root,
+          claim_pin: subject.input.evaluator_pin
+        )
+      ) {
+        Accepted { value: host_receipt, diagnostics: _ } =>
+          match host_receipt.logical_run {
+            Accepted {
+              value: HostLogicalRun { stdout: stdout },
+              diagnostics: None
+            } =>
+              match runtime_value_parse(target: target, stdout: stdout) {
+                Accepted { value: host_actual, diagnostics: _ } =>
+                  run_test_claim_emit_vs_eval_verdict(
+                    subject: subject,
+                    target: target,
+                    host_receipt: host_receipt,
+                    host_actual: host_actual,
+                    expected: expected
+                  )
+                Rejected { diagnostics: ds } =>
+                  verdict_fail(actual: Rejected { diagnostics: ds })
+              }
+            _ =>
+              verdict_fail(actual: host_exit_failure_outcome(exit: host_receipt.exit))
+          }
+        Rejected { diagnostics: ds } =>
+          Deferred {
+            actual: Rejected { diagnostics: ds },
+            diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
+          }
+      }
+    Rejected { diagnostics: ds } =>
+      verdict_fail(actual: Rejected { diagnostics: ds })
+  }
+}
+
+fn run_test_claim_emit_vs_eval_run(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
+) -> TestClaimRun<Node, RuntimeValue> {
+  TestClaimRun {
+    cache: test_claim_cache_receipt_node(subject: subject),
+    verdict: verdict
+  }
+}
+
+fn run_test_claim_emit_vs_eval(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel
+) -> TestClaimRun<Node, RuntimeValue> {
+  match subject.claim {
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
+      run_test_claim_emit_vs_eval_run(
+        subject: subject,
+        target: target,
+        verdict: run_test_claim_emit_vs_eval_for_claim(
+          subject: subject,
+          target: target,
+          claim_input_root: lhs,
+          expected_eval_root: rhs
+        )
+      )
+    CompilesClaim { expected_value: expected_value, label: _, anchor: _, input: input, classification: _ } =>
+      run_test_claim_emit_vs_eval_run(
+        subject: subject,
+        target: target,
+        verdict: run_test_claim_emit_vs_eval_for_claim(
+          subject: subject,
+          target: target,
+          claim_input_root: input,
+          expected_eval_root: expected_value
+        )
+      )
+    _ => run_test_claim(subject: subject)
+  }
+}

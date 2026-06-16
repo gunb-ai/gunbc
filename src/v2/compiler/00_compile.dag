@@ -1,0 +1,417 @@
+// src/v2/compiler/00_compile.dag
+// Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
+//       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile.
+// Anchor: docs/design-v2-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
+
+
+module v2.compiler.compile
+
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolve_with_admission
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.target_carriers { TargetModel, TargetSource }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.lens.fact_density { fact_density_hollow_alias_gate }
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  Some,
+  port_locus,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  bind_outcome_accepted,
+  diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected,
+  outcome_with_diagnostics
+}
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+
+type CoreNode = Node
+
+type RuntimeTarget = Node
+
+type Source = String
+
+// 🟢 coproduct dissolution
+type CompileMode
+  = TranslateTo { target: TargetModel }
+  | Eval { runtime: RuntimeTarget }
+
+
+// 🟢 coproduct dissolution
+type CompileOutput
+  = TranslateResult { source: TargetSource }
+  | EvalResult { value: Node }
+
+
+type CompileLensOutcome = Outcome<Witness<Node>>
+
+type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
+
+// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v2.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
+type CompileLens {
+  gate: CompileLensGate
+}
+
+
+// 🟢 coproduct dissolution
+type CompileLensMode
+  = CompileLensEnforce
+  | CompileLensIntrospect
+
+
+type LensGateWitness {
+  witness: Witness<Node>
+}
+
+
+type Validated<T> {
+  value: T
+  lens_witnesses: List<LensGateWitness>
+}
+
+
+data compile_stage_locus_port: Symbol = compile_stage_locus_port
+data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_file
+data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
+data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
+data compile_eval_not_realized: Symbol = compile_eval_not_realized
+
+
+fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: compile_pipeline_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: compile_lens_gate_rejected,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: compile_eval_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
+
+data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
+
+
+fn always_required_lenses() -> List<CompileLens> {
+  [fact_density_lens, unit_modeling_lens]
+}
+
+
+fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  fact_density_hollow_alias_gate(node: tree.root)
+}
+
+
+// Compile-gate adapter for the unit-modeling soundness lens: self-traverses the
+// resolved typed subtree from the root (same shape as the fact_density adapter).
+// Registered in always_required_lenses() above, so validate_then_compile runs it
+// fail-closed (CompileLensEnforce) on every gated compile — a flat-scalar field
+// carrying a known unit (e.g. a raw Nat byte-count where Measure<…> is owed)
+// rejects compilation. M12 / Practice 13 made executable.
+fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  unit_modeling_gate(node: tree.root)
+}
+
+
+fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {
+  lens.gate(inferred)
+}
+
+
+// Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
+// so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
+// forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
+// Extracted to avoid nested match directly in arm (v1-compiler constraint).
+fn apply_compile_lens_introspect(
+  lens: CompileLens,
+  inferred: InferredTree
+) -> Outcome<Witness<Node>> {
+  match run_compile_lens_gate(lens: lens, inferred: inferred) {
+    Accepted { value: w, diagnostics: od } =>
+      outcome_with_diagnostics(value: w, diagnostics: od)
+    Rejected { diagnostics: d } =>
+      outcome_with_diagnostics(
+        value: Violates { diagnostic: d.head },
+        diagnostics: Some { diagnostics: d }
+      )
+  }
+}
+
+
+// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v2.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
+// T-23 migration stub: compile-orchestrator gate surface; lens application semantics stay in v2.lens.application.
+// CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
+// CompileLensIntrospect: advisory — gate runs but rejection is wrapped as Accepted(Violates) so compilation is never blocked.
+fn apply_compile_lens(
+  lens: CompileLens,
+  inferred: InferredTree,
+  mode: CompileLensMode
+) -> Outcome<Witness<Node>> {
+  match mode {
+    CompileLensEnforce => run_compile_lens_gate(lens: lens, inferred: inferred)
+    CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
+  }
+}
+
+
+fn append_lens_gate_witness(
+  witnesses: List<LensGateWitness>,
+  witness: Witness<Node>
+) -> List<LensGateWitness> {
+  fold(
+    [LensGateWitness { witness: witness }],
+    init: witnesses,
+    f: fn(acc, item) {
+      list_snoc_item(xs: acc, item: item)
+    }
+  )
+}
+
+
+fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
+  []
+}
+
+
+fn run_required_lens_gates(
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  fold(
+    lenses,
+    init: outcome_accepted(value: empty_lens_gate_witnesses()),
+    f: fn(acc_outcome, lens) {
+      match acc_outcome {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: witnesses, diagnostics: od } =>
+          bind_outcome_accepted(
+            od: od,
+            inner: bind_outcome(
+              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
+              f: fn(w) {
+                outcome_accepted(
+                  value: append_lens_gate_witness(
+                    witnesses: witnesses,
+                    witness: w
+                  )
+                )
+              }
+            )
+          )
+      }
+    }
+  )
+}
+
+
+fn run_required_lens_gates_on_subtree(
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  fold_node(
+    n: inferred.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        run_required_lens_gates(
+          inferred: InferredTree { root: n0, facts: inferred.facts },
+          lenses: lenses
+        )
+      },
+      step: fn(acc, _, child) {
+        bind_outcome(o: acc, f: fn(ws) {
+          bind_outcome(
+            o: child,
+            f: fn(child_ws) {
+              outcome_accepted(value: list_append(left: ws, right: child_ws))
+            }
+          )
+        })
+      }
+    }
+  )
+}
+
+
+fn compile_inferred_translate(
+  inferred: InferredTree,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  emit(tree: inferred, target: target)
+}
+
+
+fn compile_inferred(
+  inferred: InferredTree,
+  mode: CompileMode
+) -> Outcome<CompileOutput> {
+  match mode {
+    TranslateTo { target } =>
+      bind_outcome(
+        o: compile_inferred_translate(
+          inferred: inferred,
+          target: target
+        ),
+        f: fn(target_source) {
+          outcome_accepted(TranslateResult { source: target_source })
+        }
+      )
+    Eval { runtime: _ } =>
+      outcome_rejected(
+        compile_eval_not_realized_diagnostic(
+          at: port_locus(port: compile_stage_locus_port)
+        )
+      )
+  }
+}
+
+
+fn compile(
+  source: CoreNode,
+  mode: CompileMode
+) -> Outcome<CompileOutput> {
+  bind_outcome(
+    o: infer(tree: source),
+    f: fn(inferred) {
+      compile_inferred(inferred: inferred, mode: mode)
+    }
+  )
+}
+
+
+fn validated_from_compile_output(
+  output: CompileOutput,
+  lens_witnesses: List<LensGateWitness>
+) -> Validated<CompileOutput> {
+  Validated {
+    value: output,
+    lens_witnesses: lens_witnesses
+  }
+}
+
+
+fn validate_then_compile(
+  source: CoreNode,
+  lenses: List<CompileLens>,
+  mode: CompileMode
+) -> Outcome<Validated<CompileOutput>> {
+  bind_outcome(
+    o: infer(tree: source),
+    f: fn(inferred) {
+      bind_outcome(
+        o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
+        f: fn(required_lens_witnesses) {
+          bind_outcome(
+            o: run_required_lens_gates(inferred: inferred, lenses: lenses),
+            f: fn(caller_lens_witnesses) {
+              bind_outcome(
+                o: compile_inferred(
+                  inferred: inferred,
+                  mode: mode
+                ),
+                f: fn(compile_out) {
+                  outcome_accepted(
+                    value: validated_from_compile_output(
+                      output: compile_out,
+                      lens_witnesses: list_append(
+                        left: required_lens_witnesses,
+                        right: caller_lens_witnesses
+                      )
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_name_resolve.dag for cross-file admission.
+              bind_outcome(
+                o: resolve(tree: normalized, lm: lm),
+                f: fn(resolved) {
+                  bind_outcome(
+                    o: validate_then_compile(
+                      source: resolved,
+                      lenses: [],
+                      mode: TranslateTo { target: target }
+                    ),
+                    f: fn(validated) {
+                      match validated.value {
+                        TranslateResult { source: target_source } =>
+                          outcome_accepted(target_source)
+                        EvalResult { value: _ } =>
+                          outcome_rejected(
+                            compile_eval_not_realized_diagnostic(
+                              at: port_locus(port: compile_stage_locus_port)
+                            )
+                          )
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}

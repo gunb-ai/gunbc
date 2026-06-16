@@ -3,7 +3,7 @@
 Framework directory for PB-owned per-shim `BinShim` instance declarations. **No instance
 `.dag` files are on main** — this directory holds the canonical home + naming convention
 only. The per-shim retirement program that would populate it is part of the **frozen v3
-line** (v4 is the active phase — see [THESIS.md](../../../../THESIS.md)); its design and
+line** (v2 is the active phase — see [THESIS.md](../../../../THESIS.md)); its design and
 coordination briefs are not carried in this public tree.
 
 ## Live anchors

@@ -1,0 +1,542 @@
+// src/v2/std/verification.dag
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey; consolidation #4553 Phase 1 — BoolWitness + UnifiedTestClaim registration coproduct.
+// Status: T-3 modeled; substrate extension or file split = operator STOP.
+
+module v2.std.verification
+
+
+import v2.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  PortLocus,
+  Outcome,
+  Rejected,
+  Suggested,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+
+
+data v2_std_verification_file: Symbol = v2_std_verification_file
+data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+data unified_test_claim_bool_witness_absent: Symbol = unified_test_claim_bool_witness_absent
+
+
+fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: unified_test_claim_bool_witness_absent,
+    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// RULING-1: pretty-much-done — closed TestClaim tier set.
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestgenTier
+// 🟢 coproduct dissolution — LB-P4-3212
+  = Tier1
+  | Tier2
+  | Tier3
+
+
+// RULING-1: pretty-much-done — closed TestClaim layer set.
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestgenLayer
+// 🟢 coproduct dissolution — LB-P4-3212
+  = Unit
+  | Integration
+  | Boundary
+
+
+// RULING-1: pretty-much-done — TestClaim tier/layer coordinate.
+type TestClassification {
+  tier: TestgenTier
+  layer: TestgenLayer
+}
+
+
+// RULING-1: pretty-much-done — closed impossible-bug class set.
+// 🟢 coproduct dissolution — LB-P4-3212.
+type ImpossibleBugClass
+// 🟢 coproduct dissolution — LB-P4-3212
+  = SuboptimalComplexity
+  | IdempotencyContract
+  | TransportTypeDrift
+  | NestedOptionalFlatten
+  | UnenumeratedEffects
+  | UnhandledDiagnosticPaths
+
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
+// forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
+fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
+  [
+    SuboptimalComplexity,
+    IdempotencyContract,
+    TransportTypeDrift,
+    NestedOptionalFlatten,
+    UnenumeratedEffects,
+    UnhandledDiagnosticPaths,
+  ]
+}
+
+
+// Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (THESIS §392-413).
+data impossible_bug_reason_suboptimal_complexity: Symbol = impossible_bug_reason_suboptimal_complexity
+data impossible_bug_reason_suboptimal_inhabitance: Symbol = impossible_bug_reason_suboptimal_inhabitance
+data impossible_bug_reason_idempotency_violation: Symbol = impossible_bug_reason_idempotency_violation
+data impossible_bug_reason_idempotency_repetition: Symbol = impossible_bug_reason_idempotency_repetition
+data impossible_bug_reason_transport_drift: Symbol = impossible_bug_reason_transport_drift
+data impossible_bug_reason_target_transport_drift: Symbol = impossible_bug_reason_target_transport_drift
+data impossible_bug_reason_nested_optional: Symbol = impossible_bug_reason_nested_optional
+data impossible_bug_reason_double_unwrap: Symbol = impossible_bug_reason_double_unwrap
+data impossible_bug_reason_redundant_read: Symbol = impossible_bug_reason_redundant_read
+data impossible_bug_reason_unhandled_division: Symbol = impossible_bug_reason_unhandled_division
+data impossible_bug_reason_unhandled_index: Symbol = impossible_bug_reason_unhandled_index
+data impossible_bug_reason_force_unwrap: Symbol = impossible_bug_reason_force_unwrap
+
+
+data impossible_bug_diagnostic_reason_unmapped: Symbol = impossible_bug_diagnostic_reason_unmapped
+
+
+fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: impossible_bug_diagnostic_reason_unmapped,
+    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// 🟡 gated — feature:impossible-bug-reason-projection — bind gunbc#4759
+// dissolve-on-arrival: TestClaim/DiagnosticClaim carries ImpossibleBugClass directly in verification.dag; delete this reason→class bridge.
+fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
+  if reason == impossible_bug_reason_suboptimal_complexity ||
+    reason == impossible_bug_reason_suboptimal_inhabitance {
+    Accepted { value: SuboptimalComplexity, diagnostics: None }
+  } else if reason == impossible_bug_reason_idempotency_violation ||
+    reason == impossible_bug_reason_idempotency_repetition {
+    Accepted { value: IdempotencyContract, diagnostics: None }
+  } else if reason == impossible_bug_reason_transport_drift ||
+    reason == impossible_bug_reason_target_transport_drift {
+    Accepted { value: TransportTypeDrift, diagnostics: None }
+  } else if reason == impossible_bug_reason_nested_optional ||
+    reason == impossible_bug_reason_double_unwrap {
+    Accepted { value: NestedOptionalFlatten, diagnostics: None }
+  } else if reason == impossible_bug_reason_redundant_read {
+    Accepted { value: UnenumeratedEffects, diagnostics: None }
+  } else if reason == impossible_bug_reason_unhandled_division ||
+    reason == impossible_bug_reason_unhandled_index ||
+    reason == impossible_bug_reason_force_unwrap {
+    Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: impossible_bug_diagnostic_reason_unmapped_diagnostic()
+      )
+    }
+  }
+}
+
+
+// RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
+// 🟡 coproduct dissolution — LB-P4-3212.
+type ManualAnchorKey
+// 🟡 coproduct dissolution — LB-P4-3212
+// RULING-1: 🟢 pretty-much-done
+  = ManualTcConjEmpty
+  | ManualTcDisjEmpty
+  | ManualTcArrowTwoConj
+  | ManualTcCardinalityEmpty
+  | ManualTcInstantiationEmpty
+  | ManualTcArrowEmpty
+  | ManualTcTransformEmpty
+  | ManualTcBranchEmpty
+  | ManualTcLoopEmpty
+  | ManualTcBindZeroChildren
+  | ManualTcConjEqualsRefl
+  | ManualNatAddLeftIdentity
+  | ManualNatAddRightIdentity
+  | ManualNatAddAssociativity
+  | ManualNatMulLeftIdentity
+  | ManualNatMulAnnihilator
+  | ManualNatMulAssociativity
+  | ManualLbeConjDagSurface
+  | ManualLbeDisjDagSurface
+  | ManualLbeTransformDagSurface
+  | ManualRefinementNonEmptyListBase
+  | ManualAnchorAbsent
+
+
+// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: gunbc#4759; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+type TestClaimCoproductVariant
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: gunbc#4759
+  = TestClaimCompilesClaimVariant
+  | TestClaimDiagnosticClaimVariant
+  | TestClaimEqualsClaimVariant
+  | TestClaimStructuralEqualsClaimVariant
+  | TestClaimRoundTripClaimVariant
+
+
+type GeneratedAnchorKey
+  = GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+
+
+// RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: gunbc#4759; follow-up: delete this union when generated TestClaim corpora use a type that does not share anchor with manual rows.
+type ClaimAnchorKey
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: gunbc#4759
+  = ManualClaimAnchor { manual_anchor: ManualAnchorKey }
+  | GeneratedClaimAnchor { generated_anchor: GeneratedAnchorKey }
+
+
+// RULING-1: pretty-much-done — assertion shape is the variant tag (Practice 4).
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestClaim
+// 🟢 coproduct dissolution — LB-P4-3212
+  = CompilesClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      input: Node
+      expected_value: Node
+      classification: TestClassification
+    }
+  | DiagnosticClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      input: Node
+      expected_rejection: NonEmptyDiagnostics
+      classification: TestClassification
+    }
+  | EqualsClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
+  // StructuralEqualsClaim — `lhs` and `rhs` are compared **structurally** (admitted
+  // well-formed, then node-equality), NOT runtime-evaluated. EqualsClaim is *reductive*
+  // (lhs reduces under the interpretation to rhs — e.g. add(2,3) == 5); a structural
+  // *receipt* comparison (two type/receipt nodes that should be identical) is a distinct
+  // intent and gets a distinct variant so the harness cannot confuse the two — see
+  // `gunbc-planning/v2-testclaim-route-through-v2-not-v3-2026-06-05.md` §6.3. Same fields as
+  // EqualsClaim; the discrimination is the variant tag, evaluated by `run_test_claim`.
+  | StructuralEqualsClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
+  | RoundTripClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      input: Node
+      classification: TestClassification
+    }
+
+
+fn test_claim_input(c: TestClaim) -> Node {
+  match c {
+    CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, anchor: _, expected_rejection: _, classification: _ } => n
+    EqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
+    StructuralEqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
+    RoundTripClaim { input: n, label: _, anchor: _, classification: _ } => n
+  }
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → label projection with canonical common-field / coproduct-arm reflection once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled TestClaim arm projection outside the reflection primitive.
+fn test_claim_label(c: TestClaim) -> String {
+  match c {
+    CompilesClaim { label: l, anchor: _, input: _, expected_value: _, classification: _ } => l
+    DiagnosticClaim { label: l, anchor: _, input: _, expected_rejection: _, classification: _ } => l
+    EqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
+    StructuralEqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
+    RoundTripClaim { label: l, anchor: _, input: _, classification: _ } => l
+  }
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → TestClaimCoproductVariant projection with canonical coproduct arm reflection once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled TestClaim arm projection outside the reflection primitive.
+fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      TestClaimCompilesClaimVariant
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      TestClaimDiagnosticClaimVariant
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      TestClaimEqualsClaimVariant
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      TestClaimStructuralEqualsClaimVariant
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      TestClaimRoundTripClaimVariant
+  }
+}
+
+
+fn locus_evaluation_nodes(at: Locus) -> List<Node> {
+  match at {
+    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
+    Textual { file: _, extent: _ } => Empty
+    PortLocus { anchor: _ } => Empty
+  }
+}
+
+
+fn correction_evaluation_nodes(c: Correction) -> List<Node> {
+  match c {
+    Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
+    Unavailable { reason: _ } => Empty
+  }
+}
+
+
+fn diagnostic_evaluation_nodes(d: Diagnostic) -> List<Node> {
+  list_append(
+    left: locus_evaluation_nodes(at: d.at),
+    right: correction_evaluation_nodes(c: d.correction)
+  )
+}
+
+
+fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
+  fold_list(
+    xs: ds,
+    empty: Empty,
+    cons: fn(acc, d) {
+      list_append(left: acc, right: diagnostic_evaluation_nodes(d: d))
+    }
+  )
+}
+
+
+fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> {
+  list_append(
+    left: diagnostic_evaluation_nodes(d: d.head),
+    right: diagnostic_list_evaluation_nodes(ds: d.tail)
+  )
+}
+
+
+// All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
+fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
+  match c {
+    EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    StructuralEqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    CompilesClaim { input: n, expected_value: e, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
+    DiagnosticClaim { input: n, expected_rejection: e, label: _, anchor: _, classification: _ } =>
+      list_append(
+        left: list_snoc_item(xs: Empty, item: n),
+        right: non_empty_diagnostics_evaluation_nodes(d: e)
+      )
+    RoundTripClaim { input: n, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: Empty, item: n)
+  }
+}
+
+
+fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: root),
+    predicate: fn(member) { member == needle }
+  )
+}
+
+
+// Consume affected-set rerun nodes directly: frontier root equality or frontier node inside evaluation tree.
+fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
+  any(
+    xs: frontier,
+    predicate: fn(f) {
+      (n == f) || node_in_subtree_by_identity(root: n, needle: f)
+    }
+  )
+}
+
+
+fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
+  any(
+    xs: test_claim_evaluation_nodes(c: c),
+    predicate: fn(n) { test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier) }
+  )
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v2.workflow.affected_set_selection ci_select_from_rerun_nodes (relocated from the deleted v2.workflow.ci by PR #4543; lands with the affected-set gate at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: delete when workflow/affected_set_selection.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
+fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
+  match c {
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      true
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      false
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => false
+  }
+}
+
+fn test_claim_anchor(c: TestClaim) -> ClaimAnchorKey {
+  match c {
+    CompilesClaim { anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
+    DiagnosticClaim { anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
+    EqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    StructuralEqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    RoundTripClaim { anchor: k, label: _, input: _, classification: _ } => k
+  }
+}
+
+fn manual_claim_anchor(anchor: ManualAnchorKey) -> ClaimAnchorKey {
+  ManualClaimAnchor { manual_anchor: anchor }
+}
+
+fn generated_claim_anchor(anchor: GeneratedAnchorKey) -> ClaimAnchorKey {
+  GeneratedClaimAnchor { generated_anchor: anchor }
+}
+
+fn test_claim_classification(c: TestClaim) -> TestClassification {
+  match c {
+    CompilesClaim { classification: c, label: _, anchor: _, input: _, expected_value: _ } => c
+    DiagnosticClaim { classification: c, label: _, anchor: _, input: _, expected_rejection: _ } => c
+    EqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
+    StructuralEqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
+    RoundTripClaim { classification: c, label: _, anchor: _, input: _ } => c
+  }
+}
+
+// Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
+// eval authority (05_eval.dag) decides Pass/Fail via dag_round_trip_wave1_authorities_ready — do not synthesize an Outcome<Node> here.
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
+  match c {
+    CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: e, diagnostics: None },
+        diagnostics: None
+      }
+    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Rejected { diagnostics: e },
+        diagnostics: None
+      }
+    EqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    StructuralEqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
+      }
+  }
+}
+
+
+// Consolidation #4553 Phase 1 — Bool-witness registration descriptor (ctrl#1490 / test-claim-consolidation-design §3).
+// P2: descriptor fields only — execution output lives on run-receipt types in Phase 2 eval module.
+// RULING-1: pretty-much-done — nullary fn () -> Bool witness identity at registration boundary.
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1 terminal registration descriptor.
+type BoolWitness {
+  entry: String
+  function: Symbol
+}
+
+
+// Node-corpus transport mode on `UnifiedTestClaim.NodeCorpus` — not a separate runner.
+// RULING-1: pretty-much-done — closed NodeCorpus transport modes (design §3.4).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
+type TestClaimTransportMode
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+  = EvalOnly
+  | EmitVsEval { target: TargetModel }
+
+
+// Structural modality tag for unified dispatch — keys off the coproduct arm, not string heuristics.
+// RULING-1: pretty-much-done — closed modality tag for unified dispatch (design §3.1).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
+type UnifiedTestClaimModality
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+  = UnifiedNodeCorpusModality
+  | UnifiedBoolWitnessModality
+
+
+// Unified registration coproduct (both modalities, one authority).
+// `NodeCorpus` carries `claim` + `transport` at std layer; `TestClaimEvalSubject` binds at the
+// eval boundary in Phase 2 runner migration (std cannot import `v2.compiler.eval`).
+// RULING-1: needs-more-work — NodeCorpus lacks TestClaimEvalSubject until Phase 2 runner migration.
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 binds subject at eval boundary; dissolve-on: NodeCorpus.subject lands when unified runner migrates.
+type UnifiedTestClaim
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 runner migration
+  = NodeCorpus {
+      claim: TestClaim
+      transport: TestClaimTransportMode
+    }
+  | BoolWitnessClaim { witness: BoolWitness }
+
+
+fn unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality {
+  match c {
+    NodeCorpus { claim: _, transport: _ } => UnifiedNodeCorpusModality
+    BoolWitnessClaim { witness: _ } => UnifiedBoolWitnessModality
+  }
+}
+
+
+fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
+  BoolWitnessClaim { witness: w }
+}
+
+
+// Arm-specific projection — Rejected on NodeCorpus (no fabricated empty String/Symbol).
+fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
+  match c {
+    BoolWitnessClaim { witness: w } =>
+      Accepted { value: w, diagnostics: None }
+    NodeCorpus { claim: _, transport: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: unified_test_claim_bool_witness_absent_diagnostic())
+      }
+  }
+}
+
+
+fn bool_witness_matches_entry_function(
+  w: BoolWitness,
+  entry: String,
+  function: Symbol
+) -> Bool {
+  w.entry == entry && w.function == function
+}

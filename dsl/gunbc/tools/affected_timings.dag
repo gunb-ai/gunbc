@@ -25,7 +25,7 @@ import extdeps.github.actions_runs
 // run_id is a PARAMETER bound by the embedding Rust host (Option B: the
 // ci_timings_collector bin reads GITHUB_RUN_ID via std::env::var natively and binds it
 // as this arg, then evaluates the function -- the REST call still fires shell-free
-// through .dag -> dispatch_rest -> ureq). This is the v4 host-handler boundary and the
+// through .dag -> dispatch_rest -> ureq). This is the v2 host-handler boundary and the
 // claim_batch precedent. owner/repo are this repo's fixed identity, not a per-run input,
 // so they stay literals.
 fn collect_run_job_windows(run_id: Int) -> String {

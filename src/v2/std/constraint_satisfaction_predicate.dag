@@ -1,0 +1,21 @@
+// src/v2/std/constraint_satisfaction_predicate.dag
+// Scope: mechanical constraint-satisfaction preservation check.
+// Status: T-25-tail predicate prover.
+// Anchor: docs/design-v2-compiler-homomorphism.md
+
+
+module v2.std.constraint_satisfaction_predicate
+
+
+import v2.std.node { Node, well_formed }
+fn constraint_satisfaction_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: algebra)
+    && well_formed(n: candidate)
+    && (algebra == source_facts)
+    && (candidate == source_facts)
+}

@@ -1,0 +1,1535 @@
+// v2 core types -- the compiler's domain model.
+
+module v1.std.core
+
+import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
+import std.syntax {
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
+  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
+}
+import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.induction { SubValueRelation }
+
+// =========================================================================
+// Tokens
+// =========================================================================
+
+// Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
+// Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+// text carries semantic content (identifier name, literal value, keyword text).
+// shape carries payload-insensitive structural classification.
+type Token {
+  text: String
+  span: SourceSpan
+  shape: TokenShape
+}
+
+type TokenShape
+  = ShKeyword
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
+  | ShColon | ShComma | ShDot | ShDotDot
+  | ShEq | ShEqEq | ShNe
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
+  | ShBang | ShAnd | ShOr
+  | ShQuestion | ShNullCoalesce
+  | ShCaret
+  | ShPipe
+  | ShPipeArrow
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  | ShStrBegin | ShStrMid | ShStrEnd
+  | ShNewline | ShEof
+  | ShUnknown
+
+
+// =========================================================================
+// AST -- Abstract Syntax Tree
+// =========================================================================
+
+// Module, Import, ImportNames dissolved into Node compositions.
+// See dissolution helpers: module_node(), import_node(), module_imports(),
+// module_items(), import_is_all(), import_specific_names_at().
+
+// Connective -- the logical primitive for type structure.
+// Conj = conjunction (product): all children hold simultaneously (record fields).
+// Disj = disjunction (coproduct): exactly one child holds (sum variants).
+// Arrow = exponential (function type). params carry input types,
+//         inferred carries return type.
+type Connective = Conj | Disj | NoConnective | Arrow
+
+type Cardinality = Required | CardOptional
+
+
+// Field, Variant, Param dissolved into Node (D1c).
+// See make_param_node, make_field_node constructors and param_node_*/field_node_* accessors.
+
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
+
+type FieldValueShape = PlainValue | OptionalValue
+
+type FieldSummary {
+  access_style: FieldAccessStyle
+  value_shape: FieldValueShape
+}
+
+// Kernel and container type sets: canonical definitions live in
+// dsl/std/types.dag. Imported via the top-level import above and
+// re-exported for backward compatibility with v1.std.core consumers.
+
+// Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
+// types are parameterized. Arity comes from .dag declarations (params
+// field on type definitions). See std/types.dag for List, Map, Set.
+
+// P1.9 InferredNode: compiler errors are orthogonal to the node graph.
+// When inference fails, the result is structurally distinct from a type node.
+// Error and Dynamic type sentinels become CompilerError variants.
+// Consumers match InferredNode? directly — no bridge accessors needed.
+type InferredNode
+  = Resolved { node: Node }
+  | CompilerError { message: String, span: SourceSpan }
+  | TypeVariable { id: String }
+
+fn inferred_to_node(inferred: InferredNode) -> Node? {
+  match inferred {
+    Resolved { node: n } => Present { value: n }
+    CompilerError { message: _, span: _ } => none
+    TypeVariable { id: _ } => none
+  }
+}
+
+fn is_compiler_error(inferred: InferredNode) -> Bool {
+  match inferred {
+    Resolved { node: _ } => false
+    CompilerError { message: _, span: _ } => true
+    TypeVariable { id: _ } => false
+  }
+}
+
+fn has_inferred(n: Node) -> Bool {
+  n.inferred != none
+}
+
+type VarBindingKind
+  = LocalValueBinding
+  | FunctionValueBinding
+  | VariantValueBinding { parent_enum: String }
+  | MatchBoundBinding
+
+type CallSemantics
+  = PlainCallSemantics
+  | LookupCallSemantics
+
+type MethodSemantics
+  = PlainMethodSemantics
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
+  | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
+
+type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
+
+
+// =========================================================================
+// Expressions
+// =========================================================================
+
+// ExprData -- expression discriminator for Node-embedded expressions.
+// When a Node carries computation (expr_data != NoExprData), the Node's
+// inferred and span provide the resolved type and source location.
+// Sub-expressions are Node values (not Expr).
+// ExprData: pure operator metadata tag (P5.11 dissolution).
+// All child Nodes live in node.children. ExprData retains only
+// non-Node metadata that identifies the expression kind.
+//
+// AlgebraFieldKind coproduct (Track 6): replaces former String? dispatch.
+// Defined in std/syntax.dag, used by ExprBinOp and OperatorSpec.
+type ExprData
+  = NoExprData
+  | ExprLiteral { value: LiteralValue }
+  | ExprError { kind: ExprErrorKind, message: String }
+  | ExprVar { binding_kind: VarBindingKind? }
+  | ExprFieldAccess { summary: FieldSummary? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
+  | ExprMethodCall { method_semantics: MethodSemantics? }
+  | ExprMatch
+  | ExprIf
+  | ExprLet
+  | ExprRecordLit { parent_enum: String? }
+  | ExprListLit
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
+  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprLambda
+  | ExprStringInterp
+  | ExprBlock
+  | ExprCast
+  | ExprForEach
+  | ExprIndex
+  | ExprSlice
+  | ExprReturn
+
+type MatchPattern
+  = Bind { name: String }
+  | LitPattern { value: LiteralValue }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
+  | Wildcard
+
+// FieldBinding dissolved into Node (D2c):
+//   field_name → node.name
+//   binding    → node.match_pattern
+// Constructor: make_field_binding_node
+// Accessors: field_binding_name_at, field_binding_pattern
+
+
+
+type UnaryOpKind = Not | Neg
+
+type StringPart
+  = Text { value: String }
+  | Interpolation { expr: Node }
+
+type OperationModifier = Idempotent | Readonly | Hermetic
+
+// =========================================================================
+// Compiler output
+// =========================================================================
+
+type CompileResult {
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+}
+
+type TextFile {
+  path: FilePath
+  content: String
+}
+
+// =========================================================================
+// Typed diagnostics — root cause by construction.
+// =========================================================================
+
+type CompilerDiagnostic
+  = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
+  | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | UnresolvedType     { name: String, span: SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
+  | CircularDependency { modules: List<String>, span: SourceSpan }
+  | DuplicateModule    { name: String, span: SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
+  | ParseError         { message: String, span: SourceSpan }
+  | InternalError      { message: String, span: SourceSpan }
+  | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
+  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
+  | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
+
+type ErrorNode {
+  diagnostic: CompilerDiagnostic
+  module_name: String
+}
+
+type ErrorDAG {
+  errors: List<ErrorNode>
+}
+
+fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
+  match d {
+    UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
+    MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
+    UnresolvedType     { name: _, span: s }                    => s
+    TypeMismatch       { expected: _, got: _, span: s }        => s
+    ArityMismatch      { name: _, expected: _, got: _, span: s } => s
+    VariantNotFound    { variant: _, type_name: _, span: s }   => s
+    FieldNotFound      { field: _, type_name: _, span: s }     => s
+    NonExhaustiveMatch { missing: _, span: s }                 => s
+    CircularDependency { modules: _, span: s }                 => s
+    DuplicateModule    { name: _, span: s }                    => s
+    MissingAnnotation  { fn_name: _, what: _, span: s }        => s
+    ParseError         { message: _, span: s }                 => s
+    InternalError      { message: _, span: s }                 => s
+    ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
+    OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
+    VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
+  }
+}
+
+fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
+  match d {
+    UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
+    MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
+    UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
+    TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
+    ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
+    VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
+    FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
+    NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
+    CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
+    DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
+    ParseError         { message: m, span: _ }                    => m
+    InternalError      { message: m, span: _ }                    => m
+    ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
+    OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
+    VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
+  }
+}
+
+fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  true
+}
+
+// Scoped to the `dag run` path only. The interpreter carves out exactly
+// one diagnostic class — ComplexityUnknown — because the CX analysis is
+// documented as partial in ROADMAP M1 (active reduction, currently
+// non-blocking compile gate). OwnershipViolation is a real semantic
+// error (the repo explicitly promoted it from warning); the interpreter
+// must not execute programs that violate ownership.
+//
+// Adding more carve-outs requires upstream justification: a structural
+// reason the diagnostic class is non-fatal at the interpreter boundary
+// specifically, not a convenience to make `dag run` not fail.
+fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match d {
+    ComplexityUnknown { func_name: _, reason: _, span: _ } => false
+    _ => true
+  }
+}
+
+fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
+  ErrorNode { diagnostic: diagnostic, module_name: module_name }
+}
+
+
+type DeclaredFuncSig {
+  name: String
+  params: List<Node>
+  inferred: Node?
+  is_async: Bool
+  output_provenance: List<Map<String, SubValueRelation>>
+  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
+}
+
+type DeclaredFuncEnv {
+  signatures: Map<String, DeclaredFuncSig>
+}
+
+// =========================================================================
+// Node -- unified recursive structure
+// =========================================================================
+
+type Node {
+  name: String
+  ident: Int?
+  span: SourceSpan
+  ident_span: SourceSpan?
+  children: List<Node>
+  connective: Connective
+  // Collection classification -- structural, not name-based (P5.7b)
+  // Ports -- what flows in and out (dissolved from Param, D1c)
+  params: List<Node>
+  inferred: InferredNode?
+  return_cardinality: Cardinality
+  uses: List<Node>
+  body: Node?
+  transport: Node?
+  properties: List<Node>
+  type_annotation: Node?
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+  // Match arm pattern -- set only on arm Nodes (P5.11 compositional dissolution)
+  match_pattern: MatchPattern?
+  expr_data: ExprData
+}
+
+fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
+  if name == "" { none } else { Present { value: span } }
+}
+
+fn node_name_span(n: Node) -> SourceSpan {
+  match n.ident_span { Present { value: s } => s  Absent => n.span }
+}
+
+// Construct a Node carrying expression data (P5.11 dissolved form).
+// Children are passed explicitly — ExprData is pure operator metadata.
+fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, ident_span: none, children: children,
+    connective: NoConnective,
+
+    params: [], inferred: inferred, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
+  }
+}
+
+// Construct a Node carrying expression data with a dissolved identifier (D3).
+// The name field carries the identifier that was formerly in ExprData.
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
+    connective: NoConnective,
+
+    params: [], inferred: inferred, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
+  }
+}
+
+fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
+
+    params: [], inferred: Present { value: CompilerError { message: message, span: span } },
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
+    match_pattern: none, expr_data: ExprError { kind: kind, message: message }
+  }
+}
+
+// =========================================================================
+// Compositional child Node constructors (P5.11)
+//
+// Arguments, match arms, field inits, and string interp parts are Nodes.
+// This follows the same pattern as Param→Node (Decision 8).
+// Varargs emerge naturally as an N-sized list of arg Nodes.
+// =========================================================================
+
+fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let arg_name = match name { Present { value: n } => n  Absent => "" }
+  Node {
+    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
+  let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
+  Node {
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Present { value: pattern },
+    expr_data: NoExprData
+  }
+}
+
+fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn resource_use_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn resource_use_resource(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
+  }
+}
+
+fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+// Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Present { value: binding }, expr_data: NoExprData
+  }
+}
+
+fn field_binding_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn field_binding_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
+}
+
+fn make_text_part_node(text: String, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none,
+    expr_data: ExprLiteral { value: LitStr { value: text } }
+  }
+}
+
+fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+// =========================================================================
+// Param / Field / Variant dissolution (D1c)
+//
+// Param, Field, and Variant are dissolved into Node. This follows the same
+// pattern as FieldInit and ResourceUse dissolutions (D1a/D1b).
+//
+// Param node layout:
+//   name = param name
+//   children = [type_expr] or [type_expr, default_value]
+//   span = source span
+//
+// Field node layout (extends Param):
+//   name = field name
+//   children = [type_expr] or [type_expr, default_value]
+//   return_cardinality = field cardinality
+//   properties = [from_key_node] if from_key is present
+//   span = source span
+//
+// Variant node: a Node with name + span + children (the dissolved Field nodes).
+// Already close to how variants work in the AST.
+// =========================================================================
+
+fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: properties,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
+  match node.ident_span {
+    Present { value: span } =>
+      match map_get(source_indices, span.file) {
+        Present { value: index } =>
+          let text = source_text_at(index: index, span: span)
+          if text == "" { "" } else { text }
+        Absent =>
+          if string_length(s: span.file) > 8 && substring(s: span.file, start: 0, end: 8) == "<kernel:" {
+            substring(s: span.file, start: 8, end: string_length(s: span.file) - 1)
+          } else {
+            node.name
+          }
+      }
+    Absent => ""
+  }
+}
+
+// BRIDGE DEBT (M4 Lane 2): child lookup by authored string name.
+// Deletion point: when Node.name is removed, replace all call sites
+// with positional access (children[i]) or structural field identity.
+// Until then, routes through authored_name_at for source-derived names.
+fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
+    Present { value: ch } => Present { value: ch }
+    Absent => none
+  }
+}
+
+fn has_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == name)
+}
+
+fn param_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
+  }
+}
+
+fn param_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+fn param_node_span(n: Node) -> SourceSpan { n.span }
+
+fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  let props = match from_key {
+    Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+    Absent => []
+  }
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: cardinality,
+    uses: [], body: none, transport: none, properties: concat(props, type_expr.properties),
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn field_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn field_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
+  }
+}
+
+fn field_node_cardinality(n: Node) -> Cardinality { n.return_cardinality }
+
+fn field_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: n.properties, prop_name: "from_key", source_indices: source_indices) {
+    Present { value: p } => Present { value: authored_name_at(source_indices: source_indices, node: p) }
+    Absent => none
+  }
+}
+
+fn field_node_span(n: Node) -> SourceSpan { n.span }
+
+// Variant constructor: a Node with name + span + children (dissolved Field nodes).
+// name_span is the span of the variant identifier token (for ident_span accuracy).
+fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn variant_node_fields(n: Node) -> List<Node> { n.children }
+fn variant_node_span(n: Node) -> SourceSpan { n.span }
+
+// =========================================================================
+// IR Child Layout Model
+// =========================================================================
+
+// Bootstrap constraint: `accessor` is a function name (String). In the current
+// .dag type system, function names ARE the structural identity. When .dag supports
+// function references, accessor should become a structural reference.
+type ChildRole {
+  name: String
+  accessor: String
+  position: Int
+  required: Bool
+}
+
+data expr_child_roles: Map<String, List<ChildRole>> = {
+  "ExprFieldAccess": [
+    ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
+  ],
+  "ExprBinOp": [
+    ChildRole { name: "left", accessor: "binop_left", position: 0, required: true },
+    ChildRole { name: "right", accessor: "binop_right", position: 1, required: true }
+  ],
+  "ExprUnaryOp": [
+    ChildRole { name: "operand", accessor: "unaryop_operand", position: 0, required: true }
+  ],
+  "ExprIf": [
+    ChildRole { name: "condition", accessor: "if_condition", position: 0, required: true },
+    ChildRole { name: "then", accessor: "if_then_branch", position: 1, required: true },
+    ChildRole { name: "else", accessor: "if_else_branch", position: 2, required: false }
+  ],
+  "ExprMatch": [
+    ChildRole { name: "scrutinee", accessor: "match_scrutinee", position: 0, required: true }
+  ],
+  "ExprLet": [
+    ChildRole { name: "value", accessor: "let_value", position: 0, required: true },
+    ChildRole { name: "body", accessor: "let_body", position: 1, required: false }
+  ],
+  "ExprLambda": [
+    ChildRole { name: "body", accessor: "lambda_body", position: 0, required: true }
+  ],
+  "ExprMethodCall": [
+    ChildRole { name: "receiver", accessor: "method_receiver", position: 0, required: true }
+  ],
+  "ExprCast": [
+    ChildRole { name: "expr", accessor: "cast_expr", position: 0, required: true },
+    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
+  ],
+  "ExprForEach": [
+    ChildRole { name: "collection", accessor: "foreach_collection", position: 0, required: true },
+    ChildRole { name: "body", accessor: "foreach_body", position: 1, required: true }
+  ],
+  "ExprIndex": [
+    ChildRole { name: "base", accessor: "index_base", position: 0, required: true },
+    ChildRole { name: "index", accessor: "index_expr", position: 1, required: true }
+  ],
+  "ExprSlice": [
+    ChildRole { name: "base", accessor: "slice_base", position: 0, required: true },
+    ChildRole { name: "start", accessor: "slice_start", position: 1, required: true },
+    ChildRole { name: "end", accessor: "slice_end", position: 2, required: true }
+  ],
+  "ExprReturn": [
+    ChildRole { name: "value", accessor: "return_value", position: 0, required: true }
+  ]
+}
+
+data wrapper_child_roles: Map<String, List<ChildRole>> = {
+  "Arg": [
+    ChildRole { name: "value", accessor: "arg_value", position: 0, required: true }
+  ],
+  "Arm": [
+    ChildRole { name: "guard", accessor: "arm_guard", position: 0, required: false },
+    ChildRole { name: "body", accessor: "arm_body", position: -1, required: true }
+  ],
+  "FieldInit": [
+    ChildRole { name: "value", accessor: "field_init_node_value", position: 0, required: true }
+  ]
+}
+
+fn is_child_accessor_in_model(name: String) -> Bool {
+  (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+  || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+}
+
+// Model query: get fixed child roles for an ExprData variant.
+// Returns None if the variant is not in the model (fail-closed: callers
+// must handle missing layout explicitly, not assume "no children").
+fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
+  map_get(expr_child_roles, variant_name)
+}
+
+// =========================================================================
+// Node field roles — structural descent facts for complexity analysis
+// =========================================================================
+
+type NodeFieldRole
+  = ChildrenListField
+  | SubValueField
+  | MetadataField
+
+data node_field_roles: Map<String, NodeFieldRole> = {
+  "children": ChildrenListField,
+  "params": ChildrenListField,
+  "body": SubValueField,
+  "expr_data": SubValueField,
+  "match_pattern": SubValueField
+}
+
+fn is_children_list_field(field_name: String) -> Bool {
+  match lookup(node_field_roles, key: field_name) {
+    Holds { value: ChildrenListField } => true
+    _ => false
+  }
+}
+
+fn is_sub_value_field(field_name: String) -> Bool {
+  match lookup(node_field_roles, key: field_name) {
+    Holds { value: SubValueField } => true
+    Holds { value: ChildrenListField } => true
+    _ => false
+  }
+}
+
+// =========================================================================
+// Function size effects — structural descent facts for complexity analysis
+// =========================================================================
+
+type FunctionSizeEffect
+  = TreeSizePreserving
+  | TreeSizeReducing
+  | PropertyContraction { domain_size: Int }
+
+data function_size_effects: Map<String, FunctionSizeEffect> = {
+  "with_required_cardinality": PropertyContraction { domain_size: 2 },
+  "resolved_type": TreeSizeReducing,
+  "param_node_type_expr": TreeSizeReducing,
+  "field_binding_pattern": TreeSizeReducing,
+  "wrapper_inner_arg": TreeSizeReducing,
+  "extractor_inner_arg": TreeSizeReducing,
+  "child_type_node": TreeSizeReducing
+}
+
+fn is_tree_size_preserving(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Holds { value: effect } => match effect {
+      TreeSizePreserving => true
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn is_tree_size_reducing(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Holds { value: effect } => match effect {
+      TreeSizeReducing => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn is_property_contraction(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Holds { value: effect } => match effect {
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// =========================================================================
+// Compositional child Node accessors (P5.11)
+//
+// Implementations of the child projections declared in expr_child_roles
+// and wrapper_child_roles above. The model is the source of truth;
+// these functions implement the projections.
+//
+// Required children return an error node when missing (fail-fast),
+// preventing silent self-recursion from malformed nodes.
+// =========================================================================
+
+fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
+  match texpr.children |> skip(index) |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
+  }
+}
+
+
+fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" { none } else { Present { value: name } }
+}
+
+fn arg_value(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
+  }
+}
+
+fn arm_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
+}
+
+fn arm_guard(n: Node) -> Node? {
+  if (n.children |> count) == 2 { n.children |> first } else { none }
+}
+
+fn arm_body(n: Node) -> Node {
+  match n.children |> last {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
+  }
+}
+
+fn field_init_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  authored_name_at(source_indices: source_indices, node: n)
+}
+
+fn field_init_node_value(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+  }
+}
+
+fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
+fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
+fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
+
+fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
+fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
+
+fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
+fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
+
+fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
+
+// -- ExprVar (D3: name dissolved into Node.name) --
+fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+// -- ExprFieldAccess (D3: field dissolved into Node.name) --
+fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
+fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
+  match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
+}
+
+// -- ExprCall (D3: func dissolved into Node.name) --
+fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } => de
+    _ => none
+  }
+}
+
+// -- ExprMethodCall (D3: method dissolved into Node.name) --
+fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
+fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
+fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
+  match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
+}
+
+// -- ExprLambda (D3: params dissolved into child Nodes after body) --
+fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
+fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
+
+// -- ExprLet (D3: name dissolved into Node.name) --
+fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
+fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
+fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
+fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+
+// -- ExprForEach (D3: variable dissolved into Node.name) --
+fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
+fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
+fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
+fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
+
+fn slice_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
+fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
+fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
+
+fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
+
+fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
+
+// -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
+fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  let name = authored_name_at(source_indices: source_indices, node: texpr)
+  if name == "" { none } else { Present { value: name } }
+}
+
+
+// =========================================================================
+// Transport Node constructors
+//
+// Transport is a Node where name = transport kind, properties = config,
+// children = ordered argv (shell only).
+//
+// Property name constants — single authority for transport config keys.
+// Constructors, predicates, accessors, and is_config_reserved_key all
+// reference these instead of bare strings.
+// =========================================================================
+
+data transport_url_key: String = "base_url"
+data transport_path_key: String = "base_path"
+data transport_auth_token_key: String = "auth_token"
+data transport_auth_header_key: String = "auth_header"
+data transport_auth_scheme_key: String = "auth_scheme"
+data transport_method_key: String = "method"
+data transport_path_template_key: String = "path"
+data transport_query_key: String = "query"
+data transport_body_key: String = "body"
+data transport_stdin_key: String = "stdin"
+data transport_response_format_key: String = "response_format"
+data transport_headers_key: String = "headers"
+
+fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: body, transport: none, properties: properties,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn local_transport_node(span: SourceSpan) -> Node {
+  make_transport_node(properties: [], children: [], body: none, span: span)
+}
+
+fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
+  let zero_span = make_span(start: 0, end: 0)
+  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
+  let method_props = match method {
+    Present { value: m } => [make_field_init_node(name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let path_props = match path {
+    Present { value: p } => [make_field_init_node(name: transport_path_template_key, value: p, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let query_props = match query {
+    Present { value: q } => [make_field_init_node(name: transport_query_key, value: q, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let body_props = match request_body {
+    Present { value: b } => [make_field_init_node(name: transport_body_key, value: b, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let rf_props = match response_format {
+    Present { value: rf } => [make_field_init_node(name: transport_response_format_key, value: rf, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let props = concat([url_field], method_props, path_props, query_props, body_props, rf_props, auth_props, headers)
+  make_transport_node(properties: props, children: [], body: none, span: span)
+}
+
+fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
+  let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let zero_span = make_span(start: 0, end: 0)
+  let stdin_props = match stdin {
+    Present { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let all_props = concat(env, stdin_props)
+  Node {
+    name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
+  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+  make_transport_node(properties: [path_field], children: [], body: none, span: span)
+}
+
+// =========================================================================
+// Transport Node accessors
+// =========================================================================
+
+fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
+  }
+}
+
+fn find_property_string(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: props, prop_name: prop_name, source_indices: source_indices) {
+    Present { value: n } => match n.expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      _ => none
+    }
+    Absent => none
+  }
+}
+
+fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
+}
+
+fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
+
+fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
+fn is_shell_transport(t: Node) -> Bool { t.body != none }
+fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
+fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
+
+fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
+  let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
+  if fi_name == "idempotent" { Present { value: Idempotent } }
+  else if fi_name == "readonly" { Present { value: Readonly } }
+  else if fi_name == "hermetic" { Present { value: Hermetic } }
+  else { none }
+}
+
+fn operation_modifier_name(modifier: OperationModifier) -> String {
+  match modifier {
+    Idempotent => "idempotent"
+    Readonly => "readonly"
+    Hermetic => "hermetic"
+  }
+}
+
+fn transport_base_url(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_url_key, source_indices: source_indices)
+}
+
+fn transport_auth_token(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices)
+}
+
+fn transport_auth_header_name(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  find_property_string(props: t.properties, prop_name: transport_auth_header_key, source_indices: source_indices)
+}
+
+fn transport_has_auth(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn transport_method(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_method_key, source_indices: source_indices)
+}
+
+fn transport_path_template(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_template_key, source_indices: source_indices)
+}
+
+fn transport_query(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_query_key, source_indices: source_indices)
+}
+
+fn transport_request_body(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_body_key, source_indices: source_indices)
+}
+
+fn transport_stdin(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_stdin_key, source_indices: source_indices)
+}
+
+fn transport_response_format(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_response_format_key, source_indices: source_indices)
+}
+
+fn is_config_reserved_key(name: String) -> Bool {
+  name == transport_url_key || name == transport_path_key || name == transport_auth_scheme_key
+    || name == transport_auth_header_key || name == transport_auth_token_key
+    || name == transport_method_key || name == transport_path_template_key
+    || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
+    || name == transport_response_format_key || name == transport_headers_key
+}
+
+fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+  )
+}
+
+fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+  )
+}
+
+// =========================================================================
+// ExprData structural primitives
+// =========================================================================
+
+fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
+  Node {
+    name: node.name, ident: node.ident, span: node.span, ident_span: node.ident_span,
+    children: node.children |> map(child => transform(child)),
+    connective: node.connective,
+    params: node.params, inferred: node.inferred,
+    return_cardinality: node.return_cardinality, uses: node.uses,
+    body: node.body, transport: node.transport,
+    properties: node.properties, type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: node.match_pattern, expr_data: node.expr_data
+  }
+}
+
+// =========================================================================
+// Self-call detection -- Node expression walkers
+// =========================================================================
+
+fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
+      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices)) }
+    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices))
+  }
+}
+
+fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name {
+        if in_tail == false { true }
+        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices)) }
+      } else {
+        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+      }
+    ExprError { kind: _, message: _ } => false
+    ExprVar { binding_kind: _ } => false
+    ExprLiteral { value: _ } => false
+    ExprFieldAccess { summary: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+    ExprMethodCall { method_semantics: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+    ExprIf =>
+      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
+      let else_bad = match if_else_branch(texpr: texpr) { Present { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      cond_bad || then_bad || else_bad
+    ExprMatch =>
+      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let arms_bad = match_arm_nodes(texpr: texpr) |> any(arm_node =>
+        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+      scrut_bad || arms_bad
+    ExprLet =>
+      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let body_bad = match let_body(texpr: texpr) { Present { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      val_bad || body_bad
+    ExprBlock =>
+      let ss = texpr.children
+      let ss_count = ss |> count
+      if ss_count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < ss_count - 1)
+          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+        let last_bad = match ss |> last {
+          Present { value: last_expr } =>
+            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
+          Absent => false
+        }
+        init_bad || last_bad
+      }
+    ExprReturn =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true, source_indices: source_indices))
+    NoExprData =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+    _ =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+  }
+}
+
+// =========================================================================
+// Dissolution infrastructure -- Node-based representations of types that
+// will eventually dissolve. Each type gets:
+//   1. A Node constructor that encodes the type's fields as Node properties
+//   2. Accessor functions that extract fields from the Node representation
+//   3. A predicate that identifies nodes of this kind
+//
+// The migration path: producers switch to constructors, consumers switch
+// to accessors, then the dedicated type definition is deleted.
+// =========================================================================
+
+
+// --- ServiceConfig as Node properties ---
+// A ServiceConfig dissolves into Node properties where:
+//   "svc_endpoint" = endpoint Node, "svc_auth" = auth Node,
+//   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
+// Only non-none fields are included.
+
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+  let zero_span = make_span(start: 0, end: 0)
+  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
+  let auth_prop = match auth {
+    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let auth_input_prop = match auth_input {
+    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let auth_source_prop = match auth_source {
+    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let rate_prop = match rate_limit {
+    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let retry_prop = match retry {
+    Present { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
+}
+
+fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
+}
+
+fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
+}
+
+fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
+}
+
+fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
+}
+
+fn service_config_retry(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_retry", source_indices: source_indices)
+}
+
+fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_input", source_indices: source_indices)
+}
+
+fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
+}
+
+// --- Module as Node ---
+// A Module dissolves into a Node where:
+//   name = module name, params = import nodes, children = item nodes.
+// Import nodes: name = module_path, children = specific imported names.
+// Wildcard import: children is empty. Specific import: children are name nodes.
+// No metadata markers — structural position (params vs children) IS the distinction.
+
+fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
+
+    params: imports, inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let wildcard_marker = if is_all {
+    Present { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
+  } else { none }
+  Node {
+    name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: wildcard_marker, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn import_is_all(n: Node) -> Bool {
+  n.body != none
+}
+
+fn import_specific_names_at(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  n.children |> map(c => authored_name_at(source_indices: source_indices, node: c))
+}
+
+fn module_imports(n: Node) -> List<Node> {
+  n.params
+}
+
+fn module_items(n: Node) -> List<Node> {
+  n.children
+}
+
+// =========================================================================
+// Node vocabulary (structural constructors and predicates)
+// =========================================================================
+
+fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
+  Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn kernel_span(name: String) -> SourceSpan {
+  SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+}
+
+data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data hash_type: Node = Node { name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data tuple_type_name: String = "Tuple"
+data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+
+fn make_span(start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: "", start: start, end: end }
+}
+
+fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+fn no_span() -> SourceSpan {
+  make_span(start: 0, end: 0)
+}
+
+// =========================================================================
+// NewlineIndex — byte-offset-to-line:col translation
+// =========================================================================
+
+type LineCol {
+  line: Int
+  col: Int
+}
+
+type NewlineIndex {
+  file: String
+  offsets: List<Int>
+  char_codes: List<Int>
+}
+
+fn build_newline_index(file: String, source: String) -> NewlineIndex {
+  let char_codes = source |> chars
+  let offsets = char_codes |> enumerate |> fold(init: [], f: (acc, pair) =>
+    if pair.second == 10 { list_push(acc, pair.first) } else { acc }
+  )
+  NewlineIndex { file: file, offsets: offsets, char_codes: char_codes }
+}
+
+fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
+  let clamped = if offset < 0 { 0 } else { offset }
+  let line = (index.offsets |> filter(o => o < clamped) |> count) + 1
+  let line_start = if line <= 1 { 0 }
+    else {
+      match index.offsets |> skip(line - 2) |> first {
+        Present { value: o } => o + 1
+        Absent => 0
+      }
+    }
+  let col = clamped - line_start + 1
+  LineCol { line: line, col: col }
+}
+
+fn source_line_at(index: NewlineIndex, line: Int) -> String {
+  let src_len = count(index.char_codes)
+  let line_start = if line <= 1 { 0 }
+    else {
+      match index.offsets |> skip(line - 2) |> first {
+        Present { value: o } => o + 1
+        Absent => src_len
+      }
+    }
+  let line_end = match index.offsets |> skip(line - 1) |> first {
+    Present { value: o } => o
+    Absent => src_len
+  }
+  chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
+}
+
+fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
+  chars_to_string(chars: index.char_codes, start: span.start, end: span.end)
+}
+
+// =========================================================================
+// Intern table — parser-owned identifier authority (Phase 1: type + functions only)
+//
+// InternTable is built during parsing and carried on FrontendResult.
+// Identity consumer and TypeEnv threading deferred until first real use site.
+// =========================================================================
+
+type InternTable {
+  strings: List<String>
+  index: Map<String, Int>
+  next_id: Int
+}
+
+type InternResult {
+  table: InternTable
+  id: Int
+}
+
+fn empty_intern_table() -> InternTable {
+  InternTable { strings: [""], index: map_insert(empty_map(), "", 0), next_id: 1 }
+}
+
+fn intern(table: InternTable, s: String) -> InternResult {
+  match map_get(table.index, s) {
+    Present { value: id } => InternResult { table: table, id: id }
+    Absent =>
+      let id = table.next_id
+      InternResult {
+        table: InternTable {
+          strings: list_push(table.strings, s),
+          index: map_insert(table.index, s, id),
+          next_id: id + 1
+        },
+        id: id
+      }
+  }
+}
+
+fn intern_str(table: InternTable, id: Int) -> String {
+  match table.strings |> skip(id) |> first {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn intern_find(table: InternTable, s: String) -> Int? {
+  match map_get(table.index, s) {
+    Present { value: id } => Present { value: id }
+    Absent => none
+  }
+}
+
+fn intern_find_or_empty(table: InternTable, s: String) -> Int {
+  match map_get(table.index, s) {
+    Present { value: id } => id
+    Absent => 0
+  }
+}
+
+fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    t.strings |> fold(init: merged, f: (m, s) =>
+      if s == "" { m } else { intern(table: m, s: s).table }
+    )
+  )
+}
+
+fn is_internable_token(shape: TokenShape) -> Bool {
+  match shape { ShIdent => true  ShKeyword => true  _ => false }
+}
+
+fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
+  fold(tokens, init: table, f: (t, tok) =>
+    if is_internable_token(shape: tok.shape) {
+      intern(table: t, s: tok.text).table
+    } else { t }
+  )
+}
+
+fn with_optional_cardinality(n: Node) -> Node {
+  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+}
+
+fn with_required_cardinality(n: Node) -> Node {
+  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+}

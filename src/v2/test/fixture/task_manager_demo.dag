@@ -1,0 +1,381 @@
+// src/v2/test/fixture/task_manager_demo.dag
+// Scope: T-16 TaskManager omni-emission demo — data-model + Shape-B SQL projection.
+// Status: T-16-A modeled (#3867); T-16-A+ adds Task→SqlCreateTable projection
+// (sql.dag carriers, fail-closed on unmapped domain scalars). No emit code.
+// Shape A (rust backend + react frontend `DeploymentUnit` fragments) and
+// Shape B OpenAPI / Markdown projections land in sibling slices (T-16-C/D).
+
+module v2.test.fixture.task_manager_demo
+
+import v2.extdeps.formats.sql {
+  SqlColumnConstraints,
+  SqlColumnDefault,
+  SqlColumnDefaultAbsent,
+  SqlColumnDefinition,
+  SqlCreateTable,
+  SqlDataType,
+  SqlIdentifier,
+  SqlRegularIdentifier,
+  SqlSchemaOperation,
+  SqlTableDefinition,
+  SqlTypeCharacterLargeObject
+}
+import v2.std.algebra { FreeMonoid, Empty }
+import v2.std.collection { Absent, optional_present }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
+  Unavailable,
+  append_outcome_value,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.network { NetworkAddress, UriAuthority, UriHost, rfc3986_host_abnf }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.extdeps.coordination {
+  Endpoint, EndpointRef, LanguageRef, FrameworkRef, HostedByFramework, NoFramework,
+  WireContract, WireContractFacts, CoordinationBind, BindRef,
+  Http, RequestReply, ImmediateSettlement, NoReplicaConvergence,
+  DeploymentUnit
+}
+
+// --- Domain ---------------------------------------------------------------
+
+// Symbol-backed opaque identifier (not a numeric alias) per operator
+// 2026-05-27 modeling decision — avoids the hollow-alias trap at the
+// domain level.
+type TaskId {
+  identity: Symbol
+}
+
+// 🟢 coproduct dissolution — TaskManager workflow lifecycle.
+type TaskStatus
+  = Open
+  | InProgress
+  | Done
+
+type Task {
+  id: TaskId,
+  title: String,
+  status: TaskStatus
+}
+
+// --- Operation arrows -----------------------------------------------------
+// The three canonical TaskManager operations. The function's Arrow
+// (argument types + return type) is the single authority for the wire
+// type; the WireContracts below reference these function identities
+// directly via `BindRef.identity` per coordination.dag's `BindRef`
+// coincidence with `std/node.dag` A1/K-1 (ratified 2026-05-15).
+// No standalone `Symbol` row alias, no parallel `response_type` field.
+// Bodies are minimal stand-ins; real handler bodies + persistence land in
+// subsequent T-16 slices.
+
+fn create_task(title: String) -> Task {
+  Task {
+    id: TaskId { identity: ^task_id_seed },
+    title: title,
+    status: Open
+  }
+}
+
+fn update_status(id: TaskId, status: TaskStatus) -> Task {
+  Task {
+    id: id,
+    title: "",
+    status: status
+  }
+}
+
+fn list_tasks() -> FreeMonoid<Task> {
+  Empty
+}
+
+// Stand-in Symbol seed for `create_task`'s constructed `TaskId`; real id
+// minting lands with the persistence slice.
+// --- Endpoint identities --------------------------------------------------
+// --- Endpoint addresses ---------------------------------------------------
+// Minimal `NetworkAddress` instances — host spellings are placeholders; the
+// data-model demo cares about authority shape, not reachability. `port:
+// Absent` avoids requiring Succ-chain Nat literals for a value the demo
+// does not exercise.
+
+data backend_host: UriHost = UriHost {
+  spelling: "backend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data backend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: backend_host,
+    port: Absent
+  }
+}
+
+data frontend_host: UriHost = UriHost {
+  spelling: "frontend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data frontend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: frontend_host,
+    port: Absent
+  }
+}
+
+// --- DeploymentUnit fragments --------------------------------------------
+
+data backend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: ^rust_backend_endpoint },
+  address: backend_address,
+  language: LanguageRef { identity: ^rust_language },
+  framework: NoFramework
+}
+
+data frontend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: ^react_frontend_endpoint },
+  address: frontend_address,
+  language: LanguageRef { identity: ^typescript_language },
+  framework: HostedByFramework { framework: FrameworkRef { identity: ^react_framework } }
+}
+
+// --- Wire contracts -------------------------------------------------------
+// One `WireContract` per TaskManager operation. `BindRef.identity` is the
+// function name itself — the Arrow declared above is the single authority
+// for argument and response types. `Http` effect facts match
+// `coordination_effect_obligation(effect: Http)` — RequestReply /
+// ImmediateSettlement / NoReplicaConvergence.
+
+data create_task_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data create_task_contract: WireContract = WireContract {
+  facts: create_task_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: create_task },
+    effect: Http
+  }
+}
+
+data update_status_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data update_status_contract: WireContract = WireContract {
+  facts: update_status_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: update_status },
+    effect: Http
+  }
+}
+
+data list_tasks_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data list_tasks_contract: WireContract = WireContract {
+  facts: list_tasks_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: list_tasks },
+    effect: Http
+  }
+}
+
+// --- DeploymentUnit -------------------------------------------------------
+
+data task_manager_deployment: DeploymentUnit = DeploymentUnit {
+  endpoints: [backend_endpoint, frontend_endpoint],
+  wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
+}
+
+// --- Shape-B SQL DDL projection (T-16-A+) ---------------------------------
+// Derives `SqlCreateTable` for the `Task` record from sql.dag carriers.
+// `TaskManagerTaskField` is the single authority for which Task record
+// fields participate in SQL projection; column spellings and scalar kinds
+// dispatch only through that coproduct. OpenAPI wiring is deferred to
+// T-16-C (calm-crane-523, post-#3869).
+data tasks_table_spelling: String = "tasks"
+
+// 🟢 coproduct dissolution — T-16-A+ Task record field SQL authority (bijection with Task { id, title, status }).
+type TaskManagerTaskField
+  = TaskFieldId
+  | TaskFieldTitle
+  | TaskFieldStatus
+
+// 🟢 coproduct dissolution — T-16-A+ Task scalar SQL projection (closed over Task field scalar kinds).
+type TaskManagerSqlProjectableScalar
+  = ProjectTaskId
+  | ProjectString
+  | ProjectTaskStatus
+
+// 🟢 coproduct dissolution — T-16-A+ SQL scalar dispatch (projectable vs fail-closed unmapped).
+type TaskManagerSqlScalarDispatch
+  = MappedProjectable { scalar: TaskManagerSqlProjectableScalar }
+  | UnmappedDomainScalar { anchor: Node }
+
+data task_manager_task_field_catalog: List<TaskManagerTaskField> = [
+  TaskFieldId,
+  TaskFieldTitle,
+  TaskFieldStatus
+]
+
+data task_manager_sql_projection_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn task_manager_task_fields_to_sql_columns(
+  fields: List<TaskManagerTaskField>
+) -> Outcome<List<SqlColumnDefinition>> {
+  fold(
+    fields,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, field) {
+      append_outcome_value(
+        acc: acc,
+        child: task_manager_task_field_to_sql_column_definition(field: field),
+        policy: task_manager_sql_projection_policy
+      )
+    }
+  )
+}
+
+fn task_manager_task_field_column_spelling(field: TaskManagerTaskField) -> String {
+  match field {
+    TaskFieldId => "id"
+    TaskFieldTitle => "title"
+    TaskFieldStatus => "status"
+  }
+}
+
+fn task_manager_task_field_scalar(field: TaskManagerTaskField) -> TaskManagerSqlProjectableScalar {
+  match field {
+    TaskFieldId => ProjectTaskId
+    TaskFieldTitle => ProjectString
+    TaskFieldStatus => ProjectTaskStatus
+  }
+}
+
+fn task_manager_not_null_column_constraints() -> SqlColumnConstraints {
+  SqlColumnConstraints { not_null: true }
+}
+
+fn task_manager_absent_column_default() -> SqlColumnDefault {
+  SqlColumnDefaultAbsent
+}
+
+fn task_manager_sql_identifier(name: String) -> SqlIdentifier {
+  SqlRegularIdentifier { name: name }
+}
+
+fn task_manager_projectable_scalar_to_sql_data_type(
+  scalar: TaskManagerSqlProjectableScalar
+) -> Outcome<SqlDataType> {
+  match scalar {
+    ProjectTaskId => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectString => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectTaskStatus => outcome_accepted(value: SqlTypeCharacterLargeObject)
+  }
+}
+
+fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^task_manager_unmapped_domain_scalar,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+fn task_manager_sql_data_type_for_scalar(
+  dispatch: TaskManagerSqlScalarDispatch
+) -> Outcome<SqlDataType> {
+  match dispatch {
+    MappedProjectable { scalar } =>
+      task_manager_projectable_scalar_to_sql_data_type(scalar: scalar)
+    UnmappedDomainScalar { anchor } =>
+      task_manager_reject_unmapped_domain_scalar(node: anchor)
+  }
+}
+
+fn task_manager_task_field_to_sql_data_type(
+  field: TaskManagerTaskField
+) -> Outcome<SqlDataType> {
+  task_manager_sql_data_type_for_scalar(
+    dispatch: MappedProjectable {
+      scalar: task_manager_task_field_scalar(field: field)
+    }
+  )
+}
+
+fn task_manager_sql_column_definition(
+  name: String,
+  data_type: SqlDataType
+) -> SqlColumnDefinition {
+  SqlColumnDefinition {
+    name: task_manager_sql_identifier(name: name),
+    data_type: data_type,
+    constraints: task_manager_not_null_column_constraints(),
+    column_default: task_manager_absent_column_default()
+  }
+}
+
+fn task_manager_task_field_to_sql_column_definition(
+  field: TaskManagerTaskField
+) -> Outcome<SqlColumnDefinition> {
+  bind_outcome(
+    o: task_manager_task_field_to_sql_data_type(field: field),
+    f: fn(data_type) {
+      outcome_accepted(value: task_manager_sql_column_definition(
+        name: task_manager_task_field_column_spelling(field: field),
+        data_type: data_type
+      ))
+    }
+  )
+}
+
+fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
+  bind_outcome(
+    o: task_manager_task_fields_to_sql_columns(fields: task_manager_task_field_catalog),
+    f: fn(columns) {
+      outcome_accepted(value: SqlTableDefinition {
+        name: task_manager_sql_identifier(name: tasks_table_spelling),
+        columns: columns,
+        primary_key: optional_present(value: [
+          task_manager_sql_identifier(
+            name: task_manager_task_field_column_spelling(field: TaskFieldId)
+          )
+        ]),
+        table_constraints: []
+      })
+    }
+  )
+}
+
+fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation> {
+  bind_outcome(
+    o: task_to_sql_table_definition(),
+    f: fn(table) {
+      outcome_accepted(value: SqlCreateTable { table: table })
+    }
+  )
+}

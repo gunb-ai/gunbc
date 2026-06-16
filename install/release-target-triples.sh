@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # POSIX install target detection — hand-synced projection of:
-#   - src/v4/extdeps/platform_detection.dag (uname arch/OS mapping tables)
-#   - src/v4/install/install.dag `release_published_targets` (Linux musl + macOS rows)
-# Triple strings must match src/v4/workflow/release.dag `release_build_matrix` targets.
+#   - src/v2/extdeps/platform_detection.dag (uname arch/OS mapping tables)
+#   - src/v2/install/install.dag `release_published_targets` (Linux musl + macOS rows)
+# Triple strings must match src/v2/workflow/release.dag `release_build_matrix` targets.
 # Ratchet: release.dag `release_build_matrix` published-triple parity (smoke retired B7).
 #
 # Do not edit target strings here without updating the model first.

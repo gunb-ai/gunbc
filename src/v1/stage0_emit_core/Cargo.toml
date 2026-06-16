@@ -1,0 +1,9 @@
+[package]
+name = "v1-stage0-emit-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+serde = { version = "1", features = ["derive", "rc"] }
+v1-stage0-core = { path = "../stage0_core" }

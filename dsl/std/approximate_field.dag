@@ -1,0 +1,50 @@
+// dsl/v3/std/approximate_field.dag — v2 CI / `gunbc run --source-root dsl` facade for
+// `ApproximateField<F>` and approximate-arithmetic policy terminals.
+//
+// Canonical substrate: `src/v3/std/approximate_field.dag` (v3 compiler). The v2 interpreter
+// indexes only `--source-root` trees and cannot parse full v3 std syntax, so this file
+// supplies a v2-parseable `module std.approximate_field` when dsl sources import it
+// (notably `dsl/std/float.dag` → `type Real = ApproximateField<FieldOfFractions<Int>>`).
+//
+// Keep variant tags and field names aligned with the canonical module so drift is obvious
+// at review time.
+//
+// **🟡 Scaffold — dissolution trigger:** delete this facade when CI / `dag run` can
+// index `src/v3/std/approximate_field.dag` without v2 parse failures, or when
+// `v3.std.approximate_field` no longer needs to resolve under `--source-root dsl` alone.
+
+module std.approximate_field
+
+import std.algebra { Field }
+import std.integer { PositiveInt }
+
+type RoundingMode
+  = ToNearestEven
+  | ToZero
+  | ToPositiveInfinity
+  | ToNegativeInfinity
+  | ToAwayFromZero
+
+type Precision
+  = Unbounded
+  | BinaryPrecision { significand_bits: PositiveInt, exponent_bits: PositiveInt }
+  | DecimalPrecision { digits: PositiveInt, exponent_digits: PositiveInt }
+
+type NanPolicy = NoNaN | QuietNaN | QuietAndSignalingNaN
+type InfinityPolicy = NoInfinity | SignedInfinity
+type SignedZeroPolicy = NoSignedZero | SignedZero
+type SubnormalPolicy = NoSubnormals | GradualUnderflow | FlushToZero
+
+type SpecialValues {
+  nan: NanPolicy
+  infinity: InfinityPolicy
+  signed_zero: SignedZeroPolicy
+}
+
+type ApproximateField<F> {
+  base: Field<F>
+  rounding: RoundingMode
+  precision: Precision
+  special_values: SpecialValues
+  subnormal_policy: SubnormalPolicy
+}

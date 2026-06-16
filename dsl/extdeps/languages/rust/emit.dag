@@ -157,7 +157,7 @@ data rust_source_dir: String = "src/"
 data rust_visibility: String = "pub "
 
 // -- Runtime function registry --------------------------------------------
-// Single authority for DAG functions backed by v2_rt at runtime.
+// Single authority for DAG functions backed by v1_rt at runtime.
 // Each entry declares: the DAG-level name, the Rust bridge symbol (when
 // it differs from the DAG name), and whether the first map argument is
 // passed by reference.

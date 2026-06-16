@@ -75,7 +75,7 @@ type Quantity =
   | Frequency
   | Count
   | Currency
-  // Electrical dimensions (Q-Unit-5 inhabitant: v4.std.timeseries_signal R/L/C map/fold,
+  // Electrical dimensions (Q-Unit-5 inhabitant: v2.std.timeseries_signal R/L/C map/fold,
   // gunbc#4895/#4913). R/L/C ratings + v/i samples are form-independent.
   // ElectricCharge + MagneticFlux: pre-approved at gunbc#4929 forward-ref ("SPICE S1
   // re-cut forthcoming"); minted with Form-B fold inhabitant in gunbc#4942 (Q+=i*dt,

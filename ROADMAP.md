@@ -2,7 +2,7 @@
 
 Where the project stands and where it is headed. For the intellectual goal, the principles that protect it, and how to extend the language safely, read [DESIGN.md](DESIGN.md). (The prior doc corpus — THESIS/INVARIANTS/MODELING and ~80 design docs — was bankrupted 2026-06-16 and is being rebuilt from first principles; old docs remain in git history. This ROADMAP still needs its own lean pass.)
 
-> **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 has been **removed** — its one load-bearing role (the method-template projection producer) was migrated into v2 (`src/v2/stage0/src/method_template_projection_source.rs`); v2 self-compile is verified green without it. v2 remains the production self-hosted compiler and v4's seed.
+> **v2 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v2/`](src/v2/). v3 has been **removed** — its one load-bearing role (the method-template projection producer) was migrated into v1 (`src/v1/stage0/src/method_template_projection_source.rs`); v1 self-compile is verified green without it. v1 remains the production self-hosted compiler and v2's seed. *(Generation labels shifted this pass: the previous v2 is now v1, and the previous next-gen tree is now v2; the previous v3 was removed.)*
 
 ## Active wave — the stage-fold program
 
@@ -29,53 +29,53 @@ Keystone §1.1 landed (#4699): **4,912 → 3,973 lines** on main, `_go` accumula
 
 **§3 — emit breadth** (N data rows, not N×M hand-arms); includes the bidirectional emit/ingest round-trip (the fold's inverse proof) and dissolution of host-transport bridges. Depends on §1 + §2.
 
-**§4 — first runnable v4 program with I/O** (effect handlers, run-loop/scheduler). Depends on §2.
+**§4 — first runnable v2 program with I/O** (effect handlers, run-loop/scheduler). Depends on §2.
 
 > **Priority fork (operator's call, after §2 lands):** §3 + self-host (compiler/breadth lane) vs §4 (a demo-able running program). Both unblock once §2 lands; the pick sets the deepest staffing.
 
-**§5 — self-hosting** (census ratchet → zero hand-maintained Rust; the v2 seed is the last residual). Depends on §3.
+**§5 — self-hosting** (census ratchet → zero hand-maintained Rust; the v1 seed is the last residual). Depends on §3.
 
 ### Cross-cutting requirements (portfolio scale — threaded here)
 
 Some requirements span every layer of the stack; they are defined once at the portfolio scale and referenced — not duplicated — here where gunbc inhabits them. Full requirement, ARC, edges, and falsifier: [ctrl/ROADMAP.md — Realization pattern](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern). Design root: [`docs/design-recompute-memoization.md`](docs/design-recompute-memoization.md).
 
-- **The Realization pattern** — *critical, operator-elevated (2026-06-14).* Content-addressed reconciliation of a pure spec to its realized effect across an impurity boundary. The recurring root behind language-level caching, build caching, the §10 OS work, and (ahead) provisioning / DB migration / scheduling: every consumer of an already-computed result must cross the model→host execution boundary, and there is **no first-class reified execution receipt** asserting "this host computation is the faithful, content-keyed realization of that pure node" — so each re-derives both the need (redundancy) and the risk (un-enforced purity) with a local `HashMap`. The recurrence is a theorem (*Build Systems à la Carte*), and v4 still recurs (`ParseTable`, `TestClaimCacheKey`) **because the carrier is staged, not inhabited** (`compute_fabric` / `cache_interface` are mostly `🟡 forward = Node` stubs → M9-DFS finds nothing consumable → the author hand-rolls → P1 violation is structurally guaranteed). The carrier: `Realization<Spec, Effect>` = pure Node spec + content-hash identity + receipt + locality, parameterized by an algebraic effect handler — one kernel, N handlers (cost-of-change 1). gunbc wins where Nix/Bazel half-won because pure-by-construction gives impurity **one door** (the handler), the only place enforcement must live.
+- **The Realization pattern** — *critical, operator-elevated (2026-06-14).* Content-addressed reconciliation of a pure spec to its realized effect across an impurity boundary. The recurring root behind language-level caching, build caching, the §10 OS work, and (ahead) provisioning / DB migration / scheduling: every consumer of an already-computed result must cross the model→host execution boundary, and there is **no first-class reified execution receipt** asserting "this host computation is the faithful, content-keyed realization of that pure node" — so each re-derives both the need (redundancy) and the risk (un-enforced purity) with a local `HashMap`. The recurrence is a theorem (*Build Systems à la Carte*), and v2 still recurs (`ParseTable`, `TestClaimCacheKey`) **because the carrier is staged, not inhabited** (`compute_fabric` / `cache_interface` are mostly `🟡 forward = Node` stubs → M9-DFS finds nothing consumable → the author hand-rolls → P1 violation is structurally guaranteed). The carrier: `Realization<Spec, Effect>` = pure Node spec + content-hash identity + receipt + locality, parameterized by an algebraic effect handler — one kernel, N handlers (cost-of-change 1). gunbc wins where Nix/Bazel half-won because pure-by-construction gives impurity **one door** (the handler), the only place enforcement must live.
   - **ARC inhabitant #1 = resolve-cost** (gunbc, deepest place): PR1 #4867 (illustration — cache *exposed* host intern-table impurity), PR2 #4878 (first real inhabitant, grounding staged `cache_interface` dims).
   - **ARC inhabitant #2 = sccache / build cache** (de-risking rung): closed-world + reversible — proves the identity kernel carries across realize-steps; does **not** alone prove open-world layer-agnosticism.
   - **ARC inhabitant #3 = §10 OS work** (cross-layer stress test): open-world + irreversible provisioning / migration / syscall realization — the requirement is **met** only when this handler carries on the same kernel (not another compiler cache).
   - **Endpoint = a Realization Lens** that detects the hand-rolled-realization shape and *errors*, forcing the carrier — self-enforcing, the same *substrate-forbids-the-hand-roll* family as R-reflect (coproduct reflection) and INVARIANTS P1.
 
-## What works today (v2)
+## What works today (v1)
 
-The v2 compiler in [`src/v2/`](src/v2/) is self-hosted from `.dag` source: tokenize, parse, infer, emit, complexity, and ownership pipelines are authored as `.dag` programs with a small Rust bootstrap (`stage0`) that shrinks over time.
+The v1 compiler in [`src/v1/`](src/v1/) is self-hosted from `.dag` source: tokenize, parse, infer, emit, complexity, and ownership pipelines are authored as `.dag` programs with a small Rust bootstrap (`stage0`) that shrinks over time.
 
 You can:
 
 - Write `.dag` programs using `dsl/std/` and `dsl/extdeps/`
 - Compile and validate causal structure (types, termination, effects, ownership)
 - Emit to Rust, Python, and Go from the same declarations
-- Run the compiler and test suite via Cargo (`cargo test -p v2-compiler-tests`)
+- Run the compiler and test suite via Cargo (`cargo test -p v1-compiler-tests`)
 
-The `gunbc` CLI (from the `v2-compiler` crate) is the primary entry point for compiling v4 trees during bootstrap work.
+The `gunbc` CLI (from the `v1-compiler` crate) is the primary entry point for compiling v2 trees during bootstrap work.
 
-## What v4 is building toward
+## What v2 is building toward
 
-v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std library, rich `extdeps/`) with a full compiler pipeline rewritten in that substrate:
+v2 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std library, rich `extdeps/`) with a full compiler pipeline rewritten in that substrate:
 
 | Area | Status (approximate) |
 |------|----------------------|
-| `src/v4/std/` — shared vocabulary (node, algebra, effects, grammar, …) | Substantial; core carriers landed |
-| `src/v4/extdeps/` — language and transport models | Broad coverage; ongoing grounding work |
+| `src/v2/std/` — shared vocabulary (node, algebra, effects, grammar, …) | Substantial; core carriers landed |
+| `src/v2/extdeps/` — language and transport models | Broad coverage; ongoing grounding work |
 | Compiler stages (`01_tokenize` … `06_translate`, `00_compile`) | Parse and type-check `.dag`; emission in progress |
 | Lenses (complexity, cost, coverage, testgen, …) | Many structural lenses; runner integration ongoing |
 | Pure bootstrap / self-host | Trajectory to zero hand-maintained Rust; `self_host.dag` ratchet |
-| Tests as `.dag` `TestClaim` data | Growing corpus under `src/v4/test/claim/` |
+| Tests as `.dag` `TestClaim` data | Growing corpus under `src/v2/test/claim/` |
 
 ### Bounded bridge receipts
 
 | Lane | Interim bridge | Dissolve-on |
 |------|----------------|-------------|
-| T-22 eval host transport dispatch | `run_emit_host_go` eval calls use the existing `emit_host_runner` host boundary while projecting the modeled `v4.std.host_run.EmitHostRunReceipt` / `Outcome` carriers. | Generated `.dag` eval dispatches `v4.compiler.emit_host.run_emit_host_go` host transports directly. (The v3-resident evaluator shim / `emit_host_bridge.rs` host-transport bridge was removed with the v3 tree.) |
+| T-22 eval host transport dispatch | `run_emit_host_go` eval calls use the existing `emit_host_runner` host boundary while projecting the modeled `v2.std.host_run.EmitHostRunReceipt` / `Outcome` carriers. | Generated `.dag` eval dispatches `v2.compiler.emit_host.run_emit_host_go` host transports directly. (The v3-resident evaluator shim / `emit_host_bridge.rs` host-transport bridge was removed with the v3 tree.) |
 
 ### Public Operational Lanes
 
@@ -83,20 +83,20 @@ v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std 
 |-----|------------------------|
 | T-PB-B / `pb_rust_tests_outside_residual_zero` | Move remaining hand-authored Rust boundary and smoke tests into `.dag` `TestClaim` / generated-runner coverage, keeping same-path SG-0 expansions at +0 new paths until the matching claim runner executes those facts directly. |
 
-**Honest v4 status:** the v4 pipeline compiles and type-checks `.dag` over `src/v4` in CI. Lowering, full multi-target emission, and execute-verified test claims are still landing. v2 remains the reference for end-to-end emit until v4 closes the loop.
+**Honest v2 status:** the v2 pipeline compiles and type-checks `.dag` over `src/v2` in CI. Lowering, full multi-target emission, and execute-verified test claims are still landing. v2 remains the reference for end-to-end emit until v2 closes the loop.
 
 Design direction: **model local, derive global** — every target modeled once in shared vocabulary; translations are derived homomorphisms, not hand-written adapters ([docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md)).
 
 ### Coercion in both directions — ingestion and emission
 
-Coercion is one mechanism, run both ways. **Ingestion is coercion and emission is coercion**: a structure-preserving search over declared inhabitants, performed by the compiler rather than any hand-written adapter ([`src/v4/std/coercion.dag`](src/v4/std/coercion.dag)). The whole language is **`.dag → IR → .dag`**, where a `.dag` can be anything modeled in the substrate — *including a language itself*. Ingesting a program coerces it from its language model into the canonical IR; emitting coerces the IR back out into a target's declared inhabitants. The same **semantic realization search** underlies ingestion and emission once both sides are modeled as declared inhabitants; tokenize/parse and print/render remain boundary projections and must not become separate adapter authorities. This is what makes omni-ingestion and omni-emission cheap — model N targets once and *derive* the N×M translations (**model local, derive global**), instead of authoring an adapter per pair. Here `.dag → IR → .dag` means canonical `.dag` *source* regeneration, not a JSON IR receipt; JSON remains a boundary/debug artifact unless explicitly promoted by Branch H's canonical source AST and serializer.
+Coercion is one mechanism, run both ways. **Ingestion is coercion and emission is coercion**: a structure-preserving search over declared inhabitants, performed by the compiler rather than any hand-written adapter ([`src/v2/std/coercion.dag`](src/v2/std/coercion.dag)). The whole language is **`.dag → IR → .dag`**, where a `.dag` can be anything modeled in the substrate — *including a language itself*. Ingesting a program coerces it from its language model into the canonical IR; emitting coerces the IR back out into a target's declared inhabitants. The same **semantic realization search** underlies ingestion and emission once both sides are modeled as declared inhabitants; tokenize/parse and print/render remain boundary projections and must not become separate adapter authorities. This is what makes omni-ingestion and omni-emission cheap — model N targets once and *derive* the N×M translations (**model local, derive global**), instead of authoring an adapter per pair. Here `.dag → IR → .dag` means canonical `.dag` *source* regeneration, not a JSON IR receipt; JSON remains a boundary/debug artifact unless explicitly promoted by Branch H's canonical source AST and serializer.
 
 Coercion is a **total decision procedure** in both directions — every attempted realization either produces a structure-preserving `HomomorphismWitness` or fails closed with a located `CoercionMismatchKind`, never a guarantee that translation always succeeds:
 
 - **Realizable → translate, with a witness.** When a type structurally grounds to an inhabitant — including a *faithful refinement* such as widening a fixed-width `i32` into an arbitrary-precision `int` — the compiler carries a `HomomorphismWitness` proving structure was preserved.
-- **Not realizable → fail closed.** When no faithful realization exists, the compiler refuses and reports a located diagnostic; the closed `CoercionMismatchKind` taxonomy classifies every refusal — a *missing inhabitant* (`NoTargetCandidate`), a *lossy coercion* such as narrowing an unbounded `int` into `i32` (`WouldLoseInformation`), and — load-bearing — an **opaque atom with no per-target realization** declared in [`extdeps/`](src/v4/extdeps/). An opaque atom (a resource handle, a hash) is honest only when each target declares how to realize it; absent that, the homomorphism is undefined and translation fails closed rather than synthesizing silent glue — no partial or implicit realization, in either direction.
+- **Not realizable → fail closed.** When no faithful realization exists, the compiler refuses and reports a located diagnostic; the closed `CoercionMismatchKind` taxonomy classifies every refusal — a *missing inhabitant* (`NoTargetCandidate`), a *lossy coercion* such as narrowing an unbounded `int` into `i32` (`WouldLoseInformation`), and — load-bearing — an **opaque atom with no per-target realization** declared in [`extdeps/`](src/v2/extdeps/). An opaque atom (a resource handle, a hash) is honest only when each target declares how to realize it; absent that, the homomorphism is undefined and translation fails closed rather than synthesizing silent glue — no partial or implicit realization, in either direction.
 
-These claims are marked *proven* only by `TestClaimRun` verdicts, not prose — positive (`i32 → int` faithful widening emits a `HomomorphismWitness`), negative (unbounded `int → i32` `WouldLoseInformation`; a source atom with no target inhabitant `NoTargetCandidate`; an opaque atom lacking per-target realization), and the `emit → ingest` round-trip (normalized equality, explicitly *not* bit-identical unless claimed). Today emission-as-coercion is wired through the translate stage, exercised as such `TestClaim` data under [`src/v4/test/claim/`](src/v4/test/claim/) with fail-closed refusals landing first as the safety floor. The symmetric ingestion side is taking shape via `.dag → IR → .dag` round-trip claims ([`src/v4/test/claim/round_trip/`](src/v4/test/claim/round_trip/)): a wave-1 readiness / shape contract today, with the executable `emit → ingest` normalized-equality compare staged as a follow-up — the claim labels are explicit that they do not yet imply bit-identical fidelity. Full multi-language ingestion breadth and the refinement-aware rule that distinguishes faithful widening from lossy narrowing are likewise later-wave work.
+These claims are marked *proven* only by `TestClaimRun` verdicts, not prose — positive (`i32 → int` faithful widening emits a `HomomorphismWitness`), negative (unbounded `int → i32` `WouldLoseInformation`; a source atom with no target inhabitant `NoTargetCandidate`; an opaque atom lacking per-target realization), and the `emit → ingest` round-trip (normalized equality, explicitly *not* bit-identical unless claimed). Today emission-as-coercion is wired through the translate stage, exercised as such `TestClaim` data under [`src/v2/test/claim/`](src/v2/test/claim/) with fail-closed refusals landing first as the safety floor. The symmetric ingestion side is taking shape via `.dag → IR → .dag` round-trip claims ([`src/v2/test/claim/round_trip/`](src/v2/test/claim/round_trip/)): a wave-1 readiness / shape contract today, with the executable `emit → ingest` normalized-equality compare staged as a follow-up — the claim labels are explicit that they do not yet imply bit-identical fidelity. Full multi-language ingestion breadth and the refinement-aware rule that distinguishes faithful widening from lossy narrowing are likewise later-wave work.
 
 ## Milestone shape
 
@@ -106,7 +106,7 @@ Work is organized around closing the bootstrap loop, not a calendar:
 2. **Compiler pipeline** — tokenize → parse → resolve → infer → emit → translate with fail-closed diagnostics.
 3. **Lenses and tests** — structural `TestClaim` predicates evaluated by generated or substrate runners; lenses over the same Node tree users write.
 4. **Self-host fixed point** — `compiler.dag` emits bit-identical stage0; hand-maintained file count → 0 per [docs/design-pure-bootstrap-zero.md](docs/design-pure-bootstrap-zero.md).
-5. **Public release** — v2 + v4 story documented; binaries via GitHub Releases; public repo snapshot with these root docs.
+5. **Public release** — v2 + v2 story documented; binaries via GitHub Releases; public repo snapshot with these root docs.
 
 ### Nine lanes
 
@@ -114,14 +114,14 @@ Work is organized around closing the bootstrap loop, not a calendar:
 |------|------------|--------------------|
 | **T-PB-B** | `pb_rust_tests_outside_residual_zero` | Pure Bootstrap test floor: hand-maintained Rust tests shrink toward zero as receipts migrate to `.dag` `TestClaim` declarations or generated harness coverage. (The v3 test tree — the original SG-0 census scope, including `sg0_census_test.rs` — was removed with v3; the remaining residual is the v2/tools hand-Rust test surface.) |
 
-Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; that era's detailed operational tracking is not carried in this repo.
+Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v2 scope; that era's detailed operational tracking is not carried in this repo.
 
 ## Active Deferrals
 
 | ID | Target | Dissolution trigger |
 |----|--------|---------------------|
-| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v4.*` and `v2.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when the v4 lens CI rows-fn (invoked from `scripts/v4-affected-tests-gate.sh`) and `.github/ci-floor/v4-rust-full-tree-emit-probe.sh` pass with the skip removed — v4/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
-| `PB-Runtime-External-Toolchain-TestClaims` | Hand-authored Rust boundary tests that spawn external target toolchains while v4 leaf-model verification still uses host runners. | Delete the Rust boundary test when its corresponding `src/v4/test/claim/**` row is exercised by substrate `run_target_verification` / `ExecuteCommand`-style `.dag` `TestClaim` execution with typed verdicts. |
+| `PD-3-DOGFOOD` | `module_skips_direct_call_arg_check` TRANSITION scaffold (A3 / PD-3): prefix skip for `v2.*` and `v1.compiler.*` while bounded direct-call brand-twin rejection is dogfooded on user modules only. | Delete the skip when the v2 lens CI rows-fn (invoked from `scripts/v2-affected-tests-gate.sh`) and `.github/ci-floor/v2-rust-full-tree-emit-probe.sh` pass with the skip removed — v2/compiler substrate compiles through `direct_call_arg_mismatch_diags` with zero false-positive diags. |
+| `PB-Runtime-External-Toolchain-TestClaims` | Hand-authored Rust boundary tests that spawn external target toolchains while v2 leaf-model verification still uses host runners. | Delete the Rust boundary test when its corresponding `src/v2/test/claim/**` row is exercised by substrate `run_target_verification` / `ExecuteCommand`-style `.dag` `TestClaim` execution with typed verdicts. |
 
 ## How to read the tree
 
@@ -135,4 +135,4 @@ The doc map and the single-authority rule live in one place: see [docs/thesis/do
 
 For deep design context: [docs/architecture.md](docs/architecture.md) and essays under [docs/thesis/](docs/thesis/).
 
-Current-state audits live under [docs/audit/](docs/audit/). On information-hiding specifically — how close v4's foundational concepts are to the below-boundary opacity THESIS names (the "touch-once contract") — see [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md): the headline is that opacity holds at substrate atoms and leaks at transparent aliases, and that v4 already has a `.dag` information-hiding primitive (`nominal_opaque`) pointed at zero foundational concepts.
+Current-state audits live under [docs/audit/](docs/audit/). On information-hiding specifically — how close v2's foundational concepts are to the below-boundary opacity THESIS names (the "touch-once contract") — see [docs/audit/v2-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v2-encapsulation-touch-once-contract-2026-06-05.md): the headline is that opacity holds at substrate atoms and leaks at transparent aliases, and that v2 already has a `.dag` information-hiding primitive (`nominal_opaque`) pointed at zero foundational concepts.

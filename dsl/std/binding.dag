@@ -16,7 +16,7 @@
 // access while supporting key-based lookup.
 //
 // This module declares the abstract concept. Compiler-specific bindings
-// (where values are Node) are defined in the compiler layer (v2.std.core).
+// (where values are Node) are defined in the compiler layer (v1.std.core).
 
 module std.binding
 

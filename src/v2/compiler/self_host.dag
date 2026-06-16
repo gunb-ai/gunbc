@@ -1,0 +1,195 @@
+// src/v2/compiler/self_host.dag
+// Scope: self-host fixed-point validation runner shape; whole-compiler runner stays fail-closed
+//   until execution substrate and candidate generation land (stage C).
+// Status: Stage A realized (design-self-host-fixed-point.md §5) — stage_emission_equality is a
+//   real executed structural-equality body over find_witness; bootstrap_roundtrip / fixed_point
+//   sub-checks and self_host_fixed_point_validate remain scaffolded fail-closed (stages B/C).
+
+module v2.compiler.self_host
+
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  node_locus,
+  Outcome,
+  port_locus,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton
+}
+import v2.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
+import v2.std.node { Node, Symbol }
+import v2.std.witness {
+  Holds,
+  StructuralPropertyWitness,
+  Violates,
+  Witness
+}
+
+
+type CoreNode = Node
+
+
+type SourceModels {
+  model_corpus: List<CoreNode>
+}
+
+
+type StructurallyEqual {
+  left: CoreNode
+  right: CoreNode
+}
+
+
+type BootstrapRoundtripEqual {
+  produced_stage: CoreNode
+  expected_stage: CoreNode
+}
+
+
+type FixedPointEqual {
+  emitted_stage: CoreNode
+  reference_stage: CoreNode
+}
+
+
+// 🟢 Stage A realized (design-self-host-fixed-point.md §5/§7) — stage_emission_equality
+// consumes find_witness over the landed exact structural-equality zip-fold preservation rule.
+type StageEmissionEquality = Witness<StructurallyEqual>
+
+
+type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
+
+
+type FixedPointCheck = Witness<FixedPointEqual>
+
+
+type PromotionWitness {
+  candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck
+  candidate_fixed_point_sub_check: FixedPointCheck
+}
+
+
+data self_host_runner_not_realized: Symbol = self_host_runner_not_realized
+data self_host_runner_port: Symbol = self_host_runner_port
+data stage_emission_equality_closed_candidates: Symbol = stage_emission_equality_closed_candidates
+data bootstrap_roundtrip_not_realized: Symbol = bootstrap_roundtrip_not_realized
+data fixed_point_not_realized: Symbol = fixed_point_not_realized
+
+
+fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: self_host_runner_not_realized,
+    at: port_locus(port: self_host_runner_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// 🟡 scaffold shape — all sub-checks return Violates; not yet called from self_host_fixed_point_validate
+// (the main entry point returns fail-closed directly until execution substrate lands).
+fn candidate_promotion_witness(
+  stage1_candidate: CoreNode,
+  reference_stage1: CoreNode
+) -> PromotionWitness {
+  PromotionWitness {
+    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
+      produced_stage: stage1_candidate,
+      expected_stage: reference_stage1
+    ),
+    candidate_fixed_point_sub_check: fixed_point_scaffold(
+      emitted_stage: stage1_candidate,
+      reference_stage: reference_stage1
+    )
+  }
+}
+
+
+fn bootstrap_roundtrip_scaffold(
+  produced_stage: CoreNode,
+  expected_stage: CoreNode
+) -> BootstrapRoundtripCheck {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: bootstrap_roundtrip_not_realized,
+      at: node_locus(node: expected_stage),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+
+fn fixed_point_scaffold(
+  emitted_stage: CoreNode,
+  reference_stage: CoreNode
+) -> FixedPointCheck {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: fixed_point_not_realized,
+      at: node_locus(node: reference_stage),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+
+fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
+  StructuralPropertyWitness {
+    property: stage_emission_equality_closed_candidates,
+    evidence: reference_stage1
+  }
+}
+
+
+// Stage A (design-self-host-fixed-point.md §5): the structural-equality body is realized.
+// The emitted candidate is searched against the reference stage through the landed exact
+// structural-equality zip-fold preservation rule. A match yields Holds carrying the
+// StructurallyEqual witness; a divergent candidate yields Violates with the located
+// find_witness diagnostic (design §3 commitment 3 — divergence is a located diagnostic).
+// self_host_fixed_point_validate stays fail-closed for the whole-compiler path (stage C).
+fn stage_emission_equality(
+  emitted_candidate: CoreNode,
+  reference_stage1: CoreNode
+) -> StageEmissionEquality {
+  match find_witness(
+    source_facts: reference_stage1,
+    candidates: CandidateSet {
+      candidates: [emitted_candidate],
+      closedness: stage_emission_closedness(reference_stage1: reference_stage1)
+    },
+    predicate: PreservationPredicate {
+      algebra: reference_stage1,
+      preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: fw, diagnostics: _ } =>
+      Holds {
+        value: StructurallyEqual {
+          left: reference_stage1,
+          right: fw.candidate
+        }
+      }
+    Rejected { diagnostics: d } =>
+      Violates { diagnostic: d.head }
+  }
+}
+
+
+fn self_host_fixed_point_validate(
+  stage1_candidate: CoreNode,
+  source_models: SourceModels,
+  reference_stage1: CoreNode
+) -> Outcome<PromotionWitness> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+  }
+}

@@ -1,0 +1,146 @@
+// src/v2/extdeps/coordination.dag
+// Scope: Multi-program coordination as effect-typed Bind composition.
+// Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows, with CoordinationEffectKind retained as a tracked bridge until binds reference canonical obligation rows directly.
+
+module v2.extdeps.coordination
+
+import v2.std.collection { List }
+import v2.std.nat { Nat }
+import v2.std.network { NetworkAddress }
+import v2.std.node { Symbol }
+
+type LanguageRef {
+  identity: Symbol
+}
+
+type FrameworkRef {
+  identity: Symbol
+}
+
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+type FrameworkBinding
+  = HostedByFramework { framework: FrameworkRef }
+  | NoFramework
+
+type EndpointRef {
+  identity: Symbol
+}
+
+type Endpoint {
+  identity: EndpointRef,
+  address: NetworkAddress,
+  language: LanguageRef,
+  framework: FrameworkBinding
+}
+
+type SettleBound {
+  steps: Nat
+}
+
+type ConvergeBound {
+  steps: Nat
+}
+
+type RequiredSettleBound {}
+
+type RequiredConvergeBound {}
+
+// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+type ExchangePattern
+  = RequestReply
+  | FireAndForget
+  | StreamExchange
+  | PublishSubscribe
+
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+type SettlementGuarantee<Bound>
+  = ImmediateSettlement
+  | SettlesWithin { bound: Bound }
+
+// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+type ConsistencyGuarantee<Bound>
+  = NoReplicaConvergence
+  | EventuallyConsistent { bound: Bound }
+
+// 🟡 coproduct dissolution — consumer:coordination-bind-obligation-row-authority; dissolves when CoordinationBind references canonical CoordinationEffectObligation rows directly.
+type CoordinationEffectKind
+  = Http
+  | Queue
+  | Stream
+  | PubSub
+
+type CoordinationEffectObligation {
+  effect: CoordinationEffectKind,
+  required_exchange: ExchangePattern,
+  required_settlement: SettlementGuarantee<RequiredSettleBound>,
+  required_consistency: ConsistencyGuarantee<RequiredConvergeBound>
+}
+
+fn coordination_effect_obligation(effect: CoordinationEffectKind) -> CoordinationEffectObligation {
+  match effect {
+    Http => CoordinationEffectObligation {
+      effect: Http,
+      required_exchange: RequestReply,
+      required_settlement: ImmediateSettlement,
+      required_consistency: NoReplicaConvergence
+    }
+    Queue => CoordinationEffectObligation {
+      effect: Queue,
+      required_exchange: FireAndForget,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+    Stream => CoordinationEffectObligation {
+      effect: Stream,
+      required_exchange: StreamExchange,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+    PubSub => CoordinationEffectObligation {
+      effect: PubSub,
+      required_exchange: PublishSubscribe,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+  }
+}
+
+fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
+  [
+    coordination_effect_obligation(effect: Http),
+    coordination_effect_obligation(effect: Queue),
+    coordination_effect_obligation(effect: Stream),
+    coordination_effect_obligation(effect: PubSub)
+  ]
+}
+
+type BindRef {
+  identity: Symbol
+}
+
+type CoordinationBind {
+  bind: BindRef,
+  effect: CoordinationEffectKind
+}
+
+type WireContractFacts {
+  from: EndpointRef,
+  to: EndpointRef,
+  exchange: ExchangePattern,
+  settlement: SettlementGuarantee<SettleBound>,
+  consistency: ConsistencyGuarantee<ConvergeBound>
+}
+
+// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
+type WireContract {
+  facts: WireContractFacts,
+  bind: CoordinationBind
+}
+
+// Anchor: https://en.wikipedia.org/wiki/Distributed_computing
+type DeploymentUnit {
+  endpoints: List<Endpoint>,
+  wire_contracts: List<WireContract>
+}

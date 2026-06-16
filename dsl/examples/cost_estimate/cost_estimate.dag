@@ -15,7 +15,7 @@
 //   - The real `CostEstimate.unit_price: MoneyMicros` is a `Measure<Currency,
 //     Micro>` value; Measure VALUE eval on v2 is blocked by G1 (identifier-
 //     variant type args, #4826) -- the same gap that blocks `ByteSize`/`Hertz`
-//     eval. So a money-carrier value cannot yet be constructed/read on v2.
+//     eval. So a money-carrier value cannot yet be constructed/read on v1.
 //
 //   ⟹ INTERIM PROOF. This witness is NOT a permanent substitute for the real
 //   claim-run. **Real target:** a v2 claim-run over

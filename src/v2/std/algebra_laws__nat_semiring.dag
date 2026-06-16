@@ -1,0 +1,132 @@
+// Scope: TestClaim corpus rows for Nat algebra laws generated from std/nat.dag subjects.
+
+module v2.test.algebra_laws.nat_semiring
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.text { String }
+import v2.std.verification {ManualAnchorAbsent,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatAddRightIdentity,
+  ManualNatMulAnnihilator,
+  ManualNatMulAssociativity,
+  ManualNatMulLeftIdentity,
+  ManualAnchorKey,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  manual_claim_anchor
+}
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn nat_add_law(law: Symbol) -> Node {
+  algebra_law_subject(
+    algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+    inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+    law: law
+  )
+}
+
+fn nat_mul_law(law: Symbol) -> Node {
+  algebra_law_subject(
+    algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+    inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+    law: law
+  )
+}
+
+data nat_add_left_identity_input: Node = nat_add_law(law: ^law_nat_add_left_identity)
+data nat_add_right_identity_input: Node = nat_add_law(law: ^law_nat_add_right_identity)
+data nat_add_associativity_input: Node = nat_add_law(law: ^law_nat_add_associativity)
+data nat_mul_left_identity_input: Node = nat_mul_law(law: ^law_nat_mul_left_identity)
+data nat_mul_annihilator_input: Node = nat_mul_law(law: ^law_nat_mul_annihilator)
+data nat_mul_associativity_input: Node = nat_mul_law(law: ^law_nat_mul_associativity)
+
+data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
+
+fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestClaim {
+  EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
+  }
+}
+
+data claim_nat_add_left_identity: TestClaim = accepted_claim(
+  label: "Nat addition left identity law",
+  anchor: ManualNatAddLeftIdentity,
+  input: nat_add_left_identity_input
+)
+
+data claim_nat_add_right_identity: TestClaim = accepted_claim(
+  label: "Nat addition right identity law",
+  anchor: ManualNatAddRightIdentity,
+  input: nat_add_right_identity_input
+)
+
+data claim_nat_add_associativity: TestClaim = accepted_claim(
+  label: "Nat addition associativity law",
+  anchor: ManualNatAddAssociativity,
+  input: nat_add_associativity_input
+)
+
+data claim_nat_mul_left_identity: TestClaim = accepted_claim(
+  label: "Nat multiplication left identity law",
+  anchor: ManualNatMulLeftIdentity,
+  input: nat_mul_left_identity_input
+)
+
+data claim_nat_mul_annihilator: TestClaim = accepted_claim(
+  label: "Nat multiplication annihilator law",
+  anchor: ManualNatMulAnnihilator,
+  input: nat_mul_annihilator_input
+)
+
+data claim_nat_mul_associativity: TestClaim = accepted_claim(
+  label: "Nat multiplication associativity law",
+  anchor: ManualNatMulAssociativity,
+  input: nat_mul_associativity_input
+)
+
+data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
+  label: "Nat addition wrong identity falsifies law claim",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_nat_add_wrong_identity,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^algebra_law_violation_reason,
+        at: node_locus(node: falsification_nat_add_wrong_identity),
+        correction: Suggested { node: nat_add_left_identity_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

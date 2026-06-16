@@ -1,0 +1,160 @@
+// src/v2/std/provenance.dag
+// Scope: source-text provenance substrate (T-8 / PROV A-pivot).
+// Status: Phase 1+2 landed — on-tree Node.span dissolved (#4604 revert); off-tree SpanIndex
+//   (OccurrenceId → OriginEvent) carrier + record/lookup/merge substrate
+//   (design-provenance-span.md §4.5).
+
+module v2.std.provenance
+
+import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  ByteRange,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Textual,
+  Unavailable,
+  port_locus
+}
+import v2.std.node { Node, OccurrenceId, Symbol }
+import v2.std.occurrence_id { occurrence_id_eq }
+import v2.std.witness { Holds, Violates, Witness }
+
+// --- A-pivot off-tree provenance (design-provenance-span.md §4.5) ---
+
+type OriginEvent
+  = FromSource { locus: Locus }
+  | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
+  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> }
+
+fn origin_event_from_source(locus: Locus) -> OriginEvent {
+  FromSource { locus: locus }
+}
+
+type SpanIndexEntry {
+  occurrence: OccurrenceId
+  event: OriginEvent
+}
+
+// List-backed index — linear lookup/merge (design-provenance-span.md §4.4 wave-1 scale).
+type SpanIndex {
+  entries: FreeMonoid<SpanIndexEntry>
+}
+
+fn span_index_empty() -> SpanIndex {
+  SpanIndex { entries: Empty }
+}
+
+fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
+  SpanIndex {
+    entries: list_snoc_item(
+      xs: index.entries,
+      item: SpanIndexEntry { occurrence: id, event: event }
+    )
+  }
+}
+
+data span_index_occurrence_absent: Symbol = span_index_occurrence_absent
+
+fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: span_index_occurrence_absent,
+    at: port_locus(port: ^span_index_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_lookup_entries(
+  entries: FreeMonoid<SpanIndexEntry>,
+  id: OccurrenceId
+) -> Witness<OriginEvent> {
+  match entries {
+    Empty => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+    Cons { head: head, tail: rest } =>
+      if occurrence_id_eq(left: head.occurrence, right: id) {
+        Holds { value: head.event }
+      } else {
+        span_index_lookup_entries(entries: rest, id: id)
+      }
+  }
+}
+
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  span_index_lookup_entries(entries: index.entries, id: id)
+}
+
+fn span_index_merge_entries(
+  base: FreeMonoid<SpanIndexEntry>,
+  incoming: FreeMonoid<SpanIndexEntry>
+) -> FreeMonoid<SpanIndexEntry> {
+  fold_list(
+    xs: incoming,
+    empty: base,
+    cons: fn(acc, entry) {
+      match span_index_lookup_entries(entries: acc, id: entry.occurrence) {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+// Wave-2: compose memoized parse-cell indices (left wins on id collision).
+fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
+  SpanIndex {
+    entries: span_index_merge_entries(base: base.entries, incoming: incoming.entries)
+  }
+}
+
+data span_index_origin_chain_exhausted: Symbol = span_index_origin_chain_exhausted
+
+fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: span_index_origin_chain_exhausted,
+    at: port_locus(port: ^span_index_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_resolve_textual_locus_from_ids(
+  index: SpanIndex,
+  ids: List<OccurrenceId>
+) -> Witness<Locus> {
+  fold_list(
+    xs: ids,
+    empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
+    cons: fn(acc, id) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          span_index_resolve_textual_locus(index: index, id: id)
+      }
+    }
+  )
+}
+
+// Walk DerivedBy/GeneratedBy chains to the source-text frontier (design-provenance-span.md §4.4).
+fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus } =>
+          match locus {
+            Textual { file: _, extent: _ } => Holds { value: locus }
+            _ => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+          }
+        DerivedBy { producer: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+        GeneratedBy { generator: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
+  NodeArtifactProvenance { node: node, artifact: artifact }
+}

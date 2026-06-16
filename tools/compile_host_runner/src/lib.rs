@@ -1,6 +1,6 @@
-//! v4 candidate-B host-compile bridge — live `v2-compiler compile` transport row.
+//! v2 candidate-B host-compile bridge — live `v1-compiler compile` transport row.
 //!
-//! **Modeled authority (future):** `src/v4/compiler/compile_host.dag` (`run_compile_host_v2`).
+//! **Modeled authority (future):** `src/v2/compiler/compile_host.dag` (`run_compile_host_v2`).
 //! Substrate `.dag` body stays `transport_not_wired` until eval intercept lands (operator HOLD).
 //!
 //! **Host boundary (INVARIANTS §P2):** outcomes are typed carriers — setup failure is
@@ -15,7 +15,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Wall-clock bound for `v2-compiler compile`.
+/// Wall-clock bound for `v1-compiler compile`.
 pub const HOST_COMPILE_TIMEOUT: Duration = Duration::from_secs(300);
 /// Per-stream capture cap (stdout and stderr each).
 pub const HOST_STREAM_BYTE_CAP: usize = 1 << 20;
@@ -91,7 +91,7 @@ pub enum HostExitOutcome {
     Rejected(HostSetupFailure),
 }
 
-/// Mirrors future `v4.std.host_run.HostExit` — typed setup vs logical exit separation.
+/// Mirrors future `v2.std.host_run.HostExit` — typed setup vs logical exit separation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostExit {
     pub outcome: HostExitOutcome,
@@ -374,7 +374,7 @@ pub fn default_work_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("{prefix}_{}", std::process::id()))
 }
 
-/// Run live `v2-compiler compile` (gunbc binary) and return a typed receipt.
+/// Run live `v1-compiler compile` (gunbc binary) and return a typed receipt.
 pub fn run_compile_host_v2(
     compiler_bin: &Path,
     inputs: &CompileHostTransportInputs,

@@ -1,0 +1,90 @@
+// v2 normalization pass -- structural graph rewrite between resolve and infer.
+//
+// P3.7: arity bridge deleted. Arity enforcement via hardcoded
+// parameterized_type_arity is removed. Arity is now structural:
+// type declarations carry params, and generic substitution in
+// resolve_node_bounded checks declaration params at resolution time.
+//
+// The normalizer validates structural invariants that should hold
+// after resolve and before infer:
+//   - No bare container types (List, Map, Set, etc. with 0 type parameters)
+
+module v1.compiler.normalize
+
+import v1.std.core {
+  Node, ErrorNode, NewlineIndex,
+  InferredNode, Resolved, CompilerError,
+  ExprData, NoExprData,
+  make_error_node, module_items, authored_name_at,
+  NoConnective, ArityMismatch
+}
+import v1.compiler.resolve { ModuleGraph, ResolvedModule }
+import std.types { container_expected_arity }
+
+// =========================================================================
+// Output types
+// =========================================================================
+
+type NormalizeResult {
+  graph: ModuleGraph
+  diagnostics: List<ErrorNode>
+}
+
+// =========================================================================
+// Bare container detection
+// =========================================================================
+
+fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
+  let is_expr = match n.expr_data { NoExprData => false  _ => true }
+  let nname = authored_name_at(source_indices: source_indices, node: n)
+  let self_diags = if is_expr { [] } else { match container_expected_arity(name: nname) {
+    Present { value: expected } =>
+      if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
+        [make_error_node(
+          diagnostic: ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
+          module_name: module_name
+        )]
+      } else { [] }
+    Absent => []
+  } }
+  let child_diags = flat_map(n.children, c => check_bare_containers(n: c, module_name: module_name, source_indices: source_indices))
+  let param_diags = flat_map(n.params, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
+  let type_ann_diags = match n.type_annotation {
+    Present { value: ta } => check_bare_containers(n: ta, module_name: module_name, source_indices: source_indices)
+    Absent => []
+  }
+  let body_diags = match n.body {
+    Present { value: b } => check_bare_containers(n: b, module_name: module_name, source_indices: source_indices)
+    Absent => []
+  }
+  let inferred_diags = if (n.params |> count) > 0 {
+    []
+  } else {
+    match n.inferred {
+      Present { value: inf } => match inf {
+        Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
+        _ => []
+      }
+      Absent => []
+    }
+  }
+  let uses_diags = flat_map(n.uses, u => check_bare_containers(n: u, module_name: module_name, source_indices: source_indices))
+  let prop_diags = flat_map(n.properties, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
+  flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
+}
+
+// =========================================================================
+// Normalization entry point
+// =========================================================================
+
+fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
+  let diags = flat_map(graph.modules, m => {
+    let items = module_items(n: m.module)
+    flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
+  })
+  NormalizeResult {
+    graph: graph,
+    diagnostics: diags
+  }
+}

@@ -2,12 +2,12 @@
 resolver = "2"
 exclude = [".stage1"]
 members = [
-    "src/v2/stage0",
-    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v2.compiler.workspace_members)
-    "src/v2/stage0_core",
-    "src/v2/stage0_emit_core",
+    "src/v1/stage0",
+    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)
+    "src/v1/stage0_core",
+    "src/v1/stage0_emit_core",
     # END generated stage0 crate members
-    "src/v2/tests",
+    "src/v1/tests",
     "tools/ci_affected_components",
     "tools/ci_timings_collector",
     "tools/ci_claim_gate",
@@ -49,9 +49,9 @@ debug = 0
 # Stage0 generated code uses debug_assert!(Rc::strong_count(...) == 1) to
 # verify ownership for in-place mutation. These fire on shared Rc (expected
 # in interpreter paths); the fallback clone is correct. This suppresses ALL
-# debug_assert! in v2-compiler, not just ownership checks — acceptable
+# debug_assert! in v1-compiler, not just ownership checks — acceptable
 # because stage0 is generated code with no hand-written debug assertions.
-[profile.dev.package.v2-compiler]
+[profile.dev.package.v1-compiler]
 debug-assertions = false
 opt-level = 2
 

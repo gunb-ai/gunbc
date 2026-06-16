@@ -85,9 +85,9 @@ fn u64_le_bytes(value: Int) -> List<Int> {
   let b2 = u8_le_byte(v2)
   let v3 = v2 / 256
   let b3 = u8_le_byte(v3)
-  let v4 = v3 / 256
-  let b4 = u8_le_byte(v4)
-  let v5 = v4 / 256
+  let v2 = v3 / 256
+  let b4 = u8_le_byte(v2)
+  let v5 = v2 / 256
   let b5 = u8_le_byte(v5)
   let v6 = v5 / 256
   let b6 = u8_le_byte(v6)

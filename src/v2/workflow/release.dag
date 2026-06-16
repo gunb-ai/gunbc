@@ -1,0 +1,625 @@
+// src/v2/workflow/release.dag
+// Scope: GitHub Releases binary distribution AS DATA (RELEASE_TODO.md §5 Phase 1a).
+// Status: filled — semantic authority for tag trigger, six-target matrix (musl linux x2,
+//   darwin x2, windows msvc x2), published triples + GH Release artifact basenames (`.exe` on
+//   windows rows), musl cross + native darwin/windows builds, GH Release upload intent.
+//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (TASKS T-24; note
+//   `src/v2/workflow/ci.dag` was deleted in PR #4543 — CI is hand-authored directly in ci.yml, so
+//   release is the remaining workflow with a deferred-YAML posture). `.github/workflows/release.yml` is a hand-synced
+//   projection until emission lands. End-user install moves to `install.dag` (Phase 1b).
+
+module v2.workflow.release_dist
+
+import v2.std.node { Symbol }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NoCorrectionReason,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton
+}
+import v2.std.algebra {
+  count_equal,
+  count_where,
+  filter,
+  for_all,
+  length,
+  unique
+}
+// 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-synced command surface; forbidden: adding release transport variants outside this coproduct + `release_pipeline`.
+type ReleaseCommand
+  = CrossMuslGunbcBuild { target: String }
+  | NativeDarwinGunbcBuild { target: String }
+  | NativeWindowsGunbcBuild { target: String }
+  | UploadGunbcMatrixArtifact
+  | PublishGitHubRelease
+
+type ReleaseJob {
+  id: Symbol
+  command: ReleaseCommand
+  needs: List<Symbol>
+}
+
+type ReleaseGate {
+  id: Symbol
+  job: Symbol
+}
+
+type ReleasePipeline {
+  jobs: List<ReleaseJob>
+  gates: List<ReleaseGate>
+}
+
+type ReleaseMatrixRow {
+  target: String
+  runner: String
+  cross: Bool
+  artifact_basename: String
+}
+
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v2.workflow.release_dist release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
+type ReleaseLiveWorkflowSignal {
+  workflow_name: String
+  tag_pattern: String
+  build_job_name: String
+  publish_job_name: String
+  cross_install_step_name: String
+  aarch64_strip_step_name: String
+  build_gunbc_step_name: String
+  upload_artifact_step_name: String
+  create_release_step_name: String
+  gh_release_action: String
+  cargo_package: String
+  cargo_bin: String
+  cross_version: String
+}
+
+data release_build_matrix: List<ReleaseMatrixRow> = [
+  {
+    target: "x86_64-unknown-linux-musl"
+    runner: "ubuntu-24.04"
+    cross: true
+    artifact_basename: "gunbc-x86_64-unknown-linux-musl"
+  },
+  {
+    target: "aarch64-unknown-linux-musl"
+    runner: "ubuntu-24.04"
+    cross: true
+    artifact_basename: "gunbc-aarch64-unknown-linux-musl"
+  },
+  {
+    target: "x86_64-apple-darwin"
+    runner: "macos-15-intel"
+    cross: false
+    artifact_basename: "gunbc-x86_64-apple-darwin"
+  },
+  {
+    target: "aarch64-apple-darwin"
+    runner: "macos-14"
+    cross: false
+    artifact_basename: "gunbc-aarch64-apple-darwin"
+  },
+  {
+    target: "x86_64-pc-windows-msvc"
+    runner: "windows-2022"
+    cross: false
+    artifact_basename: "gunbc-x86_64-pc-windows-msvc.exe"
+  },
+  {
+    target: "aarch64-pc-windows-msvc"
+    runner: "windows-11-arm"
+    cross: false
+    artifact_basename: "gunbc-aarch64-pc-windows-msvc.exe"
+  }
+]
+
+fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    concat(acc, [row.target])
+  })
+}
+
+fn release_matrix_row_artifact_basenames(rows: List<ReleaseMatrixRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    concat(acc, [row.artifact_basename])
+  })
+}
+
+// Published GH Release rustc target triples — projection of `release_build_matrix` row targets.
+// `install.dag` (Phase 1b) references this list; do not duplicate literals in install shell.
+data release_published_target_triples: List<String> = release_matrix_row_targets(rows: release_build_matrix)
+
+// Published GH Release upload basenames — projection of matrix `artifact_basename` (`.exe` policy
+// is modeled per row, not hardcoded in workflow shell branches).
+data release_published_artifact_names: List<String> = release_matrix_row_artifact_basenames(rows: release_build_matrix)
+
+// `release_pipeline` jobs are hand-expanded (M1 interim; mirror `ci.dag` `ci_pipeline`) until
+// YamlStatic derives them from `release_build_matrix`. Target-bearing authority is the matrix:
+// `release_pipeline_jobs_cover_matrix` + `release_matrix_upload_jobs_present` +
+// `release_publish_job_drains_matrix_uploads` + `release_build_commands_use_matrix_targets_only`
+// fail-closed against drift.
+data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
+  workflow_name: "release"
+  tag_pattern: "v*"
+  build_job_name: "build"
+  publish_job_name: "release"
+  cross_install_step_name: "Install cross"
+  aarch64_strip_step_name: "Install aarch64 strip (musl cross artifacts on x86 runner)"
+  build_gunbc_step_name: "Build gunbc"
+  upload_artifact_step_name: "Upload binary artifact"
+  create_release_step_name: "Create GitHub Release"
+  gh_release_action: "softprops/action-gh-release@v2"
+  cargo_package: "v1-compiler"
+  cargo_bin: "gunbc"
+  cross_version: "0.2.5"
+}
+
+data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p: ReleasePipeline {
+  jobs: [
+    ReleaseJob {
+      id: ^release_build_musl_x86,
+      command: CrossMuslGunbcBuild { target: "x86_64-unknown-linux-musl" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_build_musl_aarch64,
+      command: CrossMuslGunbcBuild { target: "aarch64-unknown-linux-musl" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_build_darwin_x86,
+      command: NativeDarwinGunbcBuild { target: "x86_64-apple-darwin" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_build_darwin_aarch64,
+      command: NativeDarwinGunbcBuild { target: "aarch64-apple-darwin" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_build_windows_x86,
+      command: NativeWindowsGunbcBuild { target: "x86_64-pc-windows-msvc" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_build_windows_aarch64,
+      command: NativeWindowsGunbcBuild { target: "aarch64-pc-windows-msvc" },
+      needs: []
+    },
+    ReleaseJob {
+      id: ^release_upload_musl_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_musl_x86]
+    },
+    ReleaseJob {
+      id: ^release_upload_musl_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_musl_aarch64]
+    },
+    ReleaseJob {
+      id: ^release_upload_darwin_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_darwin_x86]
+    },
+    ReleaseJob {
+      id: ^release_upload_darwin_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_darwin_aarch64]
+    },
+    ReleaseJob {
+      id: ^release_upload_windows_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_windows_x86]
+    },
+    ReleaseJob {
+      id: ^release_upload_windows_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [^release_build_windows_aarch64]
+    },
+    ReleaseJob {
+      id: ^release_publish_execution,
+      command: PublishGitHubRelease,
+      needs: [
+        ^release_upload_musl_x86,
+        ^release_upload_musl_aarch64,
+        ^release_upload_darwin_x86,
+        ^release_upload_darwin_aarch64,
+        ^release_upload_windows_x86,
+        ^release_upload_windows_aarch64
+      ]
+    }
+  ],
+  gates: [
+    ReleaseGate { id: ^release_build_musl_x86_signal, job: ^release_build_musl_x86 },
+    ReleaseGate { id: ^release_build_musl_aarch64_signal, job: ^release_build_musl_aarch64 },
+    ReleaseGate { id: ^release_build_darwin_x86_signal, job: ^release_build_darwin_x86 },
+    ReleaseGate { id: ^release_build_darwin_aarch64_signal, job: ^release_build_darwin_aarch64 },
+    ReleaseGate { id: ^release_build_windows_x86_signal, job: ^release_build_windows_x86 },
+    ReleaseGate { id: ^release_build_windows_aarch64_signal, job: ^release_build_windows_aarch64 },
+    ReleaseGate { id: ^release_upload_musl_x86_signal, job: ^release_upload_musl_x86 },
+    ReleaseGate { id: ^release_upload_musl_aarch64_signal, job: ^release_upload_musl_aarch64 },
+    ReleaseGate { id: ^release_upload_darwin_x86_signal, job: ^release_upload_darwin_x86 },
+    ReleaseGate { id: ^release_upload_darwin_aarch64_signal, job: ^release_upload_darwin_aarch64 },
+    ReleaseGate { id: ^release_upload_windows_x86_signal, job: ^release_upload_windows_x86 },
+    ReleaseGate { id: ^release_upload_windows_aarch64_signal, job: ^release_upload_windows_aarch64 },
+    ReleaseGate { id: ^release_publish_signal, job: ^release_publish_execution }
+  ]
+})
+
+// Path prefix for `ci.dag` `ci_changed_path_affects_workflow_policy` when T-24 (#3853) lands.
+data release_workflow_policy_path_prefix: String = "src/v2/workflow/release"
+fn release_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: ^release_workflow_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn release_job_ids(jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    concat([j.id], acc)
+  })
+}
+
+fn release_gate_ids(gates: List<ReleaseGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.id], acc)
+  })
+}
+
+fn release_gate_job_ids(gates: List<ReleaseGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.job], acc)
+  })
+}
+
+fn release_member(s: Symbol, ids: List<Symbol>) -> Bool {
+  count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
+}
+
+fn release_symbol_resolves(s: Symbol, jobs: List<ReleaseJob>) -> Bool {
+  release_member(s: s, ids: release_job_ids(jobs: jobs))
+}
+
+fn release_all_job_ids_unique(jobs: List<ReleaseJob>) -> Bool {
+  unique(xs: release_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
+}
+
+fn release_all_gate_ids_unique(gates: List<ReleaseGate>) -> Bool {
+  unique(xs: release_gate_ids(gates: gates), eq: fn(left, right) { left == right })
+}
+
+fn release_all_needs_resolve(jobs: List<ReleaseJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && for_all(xs: j.needs, predicate: fn(n) {
+      release_symbol_resolves(s: n, jobs: jobs)
+    })
+  })
+}
+
+fn release_all_gate_jobs_resolve(gates: List<ReleaseGate>, jobs: List<ReleaseJob>) -> Bool {
+  for_all(xs: release_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    release_symbol_resolves(s: job_sym, jobs: jobs)
+  })
+}
+
+fn release_job_needs(id: Symbol, jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    if j.id == id { j.needs } else { acc }
+  })
+}
+
+fn release_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<ReleaseJob>) -> Bool {
+  count_where(xs: release_job_needs(id: id, jobs: jobs), predicate: fn(n) {
+    release_member(s: n, ids: remaining)
+  }) != 0
+}
+
+fn release_eliminate_pass(remaining: List<Symbol>, jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(remaining, init: [], f: fn(acc, id) {
+    if release_blocked(id: id, remaining: remaining, jobs: jobs) {
+      concat([id], acc)
+    } else {
+      acc
+    }
+  })
+}
+
+fn release_kahn_fixpoint(jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: map(jobs, fn(j) { j.id }), f: fn(remaining, job) {
+    release_eliminate_pass(remaining: remaining, jobs: jobs)
+  })
+}
+
+fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
+  length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
+}
+
+// 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `(target, runner, cross)`; forbidden: new supported platform rows without disposition.
+fn release_matrix_row_tuple_well_formed(row: ReleaseMatrixRow) -> Bool {
+  (row.target == "x86_64-unknown-linux-musl"
+    && row.runner == "ubuntu-24.04"
+    && row.cross == true
+    && row.artifact_basename == "gunbc-x86_64-unknown-linux-musl")
+    || (row.target == "aarch64-unknown-linux-musl"
+      && row.runner == "ubuntu-24.04"
+      && row.cross == true
+      && row.artifact_basename == "gunbc-aarch64-unknown-linux-musl")
+    || (row.target == "x86_64-apple-darwin"
+      && row.runner == "macos-15-intel"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-x86_64-apple-darwin")
+    || (row.target == "aarch64-apple-darwin"
+      && row.runner == "macos-14"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-aarch64-apple-darwin")
+    || (row.target == "x86_64-pc-windows-msvc"
+      && row.runner == "windows-2022"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-x86_64-pc-windows-msvc.exe")
+    || (row.target == "aarch64-pc-windows-msvc"
+      && row.runner == "windows-11-arm"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-aarch64-pc-windows-msvc.exe")
+}
+
+fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
+  unique(xs: release_matrix_row_targets(rows: rows), eq: fn(left, right) { left == right })
+    && unique(xs: release_matrix_row_artifact_basenames(rows: rows), eq: fn(left, right) { left == right })
+    && length(xs: rows) == 6
+    && for_all(xs: rows, predicate: fn(row) {
+      release_matrix_row_tuple_well_formed(row: row)
+    })
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` `ci_command_authority_ok` / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-rolled `ReleaseCommand` property helpers; forbidden: new `match` predicates over `ReleaseCommand` without disposition.
+fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: t } =>
+      t == "x86_64-unknown-linux-musl" || t == "aarch64-unknown-linux-musl"
+    NativeDarwinGunbcBuild { target: t } =>
+      t == "x86_64-apple-darwin" || t == "aarch64-apple-darwin"
+    NativeWindowsGunbcBuild { target: t } =>
+      t == "x86_64-pc-windows-msvc" || t == "aarch64-pc-windows-msvc"
+    UploadGunbcMatrixArtifact => true
+    PublishGitHubRelease => true
+  }
+}
+
+fn release_all_commands_authority_ok(jobs: List<ReleaseJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && release_command_authority_ok(c: j.command)
+  })
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (same trigger as `ReleaseCommand` coproduct).
+fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: t } => t == target
+    NativeDarwinGunbcBuild { target: t } => t == target
+    NativeWindowsGunbcBuild { target: t } => t == target
+    UploadGunbcMatrixArtifact => false
+    PublishGitHubRelease => false
+  }
+}
+
+fn release_job_builds_matrix_target(j: ReleaseJob, target: String) -> Bool {
+  release_command_builds_target(c: j.command, target: target)
+}
+
+fn release_jobs_cover_matrix_target(jobs: List<ReleaseJob>, target: String) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_job_builds_matrix_target(j: j, target: target)
+  }) != 0
+}
+
+fn release_matrix_row_covers_pipeline(row: ReleaseMatrixRow, jobs: List<ReleaseJob>) -> Bool {
+  release_jobs_cover_matrix_target(jobs: jobs, target: row.target)
+}
+
+fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  for_all(xs: rows, predicate: fn(row) {
+    release_matrix_row_covers_pipeline(row: row, jobs: jobs)
+  })
+}
+
+fn release_matrix_row_matches_target(row: ReleaseMatrixRow, target: String) -> Bool {
+  row.target == target
+}
+
+fn release_target_in_matrix(target: String, rows: List<ReleaseMatrixRow>) -> Bool {
+  count_where(xs: rows, predicate: fn(row) {
+    release_matrix_row_matches_target(row: row, target: target)
+  }) != 0
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+fn release_command_is_build(c: ReleaseCommand) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: _ } => true
+    NativeDarwinGunbcBuild { target: _ } => true
+    NativeWindowsGunbcBuild { target: _ } => true
+    UploadGunbcMatrixArtifact => false
+    PublishGitHubRelease => false
+  }
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (per-job `ReleaseCommand` projection in well-formedness).
+fn release_job_command_in_matrix(j: ReleaseJob, rows: List<ReleaseMatrixRow>) -> Bool {
+  match j.command {
+    CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    NativeWindowsGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    UploadGunbcMatrixArtifact => true
+    PublishGitHubRelease => true
+  }
+}
+
+fn release_all_build_targets_in_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  for_all(xs: jobs, predicate: fn(j) {
+    release_job_command_in_matrix(j: j, rows: rows)
+  })
+}
+
+fn release_jobs_build_matrix_target_once(jobs: List<ReleaseJob>, target: String) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_job_builds_matrix_target(j: j, target: target)
+  }) == 1
+}
+
+fn release_matrix_row_build_target_once(row: ReleaseMatrixRow, jobs: List<ReleaseJob>) -> Bool {
+  release_jobs_build_matrix_target_once(jobs: jobs, target: row.target)
+}
+
+fn release_job_is_build(j: ReleaseJob) -> Bool {
+  release_command_is_build(c: j.command)
+}
+
+// Hand-expanded pipeline literals must not drift from `release_build_matrix` (single target authority).
+fn release_build_commands_use_matrix_targets_only(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  release_all_build_targets_in_matrix(jobs: jobs, rows: rows)
+    && for_all(xs: rows, predicate: fn(row) {
+      release_matrix_row_build_target_once(row: row, jobs: jobs)
+    })
+    && length(xs: rows) == count_where(xs: jobs, predicate: fn(j) {
+      release_job_is_build(j: j)
+    })
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (mechanical `is_upload` over `ReleaseCommand`; same bounded posture as `ci.dag`).
+fn release_command_is_upload(c: ReleaseCommand) -> Bool {
+  match c {
+    UploadGunbcMatrixArtifact => true
+    CrossMuslGunbcBuild { target: _ } => false
+    NativeDarwinGunbcBuild { target: _ } => false
+    NativeWindowsGunbcBuild { target: _ } => false
+    PublishGitHubRelease => false
+  }
+}
+
+fn release_job_need_builds_target(b: ReleaseJob, need: Symbol, target: String) -> Bool {
+  b.id == need && release_job_builds_matrix_target(j: b, target: target)
+}
+
+fn release_upload_needs_build_for_target(j: ReleaseJob, jobs: List<ReleaseJob>, target: String) -> Bool {
+  release_command_is_upload(c: j.command)
+    && length(xs: j.needs) != 0
+    && for_all(xs: j.needs, predicate: fn(need) {
+      count_where(xs: jobs, predicate: fn(b) {
+        release_job_need_builds_target(b: b, need: need, target: target)
+      }) != 0
+    })
+}
+
+fn release_matrix_row_has_upload_drain(jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_upload_needs_build_for_target(j: j, jobs: jobs, target: row.target)
+  }) != 0
+}
+
+fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  for_all(xs: rows, predicate: fn(row) {
+    release_matrix_row_has_upload_drain(jobs: jobs, row: row)
+  })
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+fn release_command_is_publish(c: ReleaseCommand) -> Bool {
+  match c {
+    PublishGitHubRelease => true
+    CrossMuslGunbcBuild { target: _ } => false
+    NativeDarwinGunbcBuild { target: _ } => false
+    NativeWindowsGunbcBuild { target: _ } => false
+    UploadGunbcMatrixArtifact => false
+  }
+}
+
+fn release_job_is_publish(j: ReleaseJob) -> Bool {
+  release_command_is_publish(c: j.command)
+}
+
+fn release_pipeline_has_exactly_one_publish_job(jobs: List<ReleaseJob>) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_job_is_publish(j: j)
+  }) == 1
+}
+
+fn release_upload_drains_publish_row(u: ReleaseJob, publish: ReleaseJob, jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  release_upload_needs_build_for_target(j: u, jobs: jobs, target: row.target)
+    && release_member(s: u.id, ids: publish.needs)
+}
+
+fn release_publish_needs_upload_for_row(publish: ReleaseJob, jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  count_where(xs: jobs, predicate: fn(u) {
+    release_upload_drains_publish_row(u: u, publish: publish, jobs: jobs, row: row)
+  }) != 0
+}
+
+fn release_publish_job_drains_matrix_uploads(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  release_pipeline_has_exactly_one_publish_job(jobs: jobs)
+    && fold(jobs, init: false, f: fn(acc, j) {
+      if release_job_is_publish(j: j) {
+        for_all(xs: rows, predicate: fn(row) {
+          release_publish_needs_upload_for_row(publish: j, jobs: jobs, row: row)
+        })
+      } else {
+        acc
+      }
+    })
+}
+
+fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> {
+  if release_all_job_ids_unique(jobs: p.jobs) {
+    if release_all_gate_ids_unique(gates: p.gates) {
+      if release_all_needs_resolve(jobs: p.jobs) {
+        if release_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
+          if release_acyclic(jobs: p.jobs) {
+            if release_all_commands_authority_ok(jobs: p.jobs) {
+              if release_matrix_targets_well_formed(rows: release_build_matrix) {
+                if release_pipeline_jobs_cover_matrix(jobs: p.jobs, rows: release_build_matrix) {
+                  if release_build_commands_use_matrix_targets_only(jobs: p.jobs, rows: release_build_matrix) {
+                    if release_matrix_upload_jobs_present(jobs: p.jobs, rows: release_build_matrix) {
+                      if release_publish_job_drains_matrix_uploads(jobs: p.jobs, rows: release_build_matrix) {
+                        Accepted { value: p, diagnostics: None }
+                      } else {
+                        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_publish_drain_gap)) }
+                      }
+                    } else {
+                      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_upload_drain_gap)) }
+                    }
+                  } else {
+                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_build_target_drift_gap)) }
+                  }
+                } else {
+                  Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_build_coverage_gap)) }
+                }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_invalid)) }
+              }
+            } else {
+              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_command_authority_violation)) }
+            }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dependency_cycle)) }
+          }
+        } else {
+          Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dangling_reference)) }
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dangling_reference)) }
+      }
+    } else {
+      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_duplicate_gate_id)) }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_duplicate_job_id)) }
+  }
+}
