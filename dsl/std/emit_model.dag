@@ -12,6 +12,19 @@ type PlaceholderConvention
   = IndexedArgs
   | NamedArg
 
+// SimpleMethodSpec — the single authority shape for a flat-templatable
+// algebra method on one target: a `{recv}`/`{arg}` render template plus
+// the `wraps_result` flag (Rust Rc-wrapping; false for Python/Go). Each
+// per-target `*_simple_method_specs` list in `extdeps/languages/*/emit.dag`
+// inhabits this type and derives its `*_method_templates*()` map(s) from it
+// (the #5039 pattern, extended to Python/Go). Lives here, in std, so all
+// three targets share one type rather than forking it per file.
+type SimpleMethodSpec {
+  method_name: String
+  template: String
+  wraps_result: Bool
+}
+
 // MethodTemplateContract (P1 substrate).
 type MethodTemplateContract {
   dag_method: DeclarationRef

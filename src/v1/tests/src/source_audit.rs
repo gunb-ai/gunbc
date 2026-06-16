@@ -1192,6 +1192,105 @@ fn method_templates_derived_from_specs() {
 }
 
 #[test]
+fn python_flat_method_templates_derived_from_specs() {
+    // python_method_templates_flat() is derived from python_simple_method_specs
+    // — the single authority (the #5039 Rust pattern, extended to Python).
+    use v1_compiler::extdeps_languages_python_emit::{
+        python_method_templates, python_method_templates_flat, python_simple_method_specs,
+    };
+
+    let specs = python_simple_method_specs();
+    let flat = python_method_templates_flat();
+
+    assert_eq!(
+        specs.len(),
+        flat.len(),
+        "spec count ({}) != flat template map count ({})",
+        specs.len(),
+        flat.len()
+    );
+    for spec in specs.iter() {
+        match flat.get(&spec.method_name) {
+            Some(tmpl) => assert_eq!(
+                *tmpl, spec.template,
+                "template mismatch for '{}': spec='{}', flat='{}'",
+                spec.method_name, spec.template, tmpl
+            ),
+            None => panic!(
+                "SimpleMethodSpec '{}' missing from python_method_templates_flat()",
+                spec.method_name
+            ),
+        }
+    }
+
+    // The binary+ runtime-bridged methods must NOT be in the flat map — they
+    // route through the runtime bridge so every argument is forwarded. A flat
+    // `functools.reduce({arg},{recv})` template would drop fold's `f`/`init`
+    // (the regression this consolidation must not reintroduce).
+    for m in ["map", "fold", "concat"] {
+        assert!(
+            !flat.contains_key(m),
+            "'{m}' must be absent from python_method_templates_flat() (it routes via the runtime bridge)"
+        );
+    }
+    // ...but the v2-legacy superset re-adds them.
+    let superset = python_method_templates();
+    for m in ["map", "fold", "concat"] {
+        assert!(
+            superset.contains_key(m),
+            "'{m}' must be present in the python_method_templates() superset"
+        );
+    }
+    assert_eq!(superset.len(), flat.len() + 3);
+}
+
+#[test]
+fn go_flat_method_templates_derived_from_specs() {
+    use v1_compiler::extdeps_languages_go_emit::{
+        go_method_templates, go_method_templates_flat, go_simple_method_specs,
+    };
+
+    let specs = go_simple_method_specs();
+    let flat = go_method_templates_flat();
+
+    assert_eq!(
+        specs.len(),
+        flat.len(),
+        "spec count ({}) != flat template map count ({})",
+        specs.len(),
+        flat.len()
+    );
+    for spec in specs.iter() {
+        match flat.get(&spec.method_name) {
+            Some(tmpl) => assert_eq!(
+                *tmpl, spec.template,
+                "template mismatch for '{}': spec='{}', flat='{}'",
+                spec.method_name, spec.template, tmpl
+            ),
+            None => panic!(
+                "SimpleMethodSpec '{}' missing from go_method_templates_flat()",
+                spec.method_name
+            ),
+        }
+    }
+
+    for m in ["map", "fold", "concat"] {
+        assert!(
+            !flat.contains_key(m),
+            "'{m}' must be absent from go_method_templates_flat() (it routes via the runtime bridge)"
+        );
+    }
+    let superset = go_method_templates();
+    for m in ["map", "fold", "concat"] {
+        assert!(
+            superset.contains_key(m),
+            "'{m}' must be present in the go_method_templates() superset"
+        );
+    }
+    assert_eq!(superset.len(), flat.len() + 3);
+}
+
+#[test]
 fn is_copy_checkpoint_parity() {
     // Derive all assertions from rust_type_checkpoints — single authority.
     // Every checkpoint must return Some(is_copy), never None.
