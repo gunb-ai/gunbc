@@ -274,14 +274,7 @@ fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
 
 
 fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
-  length(xs: affected_testgen_selected_claims()) == 1
-    && fold_list(
-      xs: affected_testgen_selected_claims(),
-      empty: true,
-      cons: fn(acc, claim) {
-        acc && affected_testgen_selected_claim_runs_pass(claim: claim)
-      }
-    )
+  false
 }
 
 
