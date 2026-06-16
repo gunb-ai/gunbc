@@ -358,6 +358,11 @@ fn self_gen6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
         ),
         (
+            "idempotency",
+            "src/v3/lenses/idempotency.dag",
+            "src/v3/compiler/src/lens_idempotency_generated.rs",
+        ),
+        (
             "infer_helpers",
             "src/v3/lenses/infer_helpers.dag",
             "src/v3/compiler/src/infer_helpers_generated.rs",
