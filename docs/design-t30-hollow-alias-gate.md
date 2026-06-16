@@ -3,7 +3,7 @@
 > **Status: DESIGN — map, not territory** (INVARIANTS.md "Map vs territory"). Nothing in this
 > doc is landed *behavior* until the consumers in §8 execute green. This is the structural
 > prerequisite for **T-4** (per-language primitive fact-bundles) and **G.1** (populating
-> `PerLanguageFactBundleRegistry` in `v4.std.grounding`).
+> `PerLanguageFactBundleRegistry` in `v2.std.grounding`).
 >
 > Governing principles: **P1 Modeling Faithfulness** (hollow alias problem shape),
 > **M1 Types are compositional facts** (`MODELING.md`), **Practice 8** structural tier
@@ -35,18 +35,18 @@ proceeds.
 
 | Concept | Where it lives | State |
 |---|---|---|
-| `SourceSpecReadFact` classifier (`NamedFieldFacts` / `KernelAmbientAtom` / `NoFact` / `NotATypeCarrier`) | `src/v4/lens/fact_density.dag` | **landed shape**; gate fn authored |
+| `SourceSpecReadFact` classifier (`NamedFieldFacts` / `KernelAmbientAtom` / `NoFact` / `NotATypeCarrier`) | `src/v2/lens/fact_density.dag` | **landed shape**; gate fn authored |
 | `carrier_spec_fact`, `named_fact_count`, `connective_spec_fact` | same | **landed shape** |
 | `fact_density_hollow_alias_gate(node) -> Outcome<Witness<Node>>` | same | **landed shape**; rejects `NoFact` |
-| `fact_density_lens` + `always_required_lenses()` | `src/v4/compiler/00_compile.dag` | **landed wiring** |
+| `fact_density_lens` + `always_required_lenses()` | `src/v2/compiler/00_compile.dag` | **landed wiring** |
 | Subtree enforcement (`fold_node` over inferred tree) | `run_required_lens_gates_on_subtree` in `00_compile.dag` | **landed wiring** |
-| `HollowAliasGovernanceBar` (closed governance posture) | `src/v4/std/grounding.dag` G0.2 | **landed**; points at `v4.lens.fact_density` |
-| Claim corpus (classify + enforce) | `src/v4/test/claim/lens_fact_density/*.dag` | **scaffold** — compile-only until T-22 execution |
-| Rust bootstrap mirror (Practice 8 three-prong test IR) | `src/v3/compiler/src/v4_hollow_alias_gate.rs` | **P5(b) interim**; `dead_code` until `.dag` consumer |
-| `fold_node` structural walk pattern | `src/v4/std/node.dag` (`well_formed`) | **landed** — subtree model to mirror |
+| `HollowAliasGovernanceBar` (closed governance posture) | `src/v2/std/grounding.dag` G0.2 | **landed**; points at `v2.lens.fact_density` |
+| Claim corpus (classify + enforce) | `src/v2/test/claim/lens_fact_density/*.dag` | **scaffold** — compile-only until T-22 execution |
+| Rust bootstrap mirror (Practice 8 three-prong test IR) | `src/v3/compiler/src/v2_hollow_alias_gate.rs` | **P5(b) interim**; `dead_code` until `.dag` consumer |
+| `fold_node` structural walk pattern | `src/v2/std/node.dag` (`well_formed`) | **landed** — subtree model to mirror |
 
 **DFS conclusion:** no new ontology module is needed. T-30 is a **completion + execution**
-problem on `v4.lens.fact_density`, not a greenfield design. The checker authority, classifier,
+problem on `v2.lens.fact_density`, not a greenfield design. The checker authority, classifier,
 compile-lens adapter, and subtree driver already exist as `.dag` territory; what remains is
 making that territory **execute** and dissolving the Rust mirror.
 
@@ -120,7 +120,7 @@ validate_then_compile(...)
 nested under a named `Conj` child edge unconstructable — not merely the root.
 
 **Design invariant:** do **not** fold subtree traversal into `fact_density_hollow_alias_gate`.
-Subtree policy belongs to `v4.compiler.compile` (same separation as `well_formed` local check +
+Subtree policy belongs to `v2.compiler.compile` (same separation as `well_formed` local check +
 caller-driven full-tree walks). One gate fn, one fold site — cost-of-change = 1 when subtree
 policy changes.
 
@@ -130,18 +130,18 @@ In this codebase **generated** does **not** mean testgen emission of claims (T-2
 execution). It means:
 
 1. **Authority in `.dag`** — the classifier and gate are substrate citizens in
-   `v4.lens.fact_density`, not permanent hand-Rust.
+   `v2.lens.fact_density`, not permanent hand-Rust.
 2. **Lowered by bootstrap** — `lower_compile_module` prepends compiler/lens DAGs before the user
    module range (`strict_from`). Lens/compiler modules compile with bootstrap privileges (M1(2.8)
    opaque-body rejection applies only at `id >= strict_from`).
 3. **Executed by a real consumer** — `apply_compile_lens` / `validate_then_compile` must call the
    **lowered** `fact_density_hollow_alias_gate`, not the Rust mirror.
 
-The Rust file `v4_hollow_alias_gate.rs` is a **P5(b) interim mirror** with a *richer* test IR
+The Rust file `v2_hollow_alias_gate.rs` is a **P5(b) interim mirror** with a *richer* test IR
 (Practice 8 three-prong `HollowDeclarationSite`) than the structural `.dag` gate. It exists
 because no production consumer yet executes the `.dag` gate body. **Dissolution trigger:** first
 green execution of `fact_density_hollow_alias_gate` from lowered `.dag` in the compile-lens path;
-then delete `v4_hollow_alias_gate.rs` and its SG-0 census row (−1
+then delete `v2_hollow_alias_gate.rs` and its SG-0 census row (−1
 `EXPECTED_HAND_AUTHORED_NON_TEST` path in `sg0_census_test.rs` — the mirror is registered as
 hand-authored **non-test** Rust, not `EXPECTED_HAND_AUTHORED_TEST`).
 
@@ -189,8 +189,8 @@ carriers.
 
 ## 7. Substrate-fact introduction (MODELING.md procedure)
 
-- **Step 1 (DAG-ancestor):** ran. Classifier attaches to `v4.std.node` (`TypeNode`,
-  `Connective`, `Edge`, `Named`/`Positional`) and `v4.std.nat` (`Nat` counting). No sibling
+- **Step 1 (DAG-ancestor):** ran. Classifier attaches to `v2.std.node` (`TypeNode`,
+  `Connective`, `Edge`, `Named`/`Positional`) and `v2.std.nat` (`Nat` counting). No sibling
   module coined.
 - **Step 2 (coproduct-vs-coordinate):** `SourceSpecReadFact` is a proper sum type
   (`NamedFieldFacts | KernelAmbientAtom | NoFact | NotATypeCarrier`) — alternatives, not flags.
@@ -214,7 +214,7 @@ carriers.
 | `lens_fact_density/hollow_alias_nested_rejected.dag` | subtree walk catches child hollow | scaffold |
 | `manual/fact_density_anchor.dag` | v2-bootstrap compile anchor (3 carrier reads) | scaffold |
 | **Target:** `validate_then_compile` executing lowered `.dag` gate | end-to-end enforce | **not yet** |
-| **Dissolve:** `v4_hollow_alias_gate.rs` unit tests | absorbed by `.dag` claims above | interim |
+| **Dissolve:** `v2_hollow_alias_gate.rs` unit tests | absorbed by `.dag` claims above | interim |
 
 **Done bar:** all `lens_fact_density` claims execute green via T-22 claim runner **and**
 `fact_density_hollow_alias_gate` runs from lowered `.dag` in the compile lens path (not Rust
@@ -231,7 +231,7 @@ mirror). Typecheck + grep alone is not done (E-10).
 
 ### Phase A — Execute `.dag` gate (bootstrap bridge)
 
-1. Ensure `v4.lens.fact_density` is in the compile bootstrap prepend set consumed by
+1. Ensure `v2.lens.fact_density` is in the compile bootstrap prepend set consumed by
    `lower_compile_module` (verify alongside `00_compile.dag` imports).
 2. Wire lowered `fact_density_hollow_alias_gate` as the function pointer behind
    `fact_density_hollow_alias_compile_gate` (today: same-module `.dag` call; may need eval
@@ -246,8 +246,8 @@ mirror). Typecheck + grep alone is not done (E-10).
 
 ### Phase C — Dissolution (P5(b) receipt)
 
-6. Delete `src/v3/compiler/src/v4_hollow_alias_gate.rs`.
-7. Remove `src/v3/compiler/src/v4_hollow_alias_gate.rs` from `EXPECTED_HAND_AUTHORED_NON_TEST`
+6. Delete `src/v3/compiler/src/v2_hollow_alias_gate.rs`.
+7. Remove `src/v3/compiler/src/v2_hollow_alias_gate.rs` from `EXPECTED_HAND_AUTHORED_NON_TEST`
    in `sg0_census_test.rs`; PR body Mechanism (b) −1 non-test path.
 
 (Kernel-ambient symbol unification with `target_model.dag` is **out of Phases A–D** — see §5
@@ -294,6 +294,6 @@ dissolve-on-arrival mark; lands post-#4699, not in the build slice.)
 
 ---
 
-**Hand-off:** This design ratifies the existing `v4.lens.fact_density` + `00_compile.dag` wiring
+**Hand-off:** This design ratifies the existing `v2.lens.fact_density` + `00_compile.dag` wiring
 as the T-30 authority. The build slice owns Phase A–C execution and T-22 claim green; T-4 waits
 on Phase D after Phase A is executed-green.

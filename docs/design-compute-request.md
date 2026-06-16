@@ -19,15 +19,15 @@ refusal downstream — never a silent fallback (C-8).
 
 | Concept | Where | Use here |
 |---|---|---|
-| Fact-bundle pattern (`PrimitiveFactBundle`, named-edge `Conj`) | `src/v4/std/model_core.dag`, extdeps languages | the request *is* a fact-bundle — same construction, new domain |
+| Fact-bundle pattern (`PrimitiveFactBundle`, named-edge `Conj`) | `src/v2/std/model_core.dag`, extdeps languages | the request *is* a fact-bundle — same construction, new domain |
 | Typed quantities: `Dimension<Unit, Carrier>` family (Cost/Duration precedent) | INVARIANTS P1 Step-1 worked examples; `src/v3/std/dimensions.dag` lineage | cpu/mem/gpu/duration are dimensioned quantities, never bare `Int` |
-| Interval/bounds vocabulary | `v4.std.integer` interval specs; `design-value-set-lattice.md` | resource asks are **ranges** (min required / max useful), so satisfaction is interval containment — the same containment shape the value-set lane builds |
-| Platform vocabulary (`OperatingSystem`, `Architecture`, `Vendor`) | `src/v4/std/platform.dag` | locality/affinity constraints reference declared platform facts, not strings |
-| Network boundary carriers | `src/v4/std/network.dag` | data-residency / locality constraints anchor here |
-| Effect partition `IsIdempotent \| IsBreaking` | `src/v4/std/effects.dag` | the workload's declared effect shape — what B's obligations (e.g. preemptible ⇒ re-runnable) are checked against |
-| RFC-3339 instant facts | `src/v4/std/datetime.dag` | duration/deadline facts |
+| Interval/bounds vocabulary | `v2.std.integer` interval specs; `design-value-set-lattice.md` | resource asks are **ranges** (min required / max useful), so satisfaction is interval containment — the same containment shape the value-set lane builds |
+| Platform vocabulary (`OperatingSystem`, `Architecture`, `Vendor`) | `src/v2/std/platform.dag` | locality/affinity constraints reference declared platform facts, not strings |
+| Network boundary carriers | `src/v2/std/network.dag` | data-residency / locality constraints anchor here |
+| Effect partition `IsIdempotent \| IsBreaking` | `src/v2/std/effects.dag` | the workload's declared effect shape — what B's obligations (e.g. preemptible ⇒ re-runnable) are checked against |
+| RFC-3339 instant facts | `src/v2/std/datetime.dag` | duration/deadline facts |
 
-**Substrate target (P1):** one new `std/` concept module, `src/v4/std/compute_request.dag`
+**Substrate target (P1):** one new `std/` concept module, `src/v2/std/compute_request.dag`
 (the *concept* lives in std; B's provider *instances* live in extdeps — same layer split as
 `TargetModel` vs `extdeps/languages/*`). No connective/behavior changes.
 
@@ -48,7 +48,7 @@ refusal downstream — never a silent fallback (C-8).
   r3384872272): an ask without a finite duration/timeout fact is representable for
   *analysis and selection*, but the dispatch effect-request constructor **requires the
   bound fact** (the same constructor-requires-the-fact pattern as effect signatures,
-  `design-v4-runtime-architecture.md` §4.3/§5.4) — so unbounded work cannot reach a
+  `design-v2-runtime-architecture.md` §4.3/§5.4) — so unbounded work cannot reach a
   waiting handler regardless of how permissive a policy is. P4's bounded-waiting guarantee
   is enforced by construction at the boundary that waits, not by policy goodwill.
 - **capabilities** — the *required* capability set (e.g. `Gpu(class)`, `Docker`,

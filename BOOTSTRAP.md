@@ -4,18 +4,18 @@
 
 # Bootstrap
 
-Stage0 (`src/v2/stage0/`) is the bootstrap seed for the self-hosted
+Stage0 (`src/v1/stage0/`) is the bootstrap seed for the self-hosted
 compiler. It is a committed, reproducible artifact — never hand-edited
 in ordinary development. Seed bumps are explicit maintenance operations
 with a documented procedure.
 
 ## Current v2 mechanism
 
-v2 stage0 regeneration is owned by the `regen_stage0` binary:
+v1 stage0 regeneration is owned by the `regen_stage0` binary:
 
 ```bash
-cargo run -p v2-compiler --bin regen_stage0
-cargo run -p v2-compiler --bin regen_stage0 -- --verify
+cargo run -p v1-compiler --bin regen_stage0
+cargo run -p v1-compiler --bin regen_stage0 -- --verify
 ```
 
 The first command writes the generated stage0 Rust files. The
@@ -34,21 +34,21 @@ new .rs files  --(cargo builds)----------> new stage0 binary
 
 The stage0 binary reads `.dag` source, runs the full pipeline
 (parse, resolve, normalize, infer, emit), and produces Rust `.rs`
-files. Those files replace `src/v2/stage0/src/` and become the next
+files. Those files replace `src/v1/stage0/src/` and become the next
 stage0 binary.
 
-**Source roots:** `src/v2` (compiler source) + `dsl` (std, extdeps).
+**Source roots:** `src/v1` (compiler source) + `dsl` (std, extdeps).
 Import resolution is transitive — the compiler follows `import`
 declarations, no manual file lists.
 
 **Hand-maintained files** (not overwritten by `regen_stage0`):
 - `cli_run.rs`
 - `rest_transport_facts.rs`
-- `v2_interpreter.rs`
+- `v1_interpreter.rs`
 - `Cargo.toml` (manifest, outside `src/`)
 
 The generated-output registry lives in
-`src/v2/stage0/src/bin/regen_stage0.rs`; both write mode and
+`src/v1/stage0/src/bin/regen_stage0.rs`; both write mode and
 `--verify` mode consume that one list.
 
 ## Ordinary regeneration
@@ -57,21 +57,21 @@ When a `.dag` change does not alter the compiler/stage0 boundary
 (types, enums, function signatures shared between `.dag` and `.rs`):
 
 ```bash
-cargo run -p v2-compiler --bin regen_stage0
+cargo run -p v1-compiler --bin regen_stage0
 ```
 
 This builds the current stage0 binary, self-compiles all `.dag`
-source, copies the output to `src/v2/stage0/src/`, and verifies
+source, copies the output to `src/v1/stage0/src/`, and verifies
 the generated crate can be formatted.
 
 Commit the `.dag` changes and the regenerated stage0 together:
 
 ```bash
-git add src/v2/*.dag dsl/ src/v2/stage0/src/
+git add src/v1/*.dag dsl/ src/v1/stage0/src/
 git commit -m "Description of .dag change"
 ```
 
-**CI verifies:** `cargo run -p v2-compiler --bin regen_stage0 -- --verify`.
+**CI verifies:** `cargo run -p v1-compiler --bin regen_stage0 -- --verify`.
 Any `.dag` change that breaks regeneration blocks the PR.
 
 ## Bootstrap-breaking changes
@@ -93,15 +93,15 @@ These changes require a **two-step compatibility window**:
 
 1. Teach the compiler to handle **both** old and new representations.
    The `.dag` source accepts both shapes temporarily.
-2. Regenerate stage0: `cargo run -p v2-compiler --bin regen_stage0`
-3. Verify: `cargo check -p v2-compiler` passes.
+2. Regenerate stage0: `cargo run -p v1-compiler --bin regen_stage0`
+3. Verify: `cargo check -p v1-compiler` passes.
 4. Commit and land the bridge.
 
 ### Step B: Complete
 
 1. Remove the compatibility bridge — switch fully to the new shape.
 2. Regenerate stage0 again.
-3. Verify: `cargo check -p v2-compiler` passes.
+3. Verify: `cargo check -p v1-compiler` passes.
 4. Commit and land the completion.
 
 ### When a bridge is not possible
@@ -112,10 +112,10 @@ these cases, the stage0 `.rs` files may be directly patched as a
 **seed bump**:
 
 1. Make the `.dag` source change.
-2. Patch `src/v2/stage0/src/*.rs` to match the new representation.
+2. Patch `src/v1/stage0/src/*.rs` to match the new representation.
    Document what was patched and why in the commit message.
-3. Rebuild: `cargo check -p v2-compiler`
-4. Regenerate: `cargo run -p v2-compiler --bin regen_stage0`
+3. Rebuild: `cargo check -p v1-compiler`
+4. Regenerate: `cargo run -p v1-compiler --bin regen_stage0`
 5. Verify the regenerated output matches the patched state (no diff).
 6. Commit everything together.
 
@@ -127,11 +127,11 @@ a bridge was not feasible, and how many sites were patched.
 
 When regeneration is blocked and a complexity fix must touch stage0:
 
-1. Patch `src/v2/complexity.dag` first.
-2. Mirror the same algorithm change into `src/v2/stage0/src/v2_compiler_complexity.rs`.
-3. Update the complexity parity audit in `src/v2/tests/src/source_audit.rs`.
-4. Add or update a focused regression test in `src/v2/tests/src/pipeline.rs`.
-5. Run `cargo test -p v2-compiler-tests pipeline::strict_complexity_violation_count -- --ignored --nocapture`.
+1. Patch `src/v1/complexity.dag` first.
+2. Mirror the same algorithm change into `src/v1/stage0/src/v1_compiler_complexity.rs`.
+3. Update the complexity parity audit in `src/v1/tests/src/source_audit.rs`.
+4. Add or update a focused regression test in `src/v1/tests/src/pipeline.rs`.
+5. Run `cargo test -p v1-compiler-tests pipeline::strict_complexity_violation_count -- --ignored --nocapture`.
 
 The recent self-compile OOM root cause was not raw memory budget. It was:
 - repeated complexity classification/report traversal on large compiles
@@ -149,7 +149,7 @@ of change it is:
 
 ## Forbidden
 
-- Direct hand edits to `src/v2/stage0/src/*.rs` outside an explicit
+- Direct hand edits to `src/v1/stage0/src/*.rs` outside an explicit
   seed bump workflow.
 - Adding new bootstrap source lists in ad hoc places. All source
   resolution goes through `regen_stage0`'s source-root and import-driven
@@ -163,7 +163,7 @@ of change it is:
 
 The generated-output registry in `regen_stage0` is the authority for
 which stage0 files are overwritten. Source discovery remains
-import-driven from `src/v2`, `dsl`, and the generated method-template
+import-driven from `src/v1`, `dsl`, and the generated method-template
 projection source root.
 
 ## Verification
@@ -171,16 +171,16 @@ projection source root.
 After any stage0 change:
 
 ```bash
-cargo check -p v2-compiler                    # stage0 compiles
-cargo test -p v2-compiler-tests               # fast tests pass
+cargo check -p v1-compiler                    # stage0 compiles
+cargo test -p v1-compiler-tests               # fast tests pass
 cargo clippy --all-targets -- -D warnings     # lint clean
 ```
 
 After regeneration (once emitted Rust errors reach 0):
 
 ```bash
-cargo run -p v2-compiler --bin regen_stage0
-git diff --exit-code src/v2/stage0/           # no drift
+cargo run -p v1-compiler --bin regen_stage0
+git diff --exit-code src/v1/stage0/           # no drift
 ```
 
 ## Current state (2026-04-04)

@@ -52,7 +52,7 @@ fn render_testing() -> String {
 }
 
 fn render_docs() -> String {
-  "## Documentation\n\n- `CLAUDE.md` -- contributor and agent guide (auto-loaded by Claude Code)\n- `docs/start-here.md` -- repo orientation and feature development process\n- `docs/design/v4/dsl-design.md` -- DSL language specification\n- `SPEC.md` -- formal IR specification\n- `docs/handbook.md` -- conceptual map and e2e examples"
+  "## Documentation\n\n- `CLAUDE.md` -- contributor and agent guide (auto-loaded by Claude Code)\n- `docs/start-here.md` -- repo orientation and feature development process\n- `docs/design/v2/dsl-design.md` -- DSL language specification\n- `SPEC.md` -- formal IR specification\n- `docs/handbook.md` -- conceptual map and e2e examples"
 }
 
 fn render_footer() -> String {

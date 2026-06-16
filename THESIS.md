@@ -2,7 +2,7 @@
 
 This is the parent document. Everything else — ROADMAP, INVARIANTS, MODELING, architecture, and design docs — serves this thesis.
 
-> **v4 is the active development phase.** The live compiler and substrate live in [`src/v4/`](src/v4/). Every thesis claim below applies to v4; earlier v3 references in the self-hosting section describe the v2→v3 transition that v4 supersedes. v3 is frozen as a comparison baseline.
+> **v2 is the active development phase.** The live compiler and substrate live in [`src/v2/`](src/v2/). Every thesis claim below applies to v2; earlier v3 references in the self-hosting section describe the v2→v3 transition that v2 supersedes. v3 is frozen as a comparison baseline.
 
 ## How this doc is organized
 
@@ -76,7 +76,7 @@ See [docs/thesis/the-substrate-two-coordinated-shapes.md](docs/thesis/the-substr
 
 Lower layers should provide declared facts without leaking storage choices or forcing downstream reinterpretation.
 
-See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md). Current-state audit — how close v4 is to this principle, concept by concept (the "touch-once contract"): [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md).
+See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md). Current-state audit — how close v2 is to this principle, concept by concept (the "touch-once contract"): [docs/audit/v2-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v2-encapsulation-touch-once-contract-2026-06-05.md).
 
 ### Self-inspection: the substrate is its own subject
 
@@ -221,7 +221,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`). CI is hand-authored directly in `.github/workflows/ci.yml` (the prior `src/v4/workflow/ci.dag` mirror was a descriptive-only model with no runtime consumer and was deleted; ci.yml is the direct authority). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
+- Bootstrap and build orchestration modeled as .dag workflows (`src/v2/workflow/bootstrap.dag`). CI is hand-authored directly in `.github/workflows/ci.yml` (the prior `src/v2/workflow/ci.dag` mirror was a descriptive-only model with no runtime consumer and was deleted; ci.yml is the direct authority). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
 - Adding a Node field or a target language requires editing one .dag file. (CI gates are the exception: they are hand-authored in `.github/workflows/ci.yml`, the direct CI authority — not modeled as `.dag` data.)
 
@@ -243,8 +243,8 @@ Self-hosting is not one capability; it's four. All four are targets.
    deliverable.** Strictly stronger than "the compiler can compile itself":
    the compiler's own source of truth is the `.dag` graph.
 
-3. **Tests are data too.** The test suite equivalent of v2's hand-authored
-   `pipeline.rs` (`src/v2/tests/src/pipeline.rs` — the large pipeline/
+3. **Tests are data too.** The test suite equivalent of v1's hand-authored
+   `pipeline.rs` (`src/v1/tests/src/pipeline.rs` — the large pipeline/
    contract test file; live LOC reads from the file) exists only as
    `.dag` `TestClaim` declarations and generated target-language test code.
    Under the 0-floor target (per `docs/design-pure-bootstrap-zero.md`, LIVE
@@ -257,7 +257,7 @@ Self-hosting is not one capability; it's four. All four are targets.
 
 4. **Recursive-flex / self-application.** gunbc applies its own correctness/
    cost/parallelism lenses to its own **build pipeline**, which
-   is modeled as `.dag` data (`src/v4/workflow/bootstrap.dag`; CI itself is
+   is modeled as `.dag` data (`src/v2/workflow/bootstrap.dag`; CI itself is
    hand-authored in `.github/workflows/ci.yml`, not modeled). The same lens framework users get for their own
    programs applies recursively to gunbc's own build/CI behavior —
    typed lenses for cost / complexity / parallelism over the
@@ -270,11 +270,11 @@ Self-hosting is not one capability; it's four. All four are targets.
    **Scope (narrowed):** gunbc does not model its own work-direction
    (briefs, cycles, retirement) as `.dag` data. This facet claims only
    lens self-application to the build/CI pipeline. The six live
-   `src/v4/workflow/` files are: `bootstrap.dag` (build orchestration),
+   `src/v2/workflow/` files are: `bootstrap.dag` (build orchestration),
    `lens_ci_gate.dag` (CI pass/fail gate; replaced the deleted `ci.dag`
    descriptive-only mirror), `affected_set_selection.dag` (CI
    affected-set authority), `scheduler.dag`, `cli.dag`, and `release.dag`
-   (`v4.workflow.release_dist` — GH Releases binary matrix + hand-synced
+   (`v2.workflow.release_dist` — GH Releases binary matrix + hand-synced
    `release.yml` until YamlStatic emission). The **facet-4 lens
    self-application scope** is the CI-pipeline files: `{ bootstrap,
    lens_ci_gate, affected_set_selection }`. `scheduler`, `cli`, and
@@ -296,23 +296,19 @@ per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
 `docs/design-pure-bootstrap.md`).
 The live *count* of currently hand-authored files is tracked per-generation:
-v2 authority: `src/v2/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
-v3 authority (historical — v3 is frozen): SG-0 census in
-`src/v3/compiler/tests/integration/sg0_census_test.rs` tracked hand-authored
-non-test and test subsets shrinking toward 0; that campaign is frozen
-pending v4 ship.
-v4 authority (active): `src/v4/compiler/self_host.dag` — hand-authored-file
-ratchet pending; v4 substrate is already at 0 hand-maintained `.rs` in the
+v1 authority (proven): `src/v1/` stage0 census — the production self-host model
+at ~97% (2 hand-maintained of 62 stage0 files). (The former v3 generation and
+its SG-0 census have been removed.)
+v2 authority (active): `src/v2/compiler/self_host.dag` — hand-authored-file
+ratchet pending; v2's substrate is already at 0 hand-maintained `.rs` in the
 compiler tree (`.dag` source only). Generated escape hatch is acceptable
 for additional files; hand-authored files are not.
-v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-v3 is frozen as a comparison baseline.
 
-Fixed-point acceptance: the v4 binary compiles `compiler.dag` and produces
+Fixed-point acceptance: the binary compiles `compiler.dag` and produces
 bit-identical stage0 Rust plus bit-identical emitted artifacts.
 `compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
 empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md).
-Active implementation: `src/v4/compiler/self_host.dag`; runner work
+Active implementation: `src/v2/compiler/self_host.dag`; runner work
 continues as substrate stages complete.
 
 **Audience duality — opt-in depth (meta-feature):**

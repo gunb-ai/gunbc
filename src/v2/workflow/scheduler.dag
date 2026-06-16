@@ -1,0 +1,359 @@
+// src/v2/workflow/scheduler.dag
+// Scope: dependency-graph execution scheduler surface.
+// Status: D2 scheduler-first slice — runnable frontier is the execution dual of affected-set
+// frontier selection, projected through v2.std.dependency readiness folds.
+
+module v2.workflow.scheduler
+
+import v2.std.collection { List, list_at_optional, optional_present_witness }
+import v2.std.algebra {
+  contains,
+  filter,
+  for_all,
+  is_empty,
+  list_append,
+  list_snoc_item,
+  non_empty
+}
+import v2.std.dependency {
+  DependencyKindClassifier,
+  DependencyView,
+  ReadinessLayer,
+  classify_dependency_kind,
+  topological_layers
+}
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates, Witness }
+
+type RunnableFrontier {
+  ready: List<Node>
+}
+
+// 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
+// dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
+type SchedulerBlockedEvidence
+  = SchedulerNoRunnableFrontier {}
+
+// 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
+// dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
+type SchedulerPlan
+  = SchedulerPlanComplete {
+      layers: List<ReadinessLayer>,
+      scheduled: List<Node>
+    }
+  | SchedulerPlanRunnable {
+      frontier: RunnableFrontier,
+      scheduled: List<Node>,
+      remaining: List<Node>,
+      layers: List<ReadinessLayer>
+    }
+  | SchedulerPlanBlocked {
+      evidence: SchedulerBlockedEvidence,
+      scheduled: List<Node>,
+      remaining: List<Node>,
+      layers: List<ReadinessLayer>
+    }
+
+type SchedulerRunState {
+  scheduled: List<Node>
+  remaining: List<Node>
+  layers: List<ReadinessLayer>
+  frontier: RunnableFrontier
+}
+
+// 🟡 coproduct dissolution — feature:scheduler-execution-kind-policy — consumer:scheduler_execution_dependencies
+// dissolve-on-arrival: substrate projects execution-ordering dependencies from the dependency fact carrier.
+fn scheduler_execution_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
+  DependencyKindClassifier {
+    contains: false,
+    binds_to: false,
+    type_depends_on: false,
+    data_depends_on: true,
+    effect_depends_on: true,
+    resource_depends_on: true,
+    module_depends_on: false,
+    barrier_before: true,
+    placement_depends_on: false,
+    model_depends_on: false,
+    projection_depends_on: false,
+    generated_from: false,
+    verified_by: false,
+    promoted_by: false,
+    bootstrap_depends_on: true
+  }
+}
+
+fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
+  classify_dependency_kind(
+    classifier: scheduler_execution_dependency_kind_classifier(),
+    kind: dependency.kind
+  )
+}
+
+fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+  filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
+}
+
+fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
+  if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
+    nodes
+  } else {
+    list_snoc_item(xs: nodes, item: node)
+  }
+}
+
+fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> {
+  fold(dependencies, init: [], f: fn(nodes, dependency) {
+    scheduler_append_node_once(
+      nodes: scheduler_append_node_once(nodes: nodes, node: dependency.source),
+      node: dependency.dependent
+    )
+  })
+}
+
+fn scheduler_dependency_unblocked(
+  dependency: DependencyView,
+  scheduled: List<Node>,
+  candidate: Node
+) -> Bool {
+  if dependency.dependent == candidate {
+    contains(xs: scheduled, item: dependency.source, eq: fn(left, right) { left == right })
+  } else {
+    true
+  }
+}
+
+fn scheduler_node_unblocked(
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>,
+  candidate: Node
+) -> Bool {
+  for_all(
+    xs: dependencies,
+    predicate: fn(dependency) {
+      scheduler_dependency_unblocked(
+        dependency: dependency,
+        scheduled: scheduled,
+        candidate: candidate
+      )
+    }
+  )
+}
+
+fn scheduler_node_unscheduled(scheduled: List<Node>, candidate: Node) -> Bool {
+  contains(xs: scheduled, item: candidate, eq: fn(left, right) { left == right }) == false
+}
+
+fn runnable_frontier_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> RunnableFrontier {
+  let execution_dependencies = scheduler_execution_dependencies(dependencies: dependencies)
+  RunnableFrontier {
+    ready: filter(
+      xs: nodes,
+      predicate: fn(candidate) {
+        scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
+          && scheduler_node_unblocked(
+            dependencies: execution_dependencies,
+            scheduled: scheduled,
+            candidate: candidate
+          )
+      }
+    )
+  }
+}
+
+fn scheduler_remaining_nodes(nodes: List<Node>, scheduled: List<Node>) -> List<Node> {
+  filter(
+    xs: nodes,
+    predicate: fn(candidate) {
+      scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
+    }
+  )
+}
+
+fn scheduler_blocked_evidence() -> SchedulerBlockedEvidence {
+  SchedulerNoRunnableFrontier {}
+}
+
+fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier) -> List<Node> {
+  fold(frontier.ready, init: scheduled, f: fn(acc, node) {
+    scheduler_append_node_once(nodes: acc, node: node)
+  })
+}
+
+fn scheduler_append_frontier_layer(layers: List<ReadinessLayer>, frontier: RunnableFrontier) -> List<ReadinessLayer> {
+  if non_empty(xs: frontier.ready) {
+    list_snoc_item(
+      xs: layers,
+      item: ReadinessLayer { ready: frontier.ready }
+    )
+  } else {
+    layers
+  }
+}
+
+fn scheduler_run_init(nodes: List<Node>, scheduled: List<Node>) -> SchedulerRunState {
+  SchedulerRunState {
+    scheduled: scheduled,
+    remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
+    layers: [],
+    frontier: RunnableFrontier { ready: [] }
+  }
+}
+
+fn scheduler_step_state_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  state: SchedulerRunState
+) -> SchedulerRunState {
+  if is_empty(xs: state.remaining) {
+    state
+  } else {
+    let frontier = runnable_frontier_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: state.scheduled
+    )
+    if non_empty(xs: frontier.ready) {
+      let scheduled = scheduler_schedule_frontier(scheduled: state.scheduled, frontier: frontier)
+      SchedulerRunState {
+        scheduled: scheduled,
+        remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
+        layers: scheduler_append_frontier_layer(layers: state.layers, frontier: frontier),
+        frontier: frontier
+      }
+    } else {
+      SchedulerRunState {
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers,
+        frontier: frontier
+      }
+    }
+  }
+}
+
+fn scheduler_plan_from_state(state: SchedulerRunState) -> SchedulerPlan {
+  if is_empty(xs: state.remaining) {
+    SchedulerPlanComplete {
+      layers: state.layers,
+      scheduled: state.scheduled
+    }
+  } else {
+    if non_empty(xs: state.frontier.ready) {
+      SchedulerPlanRunnable {
+        frontier: state.frontier,
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers
+      }
+    } else {
+      SchedulerPlanBlocked {
+        evidence: scheduler_blocked_evidence(),
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers
+      }
+    }
+  }
+}
+
+fn scheduler_step_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerPlan {
+  scheduler_plan_from_state(
+    state: scheduler_step_state_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      state: scheduler_run_init(nodes: nodes, scheduled: scheduled)
+    )
+  )
+}
+
+// Bounded fixed point: each non-empty frontier schedules at least one remaining node,
+// so `length(nodes)` scheduler steps are enough to complete or expose blocked evidence.
+fn scheduler_run_to_fixed_point(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerRunState {
+  fold(nodes, init: scheduler_run_init(nodes: nodes, scheduled: scheduled), f: fn(state, _) {
+    scheduler_step_state_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      state: state
+    )
+  })
+}
+
+fn scheduler_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerPlan {
+  scheduler_plan_from_state(
+    state: scheduler_run_to_fixed_point(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: scheduled
+    )
+  )
+}
+
+fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
+  fold(layers, init: [], f: fn(nodes, layer) {
+    list_append(left: nodes, right: layer.ready)
+  })
+}
+
+// Graph-node plans are projections over canonical readiness layers. Dependency-row plans use
+// scheduler_plan_from_dependencies to execute the fixed point and distinguish runnable/blocked work.
+fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
+  let runnable = runnable_frontier_from_layers(layers: layers)
+  if non_empty(xs: runnable.ready) {
+    SchedulerPlanComplete {
+      layers: layers,
+      scheduled: scheduler_nodes_from_layers(layers: layers)
+    }
+  } else {
+    SchedulerPlanBlocked {
+      evidence: scheduler_blocked_evidence(),
+      scheduled: [],
+      remaining: blocked,
+      layers: layers
+    }
+  }
+}
+
+fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> Witness<ReadinessLayer> {
+  optional_present_witness(
+    opt: list_at_optional(xs: layers, index: 0)
+  )
+}
+
+fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
+  match scheduler_first_readiness_layer(layers: layers) {
+    Holds { value: layer } => RunnableFrontier { ready: layer.ready }
+    Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
+  }
+}
+
+fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
+  runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
+}
+
+fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
+  topological_layers(graph_node: graph_node)
+}
+
+fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
+  scheduler_plan_for_layers(
+    layers: scheduler_layers(graph_node: graph_node),
+    blocked: [graph_node]
+  )
+}

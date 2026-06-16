@@ -1,0 +1,46 @@
+// src/v2/workflow/layering_imports_gate.dag
+//
+// Cross-layer import gate transport authority (INVARIANTS P2 dependency direction).
+// Host enumerates import facts via layering_imports_scan; v2.lens.layering_imports
+// owns violation semantics. Green pass runs clean_tree on the live scanned manifest.
+// Scanner-execution perturb receipts are driven by scripts/v2-layering-imports-gate.sh
+// (plant -> scan -> witness), not ci-claim-gate data-only perturb.
+//
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.workflow.layering_imports_gate
+
+import v2.std.collection { List }
+import v2.std.algebra { fold_list_right }
+import v2.std.text { String }
+
+type LayeringImportsClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data layering_imports_claim_run_row_clean_tree: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
+  label: "layering_imports/clean_tree",
+  entry: "src/v2/test/claim/layering_imports/clean_tree.dag",
+  function: "clean_tree_no_wrong_direction_imports_holds"
+}
+
+data layering_imports_claim_run_rows: List<LayeringImportsClaimRunRow> = [
+  layering_imports_claim_run_row_clean_tree
+]
+
+fn layering_imports_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: layering_imports_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}

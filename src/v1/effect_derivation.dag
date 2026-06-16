@@ -1,0 +1,63 @@
+// v2 effect derivation bridge.
+
+module v1.compiler.effect_derivation
+
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+
+import std.effects {
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  KeySource, PathParam, InputField, CompositeKey,
+  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
+  ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
+  ModifierCheck,
+  IdempotencyTestObligation,
+  WorkflowEffectConcern,
+  derive_effect_shape,
+  derive_op_effect,
+  check_modifier_vs_derivation,
+  generate_idempotency_obligations,
+  is_idempotent_effect,
+  compose_effects, OperationEffect, CompositionVerdict, IdempotentComposition, BrokenBy,
+  IdempotencyEvidence,
+  LatticeEffect, IdentityEffect, NonIdempotent
+}
+
+import std.http_path {
+  UrlPathToken, LiteralToken, ParamToken,
+  PathTemplate, PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
+  parse_path_template,
+  has_path_params,
+  last_path_param
+}
+
+fn re_export_derive_op_effect(
+  operation_name: String,
+  method: HttpMethod,
+  path: PathTemplate
+) -> DeriveOpEffectResult {
+  derive_op_effect(
+    operation_name: operation_name,
+    method: method,
+    path: path
+  )
+}
+
+fn re_export_check_modifier(
+  op: DerivedOpEffect,
+  declared_idempotent: Bool,
+  declared_readonly: Bool
+) -> ModifierCheck {
+  check_modifier_vs_derivation(
+    op: op,
+    declared_idempotent: declared_idempotent,
+    declared_readonly: declared_readonly
+  )
+}
+
+fn re_export_parse_path_template(raw: String) -> PathTemplateParseResult {
+  parse_path_template(raw: raw)
+}
+
+fn re_export_has_path_params(template: PathTemplate) -> Bool {
+  has_path_params(template: template)
+}

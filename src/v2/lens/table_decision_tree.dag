@@ -1,0 +1,54 @@
+// src/v2/lens/table_decision_tree.dag
+// Scope: L1.13.c TableDecisionTree lens substrate (sub-signature of L1.13
+//        Skeleton-collapse, table-row scope). Kills function-encoded total
+//        tables over closed vocabularies that should be substrate data rows
+//        (`TotalMap<K, V>` for finite payload-free keys, `TotalPolicy<K,
+//        Context, RowTemplate>` for payload-bearing keys).
+// Anchor: docs/design-dissolution-lens.md §5 L1.13.c (status "reserved-
+//         proposed" → promoted-to-substrate (this file) via
+//         node://adhoc-086ab97b-b41 substrate-evolution 5/5).
+// Status: scaffold — carrier types + verdict shape only. Enforcement gated on
+//         (a) `v2.lens.decision_tree_shape` landing (the producer-stage record
+//         that exposes per-branch resolved identity + body-shape facts; same
+//         input L1.13.b consumes), (b) at least one Practice-11-parameterized
+//         dissolution shape landing as the migration target. Until those
+//         dependencies land, the lens's `verdict` is Unrealized for every fn
+//         in the corpus and `table_decision_tree_fact_for_fn` returns the
+//         carrier with that verdict — the substrate row exists so consumers
+//         (registry, coverage, subsumption) can
+//         reference it as a typed authority rather than a prose pointer.
+//         See L1.13.b (`decision_tree_collapse`) for the parallel sub-signature
+//         that generalizes parent L1.13 to non-`match` source forms.
+
+module v2.lens.table_decision_tree
+
+
+import v2.std.node { Node, Symbol }
+
+
+// 🟢 verdict — fail-closed until decision_tree_shape lands; TableDissolves carries typed references and derives table pattern at consumption.
+type TableDecisionTreeVerdict
+  = Unrealized                    // producer-stage `decision_tree_shape` not available for this locus.
+  | NotATable                     // decision-tree present but escape clause fires (structural divergence / partial table / open vocabulary / non-table dispatch).
+  | TableDissolves {              // hard error: fn IS a typed table; substrate should carry it as data.
+      key_vocabulary: Symbol      // identifier of the closed coproduct K resolved by decision_tree_shape; pattern is derived from K's payload-bearing-ness at consumption.
+      row_template_type: Symbol   // identifier of the row record type (V for Pattern A; RowTemplate for Pattern B).
+    }
+
+
+// 🟢 lens fact — one row per scanned fn-locus. The decided receipt is the
+// verdict; the locus is the fn whose body was scanned (the un-derived
+// projection that should dissolve to a substrate row).
+type TableDecisionTreeFact {
+  fn_locus: Node
+  verdict: TableDecisionTreeVerdict
+}
+
+
+// 🟡 gated — feature:lens-decision-tree-shape — bind node://adhoc-086ab97b-b41 — dissolves when table_decision_tree_fact_for_fn consumes v2.lens.decision_tree_shape instead of Unrealized.
+fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
+  TableDecisionTreeFact {
+    fn_locus: fn_node,
+    verdict: Unrealized
+  }
+}

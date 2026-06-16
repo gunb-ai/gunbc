@@ -1,0 +1,1173 @@
+// src/v2/compiler/03_body_producer.dag
+// Scope: COMPREP wave-1 — parse-tree / surface expression → Behavior sub-DAG; Arrow.body attachment.
+// Status: keystone producer slice — MVP add(x,y)=x+y body construction + E-9 edge attach.
+// Anchor: docs/design-computation-representation.md wave 1; INVARIANTS E-9.
+
+module v2.compiler.body_producer
+
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Bind,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  arrow_body_edge,
+  loop_bound_edge,
+  node_rebuild,
+  node_synthetic,
+  well_formed
+}
+import v2.extdeps.languages.dag {
+  dag_mvp1_add_arrow_signature_node,
+  dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
+  dag_mvp1_add_operator_node,
+  dag_mvp1_captured_flat_atom_binding_for_ident,
+  dag_mvp1_int_type_binding,
+  dag_mvp1_loop_arrow_with_body_fixture,
+  dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
+  dag_mvp1_loop_captured_flat_atom_binding_for_ident,
+  dag_mvp1_loop_measure_node,
+  dag_mvp1_node_is_int_literal_atom,
+  dag_mvp1_node_is_kw_false_atom,
+  dag_mvp1_node_is_kw_true_atom,
+  dag_mvp1_pick_arrow_with_body_fixture,
+  dag_mvp1_pick_arrow_with_body_swapped_arms_fixture,
+  dag_mvp1_pick_captured_flat_atom_binding_for_ident,
+  dag_mvp1_bind_arrow_with_body_fixture,
+  dag_mvp1_bind_arrow_with_body_wrong_value_fixture,
+  dag_mvp1_bind_captured_flat_atom_binding_for_ident
+}
+import v2.std.node_query {
+  arrow_domain_named_param_bindings,
+  find_arrow_body_child,
+  find_named_child
+}
+
+data body_producer_reason_malformed_attachment: Symbol = body_producer_reason_malformed_attachment
+data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_reason_post_produce_not_well_formed
+data body_producer_reason_mvp1_resolved_not_arrow: Symbol = body_producer_reason_mvp1_resolved_not_arrow
+data body_producer_reason_mvp1_resolved_shape: Symbol = body_producer_reason_mvp1_resolved_shape
+
+// COMPREP wave-2 M0-B1 — bridge maps parse atoms to eval-recognizable literal/condition symbols.
+data body_producer_pick_lit_one: Symbol = ^dag_mvp1_pick_lit_one
+data body_producer_pick_lit_two: Symbol = ^dag_mvp1_pick_lit_two
+data body_producer_pick_kw_true: Symbol = ^dag_token_kw_true
+data body_producer_pick_kw_false: Symbol = ^dag_token_kw_false
+
+fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn type_atom_node(identity: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  )
+}
+
+fn computation_param_ref_node(identity: Symbol) -> Node {
+  type_atom_node(identity: identity)
+}
+
+fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      outcome_accepted(
+        value: node_rebuild(
+          n: arrow,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: Edge {
+              label: Named { name: arrow_body_edge },
+              target: body
+            }
+          )
+        )
+      )
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+  }
+}
+
+// The structured-Behavior dispatch surface: given a resolved signature Arrow + the Behavior body
+// normalize emits (Transform call / Branch / Loop / Bind, keyed on the node.dag Behavior coproduct
+// node.dag:38; Transform callee-ref child[0] per node_query.node_is_call), validate it against the
+// per-variant edge contract (well_formed → behavior_edges_conform) and marry it to the Arrow.
+// Subsumes the four flat-index tables (produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved);
+// per-form reconstruction + atom→symbol bridging dissolve UP into normalize.
+// 🟡 gated — dormant structured-Behavior dispatch surface (docs/modeling-discipline.md Practice 4 /
+// INVARIANTS P5) — feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 —
+// dissolve-on: normalize emits the structured Behavior body (03_normalize.dag / std/compilers/
+// body_lowering.dag) and the pipeline rewires its produce_mvp1_*_from_resolved call sites to
+// produce_arrow_with_structured_body, deleting the four flat-index tables — that deletion is
+// licensed by the byte-identical subsumption witnesses (test/claim/manual/structured_body_dispatch.dag
+// = add; structured_body_subsumption_set.dag = pick/loop/bind) — forbidden: wiring this surface into
+// the pipeline while any flat-index table still runs (dual-authority half-rewire).
+fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
+  if well_formed(n: body) {
+    outcome_accepted(value: body)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: body
+      )
+    )
+  }
+}
+
+// Recognize that the normalized body is a structured Behavior (vs a residual parse node) and
+// validate it. The Behavior variant is the dispatch key: control-flow forms (Branch/Loop/Bind)
+// and the call form (Transform, callee-keyed via the carrier) all flow through the per-variant
+// edge contract. A non-Behavior body is the malformed-normalize case.
+fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: body
+        )
+      )
+  }
+}
+
+// The dissolution producer: given a resolved signature Arrow and the structured Behavior body
+// normalize emitted, validate the body and attach it. Replaces the four per-form
+// produce_mvp1_*_from_resolved tables once normalize lands (slice i); the resolved-tree
+// signature/body extraction plumbing arrives with the emit's output shape.
+fn produce_arrow_with_structured_body(signature: Node, structured_body: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_producer_dispatch_structured_body(body: structured_body),
+    f: fn(validated) {
+      attach_arrow_body(arrow: signature, body: validated)
+    }
+  )
+}
+
+fn body_producer_arrow_domain_conj_from_binding_ids(bindings: List<Symbol>) -> Outcome<Node> {
+  match list_at_optional(xs: bindings, index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+        )
+      )
+    Present { value: left_binding } =>
+      match list_at_optional(xs: bindings, index: 1) {
+        Absent =>
+          outcome_rejected(
+            d: body_producer_diagnostic(
+              reason: body_producer_reason_mvp1_resolved_shape,
+              n: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+            )
+          )
+        Present { value: right_binding } =>
+          outcome_accepted(
+            value: node_synthetic(
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: left_binding },
+                  target: type_atom_node(identity: dag_mvp1_int_type_binding())
+                },
+                Edge {
+                  label: Named { name: right_binding },
+                  target: type_atom_node(identity: dag_mvp1_int_type_binding())
+                }
+              ]
+            )
+          )
+      }
+  }
+}
+
+fn body_producer_transform_body_from_bindings(
+  operator: Node,
+  param_bindings: List<Symbol>
+) -> Outcome<Node> {
+  match list_at_optional(xs: param_bindings, index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: operator
+        )
+      )
+    Present { value: left_binding } =>
+      match list_at_optional(xs: param_bindings, index: 1) {
+        Absent =>
+          outcome_rejected(
+            d: body_producer_diagnostic(
+              reason: body_producer_reason_mvp1_resolved_shape,
+              n: operator
+            )
+          )
+        Present { value: right_binding } =>
+          outcome_accepted(
+            value: node_synthetic(
+              kind: ComputationNode { behavior: Transform },
+              children: [
+                Edge { label: Positional, target: operator },
+                Edge {
+                  label: Positional,
+                  target: computation_param_ref_node(identity: left_binding)
+                },
+                Edge {
+                  label: Positional,
+                  target: computation_param_ref_node(identity: right_binding)
+                }
+              ]
+            )
+          )
+      }
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:produce_mvp1_add_arrow_with_body_from_resolved
+// (executed by comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
+// dissolve-on: body_producer reads structured normalize/resolve Behavior carriers instead of
+// flat MVP1 token-index extraction into a flattened atom list; owner/lane: Mgr-RUNTIME
+// (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden: permanent
+// untagged index-walk bridge helpers in body_producer.
+fn mvp1_flat_atom_at(
+  atoms: List<Node>,
+  wanted: Int,
+  reason: Symbol,
+  witness: Node
+) -> Outcome<Node> {
+  match list_at_optional(xs: atoms, index: wanted) {
+    Present { value: child } => outcome_accepted(value: child)
+    Absent =>
+      outcome_rejected(
+        d: body_producer_diagnostic(reason: reason, n: witness)
+      )
+  }
+}
+
+fn mvp1_sequence_flatten_atoms(root: Node) -> Outcome<List<Node>> {
+  match root.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_accepted(value: [root])
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: find_named_child(root: root, name: ^grammar_sequence_left_node_projection),
+        f: fn(left) {
+          bind_outcome(
+            o: find_named_child(root: root, name: ^grammar_sequence_right_node_projection),
+            f: fn(right) {
+              bind_outcome(
+                o: mvp1_sequence_flatten_atoms(root: left),
+                f: fn(left_atoms) {
+                  bind_outcome(
+                    o: mvp1_sequence_flatten_atoms(root: right),
+                    f: fn(right_atoms) {
+                      outcome_accepted(
+                        value: list_append(left: left_atoms, right: right_atoms)
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: root
+        )
+      )
+  }
+}
+
+fn mvp1_resolved_captured_atoms(resolved_root: Node) -> Outcome<List<Node>> {
+  bind_outcome(
+    o: find_named_child(
+      root: resolved_root,
+      name: ^grammar_production_captured_node_projection
+    ),
+    f: fn(captured) {
+      mvp1_sequence_flatten_atoms(root: captured)
+    }
+  )
+}
+
+// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE —
+// consumer:produce_mvp1_add_arrow_with_body_from_resolved (executed by comprep_eval_by_execution
+// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: signature+body production derives
+// from the resolved Arrow's declared signature+body carriers (real body_producer dispatch)
+// rather than recognizing the fixed MVP1 flat-token indices 5/9/12/14/15/16; owner/lane:
+// Mgr-RUNTIME (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden:
+// adding a third hard-coded flat-index shape here (wave-2 M0-B1 pick indices 8/10/12 is the
+// reviewed second shape — see COMPREP-WAVE2-BODY-BRIDGE marks below; a third would mean
+// building the dispatch surface, not another literal index table).
+fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 5,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(domain_x) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 9,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: resolved_root
+            ),
+            f: fn(domain_y) {
+              bind_outcome(
+                o: mvp1_flat_atom_at(
+                  atoms: atoms,
+                  wanted: 12,
+                  reason: body_producer_reason_mvp1_resolved_shape,
+                  witness: resolved_root
+                ),
+                f: fn(codomain) {
+                  bind_outcome(
+                    o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                      flat_index: 5,
+                      ident_atom: domain_x
+                    ),
+                    f: fn(left_binding) {
+                      bind_outcome(
+                        o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                          flat_index: 9,
+                          ident_atom: domain_y
+                        ),
+                        f: fn(right_binding) {
+                          bind_outcome(
+                            o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                              flat_index: 12,
+                              ident_atom: codomain
+                            ),
+                            f: fn(codomain_binding) {
+                              bind_outcome(
+                                o: body_producer_arrow_domain_conj_from_binding_ids(
+                                  bindings: [left_binding, right_binding]
+                                ),
+                                f: fn(domain) {
+                                  outcome_accepted(
+                                    value: node_synthetic(
+                                      kind: TypeNode { connective: Arrow },
+                                      children: [
+                                        Edge {
+                                          label: Positional,
+                                          target: domain
+                                        },
+                                        Edge {
+                                          label: Positional,
+                                          target: type_atom_node(identity: codomain_binding)
+                                        },
+                                        Edge {
+                                          label: Positional,
+                                          target: type_atom_node(identity: codomain_binding)
+                                        }
+                                      ]
+                                    )
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_add_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: arrow_domain_named_param_bindings(arrow: signature),
+        f: fn(param_bindings) {
+          bind_outcome(
+            o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+            f: fn(atoms) {
+              bind_outcome(
+                o: mvp1_flat_atom_at(
+                  atoms: atoms,
+                  wanted: 15,
+                  reason: body_producer_reason_mvp1_resolved_shape,
+                  witness: resolved_root
+                ),
+                f: fn(operator) {
+                  bind_outcome(
+                    o: body_producer_transform_body_from_bindings(
+                      operator: operator,
+                      param_bindings: param_bindings
+                    ),
+                    f: fn(body) {
+                      bind_outcome(
+                        o: attach_arrow_body(arrow: signature, body: body),
+                        f: fn(arrow_with_body) {
+                          if well_formed(n: arrow_with_body) {
+                            outcome_accepted(value: arrow_with_body)
+                          } else {
+                            outcome_rejected(
+                              d: body_producer_diagnostic(
+                                reason: body_producer_reason_post_produce_not_well_formed,
+                                n: arrow_with_body
+                              )
+                            )
+                          }
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_add_arrow_with_body() -> Outcome<Node> {
+  let signature = dag_mvp1_add_arrow_signature_node()
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: signature),
+    f: fn(param_bindings) {
+      bind_outcome(
+        o: body_producer_transform_body_from_bindings(
+          operator: dag_mvp1_add_operator_node(),
+          param_bindings: param_bindings
+        ),
+        f: fn(body) {
+          bind_outcome(
+            o: attach_arrow_body(arrow: signature, body: body),
+            f: fn(arrow_with_body) {
+              if well_formed(n: arrow_with_body) {
+                outcome_accepted(value: arrow_with_body)
+              } else {
+                outcome_rejected(
+                  d: body_producer_diagnostic(
+                    reason: body_producer_reason_post_produce_not_well_formed,
+                    n: arrow_with_body
+                  )
+                )
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_add_arrow_with_body_swapped_operands() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_add_arrow_with_body_swapped_operands_fixture) {
+    outcome_accepted(value: dag_mvp1_add_arrow_with_body_swapped_operands_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_add_arrow_with_body_swapped_operands_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_add_arrow_with_body(),
+    f: fn(arrow_with_body) {
+      outcome_accepted(
+        value: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: fn_name },
+              target: arrow_with_body
+            }
+          ]
+        )
+      )
+    }
+  )
+}
+
+fn arrow_has_body_edge(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: _ } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn body_producer_branch_if_body(
+  condition: Node,
+  then_arm: Node,
+  else_arm: Node
+) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: ComputationNode { behavior: Branch },
+      children: [
+        Edge { label: Positional, target: condition },
+        Edge { label: Positional, target: then_arm },
+        Edge { label: Positional, target: else_arm }
+      ]
+    )
+  )
+}
+
+fn body_producer_pick_condition_from_atom(cond: Node) -> Outcome<Node> {
+  if dag_mvp1_node_is_kw_true_atom(node: cond) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_kw_true))
+  } else if dag_mvp1_node_is_kw_false_atom(node: cond) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_kw_false))
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_mvp1_resolved_shape,
+        n: cond
+      )
+    )
+  }
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:body_producer_pick_if_body_from_atoms (via produce_mvp1_pick_if_arrow_with_body_from_resolved;
+// executed by comprep_branch_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
+// dissolve-on: if-then-else body production derives from structured normalize/resolve Behavior
+// carriers (Branch child projection) rather than fixed MVP1 flat-token indices 8/10/12;
+// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
+// forbidden: permanent untagged pick flat-index bridge helpers in body_producer.
+fn body_producer_pick_if_body_from_atoms(
+  atoms: List<Node>,
+  witness: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_flat_atom_at(
+      atoms: atoms,
+      wanted: 8,
+      reason: body_producer_reason_mvp1_resolved_shape,
+      witness: witness
+    ),
+    f: fn(cond) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 10,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: witness
+        ),
+        f: fn(then_arm) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 12,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: witness
+            ),
+            f: fn(else_arm) {
+              if dag_mvp1_node_is_int_literal_atom(node: then_arm)
+                && dag_mvp1_node_is_int_literal_atom(node: else_arm) {
+                bind_outcome(
+                  o: body_producer_pick_condition_from_atom(cond: cond),
+                  f: fn(condition) {
+                    body_producer_branch_if_body(
+                      condition: condition,
+                      then_arm: type_atom_node(identity: body_producer_pick_lit_one),
+                      else_arm: type_atom_node(identity: body_producer_pick_lit_two)
+                    )
+                  }
+                )
+              } else {
+                outcome_rejected(
+                  d: body_producer_diagnostic(
+                    reason: body_producer_reason_mvp1_resolved_shape,
+                    n: witness
+                  )
+                )
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:produce_mvp1_pick_if_arrow_signature_from_resolved (via
+// produce_mvp1_pick_if_arrow_with_body_from_resolved; executed by comprep_branch_eval_by_execution
+// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: zero-param arrow signature derives
+// from resolved Arrow carriers rather than flat-token index 5 + pick binding table;
+// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
+// forbidden: permanent untagged pick signature flat-index bridge in body_producer.
+fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 5,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(codomain) {
+          bind_outcome(
+            o: dag_mvp1_pick_captured_flat_atom_binding_for_ident(
+              flat_index: 5,
+              ident_atom: codomain
+            ),
+            f: fn(codomain_binding) {
+              outcome_accepted(
+                value: node_synthetic(
+                  kind: TypeNode { connective: Arrow },
+                  children: [
+                    Edge {
+                      label: Positional,
+                      target: node_synthetic(
+                        kind: TypeNode { connective: Conj },
+                        children: []
+                      )
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    }
+                  ]
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_pick_if_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+        f: fn(atoms) {
+          bind_outcome(
+            o: body_producer_pick_if_body_from_atoms(atoms: atoms, witness: resolved_root),
+            f: fn(body) {
+              bind_outcome(
+                o: attach_arrow_body(arrow: signature, body: body),
+                f: fn(arrow_with_body) {
+                  if well_formed(n: arrow_with_body) {
+                    outcome_accepted(value: arrow_with_body)
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_post_produce_not_well_formed,
+                        n: arrow_with_body
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_pick_if_arrow_with_body() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_pick_arrow_with_body_fixture) {
+    outcome_accepted(value: dag_mvp1_pick_arrow_with_body_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_pick_arrow_with_body_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_pick_if_arrow_with_body_swapped_arms() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture) {
+    outcome_accepted(value: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_pick_arrow_with_body_swapped_arms_fixture
+      )
+    )
+  }
+}
+
+fn body_producer_bind_let_body(
+  key_binding: Symbol,
+  value: Node,
+  body: Node
+) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: ComputationNode { behavior: Bind },
+      children: [
+        Edge { label: Positional, target: type_atom_node(identity: key_binding) },
+        Edge { label: Positional, target: value },
+        Edge { label: Positional, target: body }
+      ]
+    )
+  )
+}
+
+fn body_producer_bind_value_lit_from_atom(val: Node, witness: Node) -> Outcome<Node> {
+  if dag_mvp1_node_is_int_literal_atom(node: val) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+  } else {
+    match val.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if (id == body_producer_pick_lit_one) || (id == ^dag_binding_mvp1_pick_lit_one) {
+          outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+        } else if (id == body_producer_pick_lit_two) || (id == ^dag_binding_mvp1_pick_lit_two) {
+          outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_two))
+        } else {
+          outcome_rejected(
+            d: body_producer_diagnostic(
+              reason: body_producer_reason_mvp1_resolved_shape,
+              n: witness
+            )
+          )
+        }
+      _ =>
+        outcome_rejected(
+          d: body_producer_diagnostic(
+            reason: body_producer_reason_mvp1_resolved_shape,
+            n: witness
+          )
+        )
+    }
+  }
+}
+
+fn body_producer_mvp1_value_lit_from_atom(val: Node, witness: Node) -> Outcome<Node> {
+  if dag_mvp1_node_is_int_literal_atom(node: val) {
+    outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+  } else {
+    match val.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if (id == body_producer_pick_lit_one) || (id == ^dag_binding_mvp1_pick_lit_one) {
+          outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+        } else if (id == body_producer_pick_lit_two) || (id == ^dag_binding_mvp1_pick_lit_two) {
+          outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_two))
+        } else {
+          outcome_rejected(
+            d: body_producer_diagnostic(
+              reason: body_producer_reason_mvp1_resolved_shape,
+              n: witness
+            )
+          )
+        }
+      _ =>
+        outcome_rejected(
+          d: body_producer_diagnostic(
+            reason: body_producer_reason_mvp1_resolved_shape,
+            n: witness
+          )
+        )
+    }
+  }
+}
+
+fn body_producer_loop_body(body_lit: Node, measure: Node) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: ComputationNode { behavior: Loop },
+      children: [
+        Edge { label: Positional, target: body_lit },
+        Edge { label: Named { name: loop_bound_edge }, target: measure }
+      ]
+    )
+  )
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:body_producer_loop_body_from_atoms (via produce_mvp1_loop_arrow_with_body_from_resolved;
+// executed by comprep_loop_eval_by_execution keystone) — bind:node://adhoc-0a43712d-e1c —
+// dissolve-on: loop body production derives from structured normalize/resolve Behavior carriers;
+// owner/lane: Mgr-§2 (crisp-crane-18).
+fn body_producer_loop_body_from_atoms(
+  atoms: List<Node>,
+  witness: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_flat_atom_at(
+      atoms: atoms,
+      wanted: 8,
+      reason: body_producer_reason_mvp1_resolved_shape,
+      witness: witness
+    ),
+    f: fn(body_atom) {
+      bind_outcome(
+        o: body_producer_mvp1_value_lit_from_atom(val: body_atom, witness: witness),
+        f: fn(body_lit) {
+          body_producer_loop_body(
+            body_lit: body_lit,
+            measure: dag_mvp1_loop_measure_node()
+          )
+        }
+      )
+    }
+  )
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:body_producer_bind_body_from_atoms (via produce_mvp1_bind_arrow_with_body_from_resolved;
+// executed by comprep_bind_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
+// dissolve-on: let-in body production derives from structured normalize/resolve Behavior carriers;
+// owner/lane: Mgr-§2 (crisp-crane-18).
+fn body_producer_bind_body_from_atoms(
+  atoms: List<Node>,
+  witness: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_flat_atom_at(
+      atoms: atoms,
+      wanted: 8,
+      reason: body_producer_reason_mvp1_resolved_shape,
+      witness: witness
+    ),
+    f: fn(key_atom) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 10,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: witness
+        ),
+        f: fn(val_atom) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 12,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: witness
+            ),
+            f: fn(body_atom) {
+              bind_outcome(
+                o: dag_mvp1_bind_captured_flat_atom_binding_for_ident(
+                  flat_index: 8,
+                  ident_atom: key_atom
+                ),
+                f: fn(key_binding) {
+                  bind_outcome(
+                    o: body_producer_bind_value_lit_from_atom(val: val_atom, witness: witness),
+                    f: fn(value) {
+                      bind_outcome(
+                        o: dag_mvp1_bind_captured_flat_atom_binding_for_ident(
+                          flat_index: 12,
+                          ident_atom: body_atom
+                        ),
+                        f: fn(body_binding) {
+                          body_producer_bind_let_body(
+                            key_binding: key_binding,
+                            value: value,
+                            body: type_atom_node(identity: body_binding)
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE2-BODY-BRIDGE —
+// consumer:produce_mvp1_loop_arrow_signature_from_resolved (via
+// produce_mvp1_loop_arrow_with_body_from_resolved; executed by comprep_loop_eval_by_execution
+// keystone) — bind:node://adhoc-0a43712d-e1c — dissolve-on: zero-param arrow signature derives
+// from resolved Arrow carriers rather than flat-token index 5 + loop binding table;
+// owner/lane: Mgr-§2 (crisp-crane-18) — trigger: structured fn-body normalize output lands;
+// forbidden: permanent untagged loop signature flat-index bridge in body_producer.
+fn produce_mvp1_loop_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 5,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(codomain) {
+          bind_outcome(
+            o: dag_mvp1_loop_captured_flat_atom_binding_for_ident(
+              flat_index: 5,
+              ident_atom: codomain
+            ),
+            f: fn(codomain_binding) {
+              outcome_accepted(
+                value: node_synthetic(
+                  kind: TypeNode { connective: Arrow },
+                  children: [
+                    Edge {
+                      label: Positional,
+                      target: node_synthetic(
+                        kind: TypeNode { connective: Conj },
+                        children: []
+                      )
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    }
+                  ]
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_bind_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 5,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(codomain) {
+          bind_outcome(
+            o: dag_mvp1_bind_captured_flat_atom_binding_for_ident(
+              flat_index: 5,
+              ident_atom: codomain
+            ),
+            f: fn(codomain_binding) {
+              outcome_accepted(
+                value: node_synthetic(
+                  kind: TypeNode { connective: Arrow },
+                  children: [
+                    Edge {
+                      label: Positional,
+                      target: node_synthetic(
+                        kind: TypeNode { connective: Conj },
+                        children: []
+                      )
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    },
+                    Edge {
+                      label: Positional,
+                      target: type_atom_node(identity: codomain_binding)
+                    }
+                  ]
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_loop_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_loop_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+        f: fn(atoms) {
+          bind_outcome(
+            o: body_producer_loop_body_from_atoms(atoms: atoms, witness: resolved_root),
+            f: fn(body) {
+              bind_outcome(
+                o: attach_arrow_body(arrow: signature, body: body),
+                f: fn(arrow_with_body) {
+                  if well_formed(n: arrow_with_body) {
+                    outcome_accepted(value: arrow_with_body)
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_post_produce_not_well_formed,
+                        n: arrow_with_body
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_bind_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_bind_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+        f: fn(atoms) {
+          bind_outcome(
+            o: body_producer_bind_body_from_atoms(atoms: atoms, witness: resolved_root),
+            f: fn(body) {
+              bind_outcome(
+                o: attach_arrow_body(arrow: signature, body: body),
+                f: fn(arrow_with_body) {
+                  if well_formed(n: arrow_with_body) {
+                    outcome_accepted(value: arrow_with_body)
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_post_produce_not_well_formed,
+                        n: arrow_with_body
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_loop_arrow_with_body() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_loop_arrow_with_body_fixture) {
+    outcome_accepted(value: dag_mvp1_loop_arrow_with_body_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_loop_arrow_with_body_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_bind_arrow_with_body() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_bind_arrow_with_body_fixture) {
+    outcome_accepted(value: dag_mvp1_bind_arrow_with_body_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_bind_arrow_with_body_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_loop_arrow_with_body_wrong_value() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_loop_arrow_with_body_wrong_value_fixture) {
+    outcome_accepted(value: dag_mvp1_loop_arrow_with_body_wrong_value_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+      )
+    )
+  }
+}
+
+fn produce_mvp1_bind_arrow_with_body_wrong_value() -> Outcome<Node> {
+  if well_formed(n: dag_mvp1_bind_arrow_with_body_wrong_value_fixture) {
+    outcome_accepted(value: dag_mvp1_bind_arrow_with_body_wrong_value_fixture)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: dag_mvp1_bind_arrow_with_body_wrong_value_fixture
+      )
+    )
+  }
+}

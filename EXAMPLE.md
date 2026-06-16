@@ -105,8 +105,8 @@ And the punchline transfers exactly: **adding two amounts is total** on the exac
 
 The deeper move in both the money and the integer version: **you never write "convert A → B."** You write what each thing *is* (which algebra it inhabits, which refinements it adds), and the translation is the model doing arithmetic on those refinements.
 
-*(Honest footnote: the **integer/overflow** version is real code in the repo — `src/v4/std/integer.dag`. This **money** version is the same gunbc vocabulary — `Compose`, refinement predicates, `Outcome<T>`, a disposition enum — applied to business logic to illustrate; there isn't a `Money` model checked in. The structure is a faithful 1:1 with the integer one.)*
+*(Honest footnote: the **integer/overflow** version is real code in the repo — `src/v2/std/integer.dag`. This **money** version is the same gunbc vocabulary — `Compose`, refinement predicates, `Outcome<T>`, a disposition enum — applied to business logic to illustrate; there isn't a `Money` model checked in. The structure is a faithful 1:1 with the integer one.)*
 
 ---
 
-*(Background, unchanged: §1.8 #4701 CI watch still running on `40b28f5875`; I'll surface when `v4_lens_gate` resolves.)*
+*(Background, unchanged: §1.8 #4701 CI watch still running on `40b28f5875`; I'll surface when `v2_lens_gate` resolves.)*

@@ -31,12 +31,12 @@ data format_brace_escape_close: String = "}}"
 
 // "How does Rust index into a string?"
 // String indexing is not supported directly (UTF-8 safety).
-// The v2_rt helper wraps .chars().nth(n).
-data string_char_at_template: String = "v2_rt::char_at(&\{base\}, \{index\})"
+// The v1_rt helper wraps .chars().nth(n).
+data string_char_at_template: String = "v1_rt::char_at(&\{base\}, \{index\})"
 
 // "How does Rust slice a string?"
 // String slicing by char offset (not byte offset) requires a helper.
-data string_substring_template: String = "v2_rt::substring(&\{base\}, \{start\}, \{end\})"
+data string_substring_template: String = "v1_rt::substring(&\{base\}, \{start\}, \{end\})"
 
 // "How does Rust split a string?"
 // Returns an iterator of &str slices; collect to Vec<String>.

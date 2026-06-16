@@ -44,7 +44,7 @@ data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Bytes",  target_type: "Vec<u8>",           default_expr: "Vec::new()",           is_copy: false, literal_suffix: none },
   { dag_name: "Secret", target_type: "String",             default_expr: "String::new()",         is_copy: false, literal_suffix: ".to_string()" },
   { dag_name: "Json",   target_type: "serde_json::Value",  default_expr: "serde_json::Value::Null", is_copy: false, literal_suffix: none },
-  { dag_name: "Hash",   target_type: "v2_rt::Hash",        default_expr: none,                    is_copy: false, literal_suffix: ".to_string()" },
+  { dag_name: "Hash",   target_type: "v1_rt::Hash",        default_expr: none,                    is_copy: false, literal_suffix: ".to_string()" },
   { dag_name: "Witness", target_type: "Witness",           default_expr: none,                    is_copy: false, literal_suffix: none },
   { dag_name: "witness", target_type: "Witness",           default_expr: none,                    is_copy: false, literal_suffix: none }
 ]

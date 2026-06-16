@@ -36,17 +36,17 @@ fallback — an order-dependent verdict flip.
 **Manual discharge today (not automatic enforcement):**
 
 - `seed_kernel_intern_names` pre-seeds the shared table so kernel names get stable ids across
-  every entry in an index (`src/v2/stage0/src/cli_run.rs:306-347`).
+  every entry in an index (`src/v1/stage0/src/cli_run.rs:306-347`).
 - `resolve_typed_cache_equivalence_test` is a **standing purity-oracle gate**: cached resolve
   must be byte-identical to the no-cache cold oracle in every entry order
-  (`src/v2/tests/src/resolve_typed_cache_equivalence_test.rs:1-19`).
+  (`src/v1/tests/src/resolve_typed_cache_equivalence_test.rs:1-19`).
 
 **First inhabitant on the substrate path:** PR1 is also the live first chapter of the
 `cache_interface` story — resolve-cost PR2 (in flight) grounds the staged
 dims as the first real consumer; PR1's manual seed + falsifier is what exists today.
 
 Model authority for the type-time interning shape:
-`src/v2/04_infer.dag:5453-5460` (`build_type_env` folds `kernel_type_set` into the table).
+`src/v1/04_infer.dag:5453-5460` (`build_type_env` folds `kernel_type_set` into the table).
 
 **Distinct from infer reconcile cache (#4282):** that lever memoizes lookup/reconcile with
 span-only keys across `TypeEnv` updates — a different stage, different impurity class. PR1
@@ -58,7 +58,7 @@ is resolve-stage typed-graph cache + intern-id content-stability; do not collaps
 
 ### Root cause: no reified execution receipt at the model→host boundary
 
-The root defect is **not** “the language has no notion of pure-of-content.” The v4
+The root defect is **not** “the language has no notion of pure-of-content.” The v2
 five-`Behavior` kernel already has **purity by construction** at the model layer. The gap
 is at the **execution boundary**: a pure model is run by an impure host, and nothing
 **reifies the receipt** of that run — no carrier where declared purity meets host
@@ -99,7 +99,7 @@ no fourth primitive, no parallel digest/receipt type:**
 | --- | --- | --- |
 | **Content identity** | **(c) Content-keyed invalidation** | `ContentHash` / `ExecutionReceiptRef<T> { receipt_digest }` digest seam (`cache_interface.dag:203-204`) — memo-hit-vs-recompute key |
 | **Hermetic realization** | **(b) Enforced purity at boundary** | Equivalence falsifier (§5) — **purity IS the falsifier**, not a new mechanism |
-| **Receipt + change-driven reconcile** | **(a) Automatic memo** | **Persistence:** `cache_interface` store/lookup + `ExecutionReceipt<T>` (`key → output` on the compute_fabric lane). **Change-consequence:** `RecomputePlan` / `AffectedSet` (`v4.std.change` — v4-owner confirmed: rerun-scope / what dependencies must rerun **only**; does **not** hold persistence). **TARGET composition:** `(ExecutionReceipt persistence) × (AffectedSet/RecomputePlan rerun-scope)` — not a field on `AffectedSet` today |
+| **Receipt + change-driven reconcile** | **(a) Automatic memo** | **Persistence:** `cache_interface` store/lookup + `ExecutionReceipt<T>` (`key → output` on the compute_fabric lane). **Change-consequence:** `RecomputePlan` / `AffectedSet` (`v2.std.change` — v2-owner confirmed: rerun-scope / what dependencies must rerun **only**; does **not** hold persistence). **TARGET composition:** `(ExecutionReceipt persistence) × (AffectedSet/RecomputePlan rerun-scope)` — not a field on `AffectedSet` today |
 
 **Substrate carrier (the N+M move):** `Realization<Spec, Effect>` names the **existing**
 `compute_fabric` ↔ `cache_interface` composition — **not** new types. Abstraction over the
@@ -109,12 +109,12 @@ pair where `ExecutionReceipt` **is** a cache entry on the compute timeline (§4.
 | --- | --- |
 | **Spec** | `WorkUnit<T>` / `ArtifactSpec<T>` — what to compute (`compute_fabric.dag:398-403`), keyed by `ContentHash` |
 | **Effect** | `ExecutionReceipt<T>` / `Outcome<ArtifactRef<T>>` — realized outcome (`compute_fabric.dag:448-451`) |
-| **Handler** | `WorkDemand.effects: List<EffectBoundary>` — std effect/capability discipline (`compute_fabric.dag:274`; `EffectBoundary` forward-stub; inhabited pattern `v4.std.runtime.ResourceEffectBoundary`) — **not** a bespoke effect type |
+| **Handler** | `WorkDemand.effects: List<EffectBoundary>` — std effect/capability discipline (`compute_fabric.dag:274`; `EffectBoundary` forward-stub; inhabited pattern `v2.std.runtime.ResourceEffectBoundary`) — **not** a bespoke effect type |
 | **Digest seam** | `ContentHash` / `ExecutionReceiptRef<T>` — content-addressed reconciliation across the acyclic firewall (`cache_interface.dag:203-204`) |
 
 One kernel, N handlers (compute, build, provision, migrate, schedule). Partial pieces
 already scatter in `cache_identity`, `cache_interface`, `compute_fabric`, and
-`v4.std.change`.
+`v2.std.change`.
 
 **Inhabitation target (staged):** `CacheInterfaceFacts`, staged dims (`PersistenceLocality`,
 `ArtifactKindId`, …), + `ExecutionReceipt<T>`. ARC inhabitant #1: `#4878` (resolve-cost).
@@ -152,16 +152,16 @@ inhabitants prove it (resolve #1, sccache #2, provisioning #3). Same ≥2 restra
    inhabitant (§7).
 6. **Endpoint — Realization Lens** — substrate forbids hand-rolled-realization shapes.
 
-### Why v4 recurs — staged carrier, not v2 sloppiness
+### Why v2 recurs — staged carrier, not v2 sloppiness
 
-The pattern is **not** “v2 was sloppy and v4 will be clean.” v4 **already** stages the
+The pattern is **not** “v2 was sloppy and v2 will be clean.” v2 **already** stages the
 same hand-rolled compute-once-store pattern because the receipt carrier is
 **staged-not-inhabited**:
 
-- `ParseTable` — memoized `(position × production)` at `src/v4/compiler/02_parse.dag:155-161`
-- `TestClaimCacheKey` / `interpretation_hash` — eval cache boundary at `src/v4/compiler/05_eval.dag:526+`
+- `ParseTable` — memoized `(position × production)` at `src/v2/compiler/02_parse.dag:155-161`
+- `TestClaimCacheKey` / `interpretation_hash` — eval cache boundary at `src/v2/compiler/05_eval.dag:526+`
 
-Eleven v2 hand-rolls (§3.3) plus these v4 instances are **the same theorem recurring**:
+Eleven v2 hand-rolls (§3.3) plus these v2 instances are **the same theorem recurring**:
 without an inhabited execution receipt, each layer re-implements store-and-project locally.
 That recurrence is **systemic**, not a cleanup backlog.
 
@@ -202,11 +202,11 @@ remain in source marks — this section cites them, does not mirror them.
 
 | Instance | Structural redundancy | Cite |
 | --- | --- | --- |
-| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `src/v2/stage0/src/v2_interpreter.rs` `param_names` (`:1286-1317`); eval profiler — `eval_profile_enabled` (`:1339`), `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EVAL_SELF_NANOS` (`:4334-4381`) (#4865) |
+| **`call_function` static param list** | Every call re-derives value-param names from `fn_node.params` via `authored_name_at`, `Vec` + `HashMap` alloc — pure function of static fn shape | `src/v1/stage0/src/v1_interpreter.rs` `param_names` (`:1286-1317`); eval profiler — `eval_profile_enabled` (`:1339`), `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EVAL_SELF_NANOS` (`:4334-4381`) (#4865) |
 | **Resolve overlapping closure** | Each entry re-ran tokenize→parse→resolve→reconcile over overlapping modules before shared index | `cli_run.rs:270-303`; cold oracle vs `resolve_entry_with_index` |
-| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v4/lens/complexity.dag`; `src/v2/stage0/src/v2_interpreter.rs` lens-eval wall (`:4253-4269`); `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EvalProfile` (`:4334-4381`) |
+| **Cost/complexity lens AST folds** | Lenses fold over AST during witness eval with no shared memo | `src/v2/lens/complexity.dag`; `src/v1/stage0/src/v1_interpreter.rs` lens-eval wall (`:4253-4269`); `eval_profile_snapshot`/`eval_profile_reset` + `EVAL_COUNTS`/`EvalProfile` (`:4334-4381`) |
 
-`src/v2/stage0/src/v2_interpreter.rs:1286-1297`
+`src/v1/stage0/src/v1_interpreter.rs:1286-1297`
 
 ```rust
     let param_names: Vec<String> = fn_node
@@ -227,7 +227,7 @@ remain in source marks — this section cites them, does not mirror them.
 
 | Instance | What the cache revealed | Cite |
 | --- | --- | --- |
-| **Typed-module cache + latent intern-id impurity** | Module typed result claimed content-pure but depended on ambient intern-table **size** at `build_type_env` kernel interning; cache made order-dependent verdict flips visible; `seed_kernel_intern_names` + byte-identical falsifier restore content-stability | `cli_run.rs:306-347`; `v2_compiler_infer.rs:11328`; `resolve_typed_cache_equivalence_test.rs:1-19`; `04_infer.dag:5460` |
+| **Typed-module cache + latent intern-id impurity** | Module typed result claimed content-pure but depended on ambient intern-table **size** at `build_type_env` kernel interning; cache made order-dependent verdict flips visible; `seed_kernel_intern_names` + byte-identical falsifier restore content-stability | `cli_run.rs:306-347`; `v1_compiler_infer.rs:11328`; `resolve_typed_cache_equivalence_test.rs:1-19`; `04_infer.dag:5460` |
 
 This row is §1 in table form — the strongest evidence for the un-enforced-purity face.
 
@@ -239,21 +239,21 @@ elsewhere.
 
 | # | Hand-roll | What it caches (structurally) | Authority cite |
 | --- | --- | --- | --- |
-| 1 | `pure_call_memo` | Structural pure fn results by fn identity + arg sharing | `v2_interpreter.rs:1022, 2180-2250` |
-| 2 | `data_cache` | Nullary / data CAF values by node identity | `v2_interpreter.rs:1019, 1516-1520` |
+| 1 | `pure_call_memo` | Structural pure fn results by fn identity + arg sharing | `v1_interpreter.rs:1022, 2180-2250` |
+| 2 | `data_cache` | Nullary / data CAF values by node identity | `v1_interpreter.rs:1019, 1516-1520` |
 | 3 | `parse_cache` | File path → parse result + newline index | `cli_run.rs:280-282` |
-| 4 | `SymbolInterner` | String → `Symbol` dedup (identity table) | `v2_interpreter.rs:108-118, 1028` |
+| 4 | `SymbolInterner` | String → `Symbol` dedup (identity table) | `v1_interpreter.rs:108-118, 1028` |
 | 5 | `typed_module_cache` | Module name → typecheck result (**PR1 #4867** — see §3.2 for purity story) | `cli_run.rs:287-303, 539+` |
 | 6 | `COMPILE_CACHE` | Per-(source, file) `compile_to_dag` outcome | `cached_compile.rs:63-70` |
 | 7 | Bootstrap snapshots | Committed `Dag` snapshot reuse | `src/v3/compiler/src/lib.rs` (`std_fixture_bootstrap_snapshot`); `src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` |
-| 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v4-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
+| 8 | `.claim-map` | Claim corpus execution map artifact | `scripts/v2-claim-corpus-execution-map.sh:28`; `.gitignore:101` |
 | 9 | Discovered-owned-data manifest | Host scan → manifest DAG | `discover_owned_data.rs:8-12`; `host_discovered_owned_data_manifest.dag:2-3` |
 | 10 | `.freshness-check` | Stage0 regen verify temp tree | `dsl/gunbc/tools/freshness.dag:68-89`; `Makefile:56` |
 | 11 | sccache (interim CI) | **ARC inhabitant #2** — de-risking *handler instance* of the carrier (not a rows 1–10 dissolve target; §7 row 11 governs migration); rustc invocation → object file; closed-world + reversible | `.github/workflows/ci.yml:70-91`; `cache_interface.dag:280-321` |
 
-**Footnote — same class in newer substrate (not roster expansion):** v4 `ParseTable`
-(`src/v4/compiler/02_parse.dag:155-161`) and `TestClaimCacheKey` (`src/v4/compiler/05_eval.dag:526+`) — pattern recurs in
-v4; not added to the canonical eleven.
+**Footnote — same class in newer substrate (not roster expansion):** v2 `ParseTable`
+(`src/v2/compiler/02_parse.dag:155-161`) and `TestClaimCacheKey` (`src/v2/compiler/05_eval.dag:526+`) — pattern recurs in
+v2; not added to the canonical eleven.
 
 ### 3.4 Parallel re-derivation — duplicate authority (not a cache)
 
@@ -300,7 +300,7 @@ substrate is built **toward**.
 
 | Property | ROADMAP primitive | Target meaning | Substrate attach | Today |
 | --- | --- | --- | --- | --- |
-| **(a) Automatic memo** | Receipt + change-driven reconcile | Compiler/runner inserts memo; authors don't hand-roll | **Persistence:** `cache_interface` + `ExecutionReceipt<T>`. **Rerun-scope:** `RecomputePlan` / `AffectedSet` (`v4.std.change`) — composed at TARGET, not one substrate field | Eleven hand-rolls; v2/v4 local memos |
+| **(a) Automatic memo** | Receipt + change-driven reconcile | Compiler/runner inserts memo; authors don't hand-roll | **Persistence:** `cache_interface` + `ExecutionReceipt<T>`. **Rerun-scope:** `RecomputePlan` / `AffectedSet` (`v2.std.change`) — composed at TARGET, not one substrate field | Eleven hand-rolls; v2/v2 local memos |
 | **(b) Enforced purity at boundary** | Hermetic realization | Non-pure units cannot be soundly memoized | Equivalence falsifier (§5) — purity **is** the falsifier | Manual seeds + standing gates (PR1) |
 | **(c) Content-keyed invalidation** | Content identity | Merkle/content-hash invalidation, not heuristic deps | `ContentHash` / `ExecutionReceiptRef` digest seam | Partially in `CacheInterfaceFacts`; sccache interim host |
 
@@ -345,7 +345,7 @@ prove the identity+receipt shape carries — PR2 is the first trigger to watch.
    - **Persistence** — `key → output` via `ExecutionReceipt<T>` + `cache_interface` store/lookup
      (compute_fabric / cache_interface lane; snappy substrate co-sign).
    - **Change-consequence** — on content-key change, `RecomputePlan` / `AffectedSet`
-     (`v4.std.change`; v4-owner confirmed) names **what dependencies/layers must rerun** —
+     (`v2.std.change`; v2-owner confirmed) names **what dependencies/layers must rerun** —
      not `key → output` persistence. Gap selection is the TARGET composition
      `(ExecutionReceipt persistence) × (AffectedSet/RecomputePlan rerun-scope)` (§6).
 
@@ -364,11 +364,11 @@ mechanism. PR1 (#4867) is the canonical receipt on the compute handler.
 **Not every recompute is the error class.** When the content key **changes** — source edit,
 dependency change, invalidation trigger — re-executing dependent work is **correct**
 receipt + change-driven reconcile: realize only the gap. **`RecomputePlan` / `AffectedSet`**
-(`v4.std.change`; v4-owner confirmed) model **change-consequence** — what dependencies/layers
+(`v2.std.change`; v2-owner confirmed) model **change-consequence** — what dependencies/layers
 must rerun after change — **not** `key → output` persistence (that is `ExecutionReceipt` +
 `cache_interface`; §5.3). That is incremental execution done right.
 
-*Footnote:* `v4.lens.affected_set` projects `AffectedSet` → `RerunNodeSet` for CI witness
+*Footnote:* `v2.lens.affected_set` projects `AffectedSet` → `RerunNodeSet` for CI witness
 selection (`affected_set_selection.dag`) — same authority family, different projection.
 
 **Spurious recompute** is the error: same content key, full re-derivation anyway — or a
@@ -411,7 +411,7 @@ is met; see [ctrl/ROADMAP.md ARC §3](https://github.com/gunb-ai/ctrl/blob/main/
 - Not claiming automatic enforcement, `CacheFabric<T>`, minted `Realization<Spec, Effect>`
   kernel types, or full collapse before inhabitation.
 - Not citing consumed scaffolding worksheets from early `.dag` headers.
-- Not expanding eleven → thirteen (v4 footnotes only).
+- Not expanding eleven → thirteen (v2 footnotes only).
 - Not benchmark-driven proof.
 
 ---
@@ -433,7 +433,7 @@ is met; see [ctrl/ROADMAP.md ARC §3](https://github.com/gunb-ai/ctrl/blob/main/
 
 **Recompute pure-of-content** is what happens when there is **no reified execution receipt**
 at the model→host boundary: redundancy violates Performance / Facts-Flow-Forward; silent
-impurity violates Fail-Closed (PR1 #4867). v4 recurs the pattern because the carrier is
+impurity violates Fail-Closed (PR1 #4867). v2 recurs the pattern because the carrier is
 staged-not-inhabited, not because v2 was sloppy. **Transparent memoization** = TARGET
 `Realization<Spec, Effect>` ([ctrl/ROADMAP.md](https://github.com/gunb-ai/ctrl/blob/main/ROADMAP.md#cross-cutting-requirement--the-realization-pattern);
 staged in `cache_identity` / `cache_interface` / `compute_fabric`; TARGET carrier name only

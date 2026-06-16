@@ -1,0 +1,127 @@
+// Scope: M3a — Stage A executed comparison on FIXTURE stages (design-self-host-fixed-point.md §5/§6).
+// Status: realized — exercises self_host.stage_emission_equality on fixture emitted stages;
+//   a structurally-equal candidate Holds, a divergent candidate Violates (located diff).
+// ⚠️ NOT SELF-HOSTING ACHIEVED. These greens prove the structural-equality predicate + the
+// perturbed-candidate discriminator on hand-built FIXTURE nodes — they de-risk the comparison
+// machinery, nothing more. The north-star self-host fixed point is M3b (stage C): the whole v2
+// compiler emitting bit-identical stage1==stage2 over real merkle digests, gated on the emit
+
+module v2.test.self_host.stage_emission_equality_fixture
+
+import v2.compiler.self_host { stage_emission_equality }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Edge,
+  Node,
+  Positional,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates }
+
+
+// Fixture "emitted stage" artifacts: simple well-formed canonical Nodes standing in for
+// stage1/stage2 emitted artifacts. Structural equality is occurrence-id-insensitive, so the
+// reference and the matching candidate are constructed independently and still compare EQUAL.
+fn stage_emission_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^stage_emission_fixture_leaf } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+fn stage_reference_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: stage_emission_leaf() },
+      Edge { label: Positional, target: stage_emission_leaf() },
+      Edge { label: Positional, target: stage_emission_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+fn stage_candidate_equal_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: stage_emission_leaf() },
+      Edge { label: Positional, target: stage_emission_leaf() },
+      Edge { label: Positional, target: stage_emission_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+// Perturbed candidate — divergent arity (a dropped artifact): the discriminating red.
+fn stage_candidate_perturbed_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: stage_emission_leaf() },
+      Edge { label: Positional, target: stage_emission_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+
+// Stage A green: a structurally-equal emitted candidate yields Holds.
+fn stage_emission_equality_holds_on_equal() -> Bool {
+  match stage_emission_equality(
+    emitted_candidate: stage_candidate_equal_emitted(),
+    reference_stage1: stage_reference_emitted()
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+
+// Stage A discriminating red: a divergent emitted candidate yields Violates (located diff).
+fn stage_emission_equality_violates_on_perturbed() -> Bool {
+  match stage_emission_equality(
+    emitted_candidate: stage_candidate_perturbed_emitted(),
+    reference_stage1: stage_reference_emitted()
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+
+// Bool->input lift so the witnesses also stand as resolvable TestClaims, co-located with the
+// *_holds functions the claim-witness corpus gate enrolls (ok ⇒ input == expected ⇒ green).
+fn stage_emission_claim_input(ok: Bool) -> Node {
+  if ok {
+    stage_reference_emitted()
+  } else {
+    stage_emission_leaf()
+  }
+}
+
+
+data claim_stage_emission_equality_holds_on_equal: TestClaim = CompilesClaim {
+  label: "self_host/stage_emission_equality: structurally-equal emitted candidate holds",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: stage_emission_claim_input(ok: stage_emission_equality_holds_on_equal()),
+  expected_value: stage_reference_emitted(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_stage_emission_equality_violates_on_perturbed: TestClaim = CompilesClaim {
+  label: "self_host/stage_emission_equality: divergent emitted candidate violates",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: stage_emission_claim_input(ok: stage_emission_equality_violates_on_perturbed()),
+  expected_value: stage_reference_emitted(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

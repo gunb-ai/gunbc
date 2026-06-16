@@ -160,7 +160,7 @@ executes the compiled program.
 At the time of writing, the LanguageSpec mechanism is partial:
 materialization strategy, sharing × serialization coupling, and
 type-decoration selection are not fully modeled in LanguageSpec
-and still leak into per-target emitter code (see `src/v2/*.dag`
+and still leak into per-target emitter code (see `src/v1/*.dag`
 emit phases for the current state). The thesis commitment is to
 the end state — "adding a new Shape A target costs one spec file,
 zero compiler changes" — and the work between M1 and M2 is

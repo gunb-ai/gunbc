@@ -1,0 +1,2091 @@
+// src/v2/extdeps/languages/java.dag
+// Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
+// Status: T-4.17 Wave 2a/2b — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodHeader/MethodBody/MethodDeclarator/FormalParameterList, §14.17 optional return Expression). Wave-2 productions declared as `FormalProduction` flat rhs (`java_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. ModelCore wave-2b: primitive storage on full integer catalog; arithmetic inhabitance/laws on `int`/`long` only (JLS §5.6 promotion — byte/short/char stay primitives-only); wrapping int/long → commutative_semiring modular laws; float/double primitives-only (JLS §15.20.1 NaN compare); bool algebra; div/rem-by-zero partiality only. bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
+
+module v2.extdeps.languages.java
+
+import v2.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  Choice,
+  FormalGrammarSymbol,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
+  Sequence,
+  Terminal,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens,
+  grammar_production_to_node,
+  grammar_relation_tokens_node
+}
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  lex_rule_set_token_class_member
+}
+import v2.std.collection { List, Map, Set, empty_map, map_insert }
+import v2.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
+  EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
+  ModelCore,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
+  PartialOperationDecl,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  PrimitiveOperationRef,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  primitive_fact_axis_unbound_diagnostic,
+  ModelCoreFactAxisWidth
+}
+import v2.std.witness { Holds, Violates }
+import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model {
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
+  target_model_edge_serialize_source
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.algebra {
+  BooleanAlgebra,
+  boolean_algebra_node,
+  boolean_algebra_type_node,
+  commutative_semiring_node,
+  commutative_semiring_type_node,
+  fold_list,
+  fold_list_right,
+  list_append,
+  list_snoc_item
+}
+import v2.std.text { String }
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// `Unsigned` arm is cataloged for `char` (JLS §4.2.1 — 16-bit unsigned UTF-16 code unit); signed integrals use `Signed`.
+type JavaIntKind
+  = Signed
+  | Unsigned
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type JavaIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type JavaFloatWidth
+  = Bits32
+  | Bits64
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type JavaScalar
+  = IntScalar { kind: JavaIntKind, width: JavaIntWidth }
+  | FloatScalar { width: JavaFloatWidth }
+  | BoolScalar
+  | VoidScalar
+
+type JavaIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  signedness: JavaIntKind
+  width: JavaIntWidth
+  overflow_release: OverflowAction
+  std_projection: Symbol
+}
+
+type JavaFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: JavaFloatWidth
+  ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Single-class non-integer primitive today; reserved arm mirrors rust.dag two-arm shape for v2 compile.
+type JavaNonIntegerScalar
+  = BoolScalar
+  | JavaNonIntegerScalarReserved
+
+type JavaNonIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  scalar: JavaNonIntegerScalar
+  std_projection: Symbol
+  representation: Symbol
+}
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Java integral ops wrap (JLS); `PanicOnOverflow` arm mirrors rust.dag for v2 compile (never cataloged).
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
+
+type JavaLanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+// T-11 java grammar relation row: fixed terminals and bound terminals share
+// the Java grammar production instead of an operator string template.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
+type JavaGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
+// 🟡 needs-more-work — feature:java-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for java_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type JavaModelCoreLawKey
+  = JavaLawIntegerAddAssociativeModular
+  | JavaLawIntegerAddCommutativeModular
+  | JavaLawIntegerMulAssociativeModular
+  | JavaLawIntegerMulCommutativeModular
+  | JavaLawIntegerDistributiveModular
+  | JavaLawIntegerModularWrap
+  | JavaLawBoolBoundedLattice
+  | JavaLawBoolComplement
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^java_token_kw_static },
+    FixedToken { token_class: ^java_token_kw_int },
+    BoundToken { token_class: ^java_token_ident, binding: ^java_binding_method_add },
+    FixedToken { token_class: ^java_token_lparen },
+    FixedToken { token_class: ^java_token_kw_int },
+    BoundToken { token_class: ^java_token_ident, binding: ^java_binding_param_x },
+    FixedToken { token_class: ^java_token_comma },
+    FixedToken { token_class: ^java_token_kw_int },
+    BoundToken { token_class: ^java_token_ident, binding: ^java_binding_param_y },
+    FixedToken { token_class: ^java_token_rparen },
+    FixedToken { token_class: ^java_token_lbrace },
+    FixedToken { token_class: ^java_token_kw_return },
+    BoundToken { token_class: ^java_token_ident, binding: ^java_binding_param_x },
+    FixedToken { token_class: ^java_token_plus },
+    BoundToken { token_class: ^java_token_ident, binding: ^java_binding_param_y },
+    FixedToken { token_class: ^java_token_semicolon },
+    FixedToken { token_class: ^java_token_rbrace }
+  ]
+}
+data java_mvp1_source_text: String = "static int add(int x, int y) { return x + y; }"
+
+data java_facts_byte: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_byte,
+  signedness: Signed,
+  width: Bits8,
+  overflow_release: TwoComplementWrap,
+  std_projection: ^java_std_projection_byte,
+}
+
+data java_facts_short: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_short,
+  signedness: Signed,
+  width: Bits16,
+  overflow_release: TwoComplementWrap,
+  std_projection: ^java_std_projection_short,
+}
+
+data java_facts_int: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_int,
+  signedness: Signed,
+  width: Bits32,
+  overflow_release: TwoComplementWrap,
+  std_projection: ^java_std_projection_int,
+}
+
+data java_facts_long: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_long,
+  signedness: Signed,
+  width: Bits64,
+  overflow_release: TwoComplementWrap,
+  std_projection: ^java_std_projection_long,
+}
+
+data java_facts_float: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_float,
+  width: Bits32,
+  ieee754_binary: ^java_ieee754_binary32,
+  std_projection: ^java_std_projection_float,
+}
+
+data java_facts_double: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_double,
+  width: Bits64,
+  ieee754_binary: ^java_ieee754_binary64,
+  std_projection: ^java_std_projection_double,
+}
+
+data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_boolean,
+  scalar: BoolScalar,
+  std_projection: ^java_std_projection_boolean,
+  representation: ^java_repr_boolean,
+}
+
+// JLS §4.2.1 — char is a 16-bit unsigned integral type (UTF-16 code unit).
+data java_facts_char: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
+  surface_spelling: ^java_surface_spelling_char,
+  signedness: Unsigned,
+  width: Bits16,
+  overflow_release: TwoComplementWrap,
+  std_projection: ^java_std_projection_char,
+}
+
+// Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
+data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
+  java_facts_byte,
+  java_facts_short,
+  java_facts_int,
+  java_facts_long,
+  java_facts_char,
+]
+
+// JLS §5.6 — numeric promotion: byte/short/char arithmetic is performed on int; only int/long carry ModelCore algebra.
+data java_integer_algebra_inhabitance_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
+  java_facts_int,
+  java_facts_long,
+]
+
+data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
+  java_facts_float,
+  java_facts_double,
+]
+
+// JLS §15.20.1 — float/double relational ops are boolean-valued with NaN unordered; std
+// `ApproximateField` bundles an Ordering-valued compare. Float primitive facts stay in
+// `ModelCore.primitives`; AlgebraInhabitanceDecl/laws withheld until std exports a
+// NaN-aware float arithmetic carrier (kotlin.dag char / go.dag complex precedent).
+
+// §4.2 boolean only — char is integral (integer catalog); void is declared-inhabitant-only (not ModelCore).
+data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
+  java_facts_boolean,
+]
+
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn java_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_int_kind_node(kind: JavaIntKind) -> Node {
+  match kind {
+    Signed => java_inhabitant_atom(id: ^java_tag_signed)
+    Unsigned => java_inhabitant_atom(id: ^java_tag_unsigned)
+  }
+}
+
+fn java_int_width_node(width: JavaIntWidth) -> Node {
+  match width {
+    Bits8 => java_inhabitant_atom(id: ^java_tag_bits8)
+    Bits16 => java_inhabitant_atom(id: ^java_tag_bits16)
+    Bits32 => java_inhabitant_atom(id: ^java_tag_bits32)
+    Bits64 => java_inhabitant_atom(id: ^java_tag_bits64)
+  }
+}
+
+fn java_float_width_node(width: JavaFloatWidth) -> Node {
+  match width {
+    Bits32 => java_inhabitant_atom(id: ^java_tag_bits32)
+    Bits64 => java_inhabitant_atom(id: ^java_tag_bits64)
+  }
+}
+
+fn java_overflow_node(overflow: OverflowAction) -> Node {
+  match overflow {
+    PanicOnOverflow => java_inhabitant_atom(id: ^java_tag_panic_on_overflow)
+    TwoComplementWrap => java_inhabitant_atom(id: ^java_tag_two_complement_wrap)
+  }
+}
+
+fn java_scalar_node(scalar: JavaScalar) -> Node {
+  match scalar {
+    IntScalar { kind, width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        java_named_edge(
+          name: ^java_scalar_field_classifier,
+          target: java_inhabitant_atom(id: ^java_tag_scalar_int)
+        ),
+        java_named_edge(name: ^java_scalar_field_kind, target: java_int_kind_node(kind: kind)),
+        java_named_edge(name: ^java_scalar_field_width, target: java_int_width_node(width: width))
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        java_named_edge(
+          name: ^java_scalar_field_classifier,
+          target: java_inhabitant_atom(id: ^java_tag_scalar_float)
+        ),
+        java_named_edge(name: ^java_scalar_field_width, target: java_float_width_node(width: width))
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    BoolScalar => java_inhabitant_atom(id: ^java_tag_scalar_bool)
+    VoidScalar => java_inhabitant_atom(id: ^java_tag_scalar_void)
+  }
+}
+
+fn java_noninteger_scalar_as_java_scalar(scalar: JavaNonIntegerScalar) -> JavaScalar {
+  match scalar {
+    BoolScalar => BoolScalar
+    JavaNonIntegerScalarReserved => BoolScalar
+  }
+}
+
+fn java_integer_encoding_fact(facts: JavaIntegerPrimitiveFacts) -> Node {
+  match facts.signedness {
+    Unsigned => java_inhabitant_atom(id: ^java_char_utf16_code_unit)
+    Signed => java_inhabitant_atom(id: ^java_repr_integer_twos_complement)
+  }
+}
+
+fn java_integer_facts_node(facts: JavaIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_facts_field_surface_spelling,
+        target: java_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_signedness,
+        target: java_int_kind_node(kind: facts.signedness)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_width,
+        target: java_int_width_node(width: facts.width)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_overflow_release,
+        target: java_overflow_node(overflow: facts.overflow_release)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_std_projection,
+        target: java_inhabitant_atom(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_scalar_classifier,
+        target: java_scalar_node(
+          scalar: IntScalar { kind: facts.signedness, width: facts.width }
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_float_facts_node(facts: JavaFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_facts_field_surface_spelling,
+        target: java_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      java_named_edge(name: ^java_facts_field_width, target: java_float_width_node(width: facts.width)),
+      java_named_edge(
+        name: ^java_facts_field_ieee754_binary,
+        target: java_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_std_projection,
+        target: java_inhabitant_atom(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_scalar_classifier,
+        target: java_scalar_node(scalar: FloatScalar { width: facts.width })
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_noninteger_facts_node(facts: JavaNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_facts_field_surface_spelling,
+        target: java_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_scalar_classifier,
+        target: java_scalar_node(
+          scalar: java_noninteger_scalar_as_java_scalar(scalar: facts.scalar)
+        )
+      ),
+      java_named_edge(
+        name: ^java_facts_field_std_projection,
+        target: java_inhabitant_atom(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_representation,
+        target: java_inhabitant_atom(id: facts.representation)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_integer_inhabitant_node(id: Symbol, facts: JavaIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: ^java_inhabitant_field_atom, target: java_inhabitant_atom(id: id)),
+      java_named_edge(
+        name: ^java_inhabitant_field_facts,
+        target: java_integer_facts_node(facts: facts)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_float_inhabitant_node(id: Symbol, facts: JavaFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: ^java_inhabitant_field_atom, target: java_inhabitant_atom(id: id)),
+      java_named_edge(
+        name: ^java_inhabitant_field_facts,
+        target: java_float_facts_node(facts: facts)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_noninteger_inhabitant_node(id: Symbol, facts: JavaNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: ^java_inhabitant_field_atom, target: java_inhabitant_atom(id: id)),
+      java_named_edge(
+        name: ^java_inhabitant_field_facts,
+        target: java_noninteger_facts_node(facts: facts)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_inhabitant_byte_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_byte, facts: java_facts_byte) }
+fn java_inhabitant_short_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_short, facts: java_facts_short) }
+fn java_inhabitant_int_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_int, facts: java_facts_int) }
+fn java_inhabitant_long_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_long, facts: java_facts_long) }
+fn java_inhabitant_float_node() -> Node { java_float_inhabitant_node(id: ^java_inhabitant_float, facts: java_facts_float) }
+fn java_inhabitant_double_node() -> Node { java_float_inhabitant_node(id: ^java_inhabitant_double, facts: java_facts_double) }
+fn java_inhabitant_boolean_node() -> Node { java_noninteger_inhabitant_node(id: ^java_inhabitant_boolean, facts: java_facts_boolean) }
+fn java_inhabitant_char_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_char, facts: java_facts_char) }
+fn java_void_declared_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: ^java_inhabitant_field_atom, target: java_inhabitant_atom(id: ^java_inhabitant_void)),
+      java_named_edge(
+        name: ^java_inhabitant_field_facts,
+        target: java_scalar_node(scalar: VoidScalar)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+// Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
+// (`coercion_candidates_from_target_model`) passes this whole Conj as one aggregate
+// `CandidateSet.candidates` entry — not a flat List of per-primitive nodes. find_witness
+// enumeration inside the root is forward work (W-T-10). Coercion fixture pins int via
+// `TargetDeclaredPriority` on `java_inhabitant_int_node`, not via inhabitants-root walk.
+fn java_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: ^java_inhabitant_field_byte, target: java_inhabitant_byte_node()),
+      java_named_edge(name: ^java_inhabitant_field_short, target: java_inhabitant_short_node()),
+      java_named_edge(name: ^java_inhabitant_field_int, target: java_inhabitant_int_node()),
+      java_named_edge(name: ^java_inhabitant_field_long, target: java_inhabitant_long_node()),
+      java_named_edge(name: ^java_inhabitant_field_float, target: java_inhabitant_float_node()),
+      java_named_edge(name: ^java_inhabitant_field_double, target: java_inhabitant_double_node()),
+      java_named_edge(name: ^java_inhabitant_field_boolean, target: java_inhabitant_boolean_node()),
+      java_named_edge(name: ^java_inhabitant_field_char, target: java_inhabitant_char_node()),
+      java_named_edge(name: ^java_inhabitant_field_void, target: java_void_declared_inhabitant_node()),
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_mvp1_selection_policy_node() -> Node {
+  java_inhabitant_int_node()
+}
+
+fn java_mvp1_emitted_add_method_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: java_inhabitant_int_node() },
+      Edge { label: Positional, target: java_inhabitant_int_node() },
+      Edge { label: Positional, target: java_inhabitant_int_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_mvp1_source_text_authority() -> String {
+  java_mvp1_source_text
+}
+
+fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
+}
+
+
+
+fn java_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
+    head: java_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: java_inhabitant_atom(id: ^java_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: java_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: java_inhabitant_atom(id: ^java_production_mvp1_method_add)
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn java_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: java_mvp1_serialize_source_prefix_edges(),
+    right: [
+      java_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: java_mvp1_concrete_tokens(),
+          token_to_node: java_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn java_mvp1_serialize_source_node() -> Node {
+  // liveness anchor — `^java_mvp1_source_literal` pairs with `java_mvp1_source_text` until literal Node lands
+  let _authority = java_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: java_mvp1_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn java_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
+}
+
+fn java_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn java_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn java_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn java_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn java_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: expression,
+    emitted: java_grammar_atom(id: emitted)
+  }
+}
+
+fn java_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  java_grammar_sequence(
+    left: item,
+    right: java_grammar_repeat(
+      element: java_grammar_sequence(
+        left: java_grammar_terminal(token_class: ^java_token_comma),
+        right: item
+      )
+    )
+  )
+}
+
+fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = concrete_syntax_token_class(token: token)
+  if token_class == ^java_token_kw_static {
+    acc
+  } else {
+    Sequence {
+      left: java_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list_right(
+    xs: java_mvp1_concrete_tokens(),
+    empty: java_grammar_terminal(token_class: ^java_token_kw_static),
+    snoc: fn(acc, token) {
+      java_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
+  JavaGrammarRelationRow {
+    production: java_grammar_production_mvp1_method_add(),
+    emitted: java_mvp1_emitted_add_method_node(),
+    tokens: java_mvp1_concrete_tokens()
+  }
+}
+
+
+fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      java_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      java_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: java_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_relation_rule_mvp1_method_add,
+        target: java_grammar_relation_row_node(row: java_mvp1_grammar_relation_row())
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: target_model_edge_selection_policy,
+        target: java_mvp1_selection_policy_node()
+      ),
+      java_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: java_declared_inhabitants_root()
+      ),
+      java_named_edge(
+        name: target_model_edge_translation_rules,
+        target: java_mvp1_translation_rules_node()
+      ),
+      java_named_edge(
+        name: target_model_edge_serialize_source,
+        target: java_mvp1_serialize_source_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^java_binding_param_y, "y"),
+      ^java_binding_param_x,
+      "x"
+    ),
+    ^java_binding_method_add,
+    "add"
+  )
+}
+
+fn java_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: java_mvp1_target_model_node(),
+    lex: java_wave1_lex(),
+    binding_spellings: java_mvp1_binding_spellings(),
+    authority_source_text: java_mvp1_source_text_authority()
+  }
+}
+
+fn java_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn java_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn java_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^java_token_ident,
+    pattern: java_ident_lex_pattern()
+  }
+}
+
+// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "static " not "static").
+// Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
+fn java_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      java_lex_rule(token_class: ^java_token_kw_static, text: "static "),
+      java_lex_rule(token_class: ^java_token_kw_int, text: "int "),
+      java_lex_rule(token_class: ^java_token_kw_return, text: "return "),
+      java_ident_lex_rule(),
+      java_lex_rule(token_class: ^java_token_plus, text: " + "),
+      java_lex_rule(token_class: ^java_token_lbrace, text: " { "),
+      java_lex_rule(token_class: ^java_token_rbrace, text: " }"),
+      java_lex_rule(token_class: ^java_token_lparen, text: "("),
+      java_lex_rule(token_class: ^java_token_rparen, text: ") "),
+      java_lex_rule(token_class: ^java_token_comma, text: ", "),
+      java_lex_rule(token_class: ^java_token_semicolon, text: ";")
+    ]
+  }
+}
+
+fn java_wave1_lex() -> LexRules {
+  ModeledLexRules { root: java_wave1_lex_rules() }
+}
+
+fn java_grammar_atom(id: Symbol) -> Node {
+  java_inhabitant_atom(id: id)
+}
+
+
+
+fn java_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn java_formal_production_mvp1_method_add() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^java_production_mvp1_method_add,
+    rhs: java_formal_rhs_from_tokens(tokens: java_mvp1_concrete_tokens())
+  )
+}
+
+fn java_grammar_production_mvp1_method_add() -> GrammarProduction {
+  GrammarProduction {
+    name: ^java_production_mvp1_method_add,
+    expression: java_grammar_sequence_from_token_classes(),
+    emitted: java_grammar_atom(id: ^java_surface_method_item)
+  }
+}
+
+fn java_wave1_grammar_root() -> GrammarRoot {
+  let start = java_grammar_production_mvp1_method_add()
+  GrammarRoot { start: ^java_production_mvp1_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+}
+
+fn java_wave1_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_wave1_grammar_root() }
+}
+
+fn java_wave2_additional_lex_rules() -> List<LexRule> {
+  [
+    java_lex_rule(token_class: ^java_token_kw_byte, text: "byte "),
+    java_lex_rule(token_class: ^java_token_kw_short, text: "short "),
+    java_lex_rule(token_class: ^java_token_kw_long, text: "long "),
+    java_lex_rule(token_class: ^java_token_kw_float, text: "float "),
+    java_lex_rule(token_class: ^java_token_kw_double, text: "double "),
+    java_lex_rule(token_class: ^java_token_kw_boolean, text: "boolean "),
+    java_lex_rule(token_class: ^java_token_kw_char, text: "char "),
+    java_lex_rule(token_class: ^java_token_kw_void, text: "void "),
+    java_lex_rule(token_class: ^java_token_kw_class, text: "class "),
+    java_lex_rule(token_class: ^java_token_kw_public, text: "public "),
+    java_lex_rule(token_class: ^java_token_eq, text: " = "),
+    java_lex_rule(token_class: ^java_token_minus, text: " - "),
+    java_lex_rule(token_class: ^java_token_star, text: " * ")
+  ]
+}
+
+fn java_wave2_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: java_wave1_lex_rules().rules,
+      right: java_wave2_additional_lex_rules()
+    )
+  }
+}
+
+fn java_wave2_lex() -> LexRules {
+  ModeledLexRules { root: java_wave2_lex_rules() }
+}
+
+// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
+fn java_wave2_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(lhs: ^java_production_compilation_unit, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_class_declaration)]),
+    grammar_formal_production(
+      lhs: ^java_production_class_declaration,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_kw_public),
+        grammar_formal_terminal(identity: ^java_token_kw_class),
+        grammar_formal_terminal(identity: ^java_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_class_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_class_member_declaration,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_method_declaration)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_class_member_declaration,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_field_declaration)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_class_body_declaration,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_class_member_declaration)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_class_body,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_lbrace),
+        grammar_formal_terminal(identity: ^java_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_class_body,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_class_body_declaration),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_class_body_declaration_suffix),
+        grammar_formal_terminal(identity: ^java_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_class_body_declaration_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^java_production_class_body_declaration_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_class_body_declaration),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_class_body_declaration_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_method_header,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_kw_static),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_result),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_method_declarator)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_method_body, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_block)]),
+    grammar_formal_production(
+      lhs: ^java_production_method_declaration,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_method_header),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_method_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_field_declaration,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_kw_static),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_type),
+        grammar_formal_terminal(identity: ^java_token_ident),
+        grammar_formal_terminal(identity: ^java_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_byte)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_short)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_int)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_long)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_float)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_double)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_boolean)]),
+    grammar_formal_production(lhs: ^java_production_primitive_type, rhs: [grammar_formal_terminal(identity: ^java_token_kw_char)]),
+    grammar_formal_production(
+      lhs: ^java_production_result,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_primitive_type)]
+    ),
+    grammar_formal_production(lhs: ^java_production_result, rhs: [grammar_formal_terminal(identity: ^java_token_kw_void)]),
+    grammar_formal_production(lhs: ^java_production_type, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_primitive_type)]),
+    grammar_formal_production(
+      lhs: ^java_production_formal_parameter,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_type),
+        grammar_formal_terminal(identity: ^java_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_formal_parameter_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_formal_parameter_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter),
+        grammar_formal_terminal(identity: ^java_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_formal_parameter_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^java_production_formal_parameter_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_method_declarator,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_ident),
+        grammar_formal_terminal(identity: ^java_token_lparen),
+        grammar_formal_terminal(identity: ^java_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_method_declarator,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_ident),
+        grammar_formal_terminal(identity: ^java_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_formal_parameter_list),
+        grammar_formal_terminal(identity: ^java_token_rparen)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_primary_expression, rhs: [grammar_formal_terminal(identity: ^java_token_ident)]),
+    grammar_formal_production(
+      lhs: ^java_production_multiplicative_expression,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_primary_expression)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_multiplicative_expression,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_primary_expression),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_multiplicative_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^java_production_multiplicative_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_star),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_primary_expression),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_additive_expression,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_expression)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_additive_expression,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_additive_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_additive_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^java_production_additive_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_plus),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_additive_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_additive_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_minus),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_additive_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_expression,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_additive_expression)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_return_statement,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_kw_return),
+        grammar_formal_terminal(identity: ^java_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_return_statement,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_kw_return),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_expression),
+        grammar_formal_terminal(identity: ^java_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_local_variable_declaration,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_type),
+        grammar_formal_terminal(identity: ^java_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_local_variable_declaration_statement,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_local_variable_declaration),
+        grammar_formal_terminal(identity: ^java_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_statement,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_return_statement)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_block_statement,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_local_variable_declaration_statement)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_block_statement,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_statement)]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_lbrace),
+        grammar_formal_terminal(identity: ^java_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^java_production_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^java_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_block_statement),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_block_statement_suffix),
+        grammar_formal_terminal(identity: ^java_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(lhs: ^java_production_block_statement_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^java_production_block_statement_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_block_statement),
+        grammar_formal_nonterminal_occurrence(identity: ^java_production_block_statement_suffix)
+      ]
+    ),
+    java_formal_production_mvp1_method_add()
+  ]
+}
+
+fn java_grammar_primitive_type_expr() -> GrammarExpr {
+  java_grammar_choice(
+    left: java_grammar_terminal(token_class: ^java_token_kw_byte),
+    right: java_grammar_choice(
+      left: java_grammar_terminal(token_class: ^java_token_kw_short),
+      right: java_grammar_choice(
+        left: java_grammar_terminal(token_class: ^java_token_kw_int),
+        right: java_grammar_choice(
+          left: java_grammar_terminal(token_class: ^java_token_kw_long),
+          right: java_grammar_choice(
+            left: java_grammar_terminal(token_class: ^java_token_kw_float),
+            right: java_grammar_choice(
+              left: java_grammar_terminal(token_class: ^java_token_kw_double),
+              right: java_grammar_choice(
+                left: java_grammar_terminal(token_class: ^java_token_kw_boolean),
+                right: java_grammar_terminal(token_class: ^java_token_kw_char)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// JLS §8.4 Result — `void` is a method return type only, not a §4.2 primitive type.
+fn java_grammar_result_expr() -> GrammarExpr {
+  java_grammar_choice(
+    left: java_grammar_nonterminal(production: ^java_production_primitive_type),
+    right: java_grammar_terminal(token_class: ^java_token_kw_void)
+  )
+}
+
+fn java_grammar_formal_parameter_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_type),
+    right: java_grammar_terminal(token_class: ^java_token_ident)
+  )
+}
+
+// JLS §8.4.1 FormalParameterList — comma-separated parameters only (non-empty when present).
+fn java_grammar_formal_parameter_list_expr() -> GrammarExpr {
+  java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
+}
+
+// JLS §8.4 MethodDeclarator — Identifier ( [FormalParameterList] ).
+fn java_grammar_method_declarator_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_ident),
+    right: java_grammar_sequence(
+      left: java_grammar_terminal(token_class: ^java_token_lparen),
+      right: java_grammar_sequence(
+        left: java_grammar_optional(
+          element: java_grammar_nonterminal(production: ^java_production_formal_parameter_list)
+        ),
+        right: java_grammar_terminal(token_class: ^java_token_rparen)
+      )
+    )
+  )
+}
+
+fn java_grammar_primary_expression_expr() -> GrammarExpr {
+  java_grammar_terminal(token_class: ^java_token_ident)
+}
+
+fn java_grammar_multiplicative_expression_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_primary_expression),
+    right: java_grammar_repeat(
+      element: java_grammar_sequence(
+        left: java_grammar_terminal(token_class: ^java_token_star),
+        right: java_grammar_nonterminal(production: ^java_production_primary_expression)
+      )
+    )
+  )
+}
+
+fn java_grammar_additive_expression_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_multiplicative_expression),
+    right: java_grammar_repeat(
+      element: java_grammar_sequence(
+        left: java_grammar_choice(
+          left: java_grammar_terminal(token_class: ^java_token_plus),
+          right: java_grammar_terminal(token_class: ^java_token_minus)
+        ),
+        right: java_grammar_nonterminal(production: ^java_production_multiplicative_expression)
+      )
+    )
+  )
+}
+
+fn java_grammar_expression_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_additive_expression)
+}
+
+// JLS §14.17 ReturnStatement — return [Expression] ;
+fn java_grammar_return_statement_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_kw_return),
+    right: java_grammar_sequence(
+      left: java_grammar_optional(
+        element: java_grammar_nonterminal(production: ^java_production_expression)
+      ),
+      right: java_grammar_terminal(token_class: ^java_token_semicolon)
+    )
+  )
+}
+
+// JLS §14.4.1 LocalVariableDeclaration — type and variable declarator id only.
+fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_type),
+    right: java_grammar_terminal(token_class: ^java_token_ident)
+  )
+}
+
+// JLS §14.4.2 LocalVariableDeclarationStatement — LocalVariableDeclaration `;`.
+fn java_grammar_local_variable_declaration_statement_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_local_variable_declaration),
+    right: java_grammar_terminal(token_class: ^java_token_semicolon)
+  )
+}
+
+// JLS §14.2 Statement — wave-2 subset: ReturnStatement only.
+fn java_grammar_statement_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_return_statement)
+}
+
+// JLS §14.2 BlockStatement — LocalVariableDeclarationStatement | Statement.
+fn java_grammar_block_statement_expr() -> GrammarExpr {
+  java_grammar_choice(
+    left: java_grammar_nonterminal(production: ^java_production_local_variable_declaration_statement),
+    right: java_grammar_nonterminal(production: ^java_production_statement)
+  )
+}
+
+fn java_grammar_block_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_lbrace),
+    right: java_grammar_sequence(
+      left: java_grammar_repeat(element: java_grammar_nonterminal(production: ^java_production_block_statement)),
+      right: java_grammar_terminal(token_class: ^java_token_rbrace)
+    )
+  )
+}
+
+// JLS §8.4 MethodHeader — wave-2 subset: `static` Result MethodDeclarator.
+fn java_grammar_method_header_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_kw_static),
+    right: java_grammar_sequence(
+      left: java_grammar_nonterminal(production: ^java_production_result),
+      right: java_grammar_nonterminal(production: ^java_production_method_declarator)
+    )
+  )
+}
+
+// JLS §8.4 MethodBody — wave-2 subset: Block.
+fn java_grammar_method_body_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_block)
+}
+
+// JLS §8.4 MethodDeclaration — MethodHeader MethodBody.
+fn java_grammar_method_declaration_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: ^java_production_method_header),
+    right: java_grammar_nonterminal(production: ^java_production_method_body)
+  )
+}
+
+fn java_grammar_field_declaration_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_kw_static),
+    right: java_grammar_sequence(
+      left: java_grammar_nonterminal(production: ^java_production_type),
+      right: java_grammar_sequence(
+        left: java_grammar_terminal(token_class: ^java_token_ident),
+        right: java_grammar_terminal(token_class: ^java_token_semicolon)
+      )
+    )
+  )
+}
+
+fn java_grammar_class_member_declaration_expr() -> GrammarExpr {
+  java_grammar_choice(
+    left: java_grammar_nonterminal(production: ^java_production_method_declaration),
+    right: java_grammar_nonterminal(production: ^java_production_field_declaration)
+  )
+}
+
+// JLS §8.1.7 ClassBodyDeclaration — wave-2 subset: ClassMemberDeclaration only.
+fn java_grammar_class_body_declaration_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_class_member_declaration)
+}
+
+// JLS §8.1.7 ClassBody — `{` ClassBodyDeclaration* `}`.
+fn java_grammar_class_body_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_lbrace),
+    right: java_grammar_sequence(
+      left: java_grammar_repeat(element: java_grammar_nonterminal(production: ^java_production_class_body_declaration)),
+      right: java_grammar_terminal(token_class: ^java_token_rbrace)
+    )
+  )
+}
+
+fn java_grammar_class_declaration_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: ^java_token_kw_public),
+    right: java_grammar_sequence(
+      left: java_grammar_terminal(token_class: ^java_token_kw_class),
+      right: java_grammar_sequence(
+        left: java_grammar_terminal(token_class: ^java_token_ident),
+        right: java_grammar_nonterminal(production: ^java_production_class_body)
+      )
+    )
+  )
+}
+
+fn java_grammar_compilation_unit_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_class_declaration)
+}
+
+// JLS §4.3 Type — wave-2 subset aliases to PrimitiveType.
+fn java_grammar_type_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: ^java_production_primitive_type)
+}
+
+fn java_wave2_grammar_root() -> GrammarRoot {
+  let compilation_unit = java_grammar_production(
+    name: ^java_production_compilation_unit,
+    expression: java_grammar_compilation_unit_expr(),
+    emitted: ^java_surface_compilation_unit
+  )
+  let class_declaration = java_grammar_production(
+    name: ^java_production_class_declaration,
+    expression: java_grammar_class_declaration_expr(),
+    emitted: ^java_surface_class_declaration
+  )
+  let class_member_declaration = java_grammar_production(
+    name: ^java_production_class_member_declaration,
+    expression: java_grammar_class_member_declaration_expr(),
+    emitted: ^java_surface_class_member_declaration
+  )
+  let class_body_declaration = java_grammar_production(
+    name: ^java_production_class_body_declaration,
+    expression: java_grammar_class_body_declaration_expr(),
+    emitted: ^java_surface_class_body_declaration
+  )
+  let class_body = java_grammar_production(
+    name: ^java_production_class_body,
+    expression: java_grammar_class_body_expr(),
+    emitted: ^java_surface_class_body
+  )
+  let method_header = java_grammar_production(
+    name: ^java_production_method_header,
+    expression: java_grammar_method_header_expr(),
+    emitted: ^java_surface_method_header
+  )
+  let method_body = java_grammar_production(
+    name: ^java_production_method_body,
+    expression: java_grammar_method_body_expr(),
+    emitted: ^java_surface_method_body
+  )
+  let method_declaration = java_grammar_production(
+    name: ^java_production_method_declaration,
+    expression: java_grammar_method_declaration_expr(),
+    emitted: ^java_surface_method_declaration
+  )
+  let field_declaration = java_grammar_production(
+    name: ^java_production_field_declaration,
+    expression: java_grammar_field_declaration_expr(),
+    emitted: ^java_surface_field_declaration
+  )
+  let primitive_type = java_grammar_production(
+    name: ^java_production_primitive_type,
+    expression: java_grammar_primitive_type_expr(),
+    emitted: ^java_surface_primitive_type
+  )
+  let result = java_grammar_production(
+    name: ^java_production_result,
+    expression: java_grammar_result_expr(),
+    emitted: ^java_surface_result
+  )
+  let type = java_grammar_production(
+    name: ^java_production_type,
+    expression: java_grammar_type_expr(),
+    emitted: ^java_surface_type
+  )
+  let formal_parameter_list = java_grammar_production(
+    name: ^java_production_formal_parameter_list,
+    expression: java_grammar_formal_parameter_list_expr(),
+    emitted: ^java_surface_formal_parameter_list
+  )
+  let method_declarator = java_grammar_production(
+    name: ^java_production_method_declarator,
+    expression: java_grammar_method_declarator_expr(),
+    emitted: ^java_surface_method_declarator
+  )
+  let block = java_grammar_production(
+    name: ^java_production_block,
+    expression: java_grammar_block_expr(),
+    emitted: ^java_surface_block
+  )
+  let block_statement = java_grammar_production(
+    name: ^java_production_block_statement,
+    expression: java_grammar_block_statement_expr(),
+    emitted: ^java_surface_block_statement
+  )
+  let statement = java_grammar_production(
+    name: ^java_production_statement,
+    expression: java_grammar_statement_expr(),
+    emitted: ^java_surface_statement
+  )
+  let return_statement = java_grammar_production(
+    name: ^java_production_return_statement,
+    expression: java_grammar_return_statement_expr(),
+    emitted: ^java_surface_return_statement
+  )
+  let local_variable_declaration = java_grammar_production(
+    name: ^java_production_local_variable_declaration,
+    expression: java_grammar_local_variable_declaration_expr(),
+    emitted: ^java_surface_local_variable_declaration
+  )
+  let local_variable_declaration_statement = java_grammar_production(
+    name: ^java_production_local_variable_declaration_statement,
+    expression: java_grammar_local_variable_declaration_statement_expr(),
+    emitted: ^java_surface_local_variable_declaration_statement
+  )
+  let expression = java_grammar_production(
+    name: ^java_production_expression,
+    expression: java_grammar_expression_expr(),
+    emitted: ^java_surface_expression
+  )
+  let additive_expression = java_grammar_production(
+    name: ^java_production_additive_expression,
+    expression: java_grammar_additive_expression_expr(),
+    emitted: ^java_surface_additive_expression
+  )
+  let multiplicative_expression = java_grammar_production(
+    name: ^java_production_multiplicative_expression,
+    expression: java_grammar_multiplicative_expression_expr(),
+    emitted: ^java_surface_multiplicative_expression
+  )
+  let primary_expression = java_grammar_production(
+    name: ^java_production_primary_expression,
+    expression: java_grammar_primary_expression_expr(),
+    emitted: ^java_surface_primary_expression
+  )
+  let mvp1_method_add = java_grammar_production_mvp1_method_add()
+  GrammarRoot {
+    start: ^java_production_compilation_unit,
+    productions: [
+      compilation_unit,
+      class_declaration,
+      class_member_declaration,
+      class_body_declaration,
+      class_body,
+      method_header,
+      method_body,
+      method_declaration,
+      field_declaration,
+      primitive_type,
+      result,
+      type,
+      formal_parameter_list,
+      method_declarator,
+      block,
+      block_statement,
+      statement,
+      return_statement,
+      local_variable_declaration,
+      local_variable_declaration_statement,
+      expression,
+      additive_expression,
+      multiplicative_expression,
+      primary_expression,
+      mvp1_method_add
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn java_wave2_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_wave2_grammar_root() }
+}
+
+fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      java_catalog_surface_symbol(sym: sym) ||
+        sym == ^java_surface_spelling_void ||
+        lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: java_wave2_grammar(), sym: sym) ||
+        sym == ^java_surface_method_item ||
+        sym == ^java_production_mvp1_method_add ||
+        sym == ^java_mvp1_source_literal
+    }
+  }
+}
+
+fn java_language_model_wave2() -> JavaLanguageModel {
+  JavaLanguageModel {
+    lex: java_wave2_lex(),
+    grammar: java_wave2_grammar(),
+    language_identity: ^java_language_model_surface_id,
+    canonical_symbols: java_language_model_wave2_canonical_symbols(),
+    core: java_model_core_wave1()
+  }
+}
+
+fn java_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JavaIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn java_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JavaFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn java_noninteger_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JavaNonIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn java_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: java_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      java_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn java_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: java_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      java_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn java_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: java_noninteger_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      java_noninteger_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn java_catalog_surface_symbol(sym: Symbol) -> Bool {
+  java_integer_catalog_surface_symbol(sym: sym) ||
+    java_float_catalog_surface_symbol(sym: sym) ||
+    java_noninteger_catalog_surface_symbol(sym: sym)
+}
+
+fn java_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == ^java_token_kw_static ||
+    sym == ^java_token_ident ||
+    sym == ^java_token_kw_int ||
+    sym == ^java_token_kw_return ||
+    sym == ^java_token_plus ||
+    sym == ^java_token_lbrace ||
+    sym == ^java_token_rbrace ||
+    sym == ^java_token_lparen ||
+    sym == ^java_token_rparen ||
+    sym == ^java_token_comma ||
+    sym == ^java_token_semicolon
+}
+
+// Single symbol authority: fact-catalog surface spellings + wave-1 lex/grammar/MVP symbols.
+fn java_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      java_catalog_surface_symbol(sym: sym) ||
+        sym == ^java_surface_spelling_void ||
+        java_wave1_lex_token_symbol(sym: sym) ||
+        sym == ^java_surface_method_item ||
+        sym == ^java_production_mvp1_method_add ||
+        sym == ^java_mvp1_source_literal
+    }
+  }
+}
+
+fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+          Holds { value: java_int_width_node(width: facts.width) }
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+          Holds { value: java_int_kind_node(kind: facts.signedness) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: java_integer_encoding_fact(facts: facts) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+          Holds { value: java_float_width_node(width: facts.width) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: java_inhabitant_atom(id: facts.ieee754_binary) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: java_inhabitant_atom(id: facts.representation) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: java_integer_facts_node(facts: facts),
+    spec_facts: java_integer_spec_facts(facts: facts)
+  }
+}
+
+fn java_primitive_bundle_from_float_facts(facts: JavaFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: java_float_facts_node(facts: facts),
+    spec_facts: java_float_spec_facts(facts: facts)
+  }
+}
+
+fn java_primitive_bundle_from_noninteger_facts(
+  facts: JavaNonIntegerPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: java_noninteger_facts_node(facts: facts),
+    spec_facts: java_noninteger_spec_facts(facts: facts)
+  }
+}
+
+fn java_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: java_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: java_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn java_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: java_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: java_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: java_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: java_primitive_bundle_from_noninteger_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn java_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: java_primitive_bundles_from_integer_catalog(),
+      right: java_primitive_bundles_from_float_catalog()
+    ),
+    right: java_primitive_bundles_from_noninteger_catalog()
+  )
+}
+
+fn java_symbol_node(id: Symbol) -> Node {
+  java_inhabitant_atom(id: id)
+}
+
+fn java_wrapping_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_witness_integer_commutative_semiring_modular,
+        target: java_symbol_node(id: ^java_witness_integer_commutative_semiring_modular)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_signedness,
+        target: java_int_kind_node(kind: facts.signedness)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_width,
+        target: java_int_width_node(width: facts.width)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_std_projection,
+        target: java_symbol_node(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_overflow_release,
+        target: java_overflow_node(overflow: facts.overflow_release)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: ^java_witness_bool_boolean_algebra,
+        target: java_symbol_node(id: ^java_witness_bool_boolean_algebra)
+      ),
+      java_named_edge(
+        name: ^java_facts_field_std_projection,
+        target: java_symbol_node(id: java_facts_boolean.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_wrapping_integer_algebra_inhabitance(facts: JavaIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = java_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: java_wrapping_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn java_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: java_bool_algebra_witness_node()
+  }
+}
+
+fn java_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: java_integer_algebra_inhabitance_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: java_wrapping_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn java_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    java_bool_algebra_inhabitance()
+  ]
+}
+
+fn java_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: java_integer_algebra_inhabitance_decls(),
+    right: java_bool_algebra_inhabitance_decls()
+  )
+}
+
+fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      java_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      java_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: java_inhabitant_atom(id: discriminant(v: key))
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn java_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn java_wrapping_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = java_wrapping_integer_algebra_witness_node(facts: facts)
+  let inhabitant = java_integer_facts_node(facts: facts)
+  let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
+  [
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerAddAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerAddCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerMulAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerMulCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerDistributiveModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerModularWrap
+      )
+    )
+  ]
+}
+
+fn java_bool_algebra_laws() -> List<AlgebraLawObligation> {
+  let witness = java_bool_algebra_witness_node()
+  let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
+  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  [
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawBoolBoundedLattice
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawBoolComplement
+      )
+    )
+  ]
+}
+
+fn java_integer_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: java_integer_algebra_inhabitance_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(left: acc, right: java_wrapping_integer_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn java_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: java_integer_algebra_laws(),
+    right: java_bool_algebra_laws()
+  )
+}
+
+fn java_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: java_symbol_node(id: operation),
+    effect_signature: EffectSignature {
+      signature: java_symbol_node(id: ^java_effect_signature_pure_value)
+    }
+  }
+}
+
+fn java_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      java_pure_operation(operation: ^java_op_integer_add),
+      java_pure_operation(operation: ^java_op_integer_sub),
+      java_pure_operation(operation: ^java_op_integer_mul),
+      java_pure_operation(operation: ^java_op_integer_neg),
+      java_pure_operation(operation: ^java_op_integer_div),
+      java_pure_operation(operation: ^java_op_integer_rem),
+      java_pure_operation(operation: ^java_op_integer_compare),
+      java_pure_operation(operation: ^java_op_float_add),
+      java_pure_operation(operation: ^java_op_float_sub),
+      java_pure_operation(operation: ^java_op_float_mul),
+      java_pure_operation(operation: ^java_op_float_div),
+      java_pure_operation(operation: ^java_op_float_compare),
+      java_pure_operation(operation: ^java_op_bool_and),
+      java_pure_operation(operation: ^java_op_bool_or),
+      java_pure_operation(operation: ^java_op_bool_not)
+    ]
+  }
+}
+
+fn java_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: java_symbol_node(id: operation),
+    precondition: java_symbol_node(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      java_fail_closed_partial_operation(
+        operation: ^java_op_integer_div,
+        precondition: ^java_precondition_integer_divisor_nonzero,
+        reason: ^java_partial_integer_divide_by_zero
+      ),
+      java_fail_closed_partial_operation(
+        operation: ^java_op_integer_rem,
+        precondition: ^java_precondition_integer_divisor_nonzero,
+        reason: ^java_partial_integer_remainder_by_zero
+      )
+    ]
+  }
+}
+
+fn java_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: java_wave1_primitive_fact_bundles(),
+    inhabitance: java_model_core_inhabitance_decls(),
+    laws: java_model_core_law_obligations(),
+    effects: java_effect_semantics_wave2b(),
+    partiality: java_partiality_semantics_wave2b()
+  }
+}
+
+fn java_language_model_wave1() -> JavaLanguageModel {
+  JavaLanguageModel {
+    lex: java_wave1_lex(),
+    grammar: java_wave1_grammar(),
+    language_identity: ^java_language_model_surface_id,
+    canonical_symbols: java_language_model_canonical_symbols(),
+    core: java_model_core_wave1()
+  }
+}

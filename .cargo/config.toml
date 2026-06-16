@@ -1,4 +1,4 @@
-# Memory safety: v2_compiler tests use 5-11 GB each.
+# Memory safety: v1_compiler tests use 5-11 GB each.
 # On 16 GB machines, parallel cargo runs cause OOM → system watchdog restart.
 
 [build]

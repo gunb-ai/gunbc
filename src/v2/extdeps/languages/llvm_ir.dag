@@ -1,0 +1,976 @@
+// src/v2/extdeps/languages/llvm_ir.dag
+// Scope: LLVM 18 LangRef IR structural vocabulary (SSA-oriented types, instructions, terminators, and related carriers).
+// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
+// Status: import v2.std.node Symbol; v2.std.nat Nat; v2.std.cardinality NonZeroNat.
+// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
+// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WAVE1-FLOAT-KIND, SL-3229-LLVM-WAVE1-INT-WIDTH, SL-3229-LLVM-WIDTH.
+// 🟡
+
+module v2.extdeps.languages.llvm_ir
+
+
+import v2.extdeps.languages.fidelity { FidelityDisposition }
+import v2.std.grammar {
+  FormalProduction,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_terminal
+}
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.cardinality { NonZeroNat }
+import v2.std.collection { List, Map }
+import v2.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
+  primitive_fact_axis_unbound_diagnostic,
+  ModelCoreFactAxisWidth
+}
+import v2.std.witness { Holds, Violates }
+import v2.std.nat { Nat }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+
+
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FloatKind
+  = HalfFloat
+  | BFloatFloat
+  | SingleFloat
+  | DoubleFloat
+  | Fp128Float
+  | X86Fp80Float
+  | PpcFp128Float
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LlvmType
+  = VoidType
+  | LabelType
+  | TokenType
+  | MetadataType
+  | IntegerType { bits: NonZeroNat }
+  | FloatingType { kind: FloatKind }
+  | PointerType { address_space: Nat }
+  | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
+  | ArrayType { element: LlvmType, count: Nat }
+  | StructType { fields: List<LlvmType>, packed: StructPacking }
+  | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
+  | NamedType { name: Symbol }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type VectorScaling
+  = FixedVector
+  | ScalableVector
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type StructPacking
+  = NaturalAligned
+  | Packed
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type VarArg
+  = FixedArity
+  | Variadic
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LlvmConstant
+  = IntConstant { ty: LlvmType, value: Int }
+  | FloatConstant { ty: LlvmType, bits: Int }
+  | NullPointer { ty: LlvmType }
+  | NoneToken
+  | AggregateConstant { ty: LlvmType, elements: List<LlvmConstant> }
+  | ZeroInitializer { ty: LlvmType }
+  | UndefValue { ty: LlvmType }
+  | PoisonValue { ty: LlvmType }
+  | BlockAddress { function: Symbol, block: Symbol }
+  | GlobalAddress { name: Symbol }
+  | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LlvmValue
+  = LocalRef { name: Symbol }
+  | ConstantOperand { constant: LlvmConstant }
+  | GlobalRef { name: Symbol }
+
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type BinaryOpcode
+  = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
+  | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
+  | OpFAdd | OpFSub | OpFMul | OpFDiv | OpFRem
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ConversionOpcode
+  = OpTrunc | OpZExt | OpSExt
+  | OpFPTrunc | OpFPExt
+  | OpFPToUI | OpFPToSI | OpUIToFP | OpSIToFP
+  | OpPtrToInt | OpIntToPtr | OpBitCast | OpAddrSpaceCast
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type IntPredicate
+  = IcmpEq | IcmpNe
+  | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
+  | IcmpSgt | IcmpSge | IcmpSlt | IcmpSle
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FloatPredicate
+  = FcmpFalse
+  | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
+  | FcmpUeq | FcmpUgt | FcmpUge | FcmpUlt | FcmpUle | FcmpUne | FcmpUno
+  | FcmpTrue
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type ConstExprOpcode
+  = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
+  | CeAddrSpaceCast | CeGetElementPtr
+  | CeAdd | CeSub | CeMul | CeShl | CeXor
+  | CeICmp | CeFCmp
+  | CeExtractElement | CeInsertElement | CeShuffleVector
+
+
+// 🟢 grounded.
+type PhiIncoming {
+  value: LlvmValue
+  block: Symbol
+}
+
+
+// 🟢 grounded.
+type PhiNode {
+  result: Symbol
+  result_type: LlvmType
+  incomings: List<PhiIncoming>
+}
+
+
+// 🟢 grounded.
+type SwitchCase {
+  match_value: LlvmConstant
+  target: Symbol
+}
+
+
+// 🟢 grounded.
+type CallArgument {
+  ty: LlvmType
+  value: LlvmValue
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type CallResult
+  = VoidCall
+  | ValueCall { name: Symbol, result_type: LlvmType }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LandingPadCleanup
+  = IsCleanup
+  | NotCleanup
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LandingClause
+  = CatchClause { type_info: LlvmValue }
+  | FilterClause { type_infos: List<LlvmValue> }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type AtomicOrdering
+  = OrderingUnordered
+  | OrderingMonotonic
+  | OrderingAcquire
+  | OrderingRelease
+  | OrderingAcqRel
+  | OrderingSeqCst
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type CmpXchgSuccessOrdering
+  = SuccessMonotonic
+  | SuccessAcquire
+  | SuccessRelease
+  | SuccessAcqRel
+  | SuccessSeqCst
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type CmpXchgFailureOrdering
+  = FailureMonotonic
+  | FailureAcquire
+  | FailureSeqCst
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FenceOrdering
+  = FenceAcquire
+  | FenceRelease
+  | FenceAcqRel
+  | FenceSeqCst
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type AtomicRmwOrdering
+  = RmwOrdMonotonic
+  | RmwOrdAcquire
+  | RmwOrdRelease
+  | RmwOrdAcqRel
+  | RmwOrdSeqCst
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type AtomicRmwOp
+  = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
+  | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
+  | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LlvmInstruction
+  = Binary {
+      result: Symbol
+      result_type: LlvmType
+      op: BinaryOpcode
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | Conversion {
+      result: Symbol
+      result_type: LlvmType
+      op: ConversionOpcode
+      value: LlvmValue
+    }
+  | IntCompare {
+      result: Symbol
+      predicate: IntPredicate
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | FloatCompare {
+      result: Symbol
+      predicate: FloatPredicate
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | Alloca {
+      result: Symbol
+      allocated_type: LlvmType
+      element_count: LlvmValue
+    }
+  | Load {
+      result: Symbol
+      result_type: LlvmType
+      pointer: LlvmValue
+      ordering: LoadAtomicity
+    }
+  | Store {
+      value: LlvmValue
+      pointer: LlvmValue
+      ordering: StoreAtomicity
+    }
+  | GetElementPtr {
+      result: Symbol
+      source_type: LlvmType
+      base: LlvmValue
+      indices: List<LlvmValue>
+    }
+  | AtomicRmw {
+      result: Symbol
+      op: AtomicRmwOp
+      pointer: LlvmValue
+      operand: LlvmValue
+      ordering: AtomicRmwOrdering
+    }
+  | CmpXchg {
+      result: Symbol
+      pointer: LlvmValue
+      compare_value: LlvmValue
+      new_value: LlvmValue
+      success_ordering: CmpXchgSuccessOrdering
+      failure_ordering: CmpXchgFailureOrdering
+    }
+  | Fence {
+      ordering: FenceOrdering
+    }
+  | ExtractValue {
+      result: Symbol
+      aggregate: LlvmValue
+      indices: List<Int>
+    }
+  | InsertValue {
+      result: Symbol
+      aggregate: LlvmValue
+      element: LlvmValue
+      indices: List<Int>
+    }
+  | ExtractElement {
+      result: Symbol
+      vector: LlvmValue
+      index: LlvmValue
+    }
+  | InsertElement {
+      result: Symbol
+      vector: LlvmValue
+      element: LlvmValue
+      index: LlvmValue
+    }
+  | ShuffleVector {
+      result: Symbol
+      first: LlvmValue
+      second: LlvmValue
+      mask: LlvmValue
+    }
+  | Select {
+      result: Symbol
+      condition: LlvmValue
+      if_true: LlvmValue
+      if_false: LlvmValue
+    }
+  | Call {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+    }
+  | Freeze {
+      result: Symbol
+      value: LlvmValue
+    }
+  | FNeg {
+      result: Symbol
+      result_type: LlvmType
+      operand: LlvmValue
+    }
+  | VaArg {
+      result: Symbol
+      result_type: LlvmType
+      va_list: LlvmValue
+      arg_type: LlvmType
+    }
+  | LandingPad {
+      result: Symbol
+      result_type: LlvmType
+      is_cleanup: LandingPadCleanup
+      clauses: List<LandingClause>
+    }
+  | CatchPad {
+      result: Symbol
+      catch_switch: LlvmValue
+      args: List<LlvmValue>
+    }
+  | CleanupPad {
+      result: Symbol
+      parent_pad: LlvmValue
+      args: List<LlvmValue>
+    }
+
+
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LoadOrdering
+  = LoadUnordered
+  | LoadMonotonic
+  | LoadAcquire
+  | LoadSeqCst
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type StoreOrdering
+  = StoreUnordered
+  | StoreMonotonic
+  | StoreRelease
+  | StoreSeqCst
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type LoadAtomicity
+  = PlainLoad
+  | AtomicLoad { ordering: LoadOrdering }
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type StoreAtomicity
+  = PlainStore
+  | AtomicStore { ordering: StoreOrdering }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type Terminator
+  = RetVoid
+  | RetValue { value: LlvmValue }
+  | UnconditionalBr { target: Symbol }
+  | ConditionalBr { condition: LlvmValue, if_true: Symbol, if_false: Symbol }
+  | Switch { value: LlvmValue, default_target: Symbol, cases: List<SwitchCase> }
+  | IndirectBr { address: LlvmValue, possible_targets: List<Symbol> }
+  | Unreachable
+  | Invoke {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+      normal_target: Symbol
+      unwind_target: Symbol
+    }
+  | CallBr {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+      fallthrough: Symbol
+      indirect_targets: List<Symbol>
+    }
+  | Resume { value: LlvmValue }
+  | CatchSwitch { result: Symbol, parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
+  | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
+  | CatchRet { catch_pad: LlvmValue, successor: Symbol }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type UnwindDest
+  = UnwindToCaller
+  | UnwindToLabel { target: Symbol }
+
+
+// 🟢 grounded.
+type BasicBlock {
+  label: Symbol
+  phis: List<PhiNode>
+  body: List<LlvmInstruction>
+  terminator: Terminator
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type Linkage
+  = LinkagePrivate
+  | LinkageInternal
+  | LinkageAvailableExternally
+  | LinkageLinkOnce
+  | LinkageLinkOnceOdr
+  | LinkageWeak
+  | LinkageWeakOdr
+  | LinkageCommon
+  | LinkageAppending
+  | LinkageExternal
+  | LinkageExternalWeak
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FunctionBody
+  = Declared
+  | Defined { entry: BasicBlock, rest: List<BasicBlock> }
+
+
+// 🟢 grounded.
+type FunctionParameter {
+  ty: LlvmType
+  name: Symbol
+}
+
+
+// 🟢 grounded.
+type LlvmFunction {
+  name: Symbol
+  result_type: LlvmType
+  parameters: List<FunctionParameter>
+  var_arg: VarArg
+  linkage: Linkage
+  body: FunctionBody
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type GlobalMutability
+  = MutableGlobal
+  | ConstantGlobal
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type GlobalInitializer
+  = ExternalInit
+  | InitializedWith { constant: LlvmConstant }
+
+
+// 🟢 grounded.
+type LlvmGlobal {
+  name: Symbol
+  value_type: LlvmType
+  mutability: GlobalMutability
+  linkage: Linkage
+  initializer: GlobalInitializer
+  address_space: Int
+}
+
+
+// 🟢 grounded.
+type NamedStructDef {
+  name: Symbol
+  definition: LlvmType
+}
+
+
+// 🟢 grounded.
+type LlvmModule {
+  data_layout: Symbol
+  target_triple: Symbol
+  named_structs: List<NamedStructDef>
+  globals: List<LlvmGlobal>
+  functions: List<LlvmFunction>
+}
+
+
+fn unwind_successors(d: UnwindDest) -> List<Symbol> {
+  match d {
+    UnwindToCaller => []
+    UnwindToLabel { target: t } => [t]
+  }
+}
+
+fn block_successors(t: Terminator) -> List<Symbol> {
+  match t {
+    RetVoid => []
+    RetValue { value: _ } => []
+    UnconditionalBr { target: tgt } => [tgt]
+    ConditionalBr { condition: _, if_true: a, if_false: b } => [a, b]
+    Switch { value: _, default_target: d, cases: cs } =>
+      concat([d], map(cs, fn(c) { c.target }))
+    IndirectBr { address: _, possible_targets: ts } => ts
+    Unreachable => []
+    Invoke { callee: _, arguments: _, result: _, normal_target: n, unwind_target: u } => [n, u]
+    CallBr { callee: _, arguments: _, result: _, fallthrough: f, indirect_targets: it } =>
+      concat([f], it)
+    Resume { value: _ } => []
+    CatchSwitch { result: _, parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
+    CleanupRet { cleanup_pad: _, unwind: u } => unwind_successors(d: u)
+    CatchRet { catch_pad: _, successor: s } => [s]
+  }
+}
+
+
+fn block_well_formed(b: BasicBlock) -> Bool {
+  match b.terminator {
+    CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => count(b.body) == 0
+    _ => true
+  }
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type FidelityFeature
+  = StructuralCore
+  | SsaValueSpelling
+  | BlockTextualOrder
+  | LexicalTrivia
+  | TargetConfigToken
+  | AdvisoryMetadata
+  | UnmodeledInlineAsm
+  | UnmodeledSemanticAttribute
+  | UnmodeledType
+  | UnmodeledInstruction
+  | UnmodeledConstExpr
+  | MalformedStructure
+
+
+fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeature> {
+  match f {
+    StructuralCore => Modeled
+    SsaValueSpelling => DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder => DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia => DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken => DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
+    UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType => FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction => FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr => FailClosed { feature: UnmodeledConstExpr }
+    MalformedStructure => FailClosed { feature: MalformedStructure }
+  }
+}
+
+
+// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — feature:llvm-wave1-int-bits-subset — dissolve-on-arrival: llvm_integer_facts_catalog aligns with LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381).
+type LlvmWave1IntegerBits
+  = Wave1Bits32
+  | Wave1Bits64
+
+// 🟢 coproduct dissolution · SL-3229-LLVM-WAVE1-FLOAT-KIND.
+type LlvmWave1FloatKind
+  = Wave1HalfFloat
+  | Wave1SingleFloat
+  | Wave1DoubleFloat
+
+// 🟢 grounded.
+type LlvmIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  wave1_bits: LlvmWave1IntegerBits
+  std_projection: Symbol
+}
+
+// 🟢 grounded.
+type LlvmFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  kind: LlvmWave1FloatKind
+  std_projection: Symbol
+}
+data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_i32,
+  wave1_bits: Wave1Bits32,
+  std_projection: ^llvm_std_projection_i32,
+}
+
+data llvm_facts_i64: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_i64,
+  wave1_bits: Wave1Bits64,
+  std_projection: ^llvm_std_projection_i64,
+}
+
+data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
+  llvm_facts_i32,
+  llvm_facts_i64,
+]
+
+data llvm_facts_half: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_half,
+  kind: Wave1HalfFloat,
+  std_projection: ^llvm_std_projection_half,
+}
+
+data llvm_facts_float: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_float,
+  kind: Wave1SingleFloat,
+  std_projection: ^llvm_std_projection_float,
+}
+
+data llvm_facts_double: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_double,
+  kind: Wave1DoubleFloat,
+  std_projection: ^llvm_std_projection_double,
+}
+
+data llvm_float_facts_catalog: List<LlvmFloatPrimitiveFacts> = [
+  llvm_facts_half,
+  llvm_facts_float,
+  llvm_facts_double,
+]
+
+fn llvm_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn llvm_wave1_integer_bits_node(wave1_bits: LlvmWave1IntegerBits) -> Node {
+  match wave1_bits {
+    Wave1Bits32 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits32)
+    Wave1Bits64 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits64)
+  }
+}
+
+fn llvm_wave1_float_kind_node(kind: LlvmWave1FloatKind) -> Node {
+  match kind {
+    Wave1HalfFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_half)
+    Wave1SingleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_single)
+    Wave1DoubleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_double)
+  }
+}
+
+fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+      },
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        target: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits)
+      },
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
+      },
+      Edge {
+        label: Named { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+      },
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_wave1_float_kind_node(kind: facts.kind)
+      },
+      Edge {
+        label: Named { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+          Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: llvm_wave1_float_kind_node(kind: facts.kind) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn llvm_primitive_bundle_from_integer_facts(facts: LlvmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: llvm_integer_facts_node(facts: facts),
+    spec_facts: llvm_integer_spec_facts(facts: facts)
+  }
+}
+
+fn llvm_primitive_bundle_from_float_facts(facts: LlvmFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: llvm_float_facts_node(facts: facts),
+    spec_facts: llvm_float_spec_facts(facts: facts)
+  }
+}
+
+fn llvm_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: llvm_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: llvm_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn llvm_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: llvm_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: llvm_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn llvm_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: llvm_primitive_bundles_from_integer_catalog(),
+    right: llvm_primitive_bundles_from_float_catalog()
+  )
+}
+
+fn llvm_ir_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: llvm_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn llvm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn llvm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn llvm_global_ident_pattern() -> LexPattern {
+  SequencePattern {
+    left: LiteralPattern { text: "@" },
+    right: SequencePattern {
+      left: CharClassPattern { class: IdentStartChar },
+      right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+    }
+  }
+}
+
+
+fn llvm_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        llvm_lex_token(token_class: ^llvm_token_global_ident, pattern: llvm_global_ident_pattern()),
+        llvm_lex_token(token_class: ^llvm_token_kw_define, pattern: KeywordPattern { text: "define" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_void, pattern: KeywordPattern { text: "void" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_ret, pattern: KeywordPattern { text: "ret" }),
+        llvm_lex_token(token_class: ^llvm_token_lparen, pattern: LiteralPattern { text: "(" }),
+        llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
+        llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
+      ]
+    }
+  }
+}
+
+
+fn llvm_void_function_expr() -> GrammarExpr {
+  llvm_grammar_sequence(
+    left: llvm_grammar_terminal(token_class: ^llvm_token_kw_define),
+    right: llvm_grammar_sequence(
+      left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
+      right: llvm_grammar_sequence(
+        left: llvm_grammar_terminal(token_class: ^llvm_token_global_ident),
+        right: llvm_grammar_sequence(
+          left: llvm_grammar_terminal(token_class: ^llvm_token_lparen),
+          right: llvm_grammar_sequence(
+            left: llvm_grammar_terminal(token_class: ^llvm_token_rparen),
+            right: llvm_grammar_sequence(
+              left: llvm_grammar_terminal(token_class: ^llvm_token_lbrace),
+              right: llvm_grammar_sequence(
+                left: llvm_grammar_terminal(token_class: ^llvm_token_kw_ret),
+                right: llvm_grammar_sequence(
+                  left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
+                  right: llvm_grammar_terminal(token_class: ^llvm_token_rbrace)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn llvm_ir_wave1_grammar() -> ParseGrammar {
+  let start = GrammarProduction {
+    name: ^llvm_production_void_function,
+    expression: llvm_void_function_expr(),
+    emitted: grammar_atom(identity: ^llvm_surface_void_function)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^llvm_production_void_function,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn llvm_void_function_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^llvm_production_void_function),
+    rhs: [
+      grammar_formal_terminal(identity: ^llvm_token_kw_define),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_global_ident),
+      grammar_formal_terminal(identity: ^llvm_token_lparen),
+      grammar_formal_terminal(identity: ^llvm_token_rparen),
+      grammar_formal_terminal(identity: ^llvm_token_lbrace),
+      grammar_formal_terminal(identity: ^llvm_token_kw_ret),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_rbrace)
+    ]
+  }
+}
+
+
+fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: llvm_wave1_lex(),
+    grammar: llvm_ir_wave1_grammar()
+  }
+}
+
+
+fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: llvm_ir_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "define void @f() { ret void }",
+      production: llvm_void_function_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ^llvm_surface_void_function)
+    }
+  }
+}

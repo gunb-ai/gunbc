@@ -17,7 +17,7 @@
 
 ## 1. Problem
 
-A function body in v4 is a `ComputationNode` sub-DAG over the **closed** five-arm coproduct
+A function body in v2 is a `ComputationNode` sub-DAG over the **closed** five-arm coproduct
 `Behavior = Value | Transform | Branch | Loop | Bind` (`std/node.dag:21`), attached at the
 `Arrow.body` edge (E-9 single authority, target-shape validated in `well_formed`, #4616).
 The type tier already emits the modeled way: per-language
@@ -48,7 +48,7 @@ The design questions this doc answers:
 | `FormalProduction` rows + bindings; `GrammarRelationRow` | `grammar.dag:73,200` | the row substrate both directions interpret (bidir §4.1) |
 | `find_witness` closed-candidate fold | `std/find_witness.dag` | selection discipline for production/spelling choice (bidir §4.2) |
 | Grammar-inverse serialize on the translate path | `06_translate.dag` | unchanged consumer of derived `ConcreteSyntaxToken`s |
-| v2 emitters' `ExprData` taxonomy (~20 arms) | `src/v2/05_emit_*.dag` | the dissolution target; its arm list is the long-tail breadth checklist, **not** a vocabulary to copy |
+| v2 emitters' `ExprData` taxonomy (~20 arms) | `src/v1/05_emit_*.dag` | the dissolution target; its arm list is the long-tail breadth checklist, **not** a vocabulary to copy |
 
 **Substrate target named (P1): no new substrate.** Everything lands in the existing
 `TargetValueExpression` / projection-row / `FormalProduction` carriers.

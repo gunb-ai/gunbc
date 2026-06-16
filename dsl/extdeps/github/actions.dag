@@ -287,11 +287,11 @@ type MissingFilesBehavior = Warn | ErrorOut | Ignore
 
 // Standard action refs for artifact operations.
 data upload_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "upload-artifact", ref: "v4"
+  owner: "actions", repo: "upload-artifact", ref: "v2"
 }
 
 data download_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "download-artifact", ref: "v4"
+  owner: "actions", repo: "download-artifact", ref: "v2"
 }
 
 // -- Matrix strategy --------------------------------------------------
@@ -320,7 +320,7 @@ type CheckConclusion
 // Well-known actions referenced by CI workflows.
 
 data checkout_action: ActionRef = ActionRef {
-  owner: "actions", repo: "checkout", ref: "v4"
+  owner: "actions", repo: "checkout", ref: "v2"
 }
 
 data setup_rust_action: ActionRef = ActionRef {
@@ -328,7 +328,7 @@ data setup_rust_action: ActionRef = ActionRef {
 }
 
 data cache_action: ActionRef = ActionRef {
-  owner: "actions", repo: "cache", ref: "v4"
+  owner: "actions", repo: "cache", ref: "v2"
 }
 
 // -- Platform constants -----------------------------------------------

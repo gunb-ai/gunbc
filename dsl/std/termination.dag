@@ -129,7 +129,7 @@ data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
 //
 // 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
 // `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
-// `Strict` from weaker evidence. `v2.compiler.complexity` routes parser progress
+// `Strict` from weaker evidence. `v1.compiler.complexity` routes parser progress
 // through `strict_after_parser_witness` and no longer imports this symbol; dissolution:
 // rename here to `evidence_passthrough_preserving_strict` (and update bootstrap / v3 mirrors)
 // once the remaining lattice parity call sites are migrated.

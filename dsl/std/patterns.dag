@@ -43,9 +43,9 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
-// ── Upsert<T> type substrate skeleton (Phase 1.4a — v4-upsert-t-substrate-worksheet §1.1) ─
+// ── Upsert<T> type substrate skeleton (Phase 1.4a — v2-upsert-t-substrate-worksheet §1.1) ─
 // Generic Upsert owns verify/create/resolve phase shape. Domain-specific dependency
-// inputs belong on specializations such as CiUpsertStep<T> (Phase 1.5 — v4-ci-schema
+// inputs belong on specializations such as CiUpsertStep<T> (Phase 1.5 — v2-ci-schema
 // worksheet §1.2), not on generic Upsert<T>.
 //
 // 🟡 gated — feature:upsert-phase-substrate — staged: T is a payload brand until

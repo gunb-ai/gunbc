@@ -25,13 +25,13 @@ derive-global move as language targets.
 |---|---|---|
 | The concept/instance layer split: concept in `std/`, per-target instances in `extdeps/` | `std/target_model.dag` vs `extdeps/languages/*.dag` (P2 layer DAG) | `ComputeProvider` concept in `std/`; `extdeps/compute/homelab.dag`, `extdeps/compute/gcp.dag` instances |
 | Fact-bundle + algebra-inhabitance declaration pattern | extdeps languages; `model_core.dag` | provider files are fact-bundles, same construction discipline (no hollow aliases — a provider that drops its backend's spec facts fails the fact-density gate like any other bundle) |
-| Effect partition `IsIdempotent \| IsBreaking` | `src/v4/std/effects.dag` | the **obligation mechanism**: a preemptible provider's obligation is discharged by the *workload's* declared effect facts (A §3), checked structurally — not by a "checkpointable: true" flag on faith |
+| Effect partition `IsIdempotent \| IsBreaking` | `src/v2/std/effects.dag` | the **obligation mechanism**: a preemptible provider's obligation is discharged by the *workload's* declared effect facts (A §3), checked structurally — not by a "checkpointable: true" flag on faith |
 | Platform/network vocabulary | `std/platform.dag`, `std/network.dag` | locality/residency facts on the provider side |
 | Dimensioned quantities + intervals | as in brief A | capacity and cost-rate facts are typed quantities; capacity is an interval (free capacity may be a range when shared) |
-| Host-run receipts (`ExecutionEvidence` host arm) | `src/v4/std/host_run.dag` | the *future* enforcement seam: declared contract vs observed behavior reconciles through dispatch receipts (D), not through trust |
+| Host-run receipts (`ExecutionEvidence` host arm) | `src/v2/std/host_run.dag` | the *future* enforcement seam: declared contract vs observed behavior reconciles through dispatch receipts (D), not through trust |
 
-**Substrate target (P1):** `src/v4/std/compute_provider.dag` (concept: provider fact-bundle
-shape, availability classes, obligation carriers) + `src/v4/extdeps/compute/` instances. No
+**Substrate target (P1):** `src/v2/std/compute_provider.dag` (concept: provider fact-bundle
+shape, availability classes, obligation carriers) + `src/v2/extdeps/compute/` instances. No
 substrate primitives.
 
 ## 3. The shape

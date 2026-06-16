@@ -1,0 +1,292 @@
+// src/v2/std/dependency.dag
+// Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
+// Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
+
+module v2.std.dependency
+
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Bind,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  fold_node
+}
+// 🟢 coproduct dissolution
+type DependencyKind
+  = Contains
+  | BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+  | BarrierBefore
+  | PlacementDependsOn
+  | ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | PromotedBy
+  | BootstrapDependsOn
+
+type DependencyView {
+  source: Node
+  dependent: Node
+  kind: DependencyKind
+  usage_site: Node
+}
+
+type ClassifiedDependencyView<C> {
+  dependency: DependencyView
+  classification: C
+}
+
+type DependencyKindClassifier<C> {
+  contains: C
+  binds_to: C
+  type_depends_on: C
+  data_depends_on: C
+  effect_depends_on: C
+  resource_depends_on: C
+  module_depends_on: C
+  barrier_before: C
+  placement_depends_on: C
+  model_depends_on: C
+  projection_depends_on: C
+  generated_from: C
+  verified_by: C
+  promoted_by: C
+  bootstrap_depends_on: C
+}
+
+fn classify_dependency_kind<C>(classifier: DependencyKindClassifier<C>, kind: DependencyKind) -> C {
+  match kind {
+    Contains => classifier.contains
+    BindsTo => classifier.binds_to
+    TypeDependsOn => classifier.type_depends_on
+    DataDependsOn => classifier.data_depends_on
+    EffectDependsOn => classifier.effect_depends_on
+    ResourceDependsOn => classifier.resource_depends_on
+    ModuleDependsOn => classifier.module_depends_on
+    BarrierBefore => classifier.barrier_before
+    PlacementDependsOn => classifier.placement_depends_on
+    ModelDependsOn => classifier.model_depends_on
+    ProjectionDependsOn => classifier.projection_depends_on
+    GeneratedFrom => classifier.generated_from
+    VerifiedBy => classifier.verified_by
+    PromotedBy => classifier.promoted_by
+    BootstrapDependsOn => classifier.bootstrap_depends_on
+  }
+}
+
+fn classify_dependency_view<C>(
+  classifier: DependencyKindClassifier<C>,
+  view: DependencyView
+) -> ClassifiedDependencyView<C> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: classify_dependency_kind(classifier: classifier, kind: view.kind)
+  }
+}
+
+fn classified_source<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.source
+}
+
+fn classified_dependent<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.dependent
+}
+
+fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.usage_site
+}
+
+fn classified_dependency_view_eq<C>(
+  a: ClassifiedDependencyView<C>,
+  b: ClassifiedDependencyView<C>,
+  classification_eq: fn(C, C) -> Bool
+) -> Bool {
+  (a.dependency == b.dependency) && classification_eq(a.classification, b.classification)
+}
+
+type DependencyFoldState {
+  current: Node
+  dependencies: List<DependencyView>
+}
+
+// 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps ^dependency_binds_to_edge / module / bootstrap labels inline
+fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
+  if sym == ^dependency_binds_to_edge {
+    match parent.kind {
+      ComputationNode { behavior: Bind } => Contains
+      _ => BindsTo
+    }
+  } else if sym == ^dependency_module_import_edge {
+    ModuleDependsOn
+  } else if sym == ^dependency_bootstrap_depends_edge {
+    BootstrapDependsOn
+  } else {
+    Contains
+  }
+}
+
+fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
+  match edge.label {
+    Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
+    Positional => Contains
+  }
+}
+
+fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
+  let kind = classify_node_edge_usage(parent: parent, edge: edge)
+  DependencyView {
+    source: parent,
+    dependent: edge.target,
+    kind: kind,
+    usage_site: edge.target
+  }
+}
+
+fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
+  list_append(left: left, right: right)
+}
+
+fn dependency_fold_init(n: Node) -> DependencyFoldState {
+  DependencyFoldState {
+    current: n,
+    dependencies: []
+  }
+}
+
+fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: DependencyFoldState) -> DependencyFoldState {
+  DependencyFoldState {
+    current: acc.current,
+    dependencies: append_dependency_views(
+      left: list_snoc_item(xs: acc.dependencies, item: dependency_view_for_edge(parent: acc.current, edge: edge)),
+      right: child_state.dependencies
+    )
+  }
+}
+
+fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
+  NodeFold {
+    init: dependency_fold_init,
+    step: dependency_fold_step
+  }
+}
+
+fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyView> {
+  state.dependencies
+}
+
+fn dependency_lens(root: Node) -> List<DependencyView> {
+  dependency_fold_dependencies(
+    state: fold_node(
+      n: root,
+      algebra: dependency_fold_algebra()
+    )
+  )
+}
+
+type ReadinessLayer {
+  ready: List<Node>
+}
+
+type ReadinessFoldState {
+  current: Node
+  ready: List<Node>
+  layers: List<ReadinessLayer>
+}
+
+fn readiness_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: []
+  }
+}
+
+fn ready_set_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: acc.layers
+  }
+}
+
+fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: readiness_fold_init,
+    step: ready_set_fold_step
+  }
+}
+
+fn readiness_fold_ready(state: ReadinessFoldState) -> List<Node> {
+  state.ready
+}
+
+fn ready_set(graph_node: Node) -> List<Node> {
+  readiness_fold_ready(
+    state: fold_node(
+      n: graph_node,
+      algebra: ready_set_algebra()
+    )
+  )
+}
+
+fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+  list_append(left: left, right: right)
+}
+
+fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: [
+      ReadinessLayer {
+        ready: [n]
+      }
+    ]
+  }
+}
+
+fn topological_layers_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: append_readiness_layers(left: acc.layers, right: child_state.layers)
+  }
+}
+
+fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: topological_layers_fold_init,
+    step: topological_layers_fold_step
+  }
+}
+
+fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
+  state.layers
+}
+
+// 🟡 gated — feature:readiness-rank-layer-merge — dissolve-on: readiness-rank merge in topological_layers fold
+fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
+  readiness_fold_layers(
+    state: fold_node(
+      n: graph_node,
+      algebra: topological_layers_algebra()
+    )
+  )
+}
+
+fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+  list_append(left: left, right: right)
+}

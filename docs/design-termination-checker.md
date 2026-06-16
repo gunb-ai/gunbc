@@ -13,7 +13,7 @@
 
 ## 1. Problem
 
-v4 has no compile-time termination checker. Recursive clusters in the compiler thread an
+v2 has no compile-time termination checker. Recursive clusters in the compiler thread an
 explicit budget instead: a `*_bounded` wrapper computes a measure, a `*_go` worker threads
 `remaining: Int`, and a `remaining <= 0` guard rejects at runtime with a typed `Outcome`.
 This is fail-closed (good) and the budgets are structurally derived, not fixed constants
@@ -26,10 +26,10 @@ subtree; no `fuel: 1024`), but it is still an **operational substitute for a pro
   cluster, one guard per entry, one measure computation per wrapper. The triads are the
   single largest accidental-complexity pattern in `06_translate`.
 - The emitted stage0 Rust mirrors the threading (`fuel: i64` in
-  `src/v2/stage0/src/v2_compiler_emit*.rs`) — the pattern propagates through self-host.
+  `src/v1/stage0/src/v1_compiler_emit*.rs`) — the pattern propagates through self-host.
 
 **Measured (2026-06-09, main):** `06_translate.dag` is 4,490 lines with **20 `remaining <= 0`
-guards and 40 `remaining: Int` parameters** — all budget-threading in the v4 compiler tree is
+guards and 40 `remaining: Int` parameters** — all budget-threading in the v2 compiler tree is
 in this one file (the earlier census's "33 triads" has drifted slightly; the localization
 claim still holds). `fuel`-named threading otherwise appears only in `std/target_model.dag`,
 `01_tokenize.dag`, `02_parse.dag` (small, same pattern) and the emitted v2 stage0 mirrors.
@@ -54,25 +54,25 @@ Per MODELING.md M9 the concept DAG was DFS'd before proposing anything new. Find
 
 | Concept | Where it lives today | State |
 |---|---|---|
-| `DescentEvidence = Strict \| NonIncreasing \| DescentUnknown` | `src/v4/std/cardinality.dag:115` | landed (v4) |
-| `RankingDimension { measured: Symbol }` | `src/v4/std/cardinality.dag:119` | landed, **degenerate** (single Symbol; cannot say *what kind* of measure or *which parameter*) |
-| `TerminationProof { non_increasing: List<RankingDimension>, strict: RankingDimension }` | `src/v4/std/cardinality.dag:122` | landed, **single-level** (exactly one strict dimension; cannot express the lexicographic proofs SCCs need) |
-| `termination_proof_witness_for_node` (node-shape fold: `Loop`/`Cardinality` ⇒ proof required, fail-closed) | `src/v4/std/cardinality.dag:283` | landed; **consumed by `04_infer`** (`infer_descent_witness_for_node` → `InferredFacts.descent`, `04_infer.dag:301`) — this is the working consumption pattern to extend |
-| `LoopBound { measure, termination: Witness<TerminationProof> }` | `src/v4/std/cardinality.dag:130` | landed; the `Loop` primitive already carries a proof slot |
+| `DescentEvidence = Strict \| NonIncreasing \| DescentUnknown` | `src/v2/std/cardinality.dag:115` | landed (v2) |
+| `RankingDimension { measured: Symbol }` | `src/v2/std/cardinality.dag:119` | landed, **degenerate** (single Symbol; cannot say *what kind* of measure or *which parameter*) |
+| `TerminationProof { non_increasing: List<RankingDimension>, strict: RankingDimension }` | `src/v2/std/cardinality.dag:122` | landed, **single-level** (exactly one strict dimension; cannot express the lexicographic proofs SCCs need) |
+| `termination_proof_witness_for_node` (node-shape fold: `Loop`/`Cardinality` ⇒ proof required, fail-closed) | `src/v2/std/cardinality.dag:283` | landed; **consumed by `04_infer`** (`infer_descent_witness_for_node` → `InferredFacts.descent`, `04_infer.dag:301`) — this is the working consumption pattern to extend |
+| `LoopBound { measure, termination: Witness<TerminationProof> }` | `src/v2/std/cardinality.dag:130` | landed; the `Loop` primitive already carries a proof slot |
 | Full proof theory: 5-variant `RankingDimension`, `DescentSource`, `ProofEdge`, lexicographic semantics, `BoundedLattice<DescentEvidence>` inhabitance | `dsl/std/termination.dag` (v2-era) | **port source** — rich, externally grounded (Floyd 1967, Lee/Jones/Ben-Amram 2001, Dershowitz/Manna 1979) |
 | The checker algorithm: `is_valid_proof(proof, edges)` = per-edge lexicographic check, then **the non-descending subgraph must be acyclic** (Kosaraju 2-pass DFS; self-loops count; evidence-length mismatch ⇒ non-descending, fail-closed) | `dsl/std/graph.dag:141-197` | **port source** — already written, decidable, polynomial |
-| Dependency/graph machinery in v4: `DependencyView`, `dependency_lens` fold, `ready_set`, `topological_layers` | `src/v4/std/dependency.dag` | landed — the **M9 ancestor for the call graph**; SCC attaches here, not in a new sibling module |
+| Dependency/graph machinery in v2: `DependencyView`, `dependency_lens` fold, `ready_set`, `topological_layers` | `src/v2/std/dependency.dag` | landed — the **M9 ancestor for the call graph**; SCC attaches here, not in a new sibling module |
 
 The conclusion of the DFS: **almost nothing new needs inventing.** The design is (i) two
-carrier upgrades in `v4.std.cardinality`, (ii) a port of the v2 proof theory + checker onto
-the v4 dependency substrate, (iii) proof *constructors* that read declared structural facts,
+carrier upgrades in `v2.std.cardinality`, (ii) a port of the v2 proof theory + checker onto
+the v2 dependency substrate, (iii) proof *constructors* that read declared structural facts,
 and (iv) a dissolution ratchet for the triads.
 
 ## 3. Substrate-fact introduction procedure (MODELING.md, cited per worked-example tracking)
 
 - **Step 1 (DAG-ancestor):** ran. `TerminationProof` and `DescentEvidence` already exist in
-  `v4.std.cardinality` — they are upgraded in place, not declared as siblings. The call graph
-  is not a new concept: it is a `DependencyView` consumer (`v4.std.dependency`), and SCC
+  `v2.std.cardinality` — they are upgraded in place, not declared as siblings. The call graph
+  is not a new concept: it is a `DependencyView` consumer (`v2.std.dependency`), and SCC
   computation is a derived operation over it. `ProofEdge` attaches to the existing
   caller/callee dependency concept; no new module is coined for it.
 - **Step 2 (coproduct-vs-coordinate):** ran. `RankingDimension`'s five kinds (TreeSize,
@@ -88,12 +88,12 @@ and (iv) a dissolution ratchet for the triads.
 
 ## 4. Design
 
-### 4.1 Carrier upgrades in `v4.std.cardinality` (land atomically — P5, no bridge)
+### 4.1 Carrier upgrades in `v2.std.cardinality` (land atomically — P5, no bridge)
 
 Two shapes are upgraded **in place**, all consumers migrated in the same change:
 
 1. `RankingDimension { measured: Symbol }` → the five-variant coproduct from
-   `dsl/std/termination.dag:188`, with the parameter binding carried as `Symbol` (v4's
+   `dsl/std/termination.dag:188`, with the parameter binding carried as `Symbol` (v2's
    existing choice; the v2 file's "should become a structural param reference when the
    language has one" note carries forward unchanged).
 2. `TerminationProof { non_increasing, strict }` → `TerminationProof { dimensions:
@@ -102,8 +102,8 @@ Two shapes are upgraded **in place**, all consumers migrated in the same change:
    so `structural_node_size_termination_proof()` migrates mechanically.
 3. New carrier (port, not invention): `ProofEdge { caller: QualifiedName, callee:
    QualifiedName, evidence: List<DescentEvidence> }` — evidence vector ordered to match
-   `proof.dimensions`. v2 used `String`; v4 uses the landed `QualifiedName`
-   (`v4.std.qualified_name`) since that is what a declared function identity is.
+   `proof.dimensions`. v2 used `String`; v2 uses the landed `QualifiedName`
+   (`v2.std.qualified_name`) since that is what a declared function identity is.
 
 Known consumers to migrate in the same PR: `structural_node_size_termination_proof`,
 `multiplicity_termination_witness`, `termination_proof_witness_for_node` (all in
@@ -141,14 +141,14 @@ and the wrapper's budget computation delete. This is the bulk of the 20 triads.
 
 Pipeline, all pieces named:
 
-1. **Call-graph extraction** — a consumer of `v4.std.dependency`'s `DependencyView` fold,
+1. **Call-graph extraction** — a consumer of `v2.std.dependency`'s `DependencyView` fold,
    restricted to call-shaped edges (Transform `FunctionRef` targets), keyed by
    `QualifiedName`. This is module-bounded data (the serialize cluster is one module), so the
    graph is finite by construction.
 2. **SCC condensation** — port Kosaraju from `dsl/std/graph.dag:143` (2-pass DFS with
    visited-set; each pass visits each node once; descent dimension for the checker's own
    recursion is `SetCardinality(visited-complement)` — the checker passes itself, see §5).
-   Attaches next to `ready_set` / `topological_layers` in `v4.std.dependency` — same module,
+   Attaches next to `ready_set` / `topological_layers` in `v2.std.dependency` — same module,
    same fold idiom.
 3. **Per-SCC proof obligation** — every SCC containing a cycle (multi-node, or any self-loop)
    requires a `TerminationProof` + a `ProofEdge` for every intra-SCC call edge. Missing proof
@@ -177,11 +177,11 @@ three layers deep, in increasing severity:
    re-joining atoms to declarations on symbol equality would rebuild the
    **spelling-as-identity** channel that the BRAND lane (#4579/#4581 `binding_id`) exists to
    dissolve — a workaround this design refuses.
-3. **Call sites are not in the v4 representation at all.** No stage produces
+3. **Call sites are not in the v2 representation at all.** No stage produces
    `ComputationNode` trees (`02_parse` builds none; `03_normalize`/`05_eval` only match
    them), and THESIS's "Transform holds a FunctionRef to an Arrow declaration" has **no
    landed `FunctionRef` carrier** in `std/node.dag`. The serialize cluster's `.dag` functions
-   are executed by the v2 interpreter from source; their call structure has no v4 substrate
+   are executed by the v2 interpreter from source; their call structure has no v2 substrate
    representation today.
 
 **The fix (and it should be built — the operator concurs):** one write at one site. When
@@ -258,7 +258,7 @@ ranking functions (Turing 1949, Floyd 1967), size-change termination (Lee, Jones
 The fuel triads are the scaffold; the checker landing is the dissolution trigger.
 
 - **Ratchet metric:** count of `remaining: Int` parameters (today **40**) and `remaining <= 0`
-  guards (today **20**) in `src/v4/compiler/06_translate.dag` → monotonically to **0**. Each
+  guards (today **20**) in `src/v2/compiler/06_translate.dag` → monotonically to **0**. Each
   dissolution PR deletes a cluster's wrapper + guard + threading and cites the validated
   proof (the `TestClaim` row) as the receipt.
 - **Order:** class (a) singles first (mechanical once the constructor lands), then the
@@ -280,9 +280,9 @@ The fuel triads are the scaffold; the checker landing is the dissolution trigger
 - **Minimal slice** (exercises the committed shape's risk — SCC + lexicographic — not a toy;
   **step 2 is gated on the call-graph producer per the §4.3 audit** — the T-9-rider-on-#4581
   write must land first, or the slice's input doesn't exist):
-  1. carrier upgrades (§4.1) + `is_valid_proof`/Kosaraju port onto `v4.std.dependency`;
+  1. carrier upgrades (§4.1) + `is_valid_proof`/Kosaraju port onto `v2.std.dependency`;
   2. extract the real `serialize_type_expr_*` call graph; author its candidate proof;
-  3. two `TestClaim`s under `src/v4/test/claim/termination/`:
+  3. two `TestClaim`s under `src/v2/test/claim/termination/`:
      **green** — the real cluster's proof validates by execution (`--claim-run`);
      **red-when-wrong** — the discriminating case: same edges with one strict edge's evidence
      degraded to `NonIncreasing` (and a second case: evidence-length mismatch) ⇒ `Violates`.
@@ -300,7 +300,7 @@ The fuel triads are the scaffold; the checker landing is the dissolution trigger
   ruling exposed.** Confirmed: the gate lives in infer. But the operator's challenge —
   "if it's expensive to relocate, that's a design issue" — is correct under cost-of-change,
   so the design makes relocation cheap **by construction**: the checker itself is a pure
-  substrate function (carriers + `is_valid_proof` port in `v4.std.{cardinality,dependency}`,
+  substrate function (carriers + `is_valid_proof` port in `v2.std.{cardinality,dependency}`,
   per §4.1/§4.3) with no infer dependency; what lives in infer is only the **gating wire** —
   the call that routes the checker's `Witness<TerminationProof>` into
   `InferredFacts.descent` and lets `Violates` block admission. Relocating the gate (or

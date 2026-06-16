@@ -1,0 +1,18 @@
+// Scope: shared TestClaim row carrier for structural_resolution lens claims.
+
+module v2.test.lens_structural_resolution.claim_carrier
+
+import v2.compiler.infer { InferredTree }
+import v2.lens.structural_resolution { StructuralResolutionFact, at }
+import v2.std.witness { Witness }
+
+type LensStructuralResolutionClaim {
+  input: InferredTree
+  expected: StructuralResolutionFact
+}
+
+fn lens_structural_resolution_actual(
+  claim: LensStructuralResolutionClaim
+) -> Witness<StructuralResolutionFact> {
+  at(tree: claim.input)
+}

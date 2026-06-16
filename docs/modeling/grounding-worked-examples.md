@@ -1,7 +1,7 @@
-# v4 Grounding — Worked Examples
+# v2 Grounding — Worked Examples
 
 > Companion to the **D2 reversal + fact-bundle reseed plan** (the
-> `src/v4/DECISIONS.md` record was retired in the visibility flip; the
+> `src/v2/DECISIONS.md` record was retired in the visibility flip; the
 > reversal receipt lives in INVARIANTS.md P1 §"Hollow alias").
 >
 > **Restored 2026-06-11** — deleted in the #4192 visibility flip while still
@@ -177,11 +177,11 @@ evidence that it is universal.
 Every stage below is tagged for its honest live-state on `origin/main`:
 
 - **`[DAG-REALIZED]`** — the `.dag` has a real function body for this
-  path (not a stub) — but the v4 compiler is not yet bootstrapped into
+  path (not a stub) — but the v2 compiler is not yet bootstrapped into
   an executing pipeline; nothing *runs* it today.
 - **`[MODELED]`** — the modeling shape only; no `.dag` body yet.
 
-There is deliberately **no `[BUILT]`/runs-today tag**: v4's compiler is
+There is deliberately **no `[BUILT]`/runs-today tag**: v2's compiler is
 itself `.dag`, Wave-1, not bootstrapped into an executing binary. The
 strongest claim any stage can honestly make here is `[DAG-REALIZED]` —
 and the doc never claims more.
@@ -190,7 +190,7 @@ and the doc never claims more.
 
 ### A. The most-grounded chain — the `.dag` self-hosting frontend `[DAG-REALIZED]`
 
-The v4 frontend is **Wave-1** and `.dag`-realized, not executing:
+The v2 frontend is **Wave-1** and `.dag`-realized, not executing:
 `01_tokenize.dag` has a real function body for the **E0 void-lexical**
 path and `02_parse.dag` for the **G0 void-grammar** path. So the
 most-grounded end-to-end chain — real `.dag` function bodies, though
@@ -331,8 +331,8 @@ staging.** The grounding *declaration* is a real, fold-traversable edge
 that **references the single std authority** for the shared structure:
 
 ```
-import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra }
+import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.algebra { BooleanAlgebra }
 // Anchor: <the language's own bool spec>
 data <lang>_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 ```
@@ -353,7 +353,7 @@ complete grounding (the degenerate base of the same discipline).
 
 **Verified scope (honest) — declaration, not landed authority.** The
 declaration compiles **0 diagnostics under the real bootstrap gate** —
-`v2-compiler compile --source-root src/v4` (ci.yml `v4:` job; 72 modules
+`v1-compiler compile --source-root src/v2` (ci.yml `v2:` job; 72 modules
 resolved). That is the *parse/resolve* half of bootstrap viability; the
 v2-**run** gate is T-22-deferred. Crucially this is **not** landed
 target-spec authority: no same-PR consumer reads `<lang>_bool_grounding`
@@ -373,7 +373,7 @@ further. (Aside: the frozen v3 interim parse-ratchets rejected decl-ref
 `data` bodies — a v3-only artifact, v3 is *not* in the bootstrap chain;
 they were dissolved, operator-authorized, in the PR that originally
 landed this example (pre-restoration history), with the
-v2 `v4:` job as the replacement parse gate.)
+v2 `v2:` job as the replacement parse gate.)
 
 **The level spectrum — bool vs int (the lesson).** Same discipline,
 different starting level:
@@ -584,7 +584,7 @@ exact mathematical continuum is therefore a named fail-closed gap:
 1. `SpiceApproxVoltage` grounds to `ApproximateField<FieldOfFractions<Int>>`
    **plus a `Volt` unit fact**; `f64` grounds to IEEE-754 binary64 — a
    **unitless** approximate magnitude (`dsl/std/float.dag` /
-   `src/v4/std/float.dag`).
+   `src/v2/std/float.dag`).
 2. the coercion fold compares the groundings: the approximate-field
    *magnitude* carriers are related (different width/policy facts) — but
    `SpiceApproxVoltage` carries a `Volt` coordinate the `f64` grounding
@@ -721,7 +721,7 @@ English written to a fixed structural convention — English grounds
 composite structure honestly, recursively, as a `Node` decode. Free prose
 under-determines and rejects. Model what determinately grounds; reject the
 rest. (This is the
-`english_ingest_fail_closed.dag` boundary-honesty probe v4 already
+`english_ingest_fail_closed.dag` boundary-honesty probe v2 already
 plans.) English is not a degenerate case; it is a full language whose
 words under-determine structure, hence a large, honest `Rejected`
 boundary.
@@ -961,7 +961,7 @@ a structural coordinate, not a convention.
 
 ## 12. `.dag` — `Arrow` declaration (the language modeling itself)
 
-In v4, a function-like declaration is an `Arrow`: parameter facts, result fact,
+In v2, a function-like declaration is an `Arrow`: parameter facts, result fact,
 and a body/realization authority.
 
 **Model:**

@@ -9,13 +9,13 @@ publish = false
 # shell-free, then reuses ci_affected_components' single-authority windows->timings
 # projection. Kept a SEPARATE crate from ci_affected_components on purpose: the fast,
 # critical-path `affected` detector bin lives in that crate and must NOT pull in the
-# heavy v2-compiler dependency.
+# heavy v1-compiler dependency.
 
 [[bin]]
 name = "collect-affected-set-timings"
 path = "src/main.rs"
 
 [dependencies]
-v2-compiler = { path = "../../src/v2/stage0" }
+v1-compiler = { path = "../../src/v1/stage0" }
 ci_affected_components = { path = "../ci_affected_components" }
 serde_json = { workspace = true }

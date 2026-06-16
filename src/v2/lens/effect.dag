@@ -1,0 +1,125 @@
+// src/v2/lens/effect.dag
+// Scope: effect lens — effects derived from type-signature shape (B3 single-authority); no parallel taxonomy.
+// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<EffectClassification>`. `EffectClassification` is a single-variant signature-deferred slot: the per-edge row carries the typed dependency reference and routes the effect-kind question to the signature via `tree.facts.lookup(dependency.source)` at use-sites. The dependency kind is NOT the effect authority (B3 / INVARIANTS P2 / Practice 5) — re-authoring effect kinds from `DependencyKind` would be a second authority, exactly the parallel-payload defect this ratchet dissolves. Closing the signature-derived effect kind set is the #3468 BLOCKING follow-up lane.
+
+
+module v2.lens.effect
+
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
+import v2.std.collection {
+  List,
+  Optional,
+  optional_absent,
+  optional_prefer_first_present,
+  optional_present,
+  optional_present_witness
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  classified_dependency_view_eq
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+// 🟡 signature-deferred slot. B3: the type signature is the effect
+// authority. The row carries `EffectClassification` as an empty
+// signature-deferred marker; the actual effect kind is read at use-sites
+// from `tree.facts.lookup(dependency.source)`, never re-derived from
+// `DependencyKind` (re-deriving would be a second authority — exactly
+// the parallel-payload defect this ratchet dissolves). Closing the
+// signature-derived effect kind set (decoding `InferredFacts` into a
+// closed effect-kind carrier) is the #3468 BLOCKING follow-up lane.
+type EffectClassification {}
+
+type EffectFact {
+  dependencies: List<ClassifiedDependencyView<EffectClassification>>
+}
+
+fn effect_classify(
+  tree: InferredTree,
+  view: DependencyView
+) -> ClassifiedDependencyView<EffectClassification> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: EffectClassification {}
+  }
+}
+
+fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
+  EffectFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
+    })
+  }
+}
+
+fn effect_usage_facts_witness(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(source)
+}
+
+fn effect_first_upstream_diagnostic(
+  tree: InferredTree,
+  fact: EffectFact
+) -> Optional<Diagnostic> {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    optional_prefer_first_present(
+      left: acc,
+      right: match effect_usage_facts_witness(tree: tree, source: dep.dependency.source) {
+        Violates { diagnostic: d } => optional_present(value: d)
+        Holds { value: _ } => optional_absent()
+      }
+    )
+  })
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-effect-signature-deferred-unresolved — dissolve-on-arrival: `InferredFacts` decodes to a closed effect-kind carrier (#3468); forbidden: parallel ad-hoc signature-deferred Bool predicates outside effect_witness.
+fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
+  non_empty(xs: fact.dependencies)
+}
+
+fn effect_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_reason_unresolved_projection,
+    at: Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
+  let fact = effect_fact(tree: tree, dependencies: dependencies)
+  let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
+  match optional_present_witness(opt: upstream) {
+    Holds { value: d } =>
+      Violates { diagnostic: d }
+    Violates { diagnostic: _ } =>
+      if effect_signature_deferred_unresolved(fact: fact) {
+        Violates { diagnostic: effect_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
+  }
+}
+
+fn effect_classification_eq(a: EffectClassification, b: EffectClassification) -> Bool {
+  true
+}
+
+fn effect_classified_eq(
+  a: ClassifiedDependencyView<EffectClassification>,
+  b: ClassifiedDependencyView<EffectClassification>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
+}
+
+fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
+}

@@ -1,8 +1,8 @@
-> Part of: [THESIS.md](THESIS.md) — the scan tool for checking a design against the durable directions of v4.
+> Part of: [THESIS.md](THESIS.md) — the scan tool for checking a design against the durable directions of v2.
 
-# v4 — Direction Conformance Checklist
+# v2 — Direction Conformance Checklist
 
-> **Purpose.** A scan tool, not a task list. These are the *durable directions* of v4 — the goals and invariants a design must not **drop** (silently omit), **circumvent** (technically pass without doing the real thing), or **antagonize** (actively work against). Tasks live in the dispatch docs; this is the thing you hold a new design up against.
+> **Purpose.** A scan tool, not a task list. These are the *durable directions* of v2 — the goals and invariants a design must not **drop** (silently omit), **circumvent** (technically pass without doing the real thing), or **antagonize** (actively work against). Tasks live in the dispatch docs; this is the thing you hold a new design up against.
 >
 > **How to use.** For any new design, walk each item and mark **advances** / **neutral** / **contradicts-or-silently-drops**. A design need not advance every item — but it must contradict none, and must not silently drop one it touches. Any ✗ is a flag to resolve *before* GO. The "✗" lines are the battle-tested circumvention tells.
 >
@@ -24,8 +24,8 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
 
 ---
 
-## A. Identity — what v4 *is*
-*(contradict these and it stops being v4)*
+## A. Identity — what v2 *is*
+*(contradict these and it stops being v2)*
 
 - **A1 — Closed/total typed graph language.** Assert once, never re-derive; cost-of-change → 1. → *INVARIANTS P2 · P4; CLAUDE.md "Cost of Change"*
   - ✗ re-derives a fact asserted elsewhere; adds a second source of a single truth.
@@ -53,9 +53,9 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
   - ✗ generalizing emit while the round-trip stays deferred past the breadth tiers (proves a code generator).
 - **B4 — Model a target once → derive both directions** (N×M). → *THESIS · The derived homomorphism; ROADMAP*
   - ✗ a target modeled emit-only with no labeled un-defer trigger for ingesting it (collapsed `R_target`).
-- **B5 — One shared search engine.** `find_witness` is the single coercion search; coercion is not a separate phase, and ingest must not grow its own arms. → *src/v4/std/coercion.dag; ROADMAP · Coercion in both directions*
+- **B5 — One shared search engine.** `find_witness` is the single coercion search; coercion is not a separate phase, and ingest must not grow its own arms. → *src/v2/std/coercion.dag; ROADMAP · Coercion in both directions*
   - ✗ inline coercion arms accreting; a second engine on the ingest side.
-- **B6 — Witness on success, located refusal on failure.** A realizable coercion carries a structure-preserving `HomomorphismWitness`; an unrealizable one fails closed with a located `CoercionMismatchKind` (`NoTargetCandidate` / `WouldLoseInformation` / opaque-atom-with-no-per-target-realization), and refinement is faithfulness-aware (`i32 → int` widening = witness; `int → i32` narrowing = `WouldLoseInformation`). → *ROADMAP · Coercion in both directions; src/v4/std/coercion.dag*
+- **B6 — Witness on success, located refusal on failure.** A realizable coercion carries a structure-preserving `HomomorphismWitness`; an unrealizable one fails closed with a located `CoercionMismatchKind` (`NoTargetCandidate` / `WouldLoseInformation` / opaque-atom-with-no-per-target-realization), and refinement is faithfulness-aware (`i32 → int` widening = witness; `int → i32` narrowing = `WouldLoseInformation`). → *ROADMAP · Coercion in both directions; src/v2/std/coercion.dag*
   - ✗ synthesizing silent glue for a missing inhabitant; assuming "translation always succeeds"; collapsing faithful widening and lossy narrowing.
 
 ## C. Programmatic access — the read/write roof
@@ -88,7 +88,7 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
 ## E. Enforcement & opacity (the AIM / keystone)
 - **E1 — gunbc enforces type/nominal distinctness** at call-args (an asserted-but-open Tier-1 claim — measured *not* enforced today). → *THESIS · Tier 1; ctrl enforcement call-arg-check design*
   - ✗ a design that assumes distinctness is already enforced.
-- **E2 — Opacity adopted where it matters** (e.g. source-position brand-twins), riding the enforcement relation; the mechanism (`nominal_opaque`) exists. → *THESIS · Compositional layering; docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md*
+- **E2 — Opacity adopted where it matters** (e.g. source-position brand-twins), riding the enforcement relation; the mechanism (`nominal_opaque`) exists. → *THESIS · Compositional layering; docs/audit/v2-encapsulation-touch-once-contract-2026-06-05.md*
   - ✗ treating opacity as a capability gap rather than an adoption choice.
 
 ## F. Measurement discipline — how we know "done"

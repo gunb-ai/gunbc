@@ -28,10 +28,10 @@ the defect is broader than the fold — *any* `.dag` matching `Optional` hits it
 are ahead of this container's clone; `predicate.dag` doesn't exist here yet. Same class is
 groundable below without stale line numbers.)
 
-- Canonical: `type Optional<T> = Absent | Present { value: T }` (`src/v4/std/collection.dag:28`),
+- Canonical: `type Optional<T> = Absent | Present { value: T }` (`src/v2/std/collection.dag:28`),
   with `optional_absent` / `optional_present` constructors and `optional_present_witness`
   projecting `Present → Holds`, `Absent → Violates`.
-- Drift, at the sharpest site: `map_get` (`src/v4/std/collection.dag:112`) matches
+- Drift, at the sharpest site: `map_get` (`src/v2/std/collection.dag:112`) matches
   `m.lookup(key)` — typed **`Witness<V>`** (`Map.lookup: fn(K) -> Witness<V>`,
   `collection.dag:70`) — with **`Some { value: v }` / `None`** arms, then re-wraps into
   `Present`/`Absent`. That is a **three-way tangle** at one call: `Witness` values, `Some/None`

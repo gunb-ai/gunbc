@@ -1,4 +1,4 @@
-# Design: v4 Runtime Architecture — eval for real programs, effects/IO, dispatch (TODO A.1)
+# Design: v2 Runtime Architecture — eval for real programs, effects/IO, dispatch (TODO A.1)
 
 > **Status: DESIGN — map, not territory.** The runtime half pairing COMPREP's producer half
 > (`design-computation-representation.md`): COMPREP makes function bodies exist; this design
@@ -17,8 +17,8 @@ than assumed.
 
 | Piece | Where | Role |
 |---|---|---|
-| Option-C split: abstract runtime carriers in `std/`, concrete bundles in `extdeps/runtimes/` | `src/v4/std/runtime.dag` (`RuntimeValue` = Primitive/Aggregate/Reference/Closure/Unit; `EvaluationEnvironment`; `RuntimeOutcome`; `ValueRepresentationModel`), `extdeps/runtimes/v4_evaluator.dag` (`V4EvaluatorRuntime`, wave-1 effect-signature/boundary nodes) | the value/environment substrate and the layer pattern this design extends — same split the compute-provider design reuses |
-| `InterpretationAlgebra` + `EvalFoldState`/`EvalProgress` + cache authority | `src/v4/compiler/05_eval.dag` | eval is already a fold with typed progress; this design fills its arms, it does not replace the fold |
+| Option-C split: abstract runtime carriers in `std/`, concrete bundles in `extdeps/runtimes/` | `src/v2/std/runtime.dag` (`RuntimeValue` = Primitive/Aggregate/Reference/Closure/Unit; `EvaluationEnvironment`; `RuntimeOutcome`; `ValueRepresentationModel`), `extdeps/runtimes/v2_evaluator.dag` (`V4EvaluatorRuntime`, wave-1 effect-signature/boundary nodes) | the value/environment substrate and the layer pattern this design extends — same split the compute-provider design reuses |
+| `InterpretationAlgebra` + `EvalFoldState`/`EvalProgress` + cache authority | `src/v2/compiler/05_eval.dag` | eval is already a fold with typed progress; this design fills its arms, it does not replace the fold |
 | Effect vocabulary | `std/effects.dag` (`IsIdempotent \| IsBreaking`), `model_core.dag` (`EffectSignature`, `PrimitiveOperationRef`), `std/determinism.dag` (orthogonal determinism axis) | declared effect facts the boundary enforces |
 | Handler-shape precedent | INVARIANTS P1 kernel-calculus note: lenses are "algebraic-effect-handler-shaped (Plotkin & Pretnar 2009)" | the external grounding for §4 |
 | Host-process boundary discipline (a)–(e); `host_run.dag` receipts | INVARIANTS P2; `std/host_run.dag` | the only door to the host, reused not duplicated |

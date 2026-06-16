@@ -1,0 +1,243 @@
+// src/v2/std/bounded_lattice_completeness.dag
+// Scope: BoundedLattice instance completeness — consumes find_named_child (node_query authority).
+// Status: SG-6 cycle-breaker (algebra cannot import node_query; node_query imports algebra).
+// §1-tail A4 fuel-delete: SG-6 gather/gate rows live here (fold_node owns traversal); not Practice-12 fuel.
+
+module v2.std.bounded_lattice_completeness
+
+import v2.std.algebra {
+  BoundedLatticeComplete,
+  BoundedLatticeInstanceCompleteness,
+  BoundedLatticeMissingWitness,
+  BoundedLatticePartial,
+  MissingJoin,
+  MissingLatticeField,
+  MissingMeet,
+  NotBoundedLatticeInstance,
+  algebra_edge,
+  any,
+  boolean_algebra_field_bounded_lattice,
+  bounded_lattice_field_bottom,
+  bounded_lattice_field_lattice,
+  bounded_lattice_field_top,
+  inhabitant_edge,
+  lattice_field_join,
+  lattice_field_meet,
+  fold_list_right,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  Rejected,
+  Suggested,
+  Unavailable,
+  diagnostics_singleton,
+  non_empty_diagnostics_append,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  fold_node
+}
+import v2.std.node_query {
+  find_named_child
+}
+
+type BlNamedChildLookup
+  = BlNamedChildFound { target: Node }
+  | BlNamedChildMissing
+  | BlNamedChildAmbiguous
+
+fn bl_named_child_lookup(root: Node, name: Symbol) -> BlNamedChildLookup {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
+    Rejected { diagnostics: d } =>
+      if d.head.reason == ^named_child_missing {
+        BlNamedChildMissing
+      } else if d.head.reason == ^named_child_ambiguous {
+        BlNamedChildAmbiguous
+      } else {
+        BlNamedChildMissing
+      }
+  }
+}
+
+fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
+  match bl_named_child_lookup(root: lattice, name: lattice_field_meet) {
+    BlNamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildFound { target: _ } =>
+      match bl_named_child_lookup(root: lattice, name: lattice_field_join) {
+        BlNamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildFound { target: _ } => BoundedLatticeComplete
+      }
+  }
+}
+
+fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
+  match bl_named_child_lookup(root: instance, name: bounded_lattice_field_top) {
+    BlNamedChildFound { target: _ } =>
+      match bl_named_child_lookup(root: instance, name: bounded_lattice_field_bottom) {
+        BlNamedChildFound { target: _ } =>
+          match bl_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
+            BlNamedChildFound { target: lattice } =>
+              bounded_lattice_lattice_field_completeness(lattice: lattice)
+            BlNamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
+            BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
+          }
+        BlNamedChildMissing => NotBoundedLatticeInstance
+        BlNamedChildAmbiguous => NotBoundedLatticeInstance
+      }
+    BlNamedChildMissing => NotBoundedLatticeInstance
+    BlNamedChildAmbiguous => NotBoundedLatticeInstance
+  }
+}
+
+// SG-6 infer gate — consumer-site rejection + fold_node gather of partial instances.
+data infer_bounded_lattice_consumer_partial: Symbol = infer_bounded_lattice_consumer_partial
+
+fn infer_bounded_lattice_partial_instance_diagnostic(
+  at: Locus,
+  missing: BoundedLatticeMissingWitness,
+) -> Diagnostic {
+  Diagnostic {
+    reason: discriminant(v: missing),
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_bounded_lattice_consumer_partial_diagnostic(
+  consumer: Node,
+  instance: Node,
+) -> Diagnostic {
+  Diagnostic {
+    reason: infer_bounded_lattice_consumer_partial,
+    at: node_locus(node: consumer),
+    correction: Suggested { node: instance }
+  }
+}
+
+fn infer_bounded_lattice_completeness_rejects(
+  instance: Node,
+  completeness: BoundedLatticeInstanceCompleteness,
+) -> Outcome<Node> {
+  match completeness {
+    NotBoundedLatticeInstance =>
+      Accepted { value: instance, diagnostics: None }
+    BoundedLatticeComplete =>
+      Accepted { value: instance, diagnostics: None }
+    BoundedLatticePartial { missing: m } =>
+      outcome_rejected(
+        infer_bounded_lattice_partial_instance_diagnostic(
+          at: node_locus(node: instance),
+          missing: m
+        )
+      )
+  }
+}
+
+// SG-6: consumer-site gate only — partial declarations are tagged, not rejected here.
+// infer_bounded_lattice_instance_gate is exported for anchor/unit probes, not infer_node_facts.
+fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
+  infer_bounded_lattice_completeness_rejects(
+    instance: instance,
+    completeness: bounded_lattice_instance_completeness(instance: instance)
+  )
+}
+
+// Algebra-use edges only — module/containment declaration siblings are not consumption.
+fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
+  if any(xs: partials, predicate: fn(p) { edge.target == p }) {
+    match edge.label {
+      Named { name: sym } =>
+        sym == algebra_edge
+          || sym == inhabitant_edge
+          || sym == lattice_field_meet
+          || sym == lattice_field_join
+          || sym == boolean_algebra_field_bounded_lattice
+      Positional => false
+    }
+  } else {
+    false
+  }
+}
+
+fn infer_bounded_lattice_consumer_gate(
+  consumer: Node,
+  partials: List<Node>,
+) -> Outcome<Node> {
+  match fold(consumer.children, init: outcome_accepted(value: consumer), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } =>
+        if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
+          Rejected {
+            diagnostics: non_empty_diagnostics_append(
+              a: r,
+              b: diagnostics_singleton(
+                d: infer_bounded_lattice_consumer_partial_diagnostic(
+                  consumer: consumer,
+                  instance: e.target
+                )
+              )
+            )
+          }
+        } else {
+          Rejected { diagnostics: r }
+        }
+      Accepted { value: _, diagnostics: d } =>
+        if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
+          outcome_rejected(
+            infer_bounded_lattice_consumer_partial_diagnostic(
+              consumer: consumer,
+              instance: e.target
+            )
+          )
+        } else {
+          Accepted { value: consumer, diagnostics: d }
+        }
+    }
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: d } =>
+      Accepted { value: consumer, diagnostics: d }
+  }
+}
+
+fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
+  fold_node(
+    n: tree,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match bounded_lattice_instance_completeness(instance: n0) {
+          BoundedLatticePartial { missing: _ } => [n0]
+          NotBoundedLatticeInstance => []
+          BoundedLatticeComplete => []
+        }
+      },
+      step: fn(acc, e, child) {
+        fold_list_right(
+          xs: child,
+          empty: acc,
+          snoc: fn(a, p) {
+            list_snoc_item(xs: a, item: p)
+          }
+        )
+      }
+    }
+  )
+}

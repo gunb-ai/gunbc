@@ -1,5 +1,5 @@
-# Hand-synced projection of src/v4/workflow/release.dag (RELEASE_TODO.md §5 Phase 1a).
-# Semantic authority: src/v4/workflow/release.dag — update the model first, then mirror here.
+# Hand-synced projection of src/v2/workflow/release.dag (RELEASE_TODO.md §5 Phase 1a).
+# Semantic authority: src/v2/workflow/release.dag — update the model first, then mirror here.
 # YamlStatic `release_pipeline → release.yml` deferred (same posture as ci.dag / TASKS T-24).
 name: release
 
@@ -61,7 +61,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           cache: true
-          cache-workspaces: src/v2/stage0
+          cache-workspaces: src/v1/stage0
           rustflags: ''
       - name: Install cross
         if: matrix.cross
@@ -74,10 +74,10 @@ jobs:
         run: |
           set -eux
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release -p v2-compiler --bin gunbc --target '${{ matrix.target }}'
+            cross build --release -p v1-compiler --bin gunbc --target '${{ matrix.target }}'
             bin="target/${{ matrix.target }}/release/gunbc"
           else
-            cargo build --release -p v2-compiler --bin gunbc --target '${{ matrix.target }}'
+            cargo build --release -p v1-compiler --bin gunbc --target '${{ matrix.target }}'
             if [ '${{ runner.os }}' = 'Windows' ]; then
               bin="target/${{ matrix.target }}/release/gunbc.exe"
             else

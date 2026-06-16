@@ -1,5 +1,5 @@
 > Part of: [THESIS.md](../THESIS.md) > [ROADMAP.md](../ROADMAP.md)
-> Drill down: [src/v2/DESIGN.md](../src/v2/DESIGN.md), [algebraic-type-spec.md](algebraic-type-spec.md)
+> Drill down: [src/v1/DESIGN.md](../src/v1/DESIGN.md), [algebraic-type-spec.md](algebraic-type-spec.md)
 
 # gunbc Architecture
 
@@ -186,7 +186,7 @@ render a `.dag` program. The quality varies by how many patterns the
 target handles natively vs synthesizes.
 
 **Current reality:** 6,857 lines of language-specific code inside
-`src/v2/` and 632 mentions of specific language names across 12
+`src/v1/` and 632 mentions of specific language names across 12
 compiler files. These should all be zero.
 
 **Challenge targets** (design validation — if the rendering model

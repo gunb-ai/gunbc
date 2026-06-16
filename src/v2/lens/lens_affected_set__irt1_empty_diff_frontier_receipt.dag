@@ -1,0 +1,601 @@
+// Scope: IRT-1 leaf — empty accumulator yields empty frontier.
+
+module v2.test.lens_affected_set.irt1_empty_diff_frontier_receipt
+
+import v2.lens.affected_set {
+  ChangedDimensions,
+  ChangedSubgraphFrontier,
+  DoesNotPropagate,
+  EditDimension,
+  FailClosed,
+  Propagates,
+  FrontierDependency,
+  FrontierProduced,
+  affected_set_boundary_pure_receipt_node,
+  affected_set,
+  canonical_changed_dimension_receipt,
+  canonical_transitive_frontier,
+  canonical_propagation_receipt,
+  empty_affected_fold_acc,
+  empty_frontier,
+  frontier_from_fold_acc
+}
+import v2.lens.affected_set_examples {
+  affected_set_claim_failure_node,
+  affected_set_example_node
+}
+import v2.std.algebra { contains, length }
+import v2.std.change { DependencyDependent, DependencySource }
+import v2.std.dependency { Contains, DataDependsOn, DependencyView }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Diff,
+  Edge,
+  Edit,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+  canonical_tag_conj
+}
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds }
+import v2.test.lens_affected_set.node_precision {
+  affected_set_leaf,
+  affected_set_mid,
+  affected_set_mid_to_leaf_dependency,
+  affected_set_root,
+  affected_set_root_to_mid_dependency
+}
+
+data irt1_public_unchanged_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: irt1_public_pure_boundary_node
+}
+
+data irt1_public_pure_boundary_receipt: Node = affected_set_boundary_pure_receipt_node()
+
+data irt1_public_malformed_pure_boundary_receipt: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_pure_boundary_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_pure_boundary_receipt
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_malformed_pure_boundary_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_malformed_pure_boundary_receipt
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_changed_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: affected_set_claim_failure_node
+}
+
+data irt1_public_unreceipted_unchanged_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: affected_set_example_node
+}
+
+data irt1_public_malformed_receipted_unchanged_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: irt1_public_malformed_pure_boundary_node
+}
+
+data irt1_public_nonroot_changed_edit: Edit = Edit {
+  at: Path { steps: [^affected_set_root_edge_symbol] },
+  replacement: affected_set_claim_failure_node
+}
+data irt1_public_missing_path_edit: Edit = Edit {
+  at: Path { steps: [^irt1_public_missing_path_symbol] },
+  replacement: affected_set_claim_failure_node
+}
+data irt1_public_dimension_not_read_receipt_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^affected_set_default_dimension } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^irt1_public_other_dimension } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_receipted_usage_site: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_dimension_not_read_receipt_node
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_mismatched_receipted_usage_site: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_mismatched_dimension_not_read_receipt_node
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data irt1_public_nonfrontier_dependency_without_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: DataDependsOn,
+  usage_site: affected_set_claim_failure_node
+}
+
+data irt1_public_nonfrontier_dependency_with_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: DataDependsOn,
+  usage_site: irt1_public_receipted_usage_site
+}
+
+data irt1_public_nonfrontier_dependency_with_mismatched_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: DataDependsOn,
+  usage_site: irt1_public_mismatched_receipted_usage_site
+}
+
+data irt1_public_contains_dependency_with_read_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: Contains,
+  usage_site: irt1_public_receipted_usage_site
+}
+
+data irt1_public_mid_to_root_ancestor_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_root_to_mid_dependency,
+  target: DependencySource
+}
+
+data irt1_public_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_mid_to_leaf_dependency,
+  target: DependencyDependent
+}
+
+data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
+  edit: irt1_public_changed_edit,
+  dimension: ^affected_set_default_dimension
+}
+
+fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
+  frontier_from_fold_acc(
+    acc: empty_affected_fold_acc(dag: affected_set_example_node)
+  ) == empty_frontier()
+}
+
+fn irt1_public_affected_set_empty_diff_claim_holds() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [] }
+  ) {
+    Holds { value: frontier } => frontier == empty_frontier()
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary() -> Bool {
+  match affected_set(
+    dag: irt1_public_pure_boundary_node,
+    diff: Diff { edits: [irt1_public_unchanged_edit] }
+  ) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 1
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [irt1_public_unreceipted_unchanged_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_fails_closed_with_malformed_purity_receipt() -> Bool {
+  match affected_set(
+    dag: irt1_public_malformed_pure_boundary_node,
+    diff: Diff { edits: [irt1_public_malformed_receipted_unchanged_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_changed_dimension_receipt_classifies_union() -> Bool {
+  match canonical_changed_dimension_receipt(
+    dag: affected_set_example_node,
+    edit: irt1_public_changed_edit
+  ) {
+    ChangedDimensions { first: first, rest: rest } =>
+      (first == canonical_tag_conj)
+        && contains(
+          xs: rest,
+          item: ^affected_set_claim_failure_symbol,
+          eq: fn(left, right) { left == right }
+        )
+    _ => false
+  }
+}
+
+fn irt1_dimension_classification_conservative_discriminates() -> Bool {
+  match canonical_changed_dimension_receipt(
+    dag: affected_set_example_node,
+    edit: irt1_public_changed_edit
+  ) {
+    ChangedDimensions { first: _, rest: rest } =>
+      length(xs: rest) >= 1
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_changed_edit_yields_changed_subgraph() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [irt1_public_changed_edit] }
+  ) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph() -> Bool {
+  match affected_set(
+    dag: affected_set_root,
+    diff: Diff { edits: [irt1_public_nonroot_changed_edit] }
+  ) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonroot_frontier_points_to_ancestor() -> Bool {
+  match canonical_transitive_frontier(
+    dag: affected_set_root,
+    edit_dimension: EditDimension {
+      edit: irt1_public_nonroot_changed_edit,
+      dimension: ^affected_set_default_dimension
+    }
+  ) {
+    FrontierProduced { dependencies: dependencies } =>
+      dependencies == [
+        irt1_public_mid_to_root_ancestor_frontier_dependency,
+        irt1_public_mid_to_leaf_frontier_dependency
+      ]
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_missing_path_fails_closed() -> Bool {
+  match affected_set(
+    dag: affected_set_root,
+    diff: Diff { edits: [irt1_public_missing_path_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_without_read_receipt_reruns() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_without_receipt
+  ) {
+    Propagates => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_read_receipt_excludes() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_with_receipt
+  ) {
+    DoesNotPropagate { proof: _ } => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_with_mismatched_receipt
+  ) {
+    Propagates => true
+    _ => false
+  }
+}
+
+fn irt1_public_contains_dependency_with_read_receipt_reruns() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_contains_dependency_with_read_receipt
+  ) {
+    Propagates => true
+    _ => false
+  }
+}
+
+fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
+  if irt1_empty_diff_frontier_receipt_claim_holds() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_empty_diff_claim_rhs() -> Node {
+  if irt1_public_affected_set_empty_diff_claim_holds() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_receipted_boundary_prune_claim_rhs() -> Node {
+  if irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_fails_closed_without_purity_receipt() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_malformed_boundary_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_fails_closed_with_malformed_purity_receipt() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_changed_dimension_receipt_classifies_union_claim_rhs() -> Node {
+  if irt1_public_changed_dimension_receipt_classifies_union() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_dimension_classification_conservative_discriminates_claim_rhs() -> Node {
+  if irt1_dimension_classification_conservative_discriminates() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_changed_edit_yields_changed_subgraph_claim_rhs() -> Node {
+  if irt1_public_affected_set_changed_edit_yields_changed_subgraph() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph_claim_rhs() -> Node {
+  if irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonroot_frontier_points_to_ancestor_claim_rhs() -> Node {
+  if irt1_public_nonroot_frontier_points_to_ancestor() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_missing_path_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_missing_path_fails_closed() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_without_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_without_read_receipt_reruns() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_with_read_receipt_excludes() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_contains_dependency_with_read_receipt_claim_rhs() -> Node {
+  if irt1_public_contains_dependency_with_read_receipt_reruns() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+data claim_irt1_empty_diff_frontier_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_empty_diff_frontier_receipt: empty fold acc yields empty frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_empty_diff_frontier_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_empty_diff: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_empty_diff: public affected_set returns empty frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_empty_diff_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_receipted_boundary_prune: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_receipted_boundary_prune: public affected_set prunes only with purity receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_receipted_boundary_prune_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_unreceipted_boundary_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_unreceipted_boundary_fail_closed: unchanged boundary without purity receipt fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_malformed_boundary_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_malformed_boundary_fail_closed: malformed purity receipt fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_malformed_boundary_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_changed_dimension_receipt_classifies_union: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_dimension_receipt: Conj→Atom edit classifies conservative dimension union",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_changed_dimension_receipt_classifies_union_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_dimension_classification_conservative_discriminates: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_dimension_classification_conservative: union reports ≥2 families for Conj→Atom (perturb-red)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_dimension_classification_conservative_discriminates_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_changed_edit_yields_changed_subgraph: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_edit: classified root edit yields ChangedSubgraphFrontier not FailClosed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_changed_edit_yields_changed_subgraph_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_changed_edit: classified non-root edit yields ChangedSubgraphFrontier not FailClosed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_nonroot_changed_edit_yields_changed_subgraph_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonroot_frontier_points_to_ancestor: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_frontier_points_to_ancestor: non-root frontier reruns ancestor",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonroot_frontier_points_to_ancestor_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_missing_path_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_missing_path_fail_closed: unresolved edit path fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_missing_path_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_without_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_without_read_receipt: non-frontier dependency reruns without exclusion receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_without_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_with_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_with_read_receipt: non-frontier dependency excludes only with receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_with_mismatched_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_mismatched_read_receipt: stale exclusion receipt reruns",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_contains_dependency_with_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_contains_with_read_receipt: structural containment propagates despite child receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_contains_dependency_with_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

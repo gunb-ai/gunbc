@@ -1,0 +1,421 @@
+// src/v2/std/node_query.dag
+// Scope: Outcome-bearing structural queries over Node children.
+// Consumes: std/diagnostic.dag, std/node.dag.
+// Note: lives here rather than in std/node.dag because std/node.dag is a base module
+//       that carries no imports; adding Outcome here would create a circular dep
+//       (diagnostic.dag imports node.dag).
+
+module v2.std.node_query
+
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid, TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.node {
+  Ambiguous,
+  Atom,
+  ArmPayload,
+  Arrow,
+  Behavior,
+  ComputationNode,
+  Conj,
+  CoproductArm,
+  CoproductArmPayloadPair,
+  Edge,
+  Found,
+  Named,
+  Node,
+  Nullary,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Typed,
+  arrow_body_target_lookup,
+  coproduct_nullary_payload_type_name,
+  name_occurrences,
+  named_edge_sort_key,
+  resolve_type_node
+}
+
+// R-reflect Phase 2a: pure .dag enumeration over resolved Disj Node (substrate-native).
+fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
+  fold(
+    xs: node_labeled_child_edges(node: node),
+    init: Empty,
+    f: fn(acc, e) { list_snoc_item(xs: acc, item: named_edge_sort_key(e: e)) }
+  )
+}
+
+fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
+  coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
+}
+
+fn edge_field_type_name(target: Node) -> Symbol {
+  match target.kind {
+    TypeNode { connective: Atom { identity: sym } } => sym
+    _ => ^coproduct_unresolved_payload
+  }
+}
+
+fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
+  match xs {
+    Empty => acc
+    Cons { head: h, tail: t } =>
+      let field_name = named_edge_sort_key(e: h)
+      let type_name = edge_field_type_name(target: h.target)
+      let piece = concat(field_name, concat(": ", type_name))
+      conj_payload_type_name_go(
+        xs: t,
+        acc: if acc == "{" { concat("{ ", piece) } else { concat(acc, concat(", ", piece)) }
+      )
+  }
+}
+
+fn conj_authored_payload_type_name(n: Node) -> Symbol {
+  concat(concat(conj_payload_type_name_go(xs: n.children, acc: "{"), " "), "}")
+}
+
+fn arm_payload_from_target(target: Node) -> ArmPayload {
+  match target.kind {
+    TypeNode { connective: Conj } =>
+      if count(target.children) == 0 {
+        Nullary
+      } else {
+        Typed { target_ref: conj_authored_payload_type_name(n: target) }
+      }
+    TypeNode { connective: Atom { identity: sym } } =>
+      Typed { target_ref: sym }
+    _ => Typed { target_ref: ^coproduct_unresolved_payload }
+  }
+}
+
+fn arm_payload_type_name(payload: ArmPayload) -> Symbol {
+  match payload {
+    Nullary => coproduct_nullary_payload_type_name
+    Typed { target_ref: sym } => sym
+  }
+}
+
+fn coproduct_arm_from_edge(e: Edge) -> CoproductArm {
+  CoproductArm {
+    label: named_edge_sort_key(e: e),
+    payload: arm_payload_from_target(target: e.target)
+  }
+}
+
+fn coproduct_arm_list_from_node(node: Node) -> List<CoproductArm> {
+  fold(
+    xs: node_labeled_child_edges(node: node),
+    init: Empty,
+    f: fn(acc, e) { list_snoc_item(xs: acc, item: coproduct_arm_from_edge(e: e)) }
+  )
+}
+
+fn coproduct_arms(type_name: Symbol) -> List<CoproductArm> {
+  coproduct_arm_list_from_node(node: resolve_type_node(type_name: type_name))
+}
+
+fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayloadPair {
+  CoproductArmPayloadPair {
+    label: arm.label,
+    payload_type_name: arm_payload_type_name(payload: arm.payload)
+  }
+}
+
+fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
+  fold(
+    xs: coproduct_arms(type_name: type_name),
+    init: Empty,
+    f: fn(acc, arm) {
+      list_snoc_item(xs: acc, item: coproduct_arm_payload_pair_from_arm(arm: arm))
+    }
+  )
+}
+
+// 🟡 gated — feature:coproduct-nullary-inhabitants-bridge — bind gunbc#4872 — dissolve-on-arrival:
+// generic Symbol->inhabitant / direct compile-graph nullary construction in .dag replaces this
+// resolved-Disj intercept (snappy Q2 fallback (a)); forbidden: hand label->ctor tables.
+fn coproduct_nullary_inhabitants(type_name: Symbol) -> Outcome<List<Behavior>> {
+  coproduct_nullary_inhabitants(type_name: type_name)
+}
+
+data coproduct_unresolved_payload: Symbol = ^coproduct_unresolved_payload
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
+fn node_positional_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional => list_snoc_item(xs: acc, item: e.target)
+      Named { name: _ } => acc
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query.
+fn node_labeled_child_edges(node: Node) -> List<Edge> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => list_snoc_item(xs: acc, item: e)
+      Positional => acc
+    }
+  })
+}
+
+// 🟢 grounded — canonical CALL-CARRIER recognition surface. A call is a Transform whose
+// positional child[0] is a callee reference (a resolved Arrow value or an Atom symbol reference)
+// and whose positional children[1..] are the actual arguments. add / pick / loop / bind and
+// effect_io all share this uniform shape: the dispatch surface keys on the callee, NOT on the
+// Behavior family (add and effect_io are BOTH Transform, so a closed Behavior fold cannot
+// separate them — INVARIANTS P2 keeps effectfulness signature-authored, not a Behavior variant).
+// M9 home: node_query (structural Node-children queries). This is the named dissolution target
+// for the 05_eval interim callee Bool predicates (bind node://adhoc-9a72d4fb-8c2):
+// eval_node_is_callee_reference / eval_transform_has_callee_reference / eval_transform_callee_edge
+// dissolve into these. forbidden: parallel callee-shape predicates outside std/node_query.
+fn node_is_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn node_is_call(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: callee } => node_is_callee_reference(node: callee)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// The resolved callee reference (positional child[0]). Fail-closed (P3) when `node` is not a
+// call: the dispatch surface routes on this target, so a non-call must refuse, never default.
+fn call_callee_target(node: Node) -> Outcome<Node> {
+  if node_is_call(node: node) {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Present { value: callee } => outcome_accepted(value: callee)
+      Absent =>
+        outcome_rejected(d: Diagnostic {
+          reason: ^call_callee_absent,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+    }
+  } else {
+    outcome_rejected(d: Diagnostic {
+      reason: ^node_not_a_call,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
+}
+
+// The call's positional actual arguments — the positional child targets after the callee at
+// index 0. Defined for call nodes (node_is_call); the dispatch surface index-binds these against
+// the callee's declared parameter order.
+fn call_argument_targets(node: Node) -> List<Node> {
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailFound { tail: args } => args
+    TailAbsent => Empty
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
+fn node_envelope_without_named_coordinate_go(
+  root: Node,
+  xs: FreeMonoid<Edge>,
+  coordinate: Symbol,
+  acc: FreeMonoid<Edge>,
+  saw_coordinate: Bool
+) -> Outcome<FreeMonoid<Edge>> {
+  match xs {
+    Empty => outcome_accepted(value: acc)
+    Cons { head: h, tail: t } =>
+      match h.label {
+        Named { name: n } =>
+          if (n == coordinate) && saw_coordinate {
+            outcome_rejected(d: Diagnostic {
+              reason: ^named_child_ambiguous,
+              at: node_locus(node: root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+          } else {
+            node_envelope_without_named_coordinate_go(
+              root: root,
+              xs: t,
+              coordinate: coordinate,
+              acc: if n == coordinate { acc } else { list_snoc_item(xs: acc, item: h) },
+              saw_coordinate: saw_coordinate || (n == coordinate)
+            )
+          }
+        Positional =>
+          node_envelope_without_named_coordinate_go(
+            root: root,
+            xs: t,
+            coordinate: coordinate,
+            acc: list_snoc_item(xs: acc, item: h),
+            saw_coordinate: saw_coordinate
+          )
+      }
+  }
+}
+
+// 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
+// (Practice 10: no parallel EdgeLabel walker). Misses and ambiguities fail closed via Outcome.
+// Conj guard rejects non-Conj roots (Atom nodes cannot have Named edges; malformed inputs fail closed per P3).
+fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      let count = name_occurrences(name: name, children: root.children)
+      if count == 1 {
+        fold(
+          root.children,
+          init: outcome_rejected(d: Diagnostic {
+            reason: ^named_child_missing,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }),
+          f: fn(acc, e) {
+            match acc {
+              Accepted { value: _, diagnostics: _ } => acc
+              Rejected { diagnostics: _ } =>
+                match e.label {
+                  Named { name: edge_name } =>
+                    if edge_name == name { outcome_accepted(value: e.target) } else { acc }
+                  Positional => acc
+                }
+            }
+          }
+        )
+      } else if count == 0 {
+        outcome_rejected(d: Diagnostic {
+          reason: ^named_child_missing,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        outcome_rejected(d: Diagnostic {
+          reason: ^named_child_ambiguous,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^named_child_missing,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+// 🟢 grounded — Arrow.body single-named-edge lookup (E-9); wraps std.node arrow_body_target_lookup with Outcome diagnostics.
+fn find_arrow_body_child(root: Node) -> Outcome<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: root.children) {
+        Found { target: body } => outcome_accepted(value: body)
+        Ambiguous =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_ambiguous,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        _ =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_missing,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^arrow_body_child_not_arrow,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^arrow_domain_named_param_bindings_malformed,
+    at: node_locus(node: domain),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Lifted from compiler/03_resolve harvest_conj_named_bindings — ordered List (Map acc loses order).
+fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      match fold(domain.children, init: outcome_accepted(value: Empty), f: fn(acc, edge) {
+        match acc {
+          Accepted { value: bindings, diagnostics: d } =>
+            match edge.label {
+              Named { name: sym } =>
+                outcome_accepted(
+                  value: list_snoc_item(xs: bindings, item: sym),
+                  diagnostics: d
+                )
+              Positional =>
+                outcome_rejected(
+                  d: node_query_domain_malformed_diagnostic(domain: domain)
+                )
+            }
+          Rejected { diagnostics: _ } => acc
+        }
+      }) {
+        Accepted { value: bindings, diagnostics: d } =>
+          if is_empty(xs: bindings) {
+            outcome_rejected(
+              d: node_query_domain_malformed_diagnostic(domain: domain)
+            )
+          } else {
+            outcome_accepted(value: bindings, diagnostics: d)
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    _ =>
+      outcome_rejected(
+        d: node_query_domain_malformed_diagnostic(domain: domain)
+      )
+  }
+}
+
+// 🟢 grounded — Arrow positional-0 domain Conj harvest; sibling to find_arrow_body_child.
+// Order is load-bearing (05_eval index-binds args against this list). M9 attach: lifted from
+// compiler/03_resolve add_arrow_domain_named_params / harvest_conj_named_bindings.
+fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          conj_ordered_named_param_binding_ids(domain: domain)
+        Absent =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_domain_named_param_bindings_missing,
+            at: node_locus(node: arrow),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^arrow_domain_named_param_bindings_not_arrow,
+        at: node_locus(node: arrow),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}

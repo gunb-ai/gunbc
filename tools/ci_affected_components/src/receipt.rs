@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn timed_receipt_serializes_latency_keys_only() {
         let mut by_job = BTreeMap::new();
-        by_job.insert("v4_lens_ci".to_string(), 777u64);
+        by_job.insert("v2_lens_ci".to_string(), 777u64);
         let receipt = timed_ci_receipt(by_job, 13.05);
         let json = serde_json::to_value(&receipt).expect("serialize");
         for key in ["schema_version", "wall_clock_by_job", "actual_run_minutes"] {
@@ -146,7 +146,7 @@ mod tests {
             assert!(json.get(key).is_none(), "selection key {key} must be gone");
         }
         assert_eq!(receipt.schema_version, 2);
-        assert_eq!(receipt.wall_clock_by_job.get("v4_lens_ci"), Some(&777));
+        assert_eq!(receipt.wall_clock_by_job.get("v2_lens_ci"), Some(&777));
     }
 
     #[test]

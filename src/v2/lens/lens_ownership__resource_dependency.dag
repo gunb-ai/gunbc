@@ -1,0 +1,88 @@
+
+
+module v2.test.lens_ownership.resource_dependency
+
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.lens.ownership {
+  OwnershipFact,
+  RequiresAccessWitness,
+  ownership_fact,
+  ownership_fact_eq,
+  ownership_witness
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  ResourceDependsOn
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.witness { Violates, Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
+
+data ownership_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
+  children: [
+    Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data ownership_dependency: DependencyView = DependencyView {
+  source: ownership_root,
+  dependent: ownership_child,
+  kind: ResourceDependsOn,
+  usage_site: ownership_child
+}
+
+fn ownership_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: ^ownership_type_symbol,
+    algebra_symbol: ^ownership_algebra_symbol,
+    descent_symbol: ^ownership_descent_symbol,
+  )
+}
+
+fn ownership_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts())
+}
+
+type LensOwnershipClaim {
+  input: InferredTree
+  expected: OwnershipFact
+  actual: Witness<OwnershipFact>
+}
+
+data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClaim {
+  input: ownership_claim_tree(),
+  expected: OwnershipFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: ownership_dependency,
+        classification: RequiresAccessWitness
+      }
+    ]
+  },
+  actual: ownership_witness(tree: ownership_claim_tree(), dependencies: [ownership_dependency])
+}
+
+fn ownership_resource_dependency_claim_holds() -> Bool {
+  match ownership_resource_dependency_claim.actual {
+    Violates { diagnostic: _ } =>
+      ownership_fact_eq(
+        a: ownership_fact(
+          tree: ownership_resource_dependency_claim.input,
+          dependencies: [ownership_dependency]
+        ),
+        b: ownership_resource_dependency_claim.expected
+      )
+    _ => false
+  }
+}
+
+data ownership_resource_dependency_claim_passes: Bool = ownership_resource_dependency_claim_holds()

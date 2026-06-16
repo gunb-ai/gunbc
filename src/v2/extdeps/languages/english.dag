@@ -1,0 +1,771 @@
+// src/v2/extdeps/languages/english.dag
+// Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms + wave-3 emit-target rows (add slice) through the dissolved 06_translate fold.
+// Status: T-4.19 (ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose. Wave-3: English is an EMIT target — the add slice renders as rigid controlled-English prose, every sentence licensed by the wave-2a grammar.
+// Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
+// 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; ^english_token_word catch-all replaced with per-word keyword rules or typed word set.
+
+module v2.extdeps.languages.english
+
+import v2.extdeps.languages.fidelity { FidelityDisposition }
+import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel,
+  concrete_syntax_token_class,
+  concrete_syntax_token_to_node,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_serialize_source,
+  target_model_edge_translation_rules
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.text { String }
+import v2.std.grammar {
+  FormalGrammarSymbol,
+  FormalProduction,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  ParseGrammar,
+  Choice,
+  Nonterminal,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  grammar_formal_terminal,
+  grammar_relation_tokens_node,
+  formal_production_to_node
+}
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v2.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl
+}
+import v2.std.node { Symbol }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type Determiner
+  = DefiniteArticle
+  | IndefiniteArticle
+
+
+// 🟢 grounded.
+type FormalNounPhrase {
+  determiner: Determiner
+  head: Symbol
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Adverbial/intransitive absent: no grammar productions for those forms in wave-1.
+type FormalSentence
+  = SvoSentence   { subject: FormalNounPhrase, verb: Symbol, object: FormalNounPhrase }
+  | CopulaSentence { subject: FormalNounPhrase, copula: Symbol, complement: FormalNounPhrase }
+
+
+// 🟢 grounded.
+type EnglishLanguageModel {
+  language_identity: Symbol
+  core: ModelCore
+  lex: LexRules
+  grammar: ParseGrammar
+}
+
+
+// 🟢 grounded.
+type EnglishLexRules {
+  rules: LexRules
+}
+
+
+// 🟢 grounded.
+type EnglishGrammar {
+  grammar: ParseGrammar
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type EnglishFidelityFeature
+  = FormalSubsetSvo
+  | FormalSubsetCopula
+  | FormalSubsetAdverbial
+  | FormalSubsetIntransitive
+  | ArticleDeterminer
+  | OutOfSubsetProse
+  | AmbiguousConstruct
+  | MalformedSentence
+
+
+fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition<EnglishFidelityFeature> {
+  match f {
+    FormalSubsetSvo => Modeled
+    FormalSubsetCopula => Modeled
+    FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
+    FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
+    ArticleDeterminer => Modeled
+    OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
+    AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
+    MalformedSentence => FailClosed { feature: MalformedSentence }
+  }
+}
+fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+fn english_word_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+// word first (catch-all); keywords after — later rule wins equal-length tie (std/compilers/lexing.dag §46).
+fn english_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        english_lex_token(token_class: ^english_token_word, pattern: english_word_pattern()),
+        english_lex_token(token_class: ^english_token_period, pattern: LiteralPattern { text: "." }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
+        english_lex_token(token_class: ^english_token_definite_article, pattern: KeywordPattern { text: "the" }),
+        english_lex_token(token_class: ^english_token_copula, pattern: KeywordPattern { text: "is" })
+      ]
+    }
+  }
+}
+
+
+fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn english_article_expr() -> GrammarExpr {
+  Choice {
+    left: english_grammar_terminal(token_class: ^english_token_definite_article),
+    right: english_grammar_terminal(token_class: ^english_token_indefinite_article)
+  }
+}
+
+fn english_article_nonterminal() -> GrammarExpr {
+  Nonterminal { production: ^english_production_article }
+}
+
+fn english_svo_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: ^english_token_word),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: ^english_token_word),
+        right: english_grammar_sequence(
+          left: english_article_nonterminal(),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: ^english_token_word),
+            right: english_grammar_terminal(token_class: ^english_token_period)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn english_copula_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: ^english_token_word),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: ^english_token_copula),
+        right: english_grammar_sequence(
+          left: english_article_nonterminal(),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: ^english_token_word),
+            right: english_grammar_terminal(token_class: ^english_token_period)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn english_wave1_productions() -> List<GrammarProduction> {
+  let article = GrammarProduction {
+    name: ^english_production_article,
+    expression: english_article_expr(),
+    emitted: grammar_atom(identity: ^english_surface_article)
+  }
+  let svo = GrammarProduction {
+    name: ^english_production_svo_sentence,
+    expression: english_svo_sentence_expr(),
+    emitted: grammar_atom(identity: ^english_surface_svo)
+  }
+  let copula = GrammarProduction {
+    name: ^english_production_copula_sentence,
+    expression: english_copula_sentence_expr(),
+    emitted: grammar_atom(identity: ^english_surface_copula)
+  }
+  let sentence = GrammarProduction {
+    name: ^english_production_sentence,
+    expression: Choice {
+      left: Nonterminal { production: ^english_production_svo_sentence },
+      right: Nonterminal { production: ^english_production_copula_sentence }
+    },
+    emitted: grammar_atom(identity: ^english_surface_sentence)
+  }
+  [sentence, article, svo, copula]
+}
+
+fn english_wave1_grammar() -> ParseGrammar {
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^english_production_sentence,
+      productions: english_wave1_productions(),
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn english_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: [],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+
+fn english_language_model_wave1() -> EnglishLanguageModel {
+  EnglishLanguageModel {
+    language_identity: ^english_language_identity,
+    core: english_model_core_wave1(),
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_lex_rules_wave1() -> EnglishLexRules {
+  EnglishLexRules {
+    rules: english_wave1_lex()
+  }
+}
+
+fn english_grammar_wave1() -> EnglishGrammar {
+  EnglishGrammar {
+    grammar: english_wave1_grammar()
+  }
+}
+
+
+fn english_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_article_formal_production_definite() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [grammar_formal_terminal(identity: ^english_token_definite_article)]
+  }
+}
+
+fn english_article_formal_production_indefinite() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [grammar_formal_terminal(identity: ^english_token_indefinite_article)]
+  }
+}
+
+fn english_svo_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_period)
+    ]
+  }
+}
+
+fn english_copula_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_copula),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_period)
+    ]
+  }
+}
+
+fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: english_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "the function is a handler.",
+      production: english_copula_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
+    }
+  }
+}
+
+
+// === Wave-3: English as an EMIT target (add slice) ===
+//
+// The add slice renders as rigid controlled-English prose through the same
+// dissolved 06_translate fold every code target uses: data rows only (relation
+// row + serialize source + binding spellings + TargetModel bundle), zero stage
+// edits. Word choice is deterministic and every emitted sentence is licensed by
+// the wave-2a sentence grammar above — parseability beats fluency everywhere.
+//
+// Realization scheme (one licensed sentence form per connective, legalese-rigid):
+//   fn item            -> copula:  "the add is a function."
+//   each param         -> SVO:     "the add takes the x." / "the add takes the y."
+//   result             -> SVO:     "the add returns the sum."
+//   body + (per operand) -> SVO:   "the sum adds the x." / "the sum adds the y."
+
+// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
+// the BoundToken binding spellings below ("the ", "takes ", ". ") as the interim trivia
+// policy, homomorphic with the go/rust/python wave-1 literal-text layout (same T-6
+// dissolve trigger). The wave-2a ingest lex above stays untouched: emitted spaces lex
+// back as trivia, keywords/words keep their token classes.
+data english_add_fn_source_text: String = "the add is a function. the add takes the x. the add takes the y. the add returns the sum. the sum adds the x. the sum adds the y."
+
+fn english_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn english_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Controlled English realizes a typed-term mention as an article-led noun phrase;
+// the sole wave-3 declared inhabitant is the common-noun category behind that form.
+fn english_noun_facts_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(
+        name: ^english_facts_field_surface_spelling,
+        target: english_inhabitant_atom(id: ^english_surface_spelling_noun)
+      ),
+      english_named_edge(
+        name: ^english_facts_field_grammar_category,
+        target: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_noun_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(
+        name: ^english_inhabitant_field_atom,
+        target: english_inhabitant_atom(id: ^english_inhabitant_noun)
+      ),
+      english_named_edge(
+        name: ^english_inhabitant_field_facts,
+        target: english_noun_facts_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_add_fn_emitted_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: english_noun_inhabitant_node() },
+      Edge { label: Positional, target: english_noun_inhabitant_node() },
+      Edge { label: Positional, target: english_noun_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// 🟡 gated — feature:english-per-connective-realization — whole-form token row for the
+// add slice, mirroring ^python_production_mvp1_fn_add / ^go_production_mvp1_fn_add;
+// dissolve-on: value-expression projection rows (target_model value tier) realize the
+// fn-item/param/body connectives compositionally and this whole-form row is deleted.
+fn english_add_fn_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    // "the add is a function."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    BoundToken { token_class: ^english_token_copula, binding: ^english_binding_copula_is },
+    BoundToken { token_class: ^english_token_indefinite_article, binding: ^english_binding_article_a },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_function },
+    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    // "the add takes the x."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
+    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    // "the add takes the y."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
+    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    // "the add returns the sum."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_returns },
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum },
+    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    // "the sum adds the x."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
+    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    // "the sum adds the y."
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
+    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
+    FixedToken { token_class: ^english_token_period }
+  ]
+}
+
+// Deterministic word choice: one spelling per binding, zero synonym variation.
+// Trailing layout rides the spelling (T-6 interim, see mark above); object nouns in
+// sentence-final position carry none, the medial sentence separator carries ". ".
+fn english_add_fn_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(
+                    map_insert(
+                      map_insert(
+                        map_insert(
+                          map_insert(empty_map(), ^english_binding_article_the, "the "),
+                          ^english_binding_article_a,
+                          "a "
+                        ),
+                        ^english_binding_copula_is,
+                        "is "
+                      ),
+                      ^english_binding_fn_add,
+                      "add "
+                    ),
+                    ^english_binding_noun_function,
+                    "function"
+                  ),
+                  ^english_binding_verb_takes,
+                  "takes "
+                ),
+                ^english_binding_param_x,
+                "x"
+              ),
+              ^english_binding_param_y,
+              "y"
+            ),
+            ^english_binding_verb_returns,
+            "returns "
+          ),
+          ^english_binding_noun_sum,
+          "sum"
+        ),
+        ^english_binding_noun_sum_subject,
+        "sum "
+      ),
+      ^english_binding_verb_adds,
+      "adds "
+    ),
+    ^english_binding_sentence_separator,
+    ". "
+  )
+}
+
+fn english_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn english_add_fn_formal_rhs() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: english_add_fn_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn english_add_fn_formal_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^english_production_add_fn_paragraph,
+    rhs: english_add_fn_formal_rhs()
+  )
+}
+
+// 🟢 grounded.
+type EnglishGrammarRelationRow {
+  production: FormalProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn english_add_fn_relation_row() -> EnglishGrammarRelationRow {
+  EnglishGrammarRelationRow {
+    production: english_add_fn_formal_production(),
+    emitted: english_add_fn_emitted_node(),
+    tokens: english_add_fn_concrete_tokens()
+  }
+}
+
+fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(
+        name: grammar_relation_field_production,
+        target: formal_production_to_node(production: row.production)
+      ),
+      english_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      english_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: english_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_add_fn_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(
+        name: ^english_relation_rule_add_fn,
+        target: english_grammar_relation_row_node(row: english_add_fn_relation_row())
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_add_fn_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(
+        name: ^serialize_source_field_source_text,
+        target: english_inhabitant_atom(id: ^english_add_fn_source_literal)
+      ),
+      english_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: english_inhabitant_atom(id: ^english_production_add_fn_paragraph)
+      ),
+      english_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: english_add_fn_concrete_tokens(),
+          token_to_node: english_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+// Zip-fold support nodes derived from the noun inhabitant constructors — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+fn english_add_fn_zip_fold_closure_edges() -> List<Edge> {
+  [
+    english_named_edge(
+      name: ^english_inhabitant_field_add_fn,
+      target: english_add_fn_emitted_node()
+    ),
+    english_named_edge(
+      name: ^english_coercion_field_noun_inhabitant_atom,
+      target: english_inhabitant_atom(id: ^english_inhabitant_noun)
+    ),
+    english_named_edge(
+      name: ^english_coercion_field_noun_facts,
+      target: english_noun_facts_node()
+    ),
+    english_named_edge(
+      name: ^english_coercion_field_noun_spelling,
+      target: english_inhabitant_atom(id: ^english_surface_spelling_noun)
+    ),
+    english_named_edge(
+      name: ^english_coercion_field_noun_category,
+      target: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)
+    )
+  ]
+}
+
+fn english_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: [
+        english_named_edge(
+          name: ^english_inhabitant_field_noun,
+          target: english_noun_inhabitant_node()
+        )
+      ],
+      right: english_add_fn_zip_fold_closure_edges()
+    ),
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_selection_policy_node() -> Node {
+  english_noun_inhabitant_node()
+}
+
+fn english_add_fn_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      english_named_edge(name: target_model_edge_selection_policy, target: english_selection_policy_node()),
+      english_named_edge(name: target_model_edge_declared_inhabitants, target: english_declared_inhabitants_root()),
+      english_named_edge(name: target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
+      english_named_edge(name: target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn english_add_fn_target_model() -> TargetModel {
+  TargetModel {
+    bundle: english_add_fn_target_model_node(),
+    lex: english_wave1_lex(),
+    binding_spellings: english_add_fn_binding_spellings(),
+    authority_source_text: english_add_fn_source_text
+  }
+}
+
+fn english_sentence_nonterminal() -> GrammarExpr {
+  Nonterminal { production: ^english_production_sentence }
+}
+
+// Round-trip ingest grammar for the emitted add prose: a paragraph of exactly six
+// sentences, each licensed by the UNCHANGED wave-2a sentence productions above. The
+// sentence grammar stays the licensing authority; this production only fixes arity.
+fn english_add_fn_paragraph_expr() -> GrammarExpr {
+  Sequence {
+    left: english_sentence_nonterminal(),
+    right: Sequence {
+      left: english_sentence_nonterminal(),
+      right: Sequence {
+        left: english_sentence_nonterminal(),
+        right: Sequence {
+          left: english_sentence_nonterminal(),
+          right: Sequence {
+            left: english_sentence_nonterminal(),
+            right: english_sentence_nonterminal()
+          }
+        }
+      }
+    }
+  }
+}
+
+fn english_add_fn_paragraph_production() -> GrammarProduction {
+  GrammarProduction {
+    name: ^english_production_add_fn_paragraph,
+    expression: english_add_fn_paragraph_expr(),
+    emitted: english_add_fn_emitted_node()
+  }
+}
+
+fn english_add_fn_paragraph_grammar() -> ParseGrammar {
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^english_production_add_fn_paragraph,
+      productions: list_append(
+        left: [english_add_fn_paragraph_production()],
+        right: english_wave1_productions()
+      ),
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}

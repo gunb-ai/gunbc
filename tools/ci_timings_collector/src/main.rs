@@ -26,8 +26,8 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use ci_affected_components::receipt::{job_windows_to_timings, timed_ci_receipt};
-use v2_compiler::cli_run::{build_multi_entry_index, make_eval_context, resolve_entry_with_index};
-use v2_compiler::v2_interpreter::{run_in_context_with_args, Value};
+use v1_compiler::cli_run::{build_multi_entry_index, make_eval_context, resolve_entry_with_index};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, Value};
 
 /// `dsl` is the dependency pool; the driver entry is resolved with its transitive imports.
 const SOURCE_ROOT: &str = "dsl";

@@ -4,11 +4,11 @@
 > this doc without the consumers named in §7 (E-10). This is the design for the dep-graph BIDIR
 > node ("emit/ingest = one coercion, the central unifying target") and for the in-tree
 > convergence markers that already point at it: `feature:CP-1b-bidirectional-grammar-carrier`
-> (`src/v4/std/grammar.dag:79,138,171`) — "dissolve-on: … single declarative **bidirectional**
+> (`src/v2/std/grammar.dag:79,138,171`) — "dissolve-on: … single declarative **bidirectional**
 > grammar model; forbidden: parallel production algebras."
 >
 > Housekeeping note: those markers bind `TASKS.md T-6/T-7`, and `06_translate.dag`'s anchor
-> cites `docs/design-v4-compiler-homomorphism.md` — **neither file exists in this repo**. Until
+> cites `docs/design-v2-compiler-homomorphism.md` — **neither file exists in this repo**. Until
 > the references are repaired, this doc is the in-repo design home for the CP-1b convergence.
 
 ## 1. Problem
@@ -35,14 +35,14 @@ built inverse-aware rather than retrofitted.
 
 | Piece | Where | Role |
 |---|---|---|
-| `FormalGrammar` / `FormalProduction { lhs, rhs: List<FormalGrammarSymbol> }` with terminal **bindings** | `src/v4/std/grammar.dag:44-100` | the canonical declarative carrier — marked as the dissolution **destination** for the operational parse types |
+| `FormalGrammar` / `FormalProduction { lhs, rhs: List<FormalGrammarSymbol> }` with terminal **bindings** | `src/v2/std/grammar.dag:44-100` | the canonical declarative carrier — marked as the dissolution **destination** for the operational parse types |
 | `ParseGrammar`, `GrammarExpr`, `GrammarProduction` (operational, forward-only) | `grammar.dag:139-182` | to dissolve into `FormalGrammar` (their own CP-1b markers) |
 | `GrammarRelationRow`, `ConcreteSyntaxSchema`, grammar-inverse helpers (`formal_production_emitted_slot_count_step`, `grammar_relation_row_to_node`) | `grammar.dag:114,200,428,540` | the relation-row vocabulary and the start of slot accounting |
-| `TargetModel` concrete syntax: `ConcreteSyntaxToken = FixedToken | BoundToken`, atom/type-expr realizations | `src/v4/std/target_model.dag` | per-target syntax facts, already data |
-| Lexical layer: `LexPattern` / `LexRules` | `src/v4/std/lexing.dag` | the same relation shape one level down (chars ↔ tokens); CP-1b names its convergence with `GrammarExpr` |
-| `find_witness` unique-candidate fold over a **closed declared candidate set** | `src/v4/std/find_witness.dag` | the selection discipline both directions reuse (§4.2) |
+| `TargetModel` concrete syntax: `ConcreteSyntaxToken = FixedToken | BoundToken`, atom/type-expr realizations | `src/v2/std/target_model.dag` | per-target syntax facts, already data |
+| Lexical layer: `LexPattern` / `LexRules` | `src/v2/std/lexing.dag` | the same relation shape one level down (chars ↔ tokens); CP-1b names its convergence with `GrammarExpr` |
+| `find_witness` unique-candidate fold over a **closed declared candidate set** | `src/v2/std/find_witness.dag` | the selection discipline both directions reuse (§4.2) |
 | IR-side coercion (R1/R2/R3, `find_witness_derives`) | landed, gunbc#4585 | the semantic half of ingest/emit (§5) |
-| Round-trip claims: `dag_ingest_round_trip.dag`, `source_authority_contract.dag`; RTADD landed (#4544) | `src/v4/test/claim/round_trip/` | the inverse-proof harness; today it proves composition through the *hand-built* forward direction |
+| Round-trip claims: `dag_ingest_round_trip.dag`, `source_authority_contract.dag`; RTADD landed (#4544) | `src/v2/test/claim/round_trip/` | the inverse-proof harness; today it proves composition through the *hand-built* forward direction |
 
 **Substrate target named (P1):** no new substrate. The relation is authored in the existing
 `FormalGrammar` + `TargetModel` carriers; what this design adds is (i) the **obligations**
@@ -232,7 +232,7 @@ inverse-aware; this section is the spec for that directive):
   at the lex layer as declared modes with their own capture bijection — or the target's
   bidirectional verdict is refused for the affected constructs. No grammar-level hacks.
 - **Q-B4 — marker repair.** CP-1b markers bind `TASKS.md T-6/T-7` and `06_translate` anchors
-  `docs/design-v4-compiler-homomorphism.md`; neither exists in-repo. Re-point them (at this
+  `docs/design-v2-compiler-homomorphism.md`; neither exists in-repo. Re-point them (at this
   doc or the real tracker rows) so the dissolution triggers are checkable again.
 
 ## 9. Non-goals

@@ -8,7 +8,7 @@
 // Authority: this module (.dag self-authoritative; worksheet refs retired).
 // Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
 //
-// Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
+// Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v2.workflow.ci / v2.std.change
 // authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
 
 module product.compute_fabric
@@ -35,12 +35,12 @@ import std.cpu {
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
-// 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
+// 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
 type ComputeWitness<C> = Node
 type Outcome<T> = Node
 
-// 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
+// 🟡 forward — v2 ingress / artifact carriers (P-CF-INGRESS).
 type UpsertInputRef = Node
 type ChangeSet = Node
 type ArtifactRef<T> = Node
@@ -344,7 +344,7 @@ type ComputeLease {
 // Lens: RAII borrow — offer + demand paired for lease lifetime; allocation receipt is acquire proof.
 
 // 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
-// stays a forward Node for v4.std.witness). Isolation is an ordered lattice (chain below),
+// stays a forward Node for v2.std.witness). Isolation is an ordered lattice (chain below),
 // honored iff ordinal(supply) >= ordinal(demand) — rationale in PR #4805 / commit message.
 //   SharedHostHome < PerJobFilesystem < ContainerHermetic < Vm
 fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
