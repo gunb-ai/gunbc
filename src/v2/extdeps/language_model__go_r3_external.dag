@@ -1,5 +1,5 @@
-// Status: modeled claim + fixture pair; temporary host bridge
-// `src/v3/compiler/tests/boundary/v2_leaf_model_go_r1_r2_r3_external_test.rs`
+// Status: modeled claim + fixture pair; the executable receipt is the in-file
+// claim witness, run in-process by the ci_claim_gate binary.
 
 module v2.test.language_model.go_r3_external
 

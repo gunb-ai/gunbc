@@ -24,7 +24,7 @@
 #   Push of other refs, clean          → exit 0, push proceeds
 #   Push of other refs, drift          → fail with actionable message
 #
-# Enable via: .githooks/install-hooks.sh (sets core.hooksPath .githooks)
+# Enable via: git config core.hooksPath .githooks
 
 set -e
 

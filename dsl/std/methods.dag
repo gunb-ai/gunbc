@@ -73,12 +73,12 @@ module std.methods
 // (`KindName`-style) once the substrate exposes namespace-typed
 // declaration ids. See module docs above for dissolution path.
 //
-// Layering note: this file lives at `dsl/std/methods.dag` and does
-// not import `DeclarationRef` (which lives in `v3.spec.v3_l1` —
-// importing it here would invert the layering, since `dsl/std/`
-// stays v3-spec-free). The typed `MethodRef { decl: DeclarationRef }`
-// reference shape lives in `src/v3/std/methods.dag` instead, where
-// `v3.spec` imports are conventional.
+// Layering note: this file lives at `dsl/std/methods.dag` and keeps
+// its method-name carrier identity-only (`name: String`) rather than
+// carrying a heavier typed declaration reference, so the dsl-only std
+// tree stays free of spec-pipeline imports. The typed
+// `MethodRef { decl: DeclarationRef }` reference shape is not modeled
+// here for that reason.
 type MethodDeclaration {
   name: String
 }

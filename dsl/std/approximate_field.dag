@@ -1,17 +1,8 @@
-// dsl/v3/std/approximate_field.dag — v2 CI / `gunbc run --source-root dsl` facade for
+// dsl/std/approximate_field.dag — `gunbc run --source-root dsl` module for
 // `ApproximateField<F>` and approximate-arithmetic policy terminals.
 //
-// Canonical substrate: `src/v3/std/approximate_field.dag` (v3 compiler). The v2 interpreter
-// indexes only `--source-root` trees and cannot parse full v3 std syntax, so this file
-// supplies a v2-parseable `module std.approximate_field` when dsl sources import it
-// (notably `dsl/std/float.dag` → `type Real = ApproximateField<FieldOfFractions<Int>>`).
-//
-// Keep variant tags and field names aligned with the canonical module so drift is obvious
-// at review time.
-//
-// **🟡 Scaffold — dissolution trigger:** delete this facade when CI / `dag run` can
-// index `src/v3/std/approximate_field.dag` without v2 parse failures, or when
-// `v3.std.approximate_field` no longer needs to resolve under `--source-root dsl` alone.
+// This file is the surviving authority for `std.approximate_field`; dsl sources import it
+// directly (notably `dsl/std/float.dag` → `type Real = ApproximateField<FieldOfFractions<Int>>`).
 
 module std.approximate_field
 

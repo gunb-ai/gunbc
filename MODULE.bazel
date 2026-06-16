@@ -1,2 +1,0 @@
-# Temporary marker for BuildBuddy Remote Bazel script mode in non-Bazel repos.
-# dissolve-on: delete when BuildBuddy script mode no longer requires a root MODULE.bazel marker (infra owner).

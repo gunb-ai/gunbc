@@ -15,10 +15,10 @@
 //!    resolved separately in the same process.  This is what the v2 lens CI
 //!    rows-fn's GREEN pass uses.
 //!
-//! Motivation. The v2 node-frontier rows-fn (now invoked from gate-3,
-//! `scripts/v2-affected-tests-gate.sh`) runs N Bool witnesses
+//! Motivation. The v2 node-frontier rows-fn (now invoked from the single
+//! `ci_claim_gate` binary) runs N Bool witnesses
 //! that ALL share a single `--entry` file, differing only in `--function`.
-//! The v2 lens CI rows-fn (same gate-3 host) has one witness per
+//! The v2 lens CI rows-fn (same host) has one witness per
 //! entry file.  Both previously ran `gunbc run --claim-run` once per
 //! row, re-resolving the module tree each time (~5-13s per resolve —
 //! `build_module_index` + closure-compile dominates).  Multi-entry mode

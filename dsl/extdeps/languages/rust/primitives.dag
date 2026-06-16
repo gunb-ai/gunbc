@@ -21,7 +21,7 @@
 //
 // PURPOSE: Each declaration says "Rust target type T is a target primitive
 // inhabiting algebra A over carrier C." Selection by algebra-homomorphism
-// match — the toy engine in src/v3/grounding_inhabitance_mirror/src/lib.rs reproduces
+// match — the toy grounding-inhabitance engine reproduced
 // today's name-keyed table-lookup routing on the pilot set, validating
 // the target-grounding-proposal.md thesis that "the mapping should fall
 // out from the algebra, not from a hand-maintained table."
@@ -30,11 +30,11 @@
 // .dag file directly. It mirrors the structural facts authored here as
 // Rust constants, with this file as the documented authority. Wiring the
 // engine to consume .dag declarations as parsed-data is T-Ground-Engine's
-// production-walker job; until then the mirror in
-// src/v3/grounding_inhabitance_mirror/src/lib.rs must be kept in sync by hand when
-// declarations here change. The duplication is bounded — pilot scope is
-// 12 rows (10 IntegerPrimitive + 2 NonIntegerPrimitive `target_name`
-// entries). Multiset parity is additionally ratcheted in `v3-grounding-engine`
+// production-walker job; until then the grounding-inhabitance mirror must
+// be kept in sync by hand when declarations here change. The duplication
+// is bounded — pilot scope is 12 rows (10 IntegerPrimitive + 2
+// NonIntegerPrimitive `target_name` entries). Multiset parity was
+// additionally ratcheted by the grounding-engine validator
 // (`validate_rust_grounding_primitives_target_name_multiset_matches_mirror`).
 // Parallel-existence, deletable as a unit when T-Ground-Engine lands and
 // removes both this file's parallel-existence status and the pilot crate
