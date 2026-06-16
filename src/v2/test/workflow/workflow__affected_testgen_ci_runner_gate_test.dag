@@ -14,24 +14,18 @@ import v2.test.workflow.affected_testgen_ci_runner {
   affected_testgen_unrelated_diff_selects_no_claims_holds
 }
 
-test data witness_affected_testgen_generator_emits_expected_claim_green: Bool =
-  affected_testgen_generator_emits_expected_claim_holds()
+test data witness_affected_testgen_generator_emits_expected_claim_green: Bool = affected_testgen_generator_emits_expected_claim_holds()
 
-test data witness_affected_testgen_selects_one_generated_claim_green: Bool =
-  affected_testgen_selects_one_generated_claim_holds()
+test data witness_affected_testgen_selects_one_generated_claim_green: Bool = affected_testgen_selects_one_generated_claim_holds()
 
-test data witness_affected_testgen_dependency_frontier_reaches_generated_input_green: Bool =
-  affected_testgen_dependency_frontier_reaches_generated_input_holds()
+test data witness_affected_testgen_dependency_frontier_reaches_generated_input_green: Bool = affected_testgen_dependency_frontier_reaches_generated_input_holds()
 
-test data witness_affected_testgen_dependency_diff_selects_generated_claim_green: Bool =
-  affected_testgen_dependency_diff_selects_generated_claim_holds()
+test data witness_affected_testgen_dependency_diff_selects_generated_claim_green: Bool = affected_testgen_dependency_diff_selects_generated_claim_holds()
 
 // Positive end-to-end: generate → affected-set select → run_test_claim → Pass.
-test data witness_affected_testgen_generated_claim_run_passes_green: Bool =
-  affected_testgen_generated_claim_run_passes_holds()
+test data witness_affected_testgen_generated_claim_run_passes_green: Bool = affected_testgen_generated_claim_run_passes_holds()
 
 // Negative discriminator: unrelated diff must select zero generated claims.
-test data witness_affected_testgen_unrelated_diff_selects_no_claims_green: Bool =
-  affected_testgen_unrelated_diff_selects_no_claims_holds()
+test data witness_affected_testgen_unrelated_diff_selects_no_claims_green: Bool = affected_testgen_unrelated_diff_selects_no_claims_holds()
 
 test data witness_affected_testgen_fusion_green: Bool = affected_testgen_fusion_holds()

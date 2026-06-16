@@ -14,7 +14,7 @@ import v2.std.change {
   AffectedSetReason,
   ChangeSet
 }
-import v2.std.algebra { count_equal, filter, fold_list_right, length }
+import v2.std.algebra { count_equal, filter, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
