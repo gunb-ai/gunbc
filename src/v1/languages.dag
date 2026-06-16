@@ -40,7 +40,6 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_string_types,
-  rust_method_templates,
   rust_func_keyword, rust_async_prefix, rust_struct_keyword,
   rust_enum_keyword, rust_type_alias_keyword,
   rust_param_separator, rust_return_arrow,
@@ -58,7 +57,6 @@ import extdeps.languages.python.emit {
   python_reserved, python_reserved_escape_suffix,
   python_derive_attribute, python_default_value,
   python_source_extension, python_module_init,
-  python_method_templates,
   python_string_types,
   python_func_keyword, python_async_prefix, python_struct_keyword,
   python_enum_keyword, python_type_alias_keyword,
@@ -77,7 +75,6 @@ import extdeps.languages.go.emit {
   go_reserved, go_reserved_escape_suffix,
   go_manifest_file,
   go_source_extension,
-  go_method_templates,
   go_string_types,
   go_func_keyword, go_async_prefix, go_struct_keyword,
   go_enum_keyword, go_type_alias_keyword,
@@ -360,7 +357,6 @@ type LanguageSpec {
   sharing: SharingStrategy
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
-  method_templates: Map<String, String>?
   service_fields: ServiceFieldTemplates
   block_syntax: BlockSyntax
   for_each_syntax: ForEachSyntax
@@ -494,7 +490,6 @@ fn rust_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: rust_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "    pub base_url: String,\n",
       auth_decl: "    pub auth_token: String,\n",
@@ -639,7 +634,6 @@ fn python_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: python_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "base_url: str",
       auth_decl: "auth_token: str",
@@ -784,7 +778,6 @@ fn go_spec() -> LanguageSpec {
       lambda_param_typed: "{0} {1}",
       lambda_param_untyped: "{0} interface{}"
     },
-    method_templates: go_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "\tBaseURL string",
       auth_decl: "\tAuthToken string",
@@ -929,7 +922,6 @@ fn dag_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: rust_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "    pub base_url: String,\n",
       auth_decl: "    pub auth_token: String,\n",

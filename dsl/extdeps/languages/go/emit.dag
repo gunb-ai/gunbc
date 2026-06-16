@@ -85,13 +85,12 @@ data go_string_types: List<String> = ["String", "Secret"]
 // Ref: Go standard library + v2rt runtime helpers.
 //
 // Single authority: `go_simple_method_specs` carries the flat-templatable
-// (unary `{recv}`/`{arg}`) methods the v1 emitter renders by template;
+// (unary `{recv}`/`{arg}`) methods the emitter renders by template.
 // `map`/`fold`/`concat` are deliberately NOT here — they are binary+
-// (`fold(coll, init, f)` per dsl/std/algebra.dag) and route through the
-// runtime bridge, which forwards every argument. `go_method_templates_flat()`
-// (the v1 emit authority) derives from this list; `go_method_templates()`
-// re-adds the three runtime entries for the v2-legacy bare-name superset (see
-// dsl/std/methods.dag dissolution trigger #1133). Mirrors #5039's Rust slice.
+// (`fold(coll, init, f)` per dsl/std/algebra.dag) and route through the runtime
+// bridge, which forwards every argument (a flat one-arg template would drop
+// fold's accumulator/callback). `go_method_templates_flat()` derives the emit
+// map from this list. Mirrors #5039's Rust slice.
 data go_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",            template: "len(\{recv\})",                          wraps_result: false },
   { method_name: "join",             template: "strings.Join(\{recv\}, \{arg\})",        wraps_result: false },
@@ -107,22 +106,12 @@ data go_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "append",           template: "append(\{recv\}, \{arg\})",              wraps_result: false }
 ]
 
-// Derived: the flat templatable map the v1 emitter reads (single authority
-// above). `map`/`fold`/`concat` are absent → v1 routes them via the runtime
-// bridge (correct argument forwarding).
+// Derived: the flat templatable map the emitter reads (single authority above).
+// `map`/`fold`/`concat` are absent → they route via the runtime bridge (correct
+// argument forwarding).
 fn go_method_templates_flat() -> Map<String, String> {
   go_simple_method_specs
     |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
-}
-
-// Derived superset: the flat map plus the three runtime-bridged entries, for
-// the v2-legacy bare-name lookup. Byte-identical key/value set to the former
-// `go_method_templates` data literal. v1 emit does NOT read this.
-fn go_method_templates() -> Map<String, String> {
-  go_method_templates_flat()
-    |> map_insert("concat", "append(\{recv\}, \{arg\}...)")
-    |> map_insert("map", "v2rt.Map(\{recv\}, \{arg\})")
-    |> map_insert("fold", "v2rt.Fold(\{recv\}, \{arg\})")
 }
 
 // -- Expression syntax templates ------------------------------------------
