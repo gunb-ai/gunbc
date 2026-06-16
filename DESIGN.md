@@ -20,6 +20,11 @@ preferences we layer on; they fall out of the meaning of "problem" itself:
 - **maximize safety** — harm reduction (it never silently does the wrong thing);
 - **minimize complexity** — solution + maintenance sustainability (it stays cheap to change).
 
+Underneath, all three are **time**: cost is time-to-run, complexity is time-to-change, and an unsafe
+answer is time-to-recover — paid later, at interest. Time is the one quantity every agent intrinsically
+values (**time is life**), which is what makes minimal/safe/efficient an intersubjectively grounded
+objective (§4), not a house preference.
+
 The whole project optimizes these three jointly. Everything below is a mechanism for one or more of
 them.
 
@@ -28,8 +33,12 @@ them.
 Redundant work — **duplicated, unnecessary, or irrelevant** — loses on all three of §1's quantities at
 once: it costs more to run, it widens the surface where harm hides, and it adds complexity to maintain.
 So a perfectly DRY process is, *by the meaning of redundant*, the minimal/efficient one; minimizing
-redundancy is therefore the master move for §1's cost and complexity axes (the safety axis is §5). It
-is removed along exactly two directions — not separate "DRY rules," but one move seen two ways:
+redundancy is therefore the master move for §1's cost and complexity axes (the safety axis is §5).
+Through §1's time lens this is *why* DRY matters at all: redundant work **defers** cost into the
+future — it shoves a problem onto a later fixer, or builds a process destined to be thrown out — so DRY
+is the refusal to spend someone's future time to buy the author's present convenience; it values time
+**holistically**, across every party and all of it, not just the here-and-now. Redundancy is removed
+along exactly two directions — not separate "DRY rules," but one move seen two ways:
 
 - **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use
   (model-local / derive-global). At the right layer there is nothing fundamentally different between
