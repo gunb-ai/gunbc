@@ -1,13 +1,12 @@
 # gunbc — Agent Instructions
 
 Read these docs before working:
-- `INVARIANTS.md` — governing rules. STOP before violating any invariant.
-- `ROADMAP.md` — architectural thesis, current state, active work, design directions.
-- `MODELING.md` — DSL modeling philosophy. **Especially M9: DFS the concept DAG.**
-  Before defining any new type, DFS from `dsl/std/` to find the existing concept
-  it should attach to. See the concept DAG layers in MODELING.md.
-- `CODING.md` — Rust implementation style (Google C++-style, pure functions, data + free functions).
-- `TESTING.md` — test discipline (hermetic, behavior-driven, unit-first; mocks over full-pipeline compile).
+- `DESIGN.md` — the governing design: worldview, the principles (the review spine), how to model
+  (**especially M9: DFS the concept DAG** before defining any type), enforcement, the Rust-seed coding
+  style, verification discipline, and the hard-won lessons. Currently a working harvest TODO being
+  rebuilt from first principles (the prior doc corpus was bankrupted 2026-06-16; it's in git history).
+  STOP before violating a principle.
+- `ROADMAP.md` — current state, active work, design directions.
 
 ## Key Commands
 
