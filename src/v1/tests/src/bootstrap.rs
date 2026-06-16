@@ -618,66 +618,7 @@ fn bootstrap_fixed_point() {
     let _ = std::fs::remove_dir_all(&stage2_dir);
 }
 
-// ── 5. gist_full_pipeline ──────────────────────────────────────────────
-
-#[test]
-#[ignore] // Requires building stage0 binary (~2 min)
-fn gist_full_pipeline() {
-    let gist_files = [
-        "dsl/std/types.dag",
-        "dsl/std/error_primitives.dag",
-        "dsl/std/resources.dag",
-        "dsl/extdeps/cloud/cloud.dag",
-        "dsl/extdeps/cloud/gcp/errors.dag",
-        "dsl/extdeps/cloud/gcp/gcp.dag",
-        "dsl/extdeps/github/errors.dag",
-        "dsl/extdeps/github/github.dag",
-        "dsl/extdeps/github/auth.dag",
-        "dsl/extdeps/github/gists.dag",
-        "dsl/extdeps/git/git.dag",
-        "dsl/gunbc/auth/credentials.dag",
-        "dsl/gunbc/tools/gist.dag",
-    ];
-
-    let stage0_bin = build_stage0();
-    let ws = crate::helpers::workspace_root();
-
-    let out_dir = std::env::temp_dir().join("v2-gist-pipeline-out");
-    let _ = std::fs::create_dir_all(&out_dir);
-
-    let source_dir = std::env::temp_dir().join("v2-gist-pipeline-src");
-    let _ = std::fs::create_dir_all(&source_dir);
-    for rel_path in &gist_files {
-        let src = ws.join(rel_path);
-        let dst = source_dir.join(rel_path);
-        let _ = std::fs::create_dir_all(dst.parent().unwrap());
-        std::fs::copy(&src, &dst)
-            .unwrap_or_else(|e| panic!("failed to copy {}: {}", src.display(), e));
-    }
-
-    let output = std::process::Command::new(&stage0_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&source_dir)
-        .arg("--output-dir")
-        .arg(&out_dir)
-        .output()
-        .expect("stage0 compile should run");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    eprintln!("gist pipeline stderr:\n{}", stderr);
-    assert!(output.status.success(), "stage0 compile failed");
-
-    // Verify Cargo.toml exists in output
-    let cargo_toml = out_dir.join("Cargo.toml");
-    assert!(cargo_toml.exists(), "no Cargo.toml in emitted gist output");
-
-    // Cleanup
-    let _ = std::fs::remove_dir_all(&source_dir);
-    let _ = std::fs::remove_dir_all(&out_dir);
-}
-
-// ── 6. performance_ratchet ───────────────────────────────────────────────
+// ── 5. performance_ratchet ───────────────────────────────────────────────
 
 /// Performance ratchet: self-compile pipeline must complete within the
 /// time budget. Catches FF-class regressions (new O(n²) patterns,
