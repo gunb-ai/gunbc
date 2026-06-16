@@ -1,6 +1,6 @@
 // Scope: affected-set → generated TestClaim → run_test_claim CI receipt.
-// Status: first executable fusion slice; witnesses are `test fn` rows discovered
-// by `ci-claim-gate --roster-from-discovery` (no shadow gate_entry roster).
+// Status: first executable fusion slice; implementation module only — CI witnesses
+// live in `src/v2/test/workflow/affected_testgen_ci_runner_gate_test.dag`.
 
 module v2.test.workflow.affected_testgen_ci_runner
 
@@ -241,7 +241,7 @@ fn affected_testgen_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
 }
 
 
-test fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
+fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
   match affected_testgen_emit_generated_claim() {
     Accepted { value: RoundTripClaim { label: label, anchor: _, input: _, classification: _ }, diagnostics: _ } =>
       label == affected_testgen_generated_claim_label
@@ -250,12 +250,12 @@ test fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
 }
 
 
-test fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
+fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
 }
 
 
-test fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
+fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
     Holds { value: reading } =>
       reading.edit_locus == affected_testgen_source_dependency
@@ -268,12 +268,12 @@ test fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> 
 }
 
 
-test fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
+fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_dependency_selected_claims()) == 1
 }
 
 
-test fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
+fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
     && fold_list(
       xs: affected_testgen_selected_claims(),
@@ -294,7 +294,7 @@ fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
 }
 
 
-test fn affected_testgen_fusion_holds() -> Bool {
+fn affected_testgen_fusion_holds() -> Bool {
   affected_testgen_generator_emits_expected_claim_holds()
     && affected_testgen_selects_one_generated_claim_holds()
     && affected_testgen_dependency_frontier_reaches_generated_input_holds()
