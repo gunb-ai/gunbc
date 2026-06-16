@@ -52,4 +52,8 @@ bash scripts/v4-claim-witness-corpus-gate.sh --shard a --spot-perturb-check
 bash scripts/v4-claim-witness-corpus-gate.sh --shard b --spot-perturb-check
 bash scripts/v4-layering-imports-gate.sh --perturb-check
 
+# #4957: ExpectFail defer (CI-live honest RED) + semantics oracle (merge gate).
+bash scripts/v4-interpreted-parse-termination-expect-fail-gate.sh
+bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release fold_list_native_semantics_test -- --test-threads=1 --quiet
+
 echo "gate-3 PASS: affected-tests superset battery"

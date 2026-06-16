@@ -7,6 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
@@ -2220,10 +2221,13 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // std/algebra list folds: the interpreted recursive .dag bodies are correct but
     // pathological under the table-build hot loop (O(n) interpreter frames per element).
     // Native iterators preserve FreeMonoid semantics via `free_monoid_to_vec`.
-    match func_name.as_str() {
-        "fold_list" => return eval_fold_list_native(&args, env, ctx),
-        "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
-        _ => {}
+    // Set GUNBC_INTERP_DISABLE_FOLD_NATIVE=1 to force the interpreted .dag bodies (oracle).
+    if fold_native_fast_path_enabled() {
+        match func_name.as_str() {
+            "fold_list" => return eval_fold_list_native(&args, env, ctx),
+            "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
+            _ => {}
+        }
     }
 
     // Check for built-in runtime functions
@@ -2270,11 +2274,36 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     call_function(ctx, &fn_node, &args, env)
 }
 
+fn fold_native_fast_path_enabled() -> bool {
+    !matches!(
+        std::env::var("GUNBC_INTERP_DISABLE_FOLD_NATIVE").as_deref(),
+        Ok("1")
+    )
+}
+
+static FOLD_LIST_NATIVE_HITS: AtomicU64 = AtomicU64::new(0);
+static FOLD_LIST_RIGHT_NATIVE_HITS: AtomicU64 = AtomicU64::new(0);
+
+/// Witness/oracle instrumentation: native fold_list fast-path invocation counts.
+pub fn fold_native_hit_counts_snapshot() -> (u64, u64) {
+    (
+        FOLD_LIST_NATIVE_HITS.load(Ordering::Relaxed),
+        FOLD_LIST_RIGHT_NATIVE_HITS.load(Ordering::Relaxed),
+    )
+}
+
+/// Reset native fold hit counters (pair with `fold_native_hit_counts_snapshot`).
+pub fn fold_native_hit_counts_reset() {
+    FOLD_LIST_NATIVE_HITS.store(0, Ordering::Relaxed);
+    FOLD_LIST_RIGHT_NATIVE_HITS.store(0, Ordering::Relaxed);
+}
+
 fn eval_fold_list_native(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    FOLD_LIST_NATIVE_HITS.fetch_add(1, Ordering::Relaxed);
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
     let (xs, empty, cons) = match positional.as_slice() {
         [xs, empty, cons] => (xs, empty, cons),
@@ -2299,6 +2328,7 @@ fn eval_fold_list_right_native(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    FOLD_LIST_RIGHT_NATIVE_HITS.fetch_add(1, Ordering::Relaxed);
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
     let (xs, empty, snoc) = match positional.as_slice() {
         [xs, empty, snoc] => (xs, empty, snoc),
@@ -2311,6 +2341,8 @@ fn eval_fold_list_right_native(
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list_right expects a list, got {}", xs.type_label()),
     })?;
+    // fold_list_right recurses to tail first: snoc(fold_list_right(tail), head).
+    // Head-to-tail iteration would reverse associativity; walk right-to-left.
     let mut acc = (*empty).clone();
     for item in items.into_iter().rev() {
         acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
