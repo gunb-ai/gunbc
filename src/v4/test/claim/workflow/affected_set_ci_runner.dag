@@ -23,11 +23,14 @@ import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
   EqualsClaim,
   TestClaim,
   TestClassification,
   ManualAnchorAbsent,
   Tier1,
+  UnifiedTestClaim,
   Unit,
   manual_claim_anchor
 }
@@ -390,6 +393,74 @@ data ci_runner_inner_frontier_claim: TestClaim = EqualsClaim {
   lhs: ci_runner_touched_node,
   rhs: ci_runner_inner_frontier_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+// Node-frontier selection claims: structurally enrolled as unified_claim BoolWitness
+// decls so discovery (discover_owned_data + owned_data_bool_witness_transport_tsv)
+// projects them into the affected-set claim-run roster — replaces the hand-typed
+// AffectedSetNodeFrontierClaimRunRow rows below (deleted once the gate folds the
+// generated discovery manifest instead of the hand-list).
+data unified_claim_ci_runner_narrow_selection: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_narrow_selection_holds
+  }
+}
+
+data unified_claim_ci_runner_fail_closed_superset: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_fail_closed_superset_holds
+  }
+}
+
+data unified_claim_ci_runner_shape_collision: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_shape_collision_holds
+  }
+}
+
+data unified_claim_ci_runner_inner_frontier: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_inner_frontier_holds
+  }
+}
+
+data unified_claim_ci_runner_discovered_narrow: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_discovered_equals_selected_narrow_holds
+  }
+}
+
+data unified_claim_ci_runner_discovered_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_discovered_equals_roster_on_fail_closed_holds
+  }
+}
+
+data unified_claim_ci_runner_discovered_shape: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_discovered_equals_selected_shape_collision_holds
+  }
+}
+
+data unified_claim_ci_runner_discovered_inner: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_discovered_equals_selected_inner_frontier_holds
+  }
+}
+
+data unified_claim_ci_runner_four_phase: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    function: ci_runner_node_frontier_four_phase_discrimination_holds
+  }
 }
 
 // ── affected-set-3a claim-run gate authority (host: ci-claim-gate, rows-fn affected_set_node_frontier_rows_tsv) ──

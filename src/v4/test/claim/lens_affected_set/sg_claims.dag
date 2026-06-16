@@ -208,3 +208,70 @@ data unified_claim_lens_affected_set_changed_edit_yields_changed_subgraph: Unifi
     function: lens_affected_set_changed_edit_yields_changed_subgraph_holds
   }
 }
+
+// Provenance-producer claims: structurally enrolled so discovery (discover_owned_data
+// + owned_data_bool_witness_transport_tsv) projects them into the affected-set claim-run
+// roster directly — replaces the hand-typed AffectedSetNodeFrontierClaimRunRow rows that
+// formerly re-enrolled these by name in affected_set_ci_runner.dag.
+data unified_claim_lens_affected_set_provenance_producer_single_read: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_single_read_emits_row_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_rejects_malformed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_rejects_malformed_ingest_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface_ingest_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_coverage_receipt: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_coverage_receipt_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_git_diff_wire: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_git_diff_wire_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_unknown_diff_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_selectivity_superset: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_selectivity_superset_holds
+  }
+}
+
+data unified_claim_lens_affected_set_provenance_producer_selectivity_superset_discriminates: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+    function: lens_affected_set_provenance_producer_selectivity_superset_discriminates_holds
+  }
+}
