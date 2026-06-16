@@ -364,6 +364,7 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
 
 // Wave-1 ident spellings: RC witness symbols (^r1 -> "R1", ^v1 -> "V1", etc.)
 // plus node names and grammar-probe idents.
+// 🟡 dissolve-on-arrival: feature:spice-symbol-spelling-bridge — replace hand table when Symbol→String substrate lands (SP-M2+).
 fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
   if ident == ^r1 {
     optional_present(value: "R1")
@@ -517,6 +518,7 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
 // per-line emitters; this arm maps that to `""` rather than surfacing an
 // `Outcome` diagnostic — mild fail-open bounded to enrolled witnesses only.
 // The SP-M1 ngspice oracle golden-equality check catches empty regressions;
+// any new corpus row on this emit path must golden-check (not nonempty-only).
 // SP-M2+ should revisit fail-closed emit at this boundary.
 fn spice_emit(netlist: SpiceNetlist) -> String {
   match spice_emit_body_lines(body: netlist.body) {
