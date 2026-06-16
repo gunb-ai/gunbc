@@ -195,9 +195,11 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
         patch_bootstrap_dag_collect(&fresh_dir.join("src"))
     })?;
-    time_phase(&mut phases, "ensure_method_template_projection_module", || {
-        ensure_method_template_projection_module(&fresh_dir.join("src"))
-    })?;
+    time_phase(
+        &mut phases,
+        "ensure_method_template_projection_module",
+        || ensure_method_template_projection_module(&fresh_dir.join("src")),
+    )?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
