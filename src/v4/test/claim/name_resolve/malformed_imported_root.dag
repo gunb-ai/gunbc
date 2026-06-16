@@ -1,7 +1,4 @@
-// src/v4/test/claim/name_resolve/malformed_imported_root.dag
 // Scope: TestClaim — malformed module root is rejected fail-closed.
-// Status: T-28 follow-up (issue #3674) behavior receipt; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Anchor: INVARIANTS P3 (Fail-Closed) — malformed graph-entry root must produce a
 //         diagnostic, not silently succeed.
 

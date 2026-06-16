@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_coverage/discriminant_predicate_defect_key.dag
-// Scope: T-18 worked claim — DiscriminantPredicate defect acceptance pins the canonical key.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_coverage.discriminant_predicate_defect_key
 

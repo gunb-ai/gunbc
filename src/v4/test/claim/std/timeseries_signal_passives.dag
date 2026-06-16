@@ -1,4 +1,3 @@
-// src/v4/test/claim/std/timeseries_signal_passives.dag
 // Scope: canonical S1 witnesses — spice passive projection + torsor carriers.
 
 module v4.test.claim.std.timeseries_signal_passives

@@ -1,10 +1,6 @@
-// src/v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag
 // Scope: L1 Go compiler-slice compile receipt for fixture=phase1/nat_semiring (release-minimum).
 // Status: substrate claim labels (correctness-ladder L1 vocabulary; slice_id
-//   ^go_l1_nat_semiring_rung2 per docs/planning/v4-go-l1-compiler-slice-compile-worksheet-2026-06-01.md).
 //   Executable host transport is scripts/v4-nat-semiring-go-compiler-slice-gate.sh
-//   (chained from v4-nat-semiring-rung-gate.sh after R2-go-compile) until T-22 eval
-//   dispatches TestClaimRun host evidence on emitted artifacts.
 //   Authority: Go RCA — bounded emit subset → go build PASS/FAIL JSON receipt (not L2/L3/L4).
 
 module v4.test.claim.nat_semiring.rung_l1_go_compiler_slice

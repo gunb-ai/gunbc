@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/rust_r3_internal.dag
-// Scope: Phase 1 R3-internal — Symbol TargetAtomRealization row mutation must move type + value emit together (PR #3971 §4).
 // Status: modeled claim + emit-coupling receipt; host runner scripts/v4-leaf-model-rust-r3-internal-verify.sh.
 
 module v4.test.claim.language_model.rust_r3_internal

@@ -1,6 +1,4 @@
-// src/v4/test/claim/parse/python_wave2a.dag
 // Scope: TestClaim rows for Python Wave 2a lex/grammar behavior beyond MVP-1.
-// Status: T-22 runner deferred — execution pending T-22 complexity fix.
 
 module v4.test.claim.parse.python_wave2a
 
@@ -34,8 +32,6 @@ fn python_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 —
-// dissolve-on: T-22 claim runner evaluates Outcome<ParseTree> directly without Bool projection.
 fn python_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true

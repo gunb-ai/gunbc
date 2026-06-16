@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_affected_set/provenance_producer.dag
 // Scope: D1b-PR2 — whole-ingest NodeArtifactProvenance producer + git-diff→reading wire.
 // Status: by-execution receipts for node_artifact_provenance_from_source_root; selectivity
 //   superset on the provenance→edit_locus→affected_set_reading path.

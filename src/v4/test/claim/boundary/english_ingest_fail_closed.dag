@@ -1,30 +1,14 @@
-// src/v4/test/claim/boundary/english_ingest_fail_closed.dag
-//
 // Scope: TestClaim — the English boundary-honesty probe. English is two
 //        regimes:
 //          (a) arbitrary natural English has no formal grammar and is NOT
 //              a language model — pointing `ingest` at it produces a
 //              PRECISE Diagnostic, never a fabricated parse (this probe;
 //              the no-engine / no-fallback thesis made visible).
-//          (b) the rigid Controlled-English subset (T-4.19,
-//              extdeps/languages/english.dag: article-led SVO and copula
-//              sentence forms) IS a modeled language and an emit target;
-//              its prose lexes, parses, and round-trips through the
-//              shared pipeline like any other target.
 //        The fail-closed boundary in this file guards regime (a) only;
 //        regime (b) is claimed by manual/english_emit_add.dag.
 // Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
 //         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
 // Prerequisites (sequencing — NOT parallel to an unfilled verification
-//   scaffold): concrete TestClaim payloads in this file bind
-//   to the closed schema in std/verification.dag. That file is T-3
-//   follow-on work (needs algebra + diagnostic first).
-//   English (T-4.11) is intentionally sequenced *behind* verification.dag
-//   fill — cite verification.dag as schema authority only after T-3 lands
-//   it; do not list it as peer "Consumes" substrate while the scaffold is
-//   empty.
-//
-// Status: T-4.11 corpus rows; execution deferred to T-22 runner bridge.
 // Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.boundary.english_ingest_fail_closed

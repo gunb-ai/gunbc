@@ -1,7 +1,3 @@
-// src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
-// Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness;
-//        pins gate-rejection reason on Violates.diagnostic and advisory Accepted.diagnostics head
-//        (singleton fixture; does not ratchet tail/locus/correction).
 // Status: compile-only ratchet — CompileLensIntrospect advisory demotion at compile boundary.
 
 module v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory
@@ -65,8 +61,6 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
   }
 }
 
-// 🟡 gated — feature:v2-nested-match — dissolve-on: v2-compiler supports nested match in arm OR
-// T-23 migration deletes apply_compile_lens; forbidden: treating as permanent API surface.
 // Pins: Introspect demotion produces Accepted(Violates) where Violates.diagnostic.reason matches
 // the original gate rejection reason (not a fabricated diagnostic).
 fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {

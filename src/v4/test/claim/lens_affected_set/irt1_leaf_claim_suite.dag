@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag
 // Scope: IRT-1 aggregate TestClaim for affected_set_irt1_subsumption MechanicalReverification row.
-// Status: scaffold — compile-only until T-22 generated claim execution owns suite runner.
 
 module v4.test.claim.lens_affected_set.irt1_leaf_claim_suite
 

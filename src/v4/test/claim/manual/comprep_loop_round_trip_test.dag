@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_loop_round_trip.dag
 // Scope: bounded Loop body emit→ingest round-trip (.dag target).
 
 module v4.test.claim.manual.comprep_loop_round_trip

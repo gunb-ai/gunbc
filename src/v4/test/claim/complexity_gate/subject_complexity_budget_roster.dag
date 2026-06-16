@@ -1,4 +1,3 @@
-// src/v4/test/claim/complexity_gate/subject_complexity_budget_roster.dag
 // Scope: complexity-gate S1b — declared ComplexityBound budget rows (should-be side).
 //        Each row pairs a static subject-producer fn (-> Outcome<Node>) with its declared
 //        ComplexityBound. No function-name strings (runtime name-keyed lookup banned).
@@ -11,8 +10,6 @@
 //        02_parse compiler-stage bodies arrive with COMPREP waves 2+ / self-host breadth;
 //        until a producer lands, do not add name-keyed placeholder rows — new rows attach
 //        when the §2 subject-producer composition exists. Rate every producer before the
-//        row lands (operator 2026-06-11): declared UnknownComplexity is a gate ERROR,
-//        never omission and never a silent pass via lattice top.
 // Consumer: gate rows import named rows from this roster (not inline budgets).
 // Status: roster authority; S2 family gate folds complexity_subject_budget_rows.
 // Anchor: docs/design-lens-subject-supply.md §5 + v4.lens.complexity ComplexityBound.

@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_fact_density/hollow_alias_compile_lens_rejects.dag
-// Scope: T-30 enforcement gate claim — fact_density_lens rejects a hollow alias (NoFact) root via apply_compile_lens.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_compile_lens_rejects
 

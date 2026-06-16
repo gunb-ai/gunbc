@@ -1,6 +1,3 @@
-// src/v4/test/claim/grounding_typescript/sg_claims.dag
-// Scope: W4.2 G.2 TypeScript executable grounding claims over landed G.0/G.1.4 substrate.
-// Status: T-38B family — SG-1 positive receipts, G.1.4 registry receipt, SG-2 positive projection receipt, SG-5 fail-closed absence receipt.
 
 module v4.test.claim.grounding_typescript.sg_claims
 
@@ -80,9 +77,6 @@ fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
 }
 
 // 🟡 predicate dissolution — feature:G-2-grounding-evidence-bool-bridge — bind ROADMAP.md T-PB-B /
-// T-38B grounding_typescript roster — dissolve-on: std/grounding exports canonical
-// grounding-evidence variant/source_carrier queries; local GroundingEvidenceSchema Bool
-// match projections delete.
 fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
   Sg1Evidence { source_carrier: symbol_kernel_type_node() }
 }
@@ -164,9 +158,6 @@ fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 /
-// G.2 grounding_typescript run_test_claim roster — dissolve-on: T-22 claim runner evaluates
-// Outcome and lookup results directly without Accepted=>true / Rejected=>false Bool projection.
 fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
   match target_atom_realization_lookup_in_catalog(
     catalog: ts_target_atom_realization_catalog,
@@ -313,17 +304,10 @@ data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_te
 )
 
 // Wave-A route-through-v2 partial additive named tests: discriminating claim-run witnesses (E-10).
-// Positive narrow resolution — symbol SG-1 evidence targets the canonical symbol kernel.
 test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
 }
 
-// Fail-closed discrimination — SG-5 absence records reject collection realization edges.
 test fn ts_g2_sg5_absence_fail_closed_holds() -> Bool {
   ts_g2_sg5_collection_realization_absence_holds()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `ts_g2_sg1_symbol_carrier_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `ts_g2_sg5_absence_fail_closed_holds` so glob discovery finds the witness without the central roster.

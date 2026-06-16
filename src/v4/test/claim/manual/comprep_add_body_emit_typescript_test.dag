@@ -1,10 +1,7 @@
-// src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag
-// Scope: T6 skeleton — real Arrow.body → translated TS **emit source** vetting consumer (#4623).
 // Status: emit-only receipt (INVARIANTS E-10): witnesses assert `emit(...)` source text and
 //   discriminating mutates; they do NOT execute TypeScript on Node. Runtime add(2,3)=5 for the
 //   produced DAG body is `comprep_eval_by_execution.dag`; Node exercise of emitted TS awaits
 //   emit-host wiring (typescript execute+eval row still missing on emit_host.dag).
-//   Bodied emit greens via value-expression projection + grammar scaffold (#4623).
 
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
@@ -483,5 +480,3 @@ test fn comprep_ts_bodied_emit_missing_catalog_rejects() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
-
-// Glob-discovered emit-source consumer for #4623 §4.5 (operand-swap / catalog-minus / missing-catalog reds co-located).

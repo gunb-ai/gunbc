@@ -1,7 +1,5 @@
-// src/v4/test/claim/manual/target_model_operator_lookup_dissolution.dag
 // Scope: E-10 execution receipts for PassingCandidateFold dissolution of
 // target_operator_realization_catalog_lookup in std/compilers/target_model.dag.
-// Status: T-6 M-C precondition — acceptance, miss, fail-open malformed-row skip.
 
 module v4.test.claim.manual.target_model_operator_lookup_dissolution
 
@@ -98,9 +96,6 @@ fn operator_lookup_empty_catalog_rejects_miss() -> Bool {
   }
 }
 
-// FAIL-OPEN WITNESS (Option A, mirroring #4648 atom catalog): a malformed operator-realization
-// row (Atom node — fails target_operator_realization_row_wire_schema_valid) in a Conj catalog is
-// SKIPPED, not poisoning the whole lookup. A valid matching row after it still produces Accepted.
 fn operator_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   match target_operator_realization_catalog_lookup(
     catalog: operator_catalog_with_malformed_and_valid_rows(),

@@ -1,5 +1,3 @@
-// src/v4/test/claim/workflow/lens_ownership_family_eval.dag
-// Scope: T-38B family CI receipt — lens_ownership subject rows map through run_test_claim; resource-dependency structural witness gates the family tally.
 // Status: source-shape receipt; host CI can pin this file until generated item-registry reflection replaces explicit family rosters.
 
 module v4.test.claim.workflow.lens_ownership_family_eval

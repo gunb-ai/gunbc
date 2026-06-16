@@ -1,6 +1,3 @@
-// src/v4/test/claim/generated/testgen_category_wishlist.dag
-// Scope: T-19 non-tautological generator wishlist over the closed TestgenConcept arms.
-// Status: dispatch ledger — rows dissolve as each generator emits executable TestClaims.
 
 module v4.test.claim.generated.testgen_category_wishlist
 
@@ -65,8 +62,6 @@ fn refinement_preservation_stub_locus() -> Locus {
   port_locus(port: ^refinement_preservation_stub_locus_port)
 }
 
-// Intentionally trivial: T-19 wishlist stub routes refinement preservation through refine (placeholder).
-// 🟡 gated — feature:refinement-preservation-stub-refine-placeholder — bind T-19 testgen follow-up — dissolve-on-arrival: replace admits=true with a real List<Node> predicate or delete the stub once the refinement-preservation generator emits from substrate; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
   true
 }
@@ -76,15 +71,12 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
   admits: refinement_preservation_stub_admits
 }
 
-// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-19 testgen follow-up
-// with complexity (T-12); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
   reason: ^refinement_preservation_stub_invalid,
   vacuous: vacuous_admits_marker
 }
 
 // Generator anchor: vacuous admits=true stub — refine accepts; pack helper is exhaustive-match only.
-// 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace oracle pack with Witness unwrap at the generator boundary; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
   refined_vacuous_stub_pack(
     base: [stub_empty_conj],
@@ -104,7 +96,6 @@ fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
   }
 }
 
-// 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: gunbc#4762 — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness
@@ -119,11 +110,6 @@ type TestgenWishlistRow {
   oracle: TestgenOracleBasis
   dispatch_key: Symbol
 }
-// F.2-P1: explicit per-row GeneratorIds for the wishlist ledger. These rows are NOT the
-// scheduled generators; several carry a placeholder ManualAnchorAbsent anchor, so identity
-// cannot be derived from the anchor (that would collapse distinct ledger rows). Each row
-// therefore mints its own unique id. Dissolves with the ledger as rows graduate to scheduled
-// generators (which derive their id from a real ClaimAnchorKey via generator_id_for_claim_anchor).
 fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,

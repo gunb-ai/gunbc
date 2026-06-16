@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/posix_output_capture.dag
 // Scope: POSIX CapturedOutputPipes structural witnesses — stdout and stderr as separate capture axes.
-// Status: T-4.5 capture pipe modeling witness; eval T-22.
 
 
 module v4.test.claim.manual.posix_output_capture

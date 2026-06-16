@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/scheduler_runnable_frontier.dag
 // Scope: scheduler runnable-frontier fixture.
 // Status: manual fixture until generated TestClaim execution lands.
 
@@ -289,6 +288,3 @@ data scheduler_runnable_frontier_mixed_plan_blocks: Bool = scheduler_mixed_runna
 test fn scheduler_runnable_frontier_claims_hold() -> Bool {
   scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_projects_canonical_first_layer && scheduler_runnable_frontier_dependency_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order && scheduler_runnable_frontier_ignores_contains_edges && scheduler_runnable_frontier_blocks_missing_prerequisite && scheduler_runnable_frontier_step_plan_is_runnable && scheduler_runnable_frontier_full_plan_completes && scheduler_runnable_frontier_all_scheduled_completes && scheduler_runnable_frontier_mixed_plan_blocks
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `scheduler_runnable_frontier_claims_hold` so glob discovery finds the witness without the central roster.

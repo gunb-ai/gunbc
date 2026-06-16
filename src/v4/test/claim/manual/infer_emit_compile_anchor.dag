@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/infer_emit_compile_anchor.dag
-// Scope: Tier-1 compile anchor for infer/emit/compile Wave-1 boundary (T-10 MVP fixture).
-// Status: T-10 — stub targets fail-closed; rust_mvp1 fixture accepts emit + compile_inferred.
 
 module v4.test.claim.manual.infer_emit_compile_anchor
 

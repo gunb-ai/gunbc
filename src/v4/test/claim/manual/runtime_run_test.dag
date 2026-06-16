@@ -1,7 +1,4 @@
-// src/v4/test/claim/manual/runtime_run.dag
 // Scope: §4a runtime_run loop gate witness — bounded sequential frontier eval with receipt append.
-// Gate: BoolWitnessClaim proving one frontier step evaluates and appends receipts, and a full
-// sequential run over two independent nodes completes with RuntimeRunComplete.
 // Falsifier: needing per-effect bespoke handler wiring beyond EffectIoEvalContext (escalate).
 
 module v4.test.claim.manual.runtime_run

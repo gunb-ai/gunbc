@@ -1,6 +1,4 @@
-// src/v4/test/claim/nat_semiring/rung_6.dag
 // Scope: phase1/nat_semiring rung 6 — post-emit semiring law preservation (F4).
-// Status: W3.4 tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator.
 
 module v4.test.claim.nat_semiring.rung_6
 

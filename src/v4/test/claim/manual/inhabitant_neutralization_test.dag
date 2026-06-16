@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/inhabitant_neutralization.dag
 // Scope: generic cross-language inhabitant neutralization — python int -> std_projection -> target inhabitant.
 // Status: hermetic receipt for std/inhabitant_neutralization.dag (emit-surface §3 critical path).
 
@@ -241,7 +240,6 @@ test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
 
 // HEAVY (~627s): real python source -> parse -> cross_language_compile (bridge -> neutralize -> infer -> emit)
 // on the live parse tree. Each stage feeds the next — NOT independent conjuncts / NOT fixture-fed core.
-// Asserts emitted TS source equals pinned ts_mvp1_source_text (cross-language analogue of #4850 source==).
 // The python→ts matrix cell is already ChainProven (cross_language_add_python_to_typescript.dag,
 // proven via chain_status_holds); this e2e is an independent, stronger correct-TS receipt
 // (source == ts_mvp1_source_text, not non-empty), NOT a matrix flip (matrix file 0-diff).
@@ -282,7 +280,6 @@ fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> 
 }
 
 // DISCRIMINATION: same REAL parsed tree against ts target must yield pinned ts source (positive control).
-// Proves the witness exercises target-specific emit — ts path is ChainProven (#4858), not vacuous !=/Rejected.
 fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
@@ -315,7 +312,6 @@ fn inhabitant_neutralization_python_to_go_holds() -> Bool {
 //   present on native go_mvp1_emitted_add_fn_node — structural emit-breadth gap, independent of
 //   int64 vs platform-int inhabitant routing (tiebreak selects platform int; same translate failure).
 // Native go emit ACCEPTS with grounded InferredTree (mvp1_go_add_translate.dag::
-//   mvp1_go_emit_add_fn_accepts_holds); infer() on raw emitted Node is gated (#4760).
 // python->go RED is translate coercion on neutralized python Arrow skeleton, not native go emit-breadth.
 fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
   match neutralize_core_for_target(

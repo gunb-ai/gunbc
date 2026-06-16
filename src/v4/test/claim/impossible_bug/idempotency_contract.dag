@@ -1,5 +1,3 @@
-// src/v4/test/claim/impossible_bug/idempotency_contract.dag
-//
 // Scope: TestClaim — idempotency-contract violation impossible-bug class
 //        (R1). There is NO @idempotent annotation: idempotence is a DERIVED
 //        algebraic property. An operation whose structural position requires
@@ -13,9 +11,6 @@
 //         shorthand, the modeled mechanism is algebra-inhabitance + lens
 //         derivation (the lens reads Node structure, never a tag). Also
 //         lens/idempotency.dag.
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.idempotency_contract

@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_application/sg_claims.dag
 // Scope: discriminating claim-run witnesses for lens application + synthesis
-// behavioral receipts migrated from v4_lens_application_dag_smoke_test.rs parse/import greps.
 // Status: execute-the-carrier pos+neg arms; routed through v2 `dag run --claim-run`.
 
 module v4.test.claim.lens_application.sg_claims
@@ -73,10 +71,3 @@ test fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
 test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
   lens_application_synthesis_gap_enforce_rejects()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_application_introspect_advisory_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_application_synthesis_gap_polynomial_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_application_synthesis_gap_enforce_rejection_holds` so glob discovery finds the witness without the central roster.

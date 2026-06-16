@@ -1,5 +1,3 @@
-// src/v4/test/claim/generated/witness_validity.dag
-// Scope: T-19 witness-validity generated corpus.
 // Status: generated rows route through testgen_emit_witness_validity_claim; RoundTripClaim Deferred until eval interpretation-algebra lands.
 
 module v4.test.claim.generated.witness_validity

@@ -1,7 +1,4 @@
-// src/v4/test/claim/algebra_laws/is_prefix_of_prefix_check.dag
 // Scope: TestClaim corpus for is_prefix_of structural prefix check.
-// Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.algebra_laws.is_prefix_of_prefix_check

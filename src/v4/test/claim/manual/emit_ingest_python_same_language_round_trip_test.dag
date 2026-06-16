@@ -1,9 +1,5 @@
-// src/v4/test/claim/manual/emit_ingest_python_same_language_round_trip.dag
-// Scope: S3 — generalize #4832 emit↔ingest grammar-relation bijectivity from the .dag fixture
-//   to REAL python same-language round-trip:
 //     python source -> parse -> parse_tree_to_target_model_bridge -> emit -> python source
 // Status: EXECUTED Bool witness (fast selector bijectivity) + heavy by-execution source round-trip.
-// Anchor: THESIS §B2-OMNI ingest=emit⁻¹; signed design #4821 Option A; #4832 fast-follow.
 
 module v4.test.claim.manual.emit_ingest_python_same_language_round_trip
 
@@ -166,8 +162,6 @@ fn ingest_then_emit_python_selector_identity_holds() -> Bool {
 }
 
 // Hermetic discriminator (per-merge vacuous-accept guard): canonical spine with a bogus extra token
-// class appended must NOT select any row — forward selection fails closed. Mirrors #4829
-// ingest_bridge_realized perturbed-frontier RED.
 fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>

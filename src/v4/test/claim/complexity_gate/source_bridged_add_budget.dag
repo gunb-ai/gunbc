@@ -1,7 +1,5 @@
-// src/v4/test/claim/complexity_gate/source_bridged_add_budget.dag
 // Scope: complexity-gate S1a exemplar — source-bridged COMPREP wave-1 `add` body as lens subject.
 // Status: executable --claim-run witness (lens_ci_gate row).
-// Design: docs/design-lens-subject-supply.md §2–§6 (PR #4670).
 // S2: roster row + shared lens_subject_body_supply hoist; §6 semantic red kept here (family gate subsumes dominance only).
 
 module v4.test.claim.complexity_gate.source_bridged_add_budget

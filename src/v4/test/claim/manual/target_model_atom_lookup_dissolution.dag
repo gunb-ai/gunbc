@@ -1,7 +1,5 @@
-// src/v4/test/claim/manual/target_model_atom_lookup_dissolution.dag
 // Scope: E-10 execution receipts for the PassingCandidateFold dissolution of
 // TargetAtomRealizationLookup and TargetAtomRealizationCatalogLookup in std/compilers/target_model.dag.
-// Status: T-6 M-C precondition — three behaviors exercised: acceptance, miss, ambiguity.
 
 module v4.test.claim.manual.target_model_atom_lookup_dissolution
 
@@ -70,7 +68,6 @@ fn atom_lookup_dissolution_claim_input(ok: Bool) -> Node {
 }
 
 // PassingCandidateFold: two identical candidates produce ManyPassingCandidates — proves the
-// ambiguity arm of the dissolved fold is reachable and structurally correct.
 fn passing_candidate_fold_duplicate_produces_many() -> Bool {
   match fold_list(
     xs: [atom_lookup_dissolution_probe_node(), atom_lookup_dissolution_probe_node()],

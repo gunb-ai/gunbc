@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/refinement_authoritative_constants.dag
 // Scope: std.refinement authoritative-constant discharge regression witnesses.
-// Status: T-25-core formatter dissolution acceptance witness; eval T-22.
 
 
 module v4.test.claim.manual.refinement_authoritative_constants

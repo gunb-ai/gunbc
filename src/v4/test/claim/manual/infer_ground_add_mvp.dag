@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/infer_ground_add_mvp.dag
-// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; executable infer/descent receipts.
-// Status: SPI-3 receipts — infer derives descent via PR #3559 substrate; add MVP compiles when solve_constraints succeeds.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
@@ -80,7 +77,6 @@ import v4.std.runtime {
 }
 import v4.std.witness { Holds, Violates }
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
-// 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
 // 🟡 coproduct dissolution — LB-P4-3212
   = InferDiagnosticReceiptCase {

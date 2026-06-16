@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_complexity/typescript_wave2a_type_alias_task.dag
-// Scope: T-11 PR-1.5b — complexity_lens receipt on wave2a Task type_alias Conj-positional emitted tree.
-// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_complexity.typescript_wave2a_type_alias_task
 

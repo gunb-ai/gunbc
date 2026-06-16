@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/json_number_integer_lexeme_anchor.dag
 // Scope: Compile anchors for RFC 8259 §6 integer lexeme coproduct arms.
 // Status: compile-only groundedness testcase.
 

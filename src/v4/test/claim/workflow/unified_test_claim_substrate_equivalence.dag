@@ -1,5 +1,3 @@
-// src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag
-// Scope: Consolidation #4553 glob-discovery substrate equivalence (design §6.3 C9).
 // Status: runtime law — modality discrimination + sample-marker field preservation.
 // C9 post-delete standing gates: nonempty-by-execution + perturb (no committed oracle).
 // Host transport: scripts/v4-substrate-equivalence-gate.sh (--perturb-check).

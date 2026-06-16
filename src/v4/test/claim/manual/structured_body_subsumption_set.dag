@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/structured_body_subsumption_set.dag
 // Scope: completes the byte-identical SUBSUMPTION LICENSING SET for the normalize-to-dispatch
 // dissolution (node://adhoc-87678e9b-420). The add witness lives in structured_body_dispatch.dag;
 // this file adds pick/loop/bind so all FOUR flat-index body tables

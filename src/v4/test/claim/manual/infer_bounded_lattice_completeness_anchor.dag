@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/infer_bounded_lattice_completeness_anchor.dag
-// Scope: SG-6 falsification probe — BoundedLattice instance completeness gate in 04_infer.
 // Status: manual receipt; consumer-site infer rejection — not emit compile_error! stubs.
 
 

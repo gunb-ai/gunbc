@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_synthesis/constant_not_dominated_by_linear.dag
-// Scope: T-17 negative claim — constant realization not dominated by linear lower bound (!symbolic_cost_dominates(constant, linear)).
-// Status: T-17 filled — cost-lattice prerequisite (symbolic_cost_dominates negative).
 
 module v4.test.claim.lens_synthesis.constant_not_dominated_by_linear
 

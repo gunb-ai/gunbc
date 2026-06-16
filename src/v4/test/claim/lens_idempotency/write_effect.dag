@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_idempotency/write_effect.dag
-// Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
-// Status: T-38B — subject roster + run_test_claim + family receipt over eval_mvp2 runtime wedge.
 
 module v4.test.claim.lens_idempotency.write_effect
 

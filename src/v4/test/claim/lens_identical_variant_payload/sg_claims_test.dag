@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag
 // Scope: discriminating claim-run witness for L1.4 IdenticalVariantPayload
-// scaffold behavioral receipt migrated from v4_lens_identical_variant_payload_dag_smoke_test.rs.
 // Status: executes identical_variant_payload_fact_for_type; pos expects Unrealized verdict,
 // neg arm discriminates stored verdict identity (mutation-proven red-under-mutation).
 
@@ -37,6 +35,3 @@ test fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
     verdict: identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict
   )
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_identical_variant_payload_unrealized_scaffold_holds` so glob discovery finds the witness without the central roster.

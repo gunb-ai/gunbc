@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_affected_set/closure_superset_safe.dag
 // Scope: D1a receipt — substrate closure superset-safe; dimension + real-diff selectivity
 //   pending receipt + provenance producer.
 // Status: scoped to affected_set_closure(dependencies, edit_locus) only; does NOT claim

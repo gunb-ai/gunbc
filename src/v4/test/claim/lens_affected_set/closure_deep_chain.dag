@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_affected_set/closure_deep_chain.dag
 // Scope: D1a regression — root-seeded affected_set_closure must reach the |V|-deep leaf.
 // Status: by-execution under-closure guard; substrate closure superset-safe; dimension +
 //   real-diff selectivity pending receipt + provenance producer.

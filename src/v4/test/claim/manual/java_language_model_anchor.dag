@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/java_language_model_anchor.dag
-// Scope: T-4.17 compile anchor — java.dag LanguageModel wave-1/wave-2, inhabitant facts, MVP target model.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.java_language_model_anchor

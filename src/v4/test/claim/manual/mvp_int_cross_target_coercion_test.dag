@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag
-// Scope: W3 cross-target int coercion receipts — Leg A fail-closed (python int → rust i32 exact rule);
-//   Leg B faithful widening (rust i32 → python int via preservation_rule_refinement_widening).
 
 module v4.test.claim.manual.mvp_int_cross_target_coercion
 
@@ -275,10 +272,3 @@ test data witness_cross_target_python_to_rust_i32_would_lose_information: Bool =
   Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_cross_target_rust_i32_to_python_int_accepts` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_cross_target_python_to_rust_i32_would_lose_information` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_cross_target_python_to_rust_i32_rejects` so glob discovery finds the witness without the central roster.

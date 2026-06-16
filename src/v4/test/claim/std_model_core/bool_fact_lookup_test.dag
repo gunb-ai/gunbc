@@ -1,5 +1,3 @@
-// src/v4/test/claim/std_model_core/bool_fact_lookup.dag
-// W3 A-fold-delete: behavioral claim-run witness for model_core_wave1_bool_fact_lookup.
 // Replaces the v4_std_model_core_dag_smoke_test.rs declaration-shape ratchet AND the hand-Rust
 // MIRROR helper (bool_fact_axis_dispatch) — a tautology that re-stated the fold in Rust rather than
 // folding the REAL node. This witness folds the real fn by execution and DISCRIMINATES:
@@ -76,6 +74,3 @@ test fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
     Violates { diagnostic: _ } => false
   }
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_model_core_bool_fact_lookup_discriminates` so glob discovery finds the witness without the central roster.

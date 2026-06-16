@@ -1,6 +1,4 @@
-// src/v4/test/claim/nat_semiring/rung_8.dag
 // Scope: phase1/nat_semiring rung-8 TestClaimRun roster — full fixture law corpus (§7).
-// Status: W3.6 — T-22 eval → TestClaimRun via run_test_claim (single authority for all claim kinds).
 
 module v4.test.claim.nat_semiring.rung_8
 

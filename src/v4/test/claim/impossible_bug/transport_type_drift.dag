@@ -1,10 +1,5 @@
-// src/v4/test/claim/impossible_bug/transport_type_drift.dag
-//
 // Scope: TestClaim — transport/type drift impossible-bug class (R1). Client and server cannot hold different types for the same field — both derive from the same declaration. Drift is impossible by construction.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §379-380 R1 + gate #29 wire-serde-alignment + extdeps/coordination.dag
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.transport_type_drift

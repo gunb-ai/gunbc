@@ -1,7 +1,4 @@
-// src/v4/test/claim/workflow/testclaim_corpus_runner.dag
-// Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
 // Status: wedge — evaluate manual_corpus_node_subject_rows into CorpusEvalReport.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind gunbc#4765 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2: the runner maps each manual subject row through `run_test_claim`; manual_corpus_eval_expected.dag pins per-row verdict+reason for the drift gate.
 
 module v4.test.claim.workflow.testclaim_corpus_runner
 
@@ -44,30 +41,16 @@ import v4.std.verification {
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
 }
-// Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
 // `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
-// RULING-1: needs-more-work — authoring-time queue vs runtime verdict until Phase 4 host transport.
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: Phase 4 CI transport
-// fills BoolWitnessRuntimeVerdict from host `--claim-run` (design §3.3 / §6.1 E1).
 type BoolWitnessRun
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 host-transport queue arm
   = BoolWitnessRuntimeVerdict { witness: BoolWitness, result: Bool }
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 authoring-time deferral arm
   | BoolWitnessQueuedForHostTransport { witness: BoolWitness }
 
 
-// RULING-1: needs-more-work — NodeCorpusUnresolvedRun fail-closed until subject binds at eval boundary.
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: NodeCorpus.subject lands on
-// UnifiedTestClaim and unresolved arm deletes (verification.dag 🟡 Phase 2 runner migration).
 type UnifiedClaimRun
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 NodeCorpus eval-only wedge
   = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 fail-closed unresolved subject lookup
   | NodeCorpusUnresolvedRun { claim: TestClaim }
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: Phase 3/4 wires
-// run_test_claim_emit_vs_eval for EmitVsEval transport (design §3.4 / §6.1 E3).
   | NodeCorpusEmitVsEvalDeferredRun { claim: TestClaim, target: TargetModel }
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 BoolWitness modality receipt wrapper
   | BoolWitnessRunReceipt { run: BoolWitnessRun }
 
 
@@ -243,8 +226,6 @@ fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
 
 
 fn unified_corpus_eval_pilot_claims() -> List<UnifiedTestClaim> {
-  // BoolWitness smoke slice uses distributed-marker host projection
-  // (scripts/v4-discover-owned-data.sh) until Phase 4 unified CI transport.
   manual_node_corpus_unified_claims()
 }
 

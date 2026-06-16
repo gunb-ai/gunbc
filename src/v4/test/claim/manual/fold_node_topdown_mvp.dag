@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/fold_node_topdown_mvp.dag
 // Scope: fold_node_topdown behavior anchors — init/child_context/step algebra contract.
 // Status: PR1 standalone non-resolve fixture.
 

@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag
 // Scope: runtime-completeness regression for the `Map.lookup: fn(K) -> Witness<V>`
 //        contract. A native `Value::Map` lookup bottoms out at the Null sentinel on a
 //        missing key; the v2 interpreter must present that absent key as `Violates`
@@ -55,12 +54,6 @@ fn map_hit_is_holds() -> Bool {
 }
 
 // Rostered entry (v4_roster_pilot): one Bool combining the discriminating miss->Violates
-// arm with the present-key Holds control, so the v4-testclaim-smoke-roster transport runs
-// the regression by EXECUTION (claim-run), not by typecheck. Removing the Null->Violates
-// bridge turns the miss arm into a `non-exhaustive pattern match on: null` crash → red.
 test fn map_lookup_miss_violates_and_hit_holds() -> Bool {
   map_miss_is_violates() && map_hit_is_holds()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `map_lookup_miss_violates_and_hit_holds` so glob discovery finds the witness without the central roster.

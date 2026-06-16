@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/v4_evaluator_runtime_anchor.dag
-// Scope: T-34 compile anchor — v4_evaluator.dag concrete runtime bundle and carrier wiring.
-// Status: manual T-34 acceptance receipt.
 
 module v4.test.claim.manual.v4_evaluator_runtime_anchor
 
@@ -64,7 +61,6 @@ data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evalua
 
 data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == ^v4_evaluator_runtime_id
 
-// T-22 registry receipt: InterpretationAlgebra == is structural on named top-level fn refs.
 data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_anchor_interpretation_standalone
 
 data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_interpretation_wave1()

@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_idempotency/subject_roster.dag
-// Scope: T-38B lens_idempotency TestClaim subject roster (RuntimeValue wedge).
 // Status: single-leaf family — expand when additional lens_idempotency claims land.
 
 module v4.test.claim.lens_idempotency.subject_roster

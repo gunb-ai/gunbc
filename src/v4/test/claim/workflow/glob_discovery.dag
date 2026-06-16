@@ -1,5 +1,3 @@
-// src/v4/test/claim/workflow/glob_discovery.dag
-// Scope: Consolidation #4553 glob-discovery witness module — wires law + ephemeral manifest.
 // Authority: host_owned_data_discovery_receipt + host_discovered_owned_decls from discover_owned_data.
 // Acyclic: excluded from discover_owned_data scan (imports manifest).
 

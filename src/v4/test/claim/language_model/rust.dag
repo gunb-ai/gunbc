@@ -1,6 +1,3 @@
-// src/v4/test/claim/language_model/rust.dag
-// Scope: C(rust.dag) — verification OBLIGA per PR #3971 / design-rust-dag-leafmodel-instantiation.md.
-// Status: Phase-1 rows (R1, R2a, R2b×4, R3-external, R3-internal) — 8 LeafModelClaim rows; R2a/R2b(1–2)/R3-external/R3-internal fixture+runner live (W1.7).
 
 module v4.test.claim.language_model.rust
 
@@ -79,7 +76,6 @@ fn rust_leaf_algebra_inhabitance_i32_subject() -> RustClaimSubject {
   }
 }
 
-// R1 — fact_id projects data rust_facts_i32 (PR #3971 §5 PATTERN-1 structural).
 data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_rust_facts_i32(),
@@ -151,8 +147,6 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafMode
   }
 }
 
-// 🟡 gated — feature:leaf-model-r2b-overflow-checks-runner — bind gunbc#4751 (R2b sub-claims 3–4; re-anchor of merged PR #3971 §5 / retired design-rust-dag-leafmodel-instantiation.md) —
-// dissolve-on-arrival: fixture runner supports explicit `-C overflow-checks=on|off` independent of debug/release profile; until then runner reports not_checked for these rows.
 // R2b sub-claim 3/4 — checked_arithmetic_overflow_checks_enabled (not_checked stub; action duplicates debug-default).
 data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
@@ -201,7 +195,6 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
   }
 }
 
-// R3-external — Symbol atom realization projection vs rustc (SG-1 row on main).
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
@@ -217,7 +210,6 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
   }
 }
 
-// R3-internal — emit coupling receipt; exercisable post-SG-1 (#3956); host runner v4-leaf-model-rust-r3-internal-verify.sh.
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
@@ -237,16 +229,6 @@ data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModel
   }
 }
 
-// 🟡 gated — feature:leaf-model-sg1b-signature-boundary-runner — bind #4099 SG-1b worksheet §"Falsification"
-// (1)–(3) / scripts/v4-leaf-model-rust-r3-internal-verify.sh class —
-// dissolve-on-arrival: a runner that emits a Symbol-returning fn and asserts the `-> T` boundary
-// annotation tracks the SG-1 value_form (signature_must_track_value_form). Until that runner lands
-// this row is a not_checked stub: it reuses the R3-internal coupling expectation
-// (type_emit_must_change ∧ value_emit_must_change) scoped to the fn-boundary signature site, which
-// is exactly the SG-1b coupling — mutating rust_target_atom_realization_symbol.type_form (consumed
-// by TargetFunctionSignatureRealization via shared source_carrier) must move the boundary `-> T`
-// annotation AND the value body together. The falsification flips both must_change flags to false.
-// SG-1b R-internal — fn-boundary signature coupling (PLANNED runner; not_checked until bound).
 data claim_rust_leaf_sg1b_signature_boundary_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),

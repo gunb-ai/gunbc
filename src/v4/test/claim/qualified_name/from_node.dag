@@ -1,8 +1,5 @@
-// src/v4/test/claim/qualified_name/from_node.dag
 // Scope: TestClaim rows for qualified_name_from_node structural walking over fold_list_node inputs.
 // Consumes: v4.std.qualified_name v4.std.algebra v4.std.node v4.std.diagnostic v4.std.verification
-// Status: T-QN-1 follow-on behavior receipts; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.qualified_name.from_node
@@ -39,9 +36,6 @@ fn qn_bool_atom(b: Bool) -> Node {
   }
 }
 
-// TODO(T-22): qn_outcome_accepted is test-local scaffolding — Outcome<T> cannot be compared
-// directly in EqualsClaim today. A canonical accepted/rejected claim form for Outcome should
-// live in std/verification.dag (or a dedicated test helper) so this pattern doesn't proliferate.
 fn qn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
@@ -49,7 +43,6 @@ fn qn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
   }
 }
 
-// TODO(T-22): test-local scaffolding — see qn_outcome_accepted TODO above.
 fn qn_value_eq(out: Outcome<QualifiedName>, expected: QualifiedName) -> Bool {
   match out {
     Rejected { diagnostics: _ } => false

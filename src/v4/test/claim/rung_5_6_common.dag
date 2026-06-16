@@ -1,6 +1,4 @@
-// src/v4/test/claim/rung_5_6_common.dag
 // Scope: shared rung 5–6 post-emit algebra-law TestClaim subject + emit-host target wiring.
-// Status: W3.3 rust/python/go TargetModels; W3.4 tranche-1 additive-Monoid emit-vs-eval rows.
 
 module v4.test.claim.rung_5_6_common
 

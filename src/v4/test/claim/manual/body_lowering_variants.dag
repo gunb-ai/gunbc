@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/body_lowering_variants.dag
 // Scope: by-execution receipt for the control-flow variant production primitives in
 // std/compilers/body_lowering.dag (lower_branch / lower_loop / lower_bind) — the direct-to-variant
 // emit side of the normalize-to-dispatch dissolution (node://adhoc-87678e9b-420), per zesty's (a3)

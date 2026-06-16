@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_application/empty_required_lenses_skip_gate.dag
-// Scope: T-23 negative claim — empty required-lens list does not emit compile_lens_gate_rejected.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_application.empty_required_lenses_skip_gate
 

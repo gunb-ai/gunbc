@@ -1,7 +1,3 @@
-// src/v4/test/claim/manual/resolve_compile_anchor.dag
-//
-// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + LM `canonical_symbols` (TASKS T-8).
-// Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.test.claim.manual.resolve_compile_anchor

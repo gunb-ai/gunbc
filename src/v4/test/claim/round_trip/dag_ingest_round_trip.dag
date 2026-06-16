@@ -1,11 +1,8 @@
-// src/v4/test/claim/round_trip/dag_ingest_round_trip.dag
-// Scope: T-36 — RoundTripClaim roster receipt; W1 eval is wave-1 authority readiness only (05_eval.dag).
 // Status: emit→ingest compare is W1b follow-up — claim label must not imply bit-identical fidelity until then.
 // Claim input embeds axis witnesses for IRT-4 frontier only — eval does not trust embedded ready atoms (P2).
 // Fixture: src/v4/test/fixture/dag_round_trip_mvp1.dag (committed wave-1 surface program).
 // Normalization budget: C5 trivia normalization from dag.dag only — whitespace and comments are
 //   DeclaredNormalized (TriviaRule-stripped); all other surface features are Modeled (lossless).
-// Anchor: THESIS §B2-OMNI ingest=emit⁻¹ (C5); readiness tracking: gunbc#4763.
 
 module v4.test.claim.round_trip.dag_ingest_round_trip
 
@@ -34,7 +31,6 @@ import v4.std.verification {
 // If fixture/dag_round_trip_mvp1.dag is renamed or its exports change, this import breaks,
 // preventing silent drift.  Full source-text binding is deferred: String = FreeMonoid<Char>
 // where Char = Nat (Peano), making multi-line fixture embedding infeasible in the current
-// substrate. T-38's module-loader will resolve the fixture by module path at eval time.
 
 fn dag_round_trip_input_node() -> Node {
   let lm = dag_language_model_wave1_modeled()

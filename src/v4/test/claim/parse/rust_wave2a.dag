@@ -1,6 +1,4 @@
-// src/v4/test/claim/parse/rust_wave2a.dag
 // Scope: TestClaim rows for Rust Wave 2a lex/grammar behavior beyond MVP-1.
-// Status: T-22 runner deferred — execution pending T-22 complexity fix.
 
 module v4.test.claim.parse.rust_wave2a
 

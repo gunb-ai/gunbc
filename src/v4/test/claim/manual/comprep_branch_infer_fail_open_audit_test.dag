@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_branch_infer_fail_open_audit.dag
 // Scope: C3 fail-open audit — divergent-arm Branch through infer @ main (no arm-unification row).
 // Status: execution witness for design-sign gate; mismatch body = kw_true + pick_lit_one + ident.
 

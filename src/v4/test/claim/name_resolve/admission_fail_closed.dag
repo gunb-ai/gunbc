@@ -1,8 +1,5 @@
-// src/v4/test/claim/name_resolve/admission_fail_closed.dag
 // Scope: TestClaim corpus — fail-closed admission receipts for duplicate module roots
 //         and missing import targets (T-QN-1 Change 2 / catalog dissolution follow-on).
-// Status: behavior receipts; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Anchor: INVARIANTS P3 (Fail-Closed) — duplicate/missing module names must reject.
 
 module v4.test.claim.name_resolve.admission_fail_closed

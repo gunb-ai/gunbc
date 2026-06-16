@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/fold_source_mvp.dag
 // Scope: fold_source behavior anchors — init/is_done/step algebra contract.
 // Status: §1.8 standalone non-resolve fixture.
 

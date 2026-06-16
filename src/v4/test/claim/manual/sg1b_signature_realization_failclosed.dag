@@ -1,7 +1,3 @@
-// src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag
-// Scope: SG-1b/SG-1 fail-closed decode receipts — malformed catalog shapes and payload-carrying
-// nullary boundary-site atoms reject with decode-invalid, NOT lookup-miss / acceptance.
-// Status: behavior-driven regression receipts for the #4118 follow-up decode hardening.
 
 module v4.test.claim.manual.sg1b_signature_realization_failclosed
 

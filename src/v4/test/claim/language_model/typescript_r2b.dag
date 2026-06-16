@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/typescript_r2b.dag
-// Scope: Phase 1 R2b — typescript.dag bigint beyond safe integer vs Node runtime.
 // Status: modeled claim + fixture row; host runner scripts/v4-leaf-model-typescript-r2b-verify.sh.
 
 module v4.test.claim.language_model.typescript_r2b

@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/python_r2a.dag
-// Scope: Phase 1 R2a — python.dag int algebra inhabitance vs CPython (docs/planning/v4-leaf-model-verification-2026-05-30.md §7).
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-python-r2a-verify.sh exercises python3.
 
 module v4.test.claim.language_model.python_r2a

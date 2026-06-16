@@ -1,6 +1,3 @@
-// src/v4/test/claim/workflow/loop_linear_bound_rung8_eval.dag
-// Scope: W3.6 rung-8 corpus eval — phase4/loop_linear_bound full fixture claim roster (3 rows).
-// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (zero Deferred acceptance).
 
 module v4.test.claim.workflow.loop_linear_bound_rung8_eval
 

@@ -1,15 +1,8 @@
-// src/v4/test/claim/workflow/wave3_shadow_roster.dag
 // Scope: Wave 3 TestClaim shadow selection — ROSTER AUTHORITY. Projects concrete manual
 //        `TestClaimEvalSubject` rows plus accepted generated LBE `TestClaimRun` rows to their `TestClaim` claims so the
 //        `v4.workflow.ci` Wave-3 shadow-selection wrappers narrow ONE authoritative roster by the
 //        affected-set rerun frontier. Shadow / non-gating: no corpus execution, no eval fork — the
-//        per-row `TestClaimRun` RUNTIME verdict lane (T-38 / P5 bootstrap-evaluator corpus runtime,
-//        docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md) is separate.
 // Status: shadow — roster authority only; selection wrapper + fixture receipts live in v4.workflow.ci.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — dissolve-on-arrival: item-registry reflection
-//        (T-19 testclaim-coproduct-reflection) replaces these explicit import rosters; mirrors the
-//        dissolution mark on v4.test.claim.manual.manual_corpus_roster. Forbidden: scheduled-generator
-//        filtering as the generated roster source — only concrete accepted `run_*_via_run_test_claim` rows.
 
 module v4.test.claim.workflow.wave3_shadow_roster
 

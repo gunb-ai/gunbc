@@ -1,20 +1,4 @@
-// src/v4/test/claim/std_text/carrier_claims.dag
-// Scope: Exemplar E1 — v4.std.text host-string/text-carrier facts as discriminating
-// claim-run witnesses, routed through v2 (`dag run --claim-run`).
-//
 // These witnesses migrate the behavioral content of
-// src/v3/compiler/tests/integration/v4_std_text_dag_smoke_test.rs from a frozen-v3
-// parse-surface grep into executable `fn -> Bool` witnesses that EXECUTE the
-// text.dag carriers (String = FreeMonoid<Char>, the HostStringText constructor and
-// projection) and DISCRIMINATE on the stored value — a wrong projection or wrong
-// carrier shape turns a witness red, so the green is not vacuous (no compile-only
-// false green; cf. witness-sweep discipline).
-//
-// Status: Wave-A fold-delete (W1). These witnesses are the .dag coverage that
-// satisfies the smoke test's own P5/T-PB-B dissolution gate, so the same PR retires
-// the frozen v4_std_text_dag_smoke_test.rs and its SG-0 EXPECTED_HAND_AUTHORED_TEST
-// row. Importing v4.std.text forces v2 to tokenize/parse/infer text.dag, so the
-// parse-surface "tokenizes_and_parses" fact rides every witness below.
 
 module v4.test.claim.std_text.carrier_claims
 
@@ -116,12 +100,3 @@ test fn text_host_string_field_text_holds() -> Bool {
     CharAbsent => false
   }
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `text_string_freemonoid_carrier_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `text_host_string_roundtrip_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `text_host_string_empty_roundtrip_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `text_host_string_field_text_holds` so glob discovery finds the witness without the central roster.

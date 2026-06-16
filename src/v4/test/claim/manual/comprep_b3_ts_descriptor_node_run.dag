@@ -1,11 +1,7 @@
-// src/v4/test/claim/manual/comprep_b3_ts_descriptor_node_run.dag
 // Scope: B3 omni-emission — producer emit → HostTransportDescriptor → Node run (SignedI32Le).
-// Status: wire scaffold (INVARIANTS E-10) — documents the `.dag` call graph for
-//   `run_emit_host` → eval-intercepted `run_host_process` → `runtime_value_signed_i32_le_as_int`.
 //   NOT a v2 `--claim-run` witness: substrate rows are fail-closed in `.dag` and v2 has no
 //   `emit_host_eval` hook. Decode execution: `emit_host_runner` SignedI32Le unit test +
 //   `emit_host_eval.rs` `b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five`.
-//   Process-spawn (`run_host_process` / tsc+node) is DORMANT until T-22 substrate eval (gunbc#4750, supersedes #4674).
 
 module v4.test.claim.manual.comprep_b3_ts_descriptor_node_run
 

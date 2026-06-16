@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/timeseries_passive_map_fold_anchor.dag
 // Scope: S1 compile + behavior anchor — TimeSeriesSignal + R/L/C map/fold step operators.
 // Status: compile-only IN-B anchor; validates std.timeseries_signal step operators wire through v4.
 

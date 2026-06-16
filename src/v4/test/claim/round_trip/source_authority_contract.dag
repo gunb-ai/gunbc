@@ -1,4 +1,3 @@
-// src/v4/test/claim/round_trip/source_authority_contract.dag
 // Scope: Branch H.7.2 contract visibility claim plus Branch B-min Bmin.4-Bmin.5
 // canonical `.dag` source parse/print law.
 // Status: shape claim; executable source-law receipts require substrate ParseTree/ResolvedTree

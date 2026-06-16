@@ -1,19 +1,10 @@
-// src/v4/test/claim/manual/cross_language_add_python_to_typescript.dag
 // Scope: end-to-end cross-language matrix claim — the executable form of the N+M-not-N×M thesis.
 //   Walks the add slice from Python source through the canonical Node core toward TypeScript. The
-//   ingest BRIDGE is realized (#4801); inhabitant neutralization is realized via std_projection
-//   (std/inhabitant_neutralization.dag) and wired into cross_language_compile.
-//
 // Chain (Python source IN -> TypeScript source OUT):
 //   1. Python source text -> ParseTree            (PROVEN: python_mvp1_grammar_parse_fixture, ~627s)
-//   2. ParseTree -> emit-side core node           ┐ REALIZED (#4801): v4.compiler.ingest
-//   3. core node -> canonical IR (source-grounded)┘ parse_tree_to_target_model_bridge — FRONTIER-keyed
-//                                                    forward selection (no stamp trust) + infer + coerce.
 //   4. core -> TS source (cross-language emit)      REALIZED: neutralize_core_for_target rewrites
 //                                                    python `int` -> TS `number` via std_projection_additive_numeric
 //                                                    before infer -> emit; proven hermetically and on real tree (~627s).
-//   5. TS emit -> executable real-IO receipt      (PROVEN: ts_effect_io_emit_holds, #4778 path)
-//
 // Links 2-3 are the forward interpreter bridge: it selects the source-model row whose production
 // token-spine matches the parse FRONTIER (never trusting the stamped emitted), and grounds it through
 // infer/coerce to the canonical core. TWO DISTINCT by-execution proofs, neither over-claimed: the
@@ -22,10 +13,6 @@
 // HEAVY `…chain_status_holds`, which APPLIES `cross_language_compile` to the REAL live-parsed nested
 // python tree (~627s; a documented receipt, NOT per-merge) so it goes RED if bridge or neutralization
 // regresses on real python trees.
-//
-// The bridge machinery lives in v4.compiler.ingest (small closure, #4801); this file composes it with
-// the existing parse/emit ends and declares claim-local matrix data — no language-model row and no
-// per-(source,target) arm: a new language greens by authoring rows, not by editing here.
 
 module v4.test.claim.manual.cross_language_add_python_to_typescript
 
@@ -35,12 +22,9 @@ module v4.test.claim.manual.cross_language_add_python_to_typescript
 import v4.test.claim.manual.python_mvp1_grammar_claim {
   python_mvp1_grammar_parse_fixture
 }
-// Link 5 (TS emit -> executable real-IO receipt), the #4778 effect-emit path.
 import v4.test.claim.manual.typescript_effect_io_emit {
   ts_effect_io_emit_holds
 }
-// Links 2-3 (ParseTree -> emit-side core node -> canonical IR), now REALIZED (#4801). The bridge fn
-// is exercised hermetically (real bridge applied, sub-second) by ingest_bridge_realized.
 import v4.test.claim.manual.ingest_bridge {
   ingest_bridge_realized
 }
@@ -89,8 +73,6 @@ import v4.std.verification {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The bridge link, as a typed check object (self_host.dag pattern) — now REALIZED (#4801).
-//
 // `ParseTreeToTargetModelBridge` is the structural fact: "the ParseTree produced by parsing
 // <source> can be carried to the emit-side core node that <target>'s TargetModel serializes."
 // v4.compiler.ingest.parse_tree_to_target_model_bridge realizes it by FRONTIER-keyed forward
@@ -134,8 +116,6 @@ data cross_language_emit_inhabitant_neutralization_not_realized: Symbol = cross_
 // upstream-of-the-bridge gap — reported, not hidden.
 data go_add_parse_production_currently_rejects: Symbol = go_add_parse_production_currently_rejects
 
-// Bridge witness (#4801 REALIZED) — feature:parse-tree-to-target-model-bridge ·
-//   consumer:cross-language-emit-matrix.
 // Holds iff the forward interpreter is realized — proven HERMETICALLY (real bridge applied,
 // sub-second) by `ingest_bridge_realized`: frontier recovery + canonical IR + perturbed-frontier
 // RED + ambiguity/unstamped fail-closed. If the bridge regresses, this falls back to fail-closed at
@@ -170,7 +150,6 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
 // Construction-only named check object (the alias is the documented public name).
 data cross_language_python_to_typescript_bridge_check: ParseTreeToTargetModelBridgeCheck = parse_tree_to_target_model_bridge_scaffold()
 
-// #4791 flip: the bridge is REALIZED, so the witness Holds (was Violates) — sub-second/hermetic.
 test fn parse_tree_to_target_model_bridge_realized() -> Bool {
   match parse_tree_to_target_model_bridge_scaffold() {
     Holds { value: _ } => true
@@ -224,7 +203,6 @@ fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Composed end-to-end status witness — HEAVY (real parse), slow-lane only, NOT BoolWitnessed.
-//
 // This is the genuine end-to-end DISCRIMINATING receipt: the REAL python source parses (link 1, ~627s)
 // and the resulting ParseTree FLOWS INTO cross_language_compile (links 2-4): bridge forward-selects on
 // the REAL frontier, neutralize rewrites inhabitants, infer + emit produce TS source. The bridge
@@ -246,7 +224,6 @@ fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
           python_core == python_mvp1_emitted_add_fn_node()
             // Link 4: full cross_language_compile on real tree (bridge + neutralize + infer + emit).
             && cross_language_compile_on_real_tree_holds(parse_tree: python_parse_tree)
-            // Link 5: TypeScript emit -> executable real-IO receipt source (#4778 path).
             && ts_effect_io_emit_holds()
         Rejected { diagnostics: _ } => false
       }
@@ -291,11 +268,9 @@ fn cross_language_chain_discriminates_on_real_tree() -> Bool {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The matrix shape — (source_language, target_language) cells as claim data.
-//
 //   ChainProven                 — full source->core->target chain proven by execution.
 //   ChainFailsClosedAtCheck     — chain breaks at one named typed check (no shim).
 //   ChainSourceNotModeled       — the source-language parse direction is not modeled yet.
-//
 // This is data, not a doc: a List<CrossLanguageEmitMatrixRow> the corpus can iterate.
 // Per-cell status reflects what is proven by execution in this repo today.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,7 +295,6 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     target_language: ^typescript,
     status: ChainProven {}
   },
-  // python -> ts: PROVEN. Bridge carries python ParseTree to source-grounded core (#4801, CLOSED).
   //   Neutralization combinator (std/inhabitant_neutralization.dag) rewrites python `int` -> TS
   //   `number` via std_projection_additive_numeric; cross_language_compile exercises the full
   //   composition on the real parse tree (~627s by-execution receipt in chain_status_holds).
@@ -369,8 +343,6 @@ data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim 
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-//
 // The registered executable witness is the FAST, hermetic assertion this file uniquely composes —
 // `parse_tree_to_target_model_bridge_realized` (sub-second): the typed bridge check now Holds,
 // driven by `ingest_bridge_realized` (the real bridge fn applied to a hermetic parse tree:
@@ -385,5 +357,3 @@ data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim 
 // source (ChainProven for python→ts matrix cell); the companion
 // `cross_language_chain_discriminates_on_real_tree` shows the recovery is frontier-driven
 // (off-frontier -> fail closed) on the real tree, not fixture-only. Its executed result is captured
-// as a documented by-execution receipt in the PR — reported, not self-excluded — for the #4785
-// corpus-gate slow-lane enrollment decision (a parent-coordinated, add-only policy call).

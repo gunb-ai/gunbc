@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_affected_set/irt1_excluded_propagation_receipt.dag
 // Scope: IRT-1 leaf — excluded-dimension propagation receipt.
 // Observation: ReExecFrontier.decisions is a std Map = PartialFunction with no decidable
 // structural `==`; the receipt observes the frontier by application (frontier_decision_matches)

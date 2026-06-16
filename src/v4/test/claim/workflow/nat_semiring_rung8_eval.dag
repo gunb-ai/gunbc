@@ -1,6 +1,3 @@
-// src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag
-// Scope: W3.6 rung-8 corpus eval — phase1/nat_semiring full law roster (6 EqualsClaim + 1 DiagnosticClaim).
-// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (zero Deferred acceptance).
 
 module v4.test.claim.workflow.nat_semiring_rung8_eval
 

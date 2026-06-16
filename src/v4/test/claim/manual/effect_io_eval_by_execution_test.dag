@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/effect_io_eval_by_execution.dag
 // Scope: V4-EFFECTS-IO gate — eval-observed ReadResource→WriteResource round-trip through
 //   declare-per-claim EffectIoEvalBundle + inject-per-run handler binding (05_eval consumer).
 // Wave-2 scope: proves handler resume + receipt append on a single fixture slot (locator identity

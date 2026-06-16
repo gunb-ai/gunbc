@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/eval_runtime_mvp.dag
-// Scope: T-22 MVP-2 receipt — eval consumes runtime interpretation over arbitrary input Node subgraph.
 // Status: manual runtime interpretation receipt.
 
 module v4.test.claim.manual.eval_runtime_mvp

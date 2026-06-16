@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/refinement_ordered_iteration.dag
 // Scope: behavior receipt for refine_ordered_iteration — ordered classifier accepts; unordered classifier rejects with naming_the_leak.
-// Status: T-25-core acceptance witness; companion to refinement.dag PR-3.
 
 
 module v4.test.claim.manual.refinement_ordered_iteration

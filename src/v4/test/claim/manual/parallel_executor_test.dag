@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/parallel_executor.dag
 // Scope: parallel executor fixture over scheduler runnable-frontier batches.
 // Status: manual fixture until generated TestClaim execution lands.
 
@@ -187,6 +186,3 @@ test fn parallel_executor_claims_hold() -> Bool {
     && parallel_executor_layer_projection_reuses_frontiers
 }
 
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `parallel_executor_claims_hold` so glob discovery finds the witness without the central roster.

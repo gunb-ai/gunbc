@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/program_partition_comprep_body_emit.dag
 // Scope: Wave A keystone (E-10) — emit_for_target on Arrow.body Behavior subtree only;
 //   whole COMPREP add-fn stays inferred once; partition API is the consumer.
 // Status: execute-the-carrier via `gunbc run --claim-run`.
@@ -162,7 +161,6 @@ test fn program_partition_whole_program_emit_matches_direct() -> Bool {
   }
 }
 
-// Section→segment adapter is fail-closed (api-review #4792 fix).
 test fn program_partition_section_adapter_unavailable_rejects() -> Bool {
   match program_segment_from_section_unavailable() {
     Rejected { diagnostics: _ } => true

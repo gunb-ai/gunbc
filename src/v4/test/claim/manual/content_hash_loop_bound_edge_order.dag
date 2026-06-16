@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/content_hash_loop_bound_edge_order.dag
 // Scope: B1-CANON receipt — content_hash is invariant under Loop loop_bound_edge list placement.
-// Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.content_hash_loop_bound_edge_order
 

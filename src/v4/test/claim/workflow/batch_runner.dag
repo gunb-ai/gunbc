@@ -1,10 +1,8 @@
-// src/v4/test/claim/workflow/batch_runner.dag
 // Scope: near-term CI dogfood — the v4.workflow.executor .dag is the batching
 // AUTHORITY for running the v4 claim suite in parallel batches. The host
 // transport (src/v2/stage0/src/bin/claim_executor.rs) consumes the batches this
 // module projects; it does NOT re-derive grouping/ordering. Adding a dependency
 // here (or a node) re-batches the suite with zero host change.
-//
 // Each suite node maps to one real (entry, function) claim witness. The executor
 // orders them by dependency frontier: `bre_core_node` gates the two derived
 // claims, so batch 1 = [core] runs before batch 2 = [a, b].
@@ -192,8 +190,6 @@ fn bre_empty_suite_yields_no_batches() -> Bool {
 // through `claim_executor --plan-function bre_degenerate_empty_plan` and REQUIRES a
 // non-zero exit — exercising the orchestration fail-closed guard (a zero-batch plan is
 // never a successful run) through a real `.dag` consumer, with no temp-tree mutation and
-// no shell scaffold. This restores the host-level degenerate receipt the old inline-python
-// "empty the suite nodes and re-run" perturb proved, model-first.
 fn bre_degenerate_empty_plan() -> List<List<ClaimRef>> {
   []
 }

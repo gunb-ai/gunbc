@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/refinement_nonempty_list.dag
 // Scope: acceptance witness — NonEmptyList resolves as a List refinement Refined<List<T>>, not a separate carrier.
-// Status: T-25-core acceptance witness; eval T-22.
 
 
 module v4.test.claim.manual.refinement_nonempty_list

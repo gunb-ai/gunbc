@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
-// Scope: T-21 worked claim — second mark_excluded on the same key appends to Excluded.rest.
 // Observation: ReExecFrontier.decisions is a std Map = PartialFunction with no decidable
 // structural `==`; the receipt observes the frontier by application (frontier_decision_matches)
 // and compares the resolved FrontierDecision, never whole-frontier `==`.

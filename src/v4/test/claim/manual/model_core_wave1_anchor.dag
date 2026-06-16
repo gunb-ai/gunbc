@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/model_core_wave1_anchor.dag
-// Scope: T-33 wave-1 ModelCore payload contract — Bool primitive, BooleanAlgebra inhabitance, law obligations, and fail-closed unbound axes.
-// Status: manual T-33 acceptance receipt.
 
 module v4.test.claim.manual.model_core_wave1_anchor
 

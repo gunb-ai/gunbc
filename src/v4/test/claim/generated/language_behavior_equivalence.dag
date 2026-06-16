@@ -1,6 +1,3 @@
-// src/v4/test/claim/generated/language_behavior_equivalence.dag
-// Scope: T-19 LanguageBehaviorEquivalence — testgen-emitted claims with I/O mock + frozen snapshot runner receipts.
-// Status: generated corpus — claims are testgen_emit output (not parallel literals); true codegen dissolves this module.
 
 module v4.test.claim.generated.language_behavior_equivalence
 

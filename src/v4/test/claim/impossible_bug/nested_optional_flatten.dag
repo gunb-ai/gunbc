@@ -1,10 +1,5 @@
-// src/v4/test/claim/impossible_bug/nested_optional_flatten.dag
-//
 // Scope: TestClaim — nested-optional flatten impossible-bug class (R2+). Option<Option<T>> accessor patterns that require hand-unwrapping in normal languages are impossible by construction in v4 via cardinality refinement.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §381-383 R2+ + std/cardinality.dag
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.nested_optional_flatten

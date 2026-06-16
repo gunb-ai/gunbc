@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/dissolution_subsumption_reverification.dag
 // Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
 // Status: manual receipt over the canonical Set<DiffId> subsumption carrier.
 
@@ -78,12 +77,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, Witness }
-// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner owns report authority rows for MechanicalReverification.
 type MechanicalReverificationReportAuthority
   = LensCiTestClaimRunner
   | ReportAuthorityUnavailable
 
-// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits TestClaim execution status for MechanicalReverification rows.
 type MechanicalReverificationExecution
   = Completed { report_authority: MechanicalReverificationReportAuthority }
   | Failed
@@ -98,7 +95,6 @@ type MechanicalReverificationRun {
   findings_after: Set<DiffId>
 }
 
-// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits typed MechanicalReverification diagnostics.
 type MechanicalReverificationError
   = NonMechanicalRow
   | TestClaimMismatch { expected: TestClaimId, observed: TestClaimId }
@@ -107,13 +103,11 @@ type MechanicalReverificationError
   | SubsumedFixMissingBefore { fix: DiffId }
   | SubsumedFixStillPresentAfter { fix: DiffId }
 
-// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits Verified/NotVerified/Unverifiable substrate data.
 type MechanicalReverificationVerdict
   = Verified
   | NotVerified { diagnostic: MechanicalReverificationError }
   | Unverifiable { diagnostic: MechanicalReverificationError }
 
-// 🟡 coproduct dissolution — local manual report matcher; dissolve-on:.dag runner emits complete set-difference diagnostics.
 type OptionalDiffId
   = DiffIdAbsent
   | DiffIdPresent { value: DiffId }

@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/bootstrap_footprint_anchor.dag
-// Scope: T-20-fill receipt — bootstrap_footprint Holds on canonical projection inputs, Violates fail-closed otherwise; closure_hash matches B1 content_hash of projection closure.
-// Status: manual T-20 acceptance receipt.
 
 module v4.test.claim.manual.bootstrap_footprint_anchor
 

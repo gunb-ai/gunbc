@@ -1,12 +1,9 @@
-// src/v4/test/claim/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag
 // Scope: B1 unit-modeling lens — FAIL/flag witness. A Named unit-token field
 //        (`ram_bytes`) typed as a bare kernel `Int` leaf MUST be flagged
 //        (gate Rejected). Pairs with modeled_unit_field_passes.dag (same field
 //        name, attached to a carrier → Accepted) — the two differ ONLY in the
 //        leaf type, so together they prove the lens discriminates on the type,
 //        not the name alone.
-// Status: scaffold — compile-only until the build-infra greens and the v4 claim
-//         harness executes it (then this is the lens's by-execution FAIL sign).
 
 module v4.test.claim.lens_unit_modeling.flat_scalar_unit_leaf_flagged
 

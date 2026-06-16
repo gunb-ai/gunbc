@@ -1,6 +1,4 @@
-// src/v4/test/claim/rung_3_4_common.dag
 // Scope: shared rung 3–4 TestClaim subject + emit-host target wiring (joint spec §4.2 / §5).
-// Status: W3 roster substrate — run_test_claim_emit_vs_eval rows; host transport Deferred until W2.
 
 module v4.test.claim.rung_3_4_common
 

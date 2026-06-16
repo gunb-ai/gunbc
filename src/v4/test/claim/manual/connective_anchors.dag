@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/connective_anchors.dag
 // Scope: Manual TestClaim anchors for non-Atom connective stubs (K-1; Atom deferred).
-// Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.connective_anchors
 

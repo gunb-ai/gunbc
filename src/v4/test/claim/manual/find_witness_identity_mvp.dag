@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/find_witness_identity_mvp.dag
 // Scope: Wave-4-A identity-MVP behavior anchors for find_witness / verify_witness / coercion_fold.
-// Status: manual behavior receipt for exact-structural-preservation-identity-mvp scaffold.
 
 
 module v4.test.claim.manual.find_witness_identity_mvp

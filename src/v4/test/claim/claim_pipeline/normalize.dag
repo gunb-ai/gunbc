@@ -1,6 +1,3 @@
-// src/v4/test/claim/claim_pipeline/normalize.dag
-// Scope: G3.1 — compiler spine stage `03_normalize` substrate + T-38 claim row.
-// Status: W2.5 first spine claim — compile anchor + minimal normalize acceptance on void sugar tree.
 
 module v4.test.claim.claim_pipeline.normalize
 
@@ -52,8 +49,6 @@ fn spine_normalize_service_parse_tree() -> Node {
 }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
-// dissolve-on: T-22 claim runner evaluates normalize Outcome<ParseTree> directly without Bool projection.
 fn spine_normalize_accepts_well_formed_sugar() -> Bool {
   match normalize(parse_tree: spine_normalize_service_parse_tree()) {
     Accepted { value: _, diagnostics: _ } => true

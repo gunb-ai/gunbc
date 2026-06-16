@@ -1,10 +1,4 @@
-// src/v4/test/claim/manual/english_emit_add.dag
 // Scope: English emit-target receipt — emit(add) renders the canonical controlled-English
-//   prose through the dissolved 06_translate fold, and the prose round-trips: tokenize with
-//   the UNCHANGED wave-2a English lex, parse as a six-sentence paragraph whose sentences are
-//   the UNCHANGED wave-2a sentence productions, and recover the emitted node (structural
-//   identity). Mirrors mvp1_python_add_translate.dag (emit path) + mvp1_dag_add_round_trip.dag
-//   (round-trip shape); the ingest direction here is the text-level tokenize+parse path.
 // Anchor: §3 emit-breadth MoA — a new target is data rows through the same fold; operator
 //   design steer — rigid legalese grammar, round-trip is the acceptance.
 
@@ -85,7 +79,6 @@ fn english_emit_add_canonical_grounding(
   }
 }
 
-// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind gunbc#4760 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding.
 fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
     Holds {
@@ -266,6 +259,3 @@ test fn english_emit_add_emit_ingest_round_trip_holds() -> Bool {
     && english_emit_add_grammar_inverse_holds()
     && english_emit_add_ingest_round_trip_holds()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim markers.
-// Co-located with the witnesses so glob discovery finds them without the central roster.

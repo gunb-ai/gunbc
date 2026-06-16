@@ -1,8 +1,5 @@
-// src/v4/test/claim/algebra_laws/field_patch_monoid.dag
 // Scope: TestClaim corpus for FieldPatch<T> right-biased optional-value patch monoid laws.
 // Consumes: v4.std.patch v4.std.node v4.std.verification.
-// Status: T-4.16 follow-on behavior receipts; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 module v4.test.claim.algebra_laws.field_patch_monoid
 

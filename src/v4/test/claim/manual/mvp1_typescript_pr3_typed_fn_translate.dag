@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/mvp1_typescript_pr3_typed_fn_translate.dag
-// Scope: T-11 PR-3 — typed function decl grammar-inverse round-trip (G3+ depth).
-// Status: mirrors mvp1_typescript_record_task_translate.dag; T-22 eval runner deferred.
 
 module v4.test.claim.manual.mvp1_typescript_pr3_typed_fn_translate
 

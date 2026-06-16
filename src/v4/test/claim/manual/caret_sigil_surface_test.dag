@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/caret_sigil_surface.dag
 // Scope: witness for E2 ^-sigil surface syntax — `^IDENT` opaque Symbol literal
 //        and `^(Expr)` discriminant sugar (parse-resolved; never bare `^v` for values).
 // Status: claim-run witness (fn () -> Bool).
@@ -26,6 +25,3 @@ test fn caret_sigil_surface_witness_holds() -> Bool {
 
   spelling_is_opaque && sugar_matches_intrinsic && sugar_distinct_across_arms
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `caret_sigil_surface_witness_holds` so glob discovery finds the witness without the central roster.

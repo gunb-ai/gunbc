@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/sg2_typescript_type_expression_projection.dag
-// Scope: SG-2 TypeScript falsification — projection coverage beyond L0 row-2 (Conj): Instantiation, Arrow, Disj.
 // Status: structural + serialize receipts; shared carrier in target_model.dag, row in typescript.dag.
 
 module v4.test.claim.manual.sg2_typescript_type_expression_projection

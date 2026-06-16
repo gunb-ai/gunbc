@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_add_body_producer.dag
 // Scope: COMPREP wave-1 keystone receipt — body producer attaches Behavior sub-DAG on Arrow.body.
 // Status: producer well-formedness + discriminating body-shape witness (operand order flips attachment).
 

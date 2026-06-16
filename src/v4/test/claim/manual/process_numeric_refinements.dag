@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/process_numeric_refinements.dag
 // Scope: POSIX process numeric refinement regression witnesses.
-// Status: T-25-core process refinement consumer acceptance witness; eval T-22.
 
 module v4.test.claim.manual.process_numeric_refinements
 

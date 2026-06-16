@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_ownership/resource_dependency.dag
-// Scope: T-13 worked claim — ResourceDependsOn classifies as RequiresAccessWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
-// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 
 module v4.test.claim.lens_ownership.resource_dependency

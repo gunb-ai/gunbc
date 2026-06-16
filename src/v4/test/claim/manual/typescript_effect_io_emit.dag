@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/typescript_effect_io_emit.dag
 // Scope: PR2 executable-receipt source — emit applied ReadResource/WriteResource effects to
 //   concrete TypeScript call-expression text through the value-expression effect-apply projection
 //   arm (target_value_expression_effect_apply → target_value_expression_to_concrete_tokens →
@@ -6,7 +5,6 @@
 //   executable receipt (src/v2/tests), which binds __gunbc_effect_read / __gunbc_effect_write to
 //   fs-backed shims and runs the program under node to prove a real write→read file round-trip.
 // Status: model-first day-goal proof — emitted TypeScript that performs real IO.
-//
 // The effect-kind discriminant is supplied as the bare Symbol literal (^WriteResource /
 // ^ReadResource), which equals discriminant(v: WriteResource {}) by identity, so this witness
 // reuses the v4.std.runtime EffectRequestKind vocabulary WITHOUT importing runtime (M9; no

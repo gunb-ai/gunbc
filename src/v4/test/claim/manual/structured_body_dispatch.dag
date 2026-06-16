@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/structured_body_dispatch.dag
 // Scope: by-execution receipt for the structured-Behavior dispatch surface in
 // compiler/03_body_producer.dag (body_producer_dispatch_structured_body /
 // produce_arrow_with_structured_body) — slice (ii) of the normalize-to-dispatch dissolution

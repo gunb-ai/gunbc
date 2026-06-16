@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_affected_set/node_precision.dag
 // Scope: affected-set reading claim for Node-level edit/rebuild precision.
-// Status: T-21 claim data; runner execution lands with generated TestClaim harness.
 
 
 module v4.test.claim.lens_affected_set.node_precision

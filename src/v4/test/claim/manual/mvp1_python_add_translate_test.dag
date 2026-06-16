@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/mvp1_python_add_translate.dag
-// Scope: MVP-1 T-10/T-11 receipt — grammar-inverse compile-inferred accepts for python_mvp1 add-fn tree.
-// Status: T-11 Python slice — mirrors mvp1_rust_add_translate.dag; authority_source_text poisoned on compile path.
 
 module v4.test.claim.manual.mvp1_python_add_translate
 
@@ -165,7 +162,6 @@ fn mvp1_python_canonical_grounding(
   }
 }
 
-// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind gunbc#4760 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding.
 fn mvp1_python_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == mvp1_python_emitted_root {
     Holds {
@@ -279,7 +275,6 @@ test fn mvp1_python_emit_add_fn_accepts_holds() -> Bool {
 
 data mvp1_python_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_python_compile_inferred_accepts()
 
-// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind gunbc#4757 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_python_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_python_emit_receipt {
@@ -301,7 +296,6 @@ fn mvp1_python_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind gunbc#4757 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_python_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_python_compile_inferred_receipt {
@@ -352,8 +346,6 @@ data claim_mvp1_python_compile_inferred_add_fn_accepts: TestClaim = CompilesClai
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
-// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind gunbc#4757 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_python_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_python_emit_add_fn_accepts,
   context: infer_receipt_context(),
@@ -373,8 +365,6 @@ data run_mvp1_python_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRu
   )
 }
 
-// T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
-// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind gunbc#4757 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_python_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_python_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
@@ -426,6 +416,3 @@ data run_mvp1_python_serialize_rejects_missing_translation_rules: TestClaimRun<N
     at: mvp1_python_emitted_root
   )
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `mvp1_python_emit_add_fn_accepts_holds` so glob discovery finds the witness without the central roster.

@@ -1,8 +1,5 @@
-// src/v4/test/claim/language_model/go_r2b.dag
-// Scope: Phase 1 R2b — go.dag typed integer overflow truncation vs go run.
 // Status: modeled claim + runtime fixture pair; temporary host bridge
 // `src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs`
-// exercises go run until T-22 run_target_verification owns this row.
 
 module v4.test.claim.language_model.go_r2b
 

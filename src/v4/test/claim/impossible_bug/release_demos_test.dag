@@ -1,7 +1,5 @@
-// src/v4/test/claim/impossible_bug/release_demos.dag
 // Scope: release impossible-bug demos over v4 lens/probe surfaces.
 // The witnesses below capture the release-drift evidence and the transport-drift
-// metadata projections; the distributed marker is the durable registration form.
 
 module v4.test.claim.impossible_bug.release_demos
 
@@ -119,6 +117,3 @@ test fn witness_impossible_bug_release_demos_are_v4_claims_caught() -> Bool {
     release_idempotency_claims_are_class_rejections() &&
     release_transport_claims_are_class_rejections()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_impossible_bug_release_demos_are_v4_claims_caught` so glob discovery finds the witness without the central roster.

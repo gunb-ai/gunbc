@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag
 // Scope: REGISTRATION witness (PASS arm) — proves unit_modeling_lens, now in
 //        always_required_lenses(), does NOT false-positive a correctly-modeled field.
 //        The SAME `ram_bytes` field attached to a `ByteSize` carrier (not a bare Int leaf)
@@ -6,7 +5,6 @@
 //        Pairs with unit_modeling_blocked_via_always_required_lenses.dag (FAIL arm) — the
 //        two differ ONLY in the field's resolved leaf type, so together they prove the
 //        registered lens discriminates on the modeled type, not the field name alone.
-// Status: scaffold — compile-only until the v4 claim harness executes it.
 
 module v4.test.claim.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses
 

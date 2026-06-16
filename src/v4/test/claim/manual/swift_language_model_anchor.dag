@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/swift_language_model_anchor.dag
-// Scope: T-4 compile anchor — swift.dag LanguageModel and ModelCore wave-1 and wave-2b.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.swift_language_model_anchor

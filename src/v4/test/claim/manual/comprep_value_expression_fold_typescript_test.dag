@@ -1,7 +1,5 @@
-// src/v4/test/claim/manual/comprep_value_expression_fold_typescript.dag
 // Scope: T6 (a)-fold vetting — project Arrow.body → TargetValueExpression → ConcreteSyntaxToken
 //   at the 06_value_expression delegate (no 06_translate bodied dispatch).
-// Status: fold-level COMPREP for #4627; full emit-source witnesses live on B3 #4641.
 
 module v4.test.claim.manual.comprep_value_expression_fold_typescript
 

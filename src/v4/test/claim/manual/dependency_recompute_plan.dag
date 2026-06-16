@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/dependency_recompute_plan.dag
 // Scope: Wave-2-A dependency recomputation fixture.
 // Status: manual fixture until generated TestClaim execution lands.
 

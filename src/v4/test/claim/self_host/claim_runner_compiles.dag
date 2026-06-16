@@ -1,6 +1,3 @@
-// src/v4/test/claim/self_host/claim_runner_compiles.dag
-// Scope: scaffold claim — runner shape is parse/compile visible.
-// Status: scaffold-against-contract; execution deferred to future substrate.
 
 module v4.test.claim.self_host.claim_runner_compiles
 

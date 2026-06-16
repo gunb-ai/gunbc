@@ -1,5 +1,3 @@
-// src/v4/test/claim/impossible_bug/suboptimal_complexity.dag
-//
 // Scope: TestClaim — suboptimal-complexity contract violation impossible-bug
 //        class (R1). There is NO `complexity ≤ O(...)` annotation: complexity
 //        IS coercion-cost (THESIS:187 unification), DERIVED by
@@ -13,9 +11,6 @@
 //         CLASS only; THESIS's "annotated complexity ≤ O(n log n)" wording
 //         is annotation shorthand, the modeled mechanism is a structural
 //         cost bound + lens derivation. Also lens/complexity.dag.
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.suboptimal_complexity

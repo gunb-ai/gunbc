@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/sg2_type_expression_projection.dag
-// Scope: SG-2 falsification probe — generic Instantiation projects to Rc<FooBar<X, Y>> without name-keyed branches.
 // Status: structural + serialize receipts; bidirectional delimiter read from same projection row.
 // Phase A (T3): arrow + falsification witnesses rostered (green-on-current). instantiation/conj/sum → Phase B.
 // Serialize follow-on probes: sg2_arrow_projected_serialize_matches_expected / _accepts / _outcome / _reject_head_reason (+ _reject_is_*); measured reject: translate_grammar_relation_row_not_found.
@@ -553,8 +551,6 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_sg2_arrow_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_sg2_arrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
@@ -562,8 +558,6 @@ data unified_claim_sg2_arrow: UnifiedTestClaim = BoolWitnessClaim {
   }
 }
 
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_sg2_projection_falsification_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_sg2_projection_falsification: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",

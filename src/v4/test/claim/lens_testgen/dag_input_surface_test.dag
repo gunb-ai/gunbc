@@ -1,10 +1,4 @@
-// src/v4/test/claim/lens_testgen/dag_input_surface.dag
-// Scope: T-19 lens_testgen activation — generated testgen surface accepts .dag language inputs.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Status: activated — structural EqualsClaim + witness receipts prove scheduled/bootstrap .dag LBE input surface.
-// W4 fold-delete: witness_lens_testgen_schedules_dag_input_surface_green and
-// witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green promoted to
-// v4_roster_pilot (mutation-proven claim-run; retires smoke string-ratchet slices).
 
 module v4.test.claim.lens_testgen.dag_input_surface
 
@@ -170,8 +164,3 @@ data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim
 test data witness_lens_testgen_schedules_dag_input_surface_green: Bool = scheduled_language_behavior_generators_cover_dag_inputs()
 
 test data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool = bootstrap_generator_has_conj_dag_input_surface()
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_lens_testgen_schedules_dag_input_surface_green` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green` so glob discovery finds the witness without the central roster.

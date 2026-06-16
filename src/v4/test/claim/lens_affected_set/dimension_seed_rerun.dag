@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_affected_set/dimension_seed_rerun.dag
-// Scope: T-21 worked claim — changed dimension seeds a Rerun decision at the replacement node.
 // Observation: ReExecFrontier.decisions is a std Map = PartialFunction with no decidable
 // structural `==`; the receipt observes the frontier by application (frontier_decision_matches)
 // and compares the resolved FrontierDecision, never whole-frontier `==`.

@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_fact_density/hollow_alias_no_fact.dag
-// Scope: T-30 worked claim — hollow type alias records NoFact.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_no_fact
 

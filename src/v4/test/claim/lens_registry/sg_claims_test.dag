@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_registry/sg_claims.dag
 // Scope: discriminating claim-run witnesses for lens registry query
-// behavioral receipts migrated from v4_lens_registry_dag_smoke_test.rs string-grep checks.
 // Status: executes lens_registry_v0 query surface; pos+neg discriminates singleton resolution.
 
 module v4.test.claim.lens_registry.sg_claims
@@ -56,8 +54,3 @@ test fn lens_registry_singleton_row_counts_holds() -> Bool {
     && lens_registry_id_resolves(lens_id: StructuralResolution)
     && lens_registry_id_resolves(lens_id: TableDecisionTree)
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_registry_required_ids_resolve_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_registry_singleton_row_counts_holds` so glob discovery finds the witness without the central roster.

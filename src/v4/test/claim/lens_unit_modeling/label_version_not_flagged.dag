@@ -1,12 +1,9 @@
-// src/v4/test/claim/lens_unit_modeling/label_version_not_flagged.dag
 // Scope: B1 unit-modeling lens — LABEL exemption witness. A bare `Int` field
 //        named `version` is a LABEL — addition is meaningless (version 2 + version
 //        3 is nonsense) — so it is not a unit-bearing quantity and is exempt under
 //        the inverted predicate. Pairs with coordinate_index_not_flagged.dag to
 //        cover both closed non-additive kinds (LABEL + COORDINATE), proving the
 //        categorical exemption does not over-flag legitimate bare Ints.
-// Status: scaffold — compile-only until the build-infra greens and the v4 claim
-//         harness executes it.
 
 module v4.test.claim.lens_unit_modeling.label_version_not_flagged
 

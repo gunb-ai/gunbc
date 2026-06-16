@@ -1,13 +1,3 @@
-// src/v4/test/claim/workflow/manual_corpus_eval.dag
-// Scope: T-38-PR2 corpus tally over the manual
-// TestClaim subject roster (run_manual_testclaim_corpus_eval). Mirrors the rung-8 *_eval.dag pattern
-// (branch_dispatch_rung8_eval.dag) so the CI host transport surfaces a modeled per-row verdict
-// tally instead of an opaque blocked_m1_subset string.
-// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (authoring-time witness).
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind gunbc#4765 +
-// docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4. The runner now
-// evaluates each manual subject row through `run_test_claim`; this file gates the resulting
-// CorpusEvalReport with zero Fail and zero Deferred.
 
 module v4.test.claim.workflow.manual_corpus_eval
 

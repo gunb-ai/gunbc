@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/rust_r1.dag
-// Scope: Phase 1 R1 — rust.dag i32 surface spelling vs rustc (docs/planning/v4-leaf-model-verification-2026-05-30.md §7).
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-rust-r1-verify.sh exercises rustc.
 
 module v4.test.claim.language_model.rust_r1
@@ -69,7 +67,6 @@ fn rust_r1_pending_verification_diagnostic() -> Diagnostic {
   }
 }
 
-// Receipt row default fail-closed until host runner overwrites (T-22 bridge follow-on).
 data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
   happy_verdict: verdict_fail(

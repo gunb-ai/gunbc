@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/call_carrier_node_query.dag
 // Scope: by-execution receipt for the canonical call-carrier recognition surface in
 // std/node_query.dag (node_is_callee_reference / node_is_call / call_callee_target /
 // call_argument_targets). Slice-(i) foundation of the normalize-to-dispatch dissolution:

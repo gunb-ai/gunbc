@@ -1,7 +1,4 @@
-// src/v4/test/claim/manual/manual_corpus_roster.dag
-// Scope: T-38 manual TestClaim subject roster (RuntimeValue wedge).
 // Status: wedge — six rows; expand per-A.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind gunbc#4759 — dissolve-on-arrival: item-registry reflection replaces explicit import roster when T-19 testclaim-coproduct-reflection lands.
 
 module v4.test.claim.manual.manual_corpus_roster
 

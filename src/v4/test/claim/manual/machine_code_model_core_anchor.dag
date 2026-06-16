@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/machine_code_model_core_anchor.dag
-// Scope: T-4 compile anchor — machine_code.dag ModelCore wave-1 fact bundles.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.machine_code_model_core_anchor

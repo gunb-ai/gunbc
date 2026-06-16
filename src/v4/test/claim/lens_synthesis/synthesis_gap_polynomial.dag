@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_synthesis/synthesis_gap_polynomial.dag
-// Scope: T-17 worked claim — polynomial-cost node emits non-empty synthesis advisory (DecisionTree gap).
-// Status: T-17 filled.
 
 module v4.test.claim.lens_synthesis.synthesis_gap_polynomial
 

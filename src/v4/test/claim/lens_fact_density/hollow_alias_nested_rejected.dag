@@ -1,7 +1,3 @@
-// src/v4/test/claim/lens_fact_density/hollow_alias_nested_rejected.dag
-// Scope: T-30 enforcement gate claim — validate_then_compile rejects a hollow alias nested under a child edge,
-//        proving always_required_lenses() is enforced across the full inferred subtree.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_nested_rejected
 

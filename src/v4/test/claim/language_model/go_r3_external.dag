@@ -1,8 +1,5 @@
-// src/v4/test/claim/language_model/go_r3_external.dag
-// Scope: Phase 1 R3-external — Symbol atom realization projection vs go build.
 // Status: modeled claim + fixture pair; temporary host bridge
 // `src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs`
-// exercises go build until T-22 run_target_verification owns this row.
 
 module v4.test.claim.language_model.go_r3_external
 

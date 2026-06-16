@@ -1,6 +1,3 @@
-// src/v4/test/claim/manual/test_claim_cache_digest_sensitivity.dag
-// Scope: T-22 cache receipt — interpretation_hash distinguishes facts diagnostics and Node evaluator_input.
-// Status: CompilesClaim receipts; execution deferred until T-22 runner subsumes manual rows.
 
 module v4.test.claim.manual.test_claim_cache_digest_sensitivity
 

@@ -1,7 +1,4 @@
-// src/v4/test/claim/manual/infer_algebra_ref_grounding_anchor.dag
 // Scope: Option B behavior receipts — algebra_ref_is_grounded guard in canonical_grounding_from_inferred_facts.
-// Status: compile-only anchor; execution deferred to T-22 runner bridge.
-// Anchor: gunbc#4760 — dissolves when constraint solver reads ModelCore.inhabitance.
 
 module v4.test.claim.manual.infer_algebra_ref_grounding_anchor
 
@@ -76,5 +73,4 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
 }
 
 // Behavior receipt: canonical_grounding_from_inferred_facts rejects when algebra is a bare Atom.
-// T-22 runner verifies this is Rejected { reason: infer_algebra_ref_ungrounded }.
 data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

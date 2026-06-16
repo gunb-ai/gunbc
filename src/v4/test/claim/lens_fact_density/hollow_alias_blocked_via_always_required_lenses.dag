@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag
-// Scope: T-30 enforcement gate claim — always_required_lenses() (the list validate_then_compile prepends) blocks a hollow alias carrier.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_blocked_via_always_required_lenses
 

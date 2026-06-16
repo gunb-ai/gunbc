@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/outcome_diagnostics_eq.dag
 // Scope: Outcome diagnostic equality preserves tail multiplicity; merge threads accepted diagnostics.
-// Status: Wave-2-BC3 behavior anchor; eval T-22.
 
 
 module v4.test.claim.manual.outcome_diagnostics_eq

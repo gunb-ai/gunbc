@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_application/substitute_at_ambiguous_duplicate_name.dag
-// Scope: T-23 worked claim — duplicate named edges fail-closed in substitute_at.
 // Status: compile-only ratchet for D1 ambiguous substitution rejection.
 
 module v4.test.claim.lens_application.substitute_at_ambiguous_duplicate_name

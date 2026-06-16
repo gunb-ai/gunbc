@@ -1,4 +1,3 @@
-// src/v4/test/claim/runtimes/effect_io_handler_claims.dag
 // Scope: Wave-2 M-E2 gate — per-backend ReadResource→WriteResource round-trip via
 //   EffectHandlerBinding dispatch (single default locator per backend; not multi-resource
 //   discrimination). Pure/test + host bundle wiring. Executable Bool witnesses for --claim-run.

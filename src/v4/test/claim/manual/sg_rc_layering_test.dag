@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/sg_rc_layering.dag
-// Scope: SG-RC-LAYERING falsification F1–F6 per docs/planning/v4-sg-rc-layering-worksheet-2026-05-31.md §4.
 // Status: structural receipts — per-use-site reference_layer drives type + value emit together.
 
 module v4.test.claim.manual.sg_rc_layering
@@ -527,8 +525,3 @@ data claim_sg_rc_ctor_spellings: TestClaim = EqualsClaim {
   rhs: sg_rc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `sg_rc_f6_round_trip_owned` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `sg_rc_value_rc_wrap_tagged` so glob discovery finds the witness without the central roster.

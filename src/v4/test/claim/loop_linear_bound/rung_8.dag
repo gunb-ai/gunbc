@@ -1,6 +1,4 @@
-// src/v4/test/claim/loop_linear_bound/rung_8.dag
 // Scope: phase4/loop_linear_bound rung-8 TestClaimRun roster — full fixture claim corpus (§7).
-// Status: W3.6 — T-22 eval → TestClaimRun via run_test_claim (single authority for all claim kinds).
 
 module v4.test.claim.loop_linear_bound.rung_8
 

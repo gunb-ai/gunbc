@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/loop_demand_driven_eval.dag
 // Scope: demand-driven eval_loop_node — loop body child is not folded; step_loop runs on spine only.
 
 module v4.test.claim.manual.loop_demand_driven_eval

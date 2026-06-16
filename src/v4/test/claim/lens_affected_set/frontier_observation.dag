@@ -1,4 +1,3 @@
-// src/v4/test/claim/lens_affected_set/frontier_observation.dag
 // Scope: shared observation helper for affected_set frontier receipts.
 // A ReExecFrontier carries `decisions: Map<ExclusionKey, FrontierDecision>`, and
 // std Map IS a PartialFunction (v4.std.collection: `lookup: fn(K) -> Witness<V>`).

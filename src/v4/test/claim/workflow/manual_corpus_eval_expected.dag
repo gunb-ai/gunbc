@@ -1,10 +1,7 @@
-// src/v4/test/claim/workflow/manual_corpus_eval_expected.dag
-// Scope: T-38 tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
 // Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
 // `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
 // Executed-row drift gates project TestClaimRun verdict+reason via modeled witnesses (--claim-run).
 // HostRejected arm retained for future pre-TestClaimRun transport rows (none in the 6-row roster today).
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind tracked-expectation gate design (operator GO 2026-06-05).
 
 module v4.test.claim.workflow.manual_corpus_eval_expected
 
@@ -142,10 +139,6 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
     observation: ExecutedFail,
-    // StructuralEqualsClaim (PR #4471): no longer a harness reject (eval_rejected_type_node);
-    // now an HONEST structural mismatch — lhs receipt (unverifiable) != rhs (verified). The
-    // residual red is a model finding (the receipt produces the wrong verdict), not a
-    // subsumption-tree-eval substrate gap.
     primary_reason: eval_structural_equals_mismatch,
     dissolution_target: ^dissolution_target_subsumption_tree_eval
   }

@@ -1,10 +1,7 @@
-// src/v4/test/claim/manual/comprep_branch_lazy_arm_eval_acceptance.dag
 // Scope: Q-B3 lazy-arm fix carrier acceptance — SPINE-REACHED control only (05_eval ruling
 // adhoc-edb982e2-4a4). Witness reaches eval_runtime_control_node / eval_branch_node_eval on
 // body-root Branch; does NOT cover control in data-flow arg position (eval_runtime_node_via_
 // data_flow_fold — 🟡 COMPREP-EVAL-NESTED-ARG-CONTROL; follow-on carrier required).
-// Gate-opening claim (#4738 merge): §2 spine-shaped body work (M0-B1..B3 Bind/Loop bodies via
-// eval_runtime_node). NOT expression-position control (e.g. Branch as Transform positional arg).
 // Assertions per combined Branch (one per direction):
 //   (1) untaken arm never interpreted (divergent atom on real eval path);
 //   (2) chosen counted arm interpreted exactly once (allocate_literal touch counter).

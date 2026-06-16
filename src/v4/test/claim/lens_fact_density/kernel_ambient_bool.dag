@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_fact_density/kernel_ambient_bool.dag
-// Scope: T-30 worked claim — kernel-ambient bool atom classifies as KernelAmbientAtom.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.kernel_ambient_bool
 

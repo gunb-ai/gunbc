@@ -1,6 +1,3 @@
-// src/v4/test/claim/claim_pipeline/infer.dag
-// Scope: G3.3 — compiler spine stage `04_infer` substrate + T-38 claim row.
-// Status: W2.5 third spine claim — compile anchor + infer accepts T-9 MVP ResolvedTree.
 // Note: normalize→resolve→infer on void C3 sugar is deferred until constraint solve aligns with
 //   wave-1 void ResolvedTree shape (manual/infer_ground_add_mvp.dag owns the worked fixture).
 
@@ -27,8 +24,6 @@ data spine_infer_module_subject: Node = Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
-// dissolve-on: T-22 claim runner evaluates infer Outcome<InferredTree> directly without Bool projection.
 fn spine_infer_accepts_mvp_resolved_tree() -> Bool {
   match infer(tree: fixture_add_resolved_tree()) {
     Accepted { value: _, diagnostics: _ } => true

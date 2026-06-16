@@ -1,12 +1,9 @@
-// src/v4/test/claim/lens_unit_modeling/modeled_unit_field_passes.dag
 // Scope: B1 unit-modeling lens — PASS/clean witness. The SAME unit-token field
 //        (`ram_bytes`) attached to a carrier (`ByteSize`, i.e. NOT a bare kernel
 //        `Int` leaf) MUST pass (gate Accepted). Pairs with
 //        flat_scalar_unit_leaf_flagged.dag — identical field name, only the leaf
 //        type differs — proving the lens discriminates on the resolved type, so
 //        it neither rubber-stamps nor false-positives a correctly-modeled field.
-// Status: scaffold — compile-only until the build-infra greens and the v4 claim
-//         harness executes it (then this is the lens's by-execution PASS sign).
 
 module v4.test.claim.lens_unit_modeling.modeled_unit_field_passes
 

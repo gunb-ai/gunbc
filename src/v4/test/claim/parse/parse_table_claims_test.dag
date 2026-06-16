@@ -1,18 +1,14 @@
-// src/v4/test/claim/parse/parse_table_claims.dag
 // Scope: v4.compiler.parse `token_position_indices` as a discriminating
 // claim-run witness, routed through v2 (`dag run --claim-run`).
-//
 // Migrates the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append
 // receipt in src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs
 // (formerly the host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) into a
 // `fn -> Bool` witness that EXECUTES token_position_indices over a fixed token list and
 // DISCRIMINATES the produced 0..N index sequence: a duplicate final append (the regressed
 // shape) yields an extra index, turning the witness red. Mutating the fold turns it red.
-//
 // NOTE: the parse_table grammar core (parse_production / grammar_has_* / parse_skip_to_sync)
 // is NOT migrated here — it CRASHES through v2 with `contains expects a string argument, got
 // Variant` (the 'contains-Variant-gap' v2-interpreter builtin gap). Those receipts stay
-// host-AST in the smoke until that substrate lands.
 
 module v4.test.claim.parse.parse_table_claims
 
@@ -312,18 +308,10 @@ test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
 }
 
 
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `parse_table_token_position_indices_no_extra_append_holds` so glob discovery finds the witness without the central roster.
 
-// Co-located BoolWitnessClaim for the GrammarExprFold catamorphism consumer (node://adhoc-b696538c-710),
-// so glob discovery finds the witness without the central roster.
 
-// Co-located BoolWitnessClaim for the grammar_expr_to_node walker dissolution (node://adhoc-b696538c-710),
-// so glob discovery finds the witness without the central roster.
 
-// Co-located BoolWitnessClaim for expr_direct_left_corner_list fold migration (node://adhoc-2145db6b-69a).
 
-// Co-located BoolWitnessClaim for expr_has_undefined_nonterminal fold migration (node://adhoc-2145db6b-69a).
 
 // Receipt F (parse_expr combinator dissolution behavior witness): EXECUTES the new
 // fold_grammar_expr-based parse_expr — R = fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult —
@@ -418,5 +406,3 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
 }
 
-
-// Co-located BoolWitnessClaim for parse_expr combinator dissolution (node://adhoc-b967ce68-4da).

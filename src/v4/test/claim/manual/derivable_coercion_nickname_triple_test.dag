@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag
 // Scope: DERIVABLE-COERCION thesis payoff — TaskId nickname triple (API+DB+wire);
 //   distinct SurfaceSpelling per layer, shared encoding+carrier core; CRUX matrix by execution.
 // Status: EXECUTED Bool witnesses — all realized preservation rules × sibling pairs measured.
@@ -255,8 +254,3 @@ data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match
   Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_claim_task_id_surfaces_distinct` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_claim_crux_substrate_gap` so glob discovery finds the witness without the central roster.

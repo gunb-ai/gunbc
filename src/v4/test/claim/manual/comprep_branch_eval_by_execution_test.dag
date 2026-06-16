@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_branch_eval_by_execution.dag
 // Scope: COMPREP wave-2 M0-B1 runtime keystone — source-gated if-then-else Branch body executes through eval.
 // Status: executable --claim-run witness; condition perturbation + swapped arms are discriminating reds.
 

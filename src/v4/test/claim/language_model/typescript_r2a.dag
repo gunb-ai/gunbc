@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/typescript_r2a.dag
-// Scope: Phase 1 R2a — typescript.dag number algebra inhabitance vs tsc.
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-typescript-r2a-verify.sh.
 
 module v4.test.claim.language_model.typescript_r2a

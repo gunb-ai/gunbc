@@ -1,7 +1,4 @@
-// src/v4/test/claim/lens_unused_parameters/rollup_unused_declaration.dag
-// Scope: T-13 worked claim (BEHAVIORAL contract — registry roll-up) — a parameter contained in its declaring scope (Contains edge, function-parameter position per v3 contract) with NO BindsTo edge sourcing it rolls up into `UnusedParametersFact.unused` (the v3-shaped `LensIdV0::UnusedParameters` query output).
 //   Composition: `unused_parameters_fact = rollup_unused ∘ use_classification_fact`.
-// Status: T-13 family-ratchet split-contract closure — projection contract pinned by binds_to_edge.dag + non_use_edges.dag; this claim pins the registry-aligned roll-up.
 
 
 module v4.test.claim.lens_unused_parameters.rollup_unused_declaration

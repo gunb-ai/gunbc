@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_parallelism/family_receipt.dag
-// Scope: T-38B lens_parallelism family receipt — run_test_claim rows for subject roster.
-// Status: W3.6 — T-22 eval → TestClaimRun (single authority for lens_parallelism claims).
 
 module v4.test.claim.lens_parallelism.family_receipt
 

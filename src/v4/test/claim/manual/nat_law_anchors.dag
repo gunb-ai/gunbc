@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/nat_law_anchors.dag
 // Scope: Manual Nat law TestClaims (stub payload; law text in claim label).
 // Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
 
@@ -23,7 +22,6 @@ TestClassification,
 import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
-// RULING-1: 🟡 needs-more-work — stub claims; law-shaped nodes later
 
 data claim_nat_add_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law)",

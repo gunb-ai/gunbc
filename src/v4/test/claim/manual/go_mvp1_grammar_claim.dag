@@ -1,8 +1,5 @@
-// src/v4/test/claim/manual/go_mvp1_grammar_claim.dag
-// Scope: T-4.17 wave-2a behavior receipt — Go MVP-1 grammar validates and parse_production accepts the declared token sequence.
 // Owns: claim_go_mvp1_grammar_validates, claim_go_mvp1_grammar_parses_mvp_tokens.
 // Consumes: v4.compiler.parse, v4.extdeps.languages.go, v4.std.*.
-// Status: T-22 runner deferred — execution pending T-22 complexity fix.
 
 module v4.test.claim.manual.go_mvp1_grammar_claim
 
@@ -41,8 +38,6 @@ fn go_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 —
-// dissolve-on: T-22 claim runner evaluates Outcome fixtures directly without Bool projection.
 fn go_mvp1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: parse_stage_locus_port)
   match grammar_validate_for_parse(root: go_wave1_grammar_root(), at: at) {
@@ -51,8 +46,6 @@ fn go_mvp1_grammar_validates_fixture() -> Bool {
   }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 —
-// dissolve-on: T-22 claim runner evaluates Outcome<ParseTree> directly without Bool projection.
 fn go_mvp1_grammar_parse_accepted() -> Bool {
   match go_mvp1_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true

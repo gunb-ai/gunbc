@@ -1,6 +1,3 @@
-// src/v4/test/claim/workflow/lens_parallelism_family_eval.dag
-// Scope: T-38B family CI receipt — lens_parallelism run_test_claim rows gate green over eval_mvp2 wedge.
-// Status: T-22 eval → TestClaimRun → VerdictTally; host transport via glob_discovery.dag.
 
 module v4.test.claim.workflow.lens_parallelism_family_eval
 
@@ -76,6 +73,3 @@ fn lens_parallelism_family_gate(report: LensFamilyEvalReport) -> Bool {
 test data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
   report: run_lens_parallelism_family_eval()
 )
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_lens_parallelism_family_gate_closed` so glob discovery finds the witness without the central roster.

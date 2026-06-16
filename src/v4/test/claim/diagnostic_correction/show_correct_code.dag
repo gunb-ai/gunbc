@@ -1,7 +1,4 @@
-// src/v4/test/claim/diagnostic_correction/show_correct_code.dag
 // Scope: End-to-end TestClaim rows asserting diagnostics carry suggested correction data.
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.diagnostic_correction.show_correct_code

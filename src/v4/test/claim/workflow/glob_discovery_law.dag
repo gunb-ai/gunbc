@@ -1,5 +1,3 @@
-// src/v4/test/claim/workflow/glob_discovery_law.dag
-// Scope: Consolidation #4553 pure list-parameter discovery law (no manifest import).
 // Status: acyclic law helpers consumed by glob_discovery + substrate_equivalence.
 
 module v4.test.claim.workflow.glob_discovery_law

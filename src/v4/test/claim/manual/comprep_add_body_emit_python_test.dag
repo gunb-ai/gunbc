@@ -1,10 +1,8 @@
-// src/v4/test/claim/manual/comprep_add_body_emit_python.dag
 // Scope: §3 python-emit IC — keystone emit receipt for python_mvp1 add-fn through the
 //   grammar-inverse fold (grammar-relation → token-spine serialization).
 //   GREEN: emit(add) matches target_serialize_source authority (python_mvp1_source_text).
 //   RED: perturbed binding spellings (x→"a", y→"b") produce distinct source text.
 // Anchor: §3 emit-breadth MoA — N data rows NOT N×M hand-arms; new spelling variant = data.
-// Status: EXECUTED BoolWitnessClaim keystone.
 
 module v4.test.claim.manual.comprep_add_body_emit_python
 

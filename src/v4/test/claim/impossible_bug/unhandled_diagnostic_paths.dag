@@ -1,10 +1,5 @@
-// src/v4/test/claim/impossible_bug/unhandled_diagnostic_paths.dag
-//
 // Scope: TestClaim — unhandled diagnostic paths impossible-bug class (R2+). Tier 2 runtime-safety proofs make division-by-zero, OOB, force-unwrap either proven safe or made total — never partial.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §390-393 R2+ + std/integer.dag Tier-2 totalization
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.unhandled_diagnostic_paths

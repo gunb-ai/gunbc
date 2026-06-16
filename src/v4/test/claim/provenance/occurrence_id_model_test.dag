@@ -1,5 +1,3 @@
-// src/v4/test/claim/provenance/occurrence_id_model.dag
-// Phase 0 model smoke — OccurrenceId allocator + SpanIndex id→OriginEvent substrate.
 // Anchor: design-provenance-span.md §4.5; design-node-identity-channels.md.
 
 module v4.test.claim.provenance.occurrence_id_model
@@ -165,10 +163,6 @@ fn span_index_resolve_derived_chain_holds() -> Bool {
   }
 }
 
-// #4643: structurally-identical trees differing only in minted OccurrenceIds (root or nested)
-// must compare EQUAL via exact_structural_equality_zip_fold (deep canonical; sole live-consumer
-// authority for source_authority / edit_locus node_eq). Shallow node_for_structural_equality
-// only clears the root — nested minted ids still break bare ==; the nested RED guard witnesses that.
 fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)

@@ -1,9 +1,6 @@
-// src/v4/test/claim/manual/nominal_distinctness_cross_call.dag
 // Scope: Stage-1 fresh-nominal-type measurement — distinct nominal records reject
 //        cross-call on the live v4 compile pipeline (v2-compiled). Brand-desugar
 //        stand-in row uses wave-1 record syntax (no `where brand` — not in wave-1 grammar).
-// Status: candidate-A scaffold only — NOT wired to gating corpus (follow-on candidate-B
-//        stacked pins on quick-lynx-711 gate after host-compile bridge lands).
 // Anchor: declaration-identity / template-binding (WrapA/WrapB) + brand-alias cross-call.
 
 module v4.test.claim.manual.nominal_distinctness_cross_call

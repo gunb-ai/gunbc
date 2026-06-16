@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/kotlin_language_model_anchor.dag
-// Scope: T-4 compile anchor — kotlin.dag LanguageModel, inhabitant facts on carrier, MVP target model.
 // Consumes: extdeps/languages/kotlin.dag.
 // Status: compile-only anchor.
 

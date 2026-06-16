@@ -1,12 +1,7 @@
-// src/v4/test/claim/lens_unit_modeling/bitwidth_flat_scalar_flagged.dag
 // Scope: B1 unit-modeling lens — FAIL/flag witness for the Information/BitWidth
 //        token. A pointer/word-width field (`pointer_width`) typed as a bare
 //        kernel `Int` MUST be flagged: width is an Information quantity carried
 //        by BitWidth = Measure<Information,One> (measure.dag:192), and the
-//        operator ruled pointer/word-width IN scope (2026-06-14). Pairs with
-//        bitwidth_modeled_passes.dag (same field attached to BitWidth → passes).
-// Status: scaffold — compile-only until the build-infra greens and the v4 claim
-//         harness executes it.
 
 module v4.test.claim.lens_unit_modeling.bitwidth_flat_scalar_flagged
 

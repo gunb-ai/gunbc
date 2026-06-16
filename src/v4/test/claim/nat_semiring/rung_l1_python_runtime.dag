@@ -1,9 +1,5 @@
-// src/v4/test/claim/nat_semiring/rung_l1_python_runtime.dag
 // Scope: L1 Python runtime execution receipts for fixture=phase1/nat_semiring (release-minimum).
 // Status: substrate claim labels (correctness-ladder L1 vocabulary; TestgenTier::Tier3 per
-//   THESIS emitted-code execution). The roster is fixture-scale: one row per ratified
-//   nat-semiring law. Executable host transport remains deferred until T-22 eval dispatches
-//   run_emit_host_python / TestClaimRun host evidence on emitted artifacts.
 //   Authority: v4-python-rca-manager-worksheets Worksheet B (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION).
 
 module v4.test.claim.nat_semiring.rung_l1_python_runtime

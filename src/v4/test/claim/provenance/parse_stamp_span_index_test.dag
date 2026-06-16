@@ -1,5 +1,3 @@
-// src/v4/test/claim/provenance/parse_stamp_span_index.dag
-// Wave-1 local parse-stamping witness — successor to #4651 parse_table_captured_tree_span_morphism.
 // Exercises parse_production-produced SpanIndex inside a single memo cell: terminal FromSource
 // ByteRange + sequence DerivedBy{from:[child ids]} (not composed-coherence / wave-2).
 

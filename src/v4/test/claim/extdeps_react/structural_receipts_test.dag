@@ -1,12 +1,3 @@
-// src/v4/test/claim/extdeps_react/structural_receipts.dag
-// Scope: Exemplar E2 — T-4.7 React extdeps structural receipts as discriminating
-// claim-run witnesses, routed through v2 (`dag run --claim-run`).
-//
-// Seven **A-class** behavioral receipts migrated from frozen-v3 smoke into executable
-// `fn -> Bool` witnesses (typed probe construction, exhaustive `match`, coproduct arms,
-// List element typing). All **5 B-class** declaration-shape receipts deleted — operator
-// 2026-06-07 tightened keep-bar: cited hand-copied arm sets are mirrors (not independent
-// oracles); no external manifest-as-data; err-delete. Smoke retains 0-diag gate only.
 
 module v4.test.claim.extdeps_react.structural_receipts
 
@@ -352,18 +343,3 @@ test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds
     Text { text_value_ref: _ } => false
   }
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_effect_hooks_require_setup_ref_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_host_element_declares_key_and_ref_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_composite_element_declares_key_and_ref_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_fragment_arm_declares_key_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_element_children_are_list_create_element_child_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `extdeps_react_create_element_child_element_arm_wraps_react_element_holds` so glob discovery finds the witness without the central roster.

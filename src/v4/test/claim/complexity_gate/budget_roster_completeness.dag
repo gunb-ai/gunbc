@@ -1,8 +1,6 @@
-// src/v4/test/claim/complexity_gate/budget_roster_completeness.dag
 // Scope: complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows.
 //        For each roster row: declared budget must be rated (not UnknownComplexity) →
 //        subject_producer → extract body → complexity_lens → dominance.
-//        Declared UnknownComplexity is an ERROR (operator 2026-06-11 — eliminate ClassUnknown):
 //        unrated producers must be rated before the row lands, never pass via lattice top.
 //        Empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent).
 // Status: executable --claim-run witness (lens_ci_gate row).
@@ -76,7 +74,6 @@ fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexit
   )
 }
 
-// Design §6 / operator 2026-06-11: an UnknownComplexity declared budget must flip the family gate red.
 fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool {
   !complexity_budget_roster_family_all_rows_hold(
     rows: list_append(

@@ -1,12 +1,7 @@
-// src/v4/test/claim/language_model/python_l1_static.dag
 // Scope: PY-L1-STATIC-STRUCTURAL — pyright (Worksheet A) and mypy (Worksheet B) static
 //   structural authorities alongside CPython compile and runtime exec
-//   (docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md).
 // Authority: Modeling DFS Arbiter ruling proud-fox-405 (msg_41813c03).
 // Fixtures: src/v4/lens/leaf_model_verification.dag (python_l1_static_* / python_l1_static_mypy_*).
-// Receipt authority: these modeled TestClaims. Pyright roster (#4231); mypy companion host
-// runner (Worksheet B): scripts/v4-leaf-model-python-l1-mypy-static-verify.sh. (Pyright shell
-// runners retired repo-wide per operator directive #4252.)
 
 module v4.test.claim.language_model.python_l1_static
 

@@ -1,6 +1,3 @@
-// src/v4/test/claim/generated/algebra_law_conformance.dag
-// Scope: T-19 generated algebra-law TestClaim rows from Nat algebra subjects.
-// Status: generated corpus — first non-LBE generator slice; execution deferred to T-22 runner bridge.
 
 module v4.test.claim.generated.algebra_law_conformance
 
@@ -29,7 +26,6 @@ import v4.std.verification {
   Unit
 }
 import v4.std.diagnostic { Outcome }
-// 🟡 gated — feature:t19-nat-expression-node-encoding — bound task: gunbc#4759 — dissolve-on-arrival: replace these local expression-shape tags with a canonical Nat-expression Node encoder that reflects function application identity directly; forbidden: exporting per-operation/per-value mirror symbols from v4.std.nat.
 fn algebra_law_generated_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

@@ -1,8 +1,4 @@
-// src/v4/test/claim/nat_semiring/rung_5.dag
-// Scope: phase1/nat_semiring rung 5 — cross-target emit-vs-eval on full fixture law roster (W3.3).
 // Status: six laws × rust + python + go via run_test_claim_emit_vs_eval; executable transport
-//   via emit_host_bridge until T-22 substrate dispatch. MVP-2 five-byte stdout contract aligns
-//   cross-target observations (design-cross-target-equivalence.md).
 
 module v4.test.claim.nat_semiring.rung_5
 

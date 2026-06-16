@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/llvm_ir_b2_omni_in_b_probe.dag
-// Scope: T-4.12 B2-OMNI IN-B probe receipt for llvm_ir.dag.
 // Status: PASS (IN-B) receipt; no pre-D2-reversal rework attempted.
 
 module v4.test.claim.manual.llvm_ir_b2_omni_in_b_probe

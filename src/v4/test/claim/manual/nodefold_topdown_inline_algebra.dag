@@ -1,6 +1,5 @@
 // Repro for dep-graph §4a item (b): inline NodeFoldTopDown algebra struct literal
 // lambdas must bind A=R=MyFold from the algebra type so fold.origin/state/at_conj
-// field access type-checks (dissolves #4731 AdmitExportsFold named-fn scaffolding).
 module v4.test.claim.manual.nodefold_topdown_inline_algebra
 
 import v4.std.node {

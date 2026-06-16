@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag
 // Scope: git diff → edit_locus Node resolver receipts (path-regex bindings).
-// Status: T-21 wire claim; host git projection lands with BinaryShim runner.
 
 module v4.test.claim.lens_affected_set.edit_locus_resolver
 
@@ -173,10 +171,6 @@ fn edit_locus_occurrence_textual_file_eq(
 }
 
 // 🟡 gated — feature:source-authority-span-lane — bind
-// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
-// (span_index sealed until span-consuming lane) — dissolve-on-arrival: re-enroll as
-// UnifiedTestClaim once parse_module witness-eval terminates; forbidden: E-10 registration
-// while span_index consumers cannot execute green.
 fn edit_locus_source_provenance_producer_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -255,9 +249,6 @@ fn edit_locus_root_from_source_locus_holds(
 }
 
 // 🟡 gated — feature:source-authority-span-lane — bind
-// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
-// (span_index sealed until span-consuming lane) — dissolve-on-arrival: re-enroll as
-// UnifiedTestClaim once parse_module witness-eval terminates.
 fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -291,12 +282,3 @@ data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes
 
 // Transport Symbol pin — independent authority for substrate-equivalence field-preservation laws.
 data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `edit_locus_fail_closed_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `edit_locus_source_provenance_affected_set_wire_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `edit_locus_source_provenance_producer_rejects_malformed_source_holds` so glob discovery finds the witness without the central roster.

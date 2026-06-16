@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/rust_r2b.dag
-// Scope: Phase 1 R2b — rust.dag i32 overflow runtime behavior (debug panic / release wrap).
 // Status: modeled claim + fixture rows for live sub-claims 1–2; host runner scripts/v4-leaf-model-rust-r2b-verify.sh.
 
 module v4.test.claim.language_model.rust_r2b

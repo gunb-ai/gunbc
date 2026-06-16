@@ -1,7 +1,3 @@
-// src/v4/test/claim/manual/coproduct_reflection_conformance.dag
-// Scope: R-reflect Phase 2a/2b Path-3 conformance witness — Connective/Behavior FIRST
-// (the 2FA proof) before any consumer migrates. Executes reflection vs syntactic arm-set
-// and (label,payload-type) pair equality by claim-run (design-coproduct-arm-reflection.md §5.2 Path 3).
 
 module v4.test.claim.manual.coproduct_reflection_conformance
 

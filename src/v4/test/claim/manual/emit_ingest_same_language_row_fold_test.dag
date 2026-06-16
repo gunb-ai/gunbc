@@ -1,10 +1,8 @@
-// src/v4/test/claim/manual/emit_ingest_same_language_row_fold.dag
 // Scope: §3 STEP 2 — row-agnostic fold over TargetModel.translation_rules (CoC=1).
 //   Asserts emit↔ingest selector bijectivity for every grammar-relation row the fold visits,
 //   over the TWO REAL productions that exist today (N=2: dag add, python add). Breadth grows
 //   as real productions land in extdeps — NOT "proven general for all productions."
 // Status: EXECUTED Bool witness (fast fold + per-row A2 discriminating perturb).
-// Anchor: signed fold design A1/A2/B1; composes #4829 ingest + translate fns only.
 
 module v4.test.claim.manual.emit_ingest_same_language_row_fold
 

@@ -1,7 +1,3 @@
-// src/v4/test/claim/lens_fact_density/hollow_alias_vtc_empty_lenses_rejected.dag
-// Scope: T-30 enforcement gate claim — validate_then_compile rejects a hollow alias even with an empty caller-supplied lens list,
-//        proving always_required_lenses() is prepended before the caller list and the gate is required, not optional.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_vtc_empty_lenses_rejected
 

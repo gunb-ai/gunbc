@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_application/rejecting_lens_blocks_before_compile.dag
-// Scope: T-23 negative claim — required rejecting lens blocks validate_then_compile.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_application.rejecting_lens_blocks_before_compile
 

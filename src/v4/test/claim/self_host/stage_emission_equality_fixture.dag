@@ -1,14 +1,10 @@
-// src/v4/test/claim/self_host/stage_emission_equality_fixture.dag
 // Scope: M3a — Stage A executed comparison on FIXTURE stages (design-self-host-fixed-point.md §5/§6).
 // Status: realized — exercises self_host.stage_emission_equality on fixture emitted stages;
 //   a structurally-equal candidate Holds, a divergent candidate Violates (located diff).
-//
 // ⚠️ NOT SELF-HOSTING ACHIEVED. These greens prove the structural-equality predicate + the
 // perturbed-candidate discriminator on hand-built FIXTURE nodes — they de-risk the comparison
 // machinery, nothing more. The north-star self-host fixed point is M3b (stage C): the whole v4
 // compiler emitting bit-identical stage1==stage2 over real merkle digests, gated on the emit
-// ladder + the root-sequenced T-22 / PB-Runtime eval substrate. Do NOT read this fixture green
-// as self-hosting reached. self_host_fixed_point_validate stays fail-closed until stage C.
 
 module v4.test.claim.self_host.stage_emission_equality_fixture
 

@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/body_lowering_infix.dag
 // Scope: by-execution receipt for the structured-normalize emit in std/compilers/body_lowering.dag
 // (lower_block_body_atoms / lower_binary_infix) — slice (i) of the normalize-to-dispatch
 // dissolution (node://adhoc-87678e9b-420). Proves the binary-infix body `[a, op, b]` lowers to a

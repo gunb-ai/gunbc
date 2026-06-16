@@ -1,4 +1,3 @@
-// src/v4/test/claim/layering_imports/coverage_domain_equivalence.dag
 // Scope: coverage-domain-equivalence witness (zesty sign=CUTOVER). This .dag proves the
 //        COVERING half by-execution — coverage_domain_equivalence_argument_holds() asserts the
 //        perturb roster spans EACH python layer-root and EACH forbidden form (drift-resistant:

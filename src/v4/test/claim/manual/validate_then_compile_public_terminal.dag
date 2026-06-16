@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/validate_then_compile_public_terminal.dag
 // Scope: Wave-5-A — P3 commitment 6 public terminal; empty required-lens list + reject-before-compile gate.
-// Status: scaffold — full Accepted TargetSource blocked on infer descent + rust LanguageModel (Wave-4).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6
 
 

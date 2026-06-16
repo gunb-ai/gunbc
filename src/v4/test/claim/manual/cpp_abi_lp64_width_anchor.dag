@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/cpp_abi_lp64_width_anchor.dag
 // Scope: Compile anchor for LP64 target data-model (isolated module — v2 rejects duplicate CppCoreIntegerWidthModel alias inhabitants in one module).
 // Status: compile-only groundedness testcase.
 

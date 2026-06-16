@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_bind_round_trip.dag
 // Scope: let-in Bind body emit→ingest round-trip (.dag target).
 
 module v4.test.claim.manual.comprep_bind_round_trip

@@ -1,6 +1,4 @@
-// src/v4/test/claim/branch_dispatch/rung_8.dag
 // Scope: phase4/branch_dispatch rung-8 TestClaimRun roster — full fixture claim corpus.
-// Status: W3.6 — T-22 eval → TestClaimRun via run_test_claim (single authority for all claim kinds).
 
 module v4.test.claim.branch_dispatch.rung_8
 

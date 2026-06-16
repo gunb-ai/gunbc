@@ -1,6 +1,3 @@
-// src/v4/test/claim/lens_cost/loop_illegal_named.dag
-// Scope: T-12 worked claim — Loop with illegal Named edge fails closed.
-// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.loop_illegal_named
 

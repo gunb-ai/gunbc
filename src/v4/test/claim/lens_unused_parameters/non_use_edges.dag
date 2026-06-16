@@ -1,9 +1,6 @@
-// src/v4/test/claim/lens_unused_parameters/non_use_edges.dag
-// Scope: T-13 worked claim (PROJECTION partition) — non-USE edges classify as their non-USE relations over `ClassifiedDependencyView<UseRelation>`. Pins the four-way UseRelation partition together with binds_to_edge.dag.
 //   Contains       ⇒ IsStructuralComposition
 //   DataDependsOn  ⇒ IsNonUseDependency
 //   GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
-// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 
 module v4.test.claim.lens_unused_parameters.non_use_edges

@@ -1,7 +1,4 @@
-// src/v4/test/claim/algebra_laws/zip_eq_list_equality.dag
 // Scope: TestClaim corpus for zip_eq two-list structural equality.
-// Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.algebra_laws.zip_eq_list_equality

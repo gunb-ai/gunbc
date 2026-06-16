@@ -1,4 +1,3 @@
-// src/v4/test/claim/extdeps/spice_rc_passive_deck_claims.dag
 // Scope: E-10 consumer for spice_rc_passive_deck fixture authority — structural topology witness.
 // Status: imports v4.test.fixture.spice_rc_passive_deck; fails if fixture drifts from canonical RC+.op deck.
 

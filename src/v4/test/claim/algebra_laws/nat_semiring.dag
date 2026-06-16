@@ -1,7 +1,4 @@
-// src/v4/test/claim/algebra_laws/nat_semiring.dag
 // Scope: TestClaim corpus rows for Nat algebra laws generated from std/nat.dag subjects.
-// Status: T-14 corpus rows; rung-8 execution wired in v4.test.claim.nat_semiring.rung_8.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 module v4.test.claim.algebra_laws.nat_semiring
 

@@ -1,10 +1,4 @@
-// src/v4/test/claim/impossible_bug/unenumerated_effects.dag
-//
-// Scope: TestClaim — unenumerated effects impossible-bug class (R2+). Operations are intrinsically read-shaped or write-shaped via type signature — no parallel taxonomy or annotation layer needed. Tracking effects as a separate enumerated concept IS the bug pattern, dissolved by construction.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §384-389 R2+ + lens/effect.dag (5-behavior compositional fold)
-//
-// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.unenumerated_effects

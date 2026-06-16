@@ -1,5 +1,3 @@
-// src/v4/test/claim/language_model/rust_r3_external.dag
-// Scope: Phase 1 R3-external — Symbol atom realization projection vs rustc (planning doc §7).
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-rust-r3-external-verify.sh.
 
 module v4.test.claim.language_model.rust_r3_external

@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_bind_eval_by_execution.dag
 // Scope: COMPREP wave-2 M0-Bind runtime keystone — source-gated let-in Bind body executes through eval.
 // Status: executable --claim-run witness; value perturbation is the discriminating red.
 

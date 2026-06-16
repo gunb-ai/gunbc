@@ -1,9 +1,4 @@
-// src/v4/test/claim/manual/emit_ingest_grammar_relation_round_trip.dag
-// Scope: S3 fast-follow (#4829) — same-grammar emit↔ingest round-trip over the shared
-//   grammar-relation table. The ingest bridge (forward selection on token-spine frontier) is
-//   emit's structural inverse (backward selection on grammar_relation_field_emitted).
 // Status: EXECUTED Bool witness — asserts bijectivity the two selectors assume on dag_mvp1 rows.
-// Anchor: THESIS §B2-OMNI ingest=emit⁻¹; signed design #4821 Option A.
 
 module v4.test.claim.manual.emit_ingest_grammar_relation_round_trip
 

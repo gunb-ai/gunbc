@@ -1,5 +1,3 @@
-// src/v4/test/claim/manual/lean_language_model_anchor.dag
-// Scope: T-4 compile anchor — lean.dag LanguageModel, ModelCore primitive bundles, PROOF-1 scalar inhabitant.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.lean_language_model_anchor

@@ -1,7 +1,3 @@
-// src/v4/test/claim/lens_testgen/generator_provenance.dag
-// Scope: F.2-P1 testgen provenance — every scheduled Generator carries consistent
-// provenance (generator_id keys its emitted TestClaimArtifact) and profile metadata.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Status: activated — structural EqualsClaim + green witness over the provenance integrity fn.
 
 module v4.test.claim.lens_testgen.generator_provenance
@@ -49,6 +45,3 @@ data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = Equal
 
 
 test data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_lens_testgen_scheduled_generators_carry_provenance_green` so glob discovery finds the witness without the central roster.

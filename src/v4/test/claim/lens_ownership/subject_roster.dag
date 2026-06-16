@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_ownership/subject_roster.dag
-// Scope: T-38B lens_ownership family roster — one resource-dependency TestClaimEvalSubject row for corpus execution.
 // Status: family receipt — claim + subject + claim-id frontier are co-located; workflow/lens_ownership_family_eval.dag routes rows through run_test_claim.
 
 module v4.test.claim.lens_ownership.subject_roster

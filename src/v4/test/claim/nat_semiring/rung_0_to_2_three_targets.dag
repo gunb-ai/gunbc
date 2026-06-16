@@ -1,12 +1,3 @@
-// src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag
-// Scope: Phase 1 nat_semiring rung-gate roster — acceptance predicates for rungs 0, 1, 2 on
-//   the ratified fixture phase1/nat_semiring, projected as CompilesClaim rows per
-//   (rung, target) per docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.1–§2.3.
-// Status: substrate wiring — claim execution Deferred behind T-38; host shell transport
-//   deleted 2026-06-01 (scripts/ hygiene). Receipt schema id is a stable logical name until
-//   TestClaimRun verdicts are PROVEN. Authority for matrix shape: ladder rung specs §2.
-// Fixture: src/v4/test/claim/algebra_laws/nat_semiring.dag (Phase 1, ratified).
-// Anchor: docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.1 (R0-*), §2.2 (R1-*), §2.3 (R2-*).
 
 
 module v4.test.claim.nat_semiring.rung_0_to_2_three_targets
@@ -24,7 +15,6 @@ import v4.std.verification {
   CompilesClaim,
   manual_claim_anchor
 }
-// Structural import: binds the rung roster to the ratified Phase 1 fixture identity.
 // If nat_semiring.dag is renamed or its claim_nat_* exports change, this import breaks,
 // preventing silent drift between gate matrix and fixture.
 import v4.test.claim.algebra_laws.nat_semiring {
@@ -84,7 +74,6 @@ data claim_phase1_nat_semiring_rung1_rust_typecheck: TestClaim = phase1_rung_com
 )
 
 
-// §2.3 Rung 2 — compiles in Phase 1 multi-target smoke (rust ⊇ rung 1, python, go).
 
 data claim_phase1_nat_semiring_rung2_rust_compile: TestClaim = phase1_rung_compiles_claim(
   label: "fixture=phase1/nat_semiring rung=2 target=rust predicate=R2-rust-compile"
@@ -121,8 +110,6 @@ data phase1_nat_semiring_rung_0_to_2_roster: List<TestClaim> = [
 
 // Fixture re-export: the law claims from algebra_laws/nat_semiring remain the authoritative
 // subject matter; the rung gate composes them by reference, not by copy. This roster names
-// the fixture's algebra-law claims under the Phase 1 rung-gate authority so a single import
-// of this module pulls both the rung matrix and the underlying fixture surface.
 
 data phase1_nat_semiring_fixture_law_roster: List<TestClaim> = [
   claim_nat_add_left_identity,

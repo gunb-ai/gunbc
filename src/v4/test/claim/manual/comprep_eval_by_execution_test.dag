@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/comprep_eval_by_execution.dag
 // Scope: COMPREP wave-1 runtime keystone — source-gated add body executes through eval callee dispatch.
 // Status: executable --claim-run witness; swapped operand bindings are the discriminating red.
 
@@ -839,12 +838,6 @@ fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
 }
 
 // COMPREP wave-1 runtime keystone, single Bool witness:
-//   1. source-driven-executes — resolve→body_producer bridge (#4646) wires source-resolved MVP
-//      add through body_producer; the bridged Arrow.body executes to result == 5 BY EXECUTION;
-//   2. direct-runtime — same bridged callee through eval directly;
-//   3. source-pipeline-admits — source `fn add` tokenizes->parses->normalizes->resolves;
-//   4. swapped-operands-red — discriminating red: swapped-operand body fails the run;
-//   5–7. exact-arity reds — oversized signature / body / actuals refuse (P3/P5, #4634).
 test fn comprep_eval_by_execution_keystone_holds() -> Bool {
   comprep_eval_source_driven_add_executes_holds()
     && comprep_eval_direct_runtime_holds()
@@ -862,7 +855,3 @@ test fn comprep_eval_by_execution_keystone_holds() -> Bool {
     // (node://adhoc-edb982e2-4a4).
     && comprep_eval_lazy_arm_loop_suppression_holds()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `comprep_eval_by_execution_keystone_holds` so glob discovery finds the
-// executed witness without depending solely on the central roster.

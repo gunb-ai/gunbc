@@ -1,6 +1,4 @@
-// src/v4/test/claim/manual/find_witness_distinct_node_zip_fold.dag
 // Scope: distinct-node exact-structural zip-fold anchors for find_witness and coercion_fold.
-// Status: T-25-tail behavior receipt — zip-fold accepts structurally equal non-identical Node groundings.
 
 
 module v4.test.claim.manual.find_witness_distinct_node_zip_fold

@@ -1,6 +1,3 @@
-// src/v4/test/claim/claim_pipeline/resolve.dag
-// Scope: G3.2 — compiler spine stage `03_resolve` substrate + T-38 claim row.
-// Status: W2.5 second spine claim — normalize→resolve chain on void DAG language model.
 
 module v4.test.claim.claim_pipeline.resolve
 
@@ -46,8 +43,6 @@ fn spine_resolve_service_parse_tree() -> Node {
 }
 }
 
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
-// dissolve-on: T-22 claim runner evaluates normalize→resolve Outcome chain directly without Bool projection.
 fn spine_resolve_accepts_normalized_tree() -> Bool {
   match normalize(parse_tree: spine_resolve_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>

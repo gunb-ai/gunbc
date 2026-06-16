@@ -1,4 +1,3 @@
-// src/v4/test/claim/language_model/python_l2_cross_target_parity.dag
 // Scope: PY-L2-CROSS-TARGET-PARITY — positive cross-target behavioral PARITY receipt (Worksheet C).
 //   The same modeled program runs across Python, Rust, and Go on the common domain (small integer
 //   add; external Symbol nominal/value projection) and produces the IDENTICAL displayed payload.

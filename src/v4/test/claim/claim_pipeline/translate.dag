@@ -1,6 +1,3 @@
-// src/v4/test/claim/claim_pipeline/translate.dag
-// Scope: G3.4 — compiler spine stage `06_translate` substrate + T-38 claim row.
-// Status: W2.5 fourth spine claim — compile anchor + translate accepts MVP-1 rust InferredTree.
 // Note: full normalize→resolve→infer→translate on void sugar is deferred until wave-1 inferred facts
 //   align with TargetModel translation_rules (manual/mvp1_rust_add_translate.dag owns that receipt).
 
@@ -28,8 +25,6 @@ data spine_translate_module_subject: Node = Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind gunbc#4757 / G.3.5 spine harness —
-// dissolve-on: T-22 claim runner evaluates translate Outcome<TargetNodeTree> directly without Bool projection.
 fn spine_translate_accepts_mvp1_inferred_tree() -> Bool {
   match translate(tree: mvp1_rust_inferred_tree, target: rust_mvp1_target_model()) {
     Accepted { value: _, diagnostics: _ } => true

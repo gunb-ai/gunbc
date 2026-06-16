@@ -1,11 +1,3 @@
-// src/v4/test/claim/manual/ingest_bridge.dag
-// Scope: #g-ingest-bridge (#4801) — executable proof of the forward interpreter
-//   `parse_tree_to_target_model_bridge` (v4.compiler.ingest). Parses a token through a local
-//   grammar, then FORWARD-SELECTS (signed design #4821, Option A): the parse FRONTIER (the token
-//   classes consumed) selects the source-model row whose production token-spine matches it, and the
-//   bridge carries that row's emit-side core node through infer -> coerce to canonical IR. The
-//   stamped emitted template is never trusted for selection.
-//
 //   Hermetic + sub-second: a 1-token local grammar against a custom 1-row source model that reuses
 //   dag's declared inhabitants + selection policy (so coerce grounds the add keystone) but supplies
 //   its own frontier-matching translation row. The real multi-token frontier-selection proof is the

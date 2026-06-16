@@ -1,8 +1,5 @@
-// src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag
-// Scope: RTADD (ctrl#1489 D1) — early emit→ingest round-trip on the add keystone for .dag target.
 // Status: EXECUTED Bool witness — emit(add) → coerce_grounded_node ingest (find_witness fold) →
 //   normalized structural compare == canonical dag_mvp1 add IR; grammar_inverse validates serialize row.
-// Anchor: ctrl#1489; ingest = coercion reversed (06_translate), not parallel parse engine.
 
 module v4.test.claim.manual.mvp1_dag_add_round_trip
 
@@ -236,6 +233,3 @@ test fn mvp1_dag_add_emit_ingest_round_trip_holds() -> Bool {
     && mvp1_dag_grammar_inverse_holds()
     && mvp1_dag_ingest_via_coerce_matches_canonical()
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `mvp1_dag_add_emit_ingest_round_trip_holds` so glob discovery finds the witness without the central roster.

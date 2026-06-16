@@ -1,6 +1,4 @@
-// src/v4/test/claim/lens_affected_set/irt1_dimension_seed_receipt.dag
 // Scope: IRT-1 leaf — dimension seed rerun receipt.
-// Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.irt1_dimension_seed_receipt
 

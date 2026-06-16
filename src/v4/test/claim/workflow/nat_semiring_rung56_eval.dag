@@ -1,5 +1,3 @@
-// src/v4/test/claim/workflow/nat_semiring_rung56_eval.dag
-// Scope: W3.4 rung 6 corpus eval + gate for phase1/nat_semiring post-emit law preservation (F4).
 // Status: tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator; rust + python.
 
 module v4.test.claim.workflow.nat_semiring_rung56_eval

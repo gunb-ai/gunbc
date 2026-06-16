@@ -1,7 +1,4 @@
-// src/v4/test/claim/lens_table_decision_tree/sg_claims.dag
 // Scope: discriminating claim-run witness for L1.13.c table_decision_tree
-// scaffold behavioral receipt — confirms fail-closed Unrealized verdict until
-// decision_tree_shape lands (node://adhoc-086ab97b-b41).
 // Status: executes table_decision_tree_fact_for_fn; pos expects Unrealized
 // verdict, neg arm discriminates stored verdict identity (mutation-proven
 // red-under-mutation).
@@ -24,8 +21,6 @@ data tdt_witness_fn_node_symbol: Symbol = tdt_witness_fn_node_symbol
 data tdt_witness_fn_node: Node = claim_atom_node(s: tdt_witness_fn_node_symbol)
 
 
-// 🟡 gated — predicate-dissolution interim — dissolve-on-arrival: replace with
-// discriminant()-based or substrate-derived coproduct arm predicate; forbidden:
 // treating this as a permanent variant-discriminant authority.
 fn tdt_verdict_is_unrealized(verdict: TableDecisionTreeVerdict) -> Bool {
   match verdict {
@@ -41,6 +36,3 @@ test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
   )
 }
 
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `lens_table_decision_tree_unrealized_scaffold_holds` so glob discovery finds the witness without the central roster.

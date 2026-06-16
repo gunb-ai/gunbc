@@ -1,23 +1,7 @@
-// src/v4/test/claim/extdeps/coordination_claims.dag
 // Scope: v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
-//
 // These witnesses migrate the EXECUTABLE behavioral content of
 // src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs's
-// `wire_contract_uses_decomposed_facts` obligation-table assertions from frozen-v3
-// host source-greps (which only matched the function body spelling) into `fn -> Bool`
-// witnesses that EXECUTE `coordination_effect_obligation` and DISCRIMINATE on the
-// per-effect mapping: each effect maps to its own exchange/settlement obligation and
-// is arm-sharp (a different effect's obligation does NOT match). Mutating any obligation
-// arm in coordination.dag turns a witness red, so the green is not vacuous.
-//
-// Status: Wave-A (iii) A-fold-delete. The obligation-table behavioral assertions in the
-// .rs smoke are deleted in the same PR (their content is proven here by execution). The
-// remaining B-class receipts (WireContractFacts/WireContract record-field shapes,
-// SettlementGuarantee/ConsistencyGuarantee shared-discriminant) were deleted with the smoke
-// file per the white-box sweep. Reflection stays banned outside the scoped lift
-// ratified in gunbc#4861 (compile-time closed-coproduct projection + gate-covered fail-closed
-// only; inline scope bound here is authoritative); decl-shape mirrors remain 2FA-for-code elsewhere.
 // Importing v4.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 
@@ -123,8 +107,3 @@ test fn coordination_obligation_settlement_arm_sharp_holds() -> Bool {
     && coord_not(b: settlement_is_within(s: coordination_effect_obligation(effect: Http).required_settlement))
     && coord_not(b: settlement_is_immediate(s: coordination_effect_obligation(effect: Queue).required_settlement))
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `coordination_obligation_exchange_arm_sharp_holds` so glob discovery finds the witness without the central roster.
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `coordination_obligation_settlement_arm_sharp_holds` so glob discovery finds the witness without the central roster.

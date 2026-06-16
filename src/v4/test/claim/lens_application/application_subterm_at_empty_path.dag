@@ -1,5 +1,3 @@
-// src/v4/test/claim/lens_application/application_subterm_at_empty_path.dag
-// Scope: T-23 worked claim — v4.lens.application authority is imported (D1 subterm_at on empty path).
 // Status: compile-only ratchet for application.dag consumer edge.
 
 module v4.test.claim.lens_application.application_subterm_at_empty_path

@@ -1,4 +1,3 @@
-// src/v4/test/claim/manual/discriminant_intrinsic.dag
 // Scope: witness for the `discriminant(v) -> Symbol` intrinsic — a coproduct value
 //        reifies its own constructor name as a Symbol, dissolving the hand-written
 //        `fn ..._discriminant(v) { match v { Ctor{..} => ctor_tag ... } }` bridges that
@@ -33,6 +32,3 @@ test fn discriminant_intrinsic_is_payload_blind_and_arm_sharp() -> Bool {
 
   same_arm_equal && cross_arm_distinct
 }
-
-// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `discriminant_intrinsic_is_payload_blind_and_arm_sharp` so glob discovery finds the witness without the central roster.
