@@ -39,7 +39,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_emit.rs",
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
-    "generated_method_template_projection.rs",
     "lib.rs",
     "main.rs",
     "std_algebra.rs",
@@ -98,7 +97,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
-    "method_template_projection_source.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
     "v1_compiler_dag_collect.rs",
@@ -147,8 +145,6 @@ const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
     "json_quote",
 ];
 
-use v1_compiler::method_template_projection_source::GENERATED_METHOD_TEMPLATE_PROJECTION_DAG;
-
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -195,11 +191,6 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
         patch_bootstrap_dag_collect(&fresh_dir.join("src"))
     })?;
-    time_phase(
-        &mut phases,
-        "ensure_method_template_projection_module",
-        || ensure_method_template_projection_module(&fresh_dir.join("src")),
-    )?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
@@ -495,21 +486,7 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let generated_root = temp_dir("v2-regen-stage0-generated-root");
-    let generated_dir = generated_root.join("generated");
-    fs::create_dir_all(&generated_dir)
-        .map_err(|e| format!("create {}: {e}", generated_dir.display()))?;
-    fs::write(
-        generated_dir.join("method_template_projection.dag"),
-        GENERATED_METHOD_TEMPLATE_PROJECTION_DAG,
-    )
-    .map_err(|e| format!("write generated method-template projection: {e}"))?;
-
-    let roots = vec![
-        workspace.join("src/v1"),
-        workspace.join("dsl"),
-        generated_root.clone(),
-    ];
+    let roots = vec![workspace.join("src/v1"), workspace.join("dsl")];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
 
@@ -548,7 +525,6 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     for file in result.files.iter() {
         out.insert(file.path.clone(), file.content.clone());
     }
-    let _ = fs::remove_dir_all(&generated_root);
     Ok(out)
 }
 
@@ -740,30 +716,6 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
         patch.support_text,
     )
     .map_err(|e| format!("write dag collect support: {e}"))
-}
-
-/// Inject the `method_template_projection_source` module declaration into the
-/// generated lib.rs. Unlike the other hand-maintained modules whose `pub mod`
-/// lines come from `05_emit_rust.dag`'s `hand_maintained_mods` string, this
-/// module holds `GENERATED_METHOD_TEMPLATE_PROJECTION_DAG` as a Rust const and
-/// has no `.dag` source, so the self-compile never emits it. Without this step
-/// the fresh `lib.rs` drops `pub mod method_template_projection_source;` and the
-/// committed seed (which references the module from this very binary) can no
-/// longer reproduce itself -- the `--verify` fixed point goes stale. Mirrors
-/// `patch_bootstrap_dag_collect`'s lib.rs insertion for `v1_compiler_dag_collect`.
-fn ensure_method_template_projection_module(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod method_template_projection_source;") {
-        // Insert after the generated projection module so `cargo fmt` order
-        // matches the committed lib.rs.
-        lib_text = lib_text.replace(
-            "pub mod generated_method_template_projection;\n",
-            "pub mod generated_method_template_projection;\npub mod method_template_projection_source;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))
 }
 
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
@@ -1316,17 +1268,6 @@ mod tests {
                 "{file_name} must not be touched by regen_stage0"
             );
         }
-    }
-
-    #[test]
-    fn projection_fixture_carries_required_v2_import_surface() {
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG
-            .contains("module generated.method_template_projection"));
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data rust_method_template_emit"));
-        assert!(
-            GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data python_method_template_emit")
-        );
-        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data go_method_template_emit"));
     }
 
     #[test]
