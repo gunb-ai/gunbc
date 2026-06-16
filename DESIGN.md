@@ -5,16 +5,52 @@ needed. This is the **harvest agenda**: one-liner themes to discuss and turn int
 from first principles. Not a finished document. Work the list; promote a line to prose only when
 we've actually discussed it.
 
+`README.md` and `CLAUDE.md` symlink to this file — it is the single source of truth. (v2 ships the
+`gunbc` CLI · v3 is frozen · v4 is active.)
+
 Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
 
 ## Principles (the review spine)
-- [~] **Decomposition** — `decompress → map → reduce`; nothing opaque that isn't *genuinely* atomic; net concepts must not grow by re-invention (drafted w/ operator 2026-06-16)
-- [ ] P1 Modeling Faithfulness — grounding is intersubjective; in a closed system heuristics are never necessary
+
+- [~] **Loud errors, not warnings — lean toward infra.** This code is (mostly) digital: when
+  something is wrong we want a *loud error*, never a warning. In digital logic there is no ambiguity
+  about whether a thing works — a bridge doesn't issue a warning, it collapses; when you hit danger you
+  alert your neighbors, you don't whisper. Infra has to be unambiguous so others can build on it. The
+  rule relaxes on application layers — but only because user experience degrades under maximal
+  strictness, and that relaxation is a *tradeoff made under protest*, never a default. Weigh it and
+  **lean toward infra** so your work is something others can build on. (This is P3 Fail-Closed as a
+  posture: typed located diagnostics, no fabricated output, no warning-as-escape-hatch; a bounded
+  "forever" ≠ an "unknown" error.)
+
+- [~] **DRY of concepts — no nicknaming (a correctness concern, not style).** A nickname is a *fork of
+  a concept that still means the same underlying thing* — duplicate work at the meaning/communication
+  layer. The codebase leans hard on DRY: we generate everything we can, so a forked concept forces us
+  to duplicate — then quadruplicate — effort in everything derived from it (testgen, emit, lenses).
+  Forking *always* gets consolidated later, so it is compounding debt — treat it as correctness, not
+  taste. We can't enforce this programmatically yet (maybe LLMs help here); until then it is
+  diligence: faithfully model the accepted, universal frameworks (classical logic, set theory,
+  algebra) rather than re-coining them, and if you must introduce a name that relates to an existing
+  concept, make the relationship explicit. (This is Decomposition's *reduce* step; reinforces P1
+  grounding + P2 single-authority.)
+
+- [~] **DRY of logic — consolidate at the root, then generate.** Duplication anywhere — frontend,
+  compiler — is a "why?". Solve it at the root by consolidating onto one authority and generating the
+  rest, never by forking. Forked logic looks harmless and exponentiates. (P2 single-authority; "don't
+  hand-roll a derived operation".)
+
+- [~] **Decomposition / the atom — `decompress → map → reduce`.** Nothing is opaque that isn't
+  *genuinely* atomic. Keeping a rich concept as a bare `String` leaf is anemic, lazy modeling —
+  anything can be modeled here, and the synergy (shared lenses, testgen, emit) only pays out when
+  concepts unify on one model; forking quadruplicates the effort. *Decompress* the concept to its
+  primitives, *map* each part onto the concept that already exists (M9 DFS), *reduce* duplicates and
+  nicknames. Net concepts must not grow by re-invention. (drafted w/ operator 2026-06-16)
+
+- [ ] P1 Modeling Faithfulness — grounding is intersubjective; faithfully model accepted universal frameworks; in a closed system heuristics are never necessary
 - [ ] P2 Boundary Discipline — one fact, one home; layer DAG (std ← extdeps ← compiler ← workflow); cost-of-change → 1
-- [ ] P3 Fail-Closed — typed, located diagnostics; no fabricated output; "forever" (bounded) ≠ "unknown" (error)
 - [ ] P4 Decidability — bounded forward execution; lowering is the receipt; checker, not discoverer
 - [ ] P5 Progress-is-Dissolution — no bridges/deprecations as steady state; scaffolds need a live ratchet; debt-negative default
-- [ ] the through-line: how much *stricter* than a normal compiler can we be? (grounded leaves let us reject what they can't even express)
+- [ ] the through-line: how much *stricter* than a normal compiler can we be? (grounded leaves + DRY concepts let us reject what they can't even express)
+- [~] **balance quantitative and qualitative — anchor on neither.** Optimizing one metric/KPI blinds you to everything else on this list — you'll hit the number, at a cost. Pure qualitative ("do I actually like this?") is a real signal but misses critical quantitative limits. Balance all the goals simultaneously; no single axis is the objective.
 
 ## Worldview
 - [ ] program-as-dependency-graph; the compiler is a non-executing causal engine
@@ -44,6 +80,7 @@ Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
 - [ ] a finished stage is one fold; non-fold residue = named kernel OR un-migrated modeling (no third)
 - [ ] model just-in-time; the mark on the carrier is authority (no parallel-ledger docs)
 - [ ] dissolution disposition: dissolve-now / terminal / gated (no fourth)
+- [~] **file paths are discriminators, not gospel** — a path helps a human/LLM center on what a cluster of modeling is *for*; organize by them broadly, but don't anchor on the file. A concept's home is its *layer* (it belongs in `std/` or `extdeps/` itself); the file is a movable label.
 
 ## Enforcement
 - [ ] lenses are the invariant primitive (not grep); pure readers that store nothing; new analysis = zero substrate edits
@@ -80,3 +117,9 @@ Legend: `[ ]` to discuss/harvest · `[~]` drafted, needs review · `[x]` settled
 - [ ] sweep dangling `docs/*.md` references left in .dag comments / CLAUDE.md / PR template
 - [ ] `dsl/extdeps/extdeps.md` — substrate-adjacent doc, left in place for now; delete too?
 - [ ] secondary cleanup (recon-mapped): `fixtures/v4-mvp1/add` + its v2 parity test, orphan `scripts/ci-merge/`, dead `tools/` (compile_host_runner, ci_timings_collector, ci_affected_components, layering_imports_scan)
+
+## Building & checks (operational)
+
+- `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
+- one-time: `.githooks/install-hooks.sh` (pre-push runs `cargo fmt`)
+- CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v4 --roster-from-discovery --scan-dir src/v4/test`
