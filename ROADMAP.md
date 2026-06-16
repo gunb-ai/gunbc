@@ -1,6 +1,6 @@
 # gunbc Roadmap
 
-Where the project stands and where it is headed. For the intellectual goal, read [THESIS.md](THESIS.md). For rules that protect that goal, read [INVARIANTS.md](INVARIANTS.md). For how to extend the language safely, read [MODELING.md](MODELING.md).
+Where the project stands and where it is headed. For the intellectual goal, the principles that protect it, and how to extend the language safely, read [DESIGN.md](DESIGN.md). (The prior doc corpus — THESIS/INVARIANTS/MODELING and ~80 design docs — was bankrupted 2026-06-16 and is being rebuilt from first principles; old docs remain in git history. This ROADMAP still needs its own lean pass.)
 
 > **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 is frozen. v2 remains the production self-hosted compiler today.
 

@@ -7,8 +7,8 @@ boundedness—so structural claims are checkable, not conventional.
 
 **If it compiles, the declared intent is sound and will execute as declared.**
 
-See [THESIS.md](THESIS.md) for the full thesis behind that guarantee, and
-[ROADMAP.md](ROADMAP.md) for where the project stands and the active wave of work.
+See [DESIGN.md](DESIGN.md) for the worldview, principles, and modeling discipline behind that
+guarantee, and [ROADMAP.md](ROADMAP.md) for where the project stands and the active wave of work.
 
 ## Language and compiler
 
@@ -131,14 +131,9 @@ database up?)—it generates tests for.
 ## Project structure
 
 ```
-THESIS.md           Why daglang exists — start here
+DESIGN.md           Worldview, principles, modeling discipline — start here
 ROADMAP.md          Current state and direction
-INVARIANTS.md       Five principles that protect the thesis
-MODELING.md         How to extend the language safely
-
-docs/               Project-wide design
-  architecture.md     Substrate: Node + Edge
-  coercion-design.md  Type coercion algebra
+CLAUDE.md           Agent/harness instructions
 
 dsl/                Portable daglang vocabulary
   std/                Shared types, algebra, iteration
@@ -162,15 +157,12 @@ src/v4/             Next compiler generation (in progress)
   test/claim/         Structural TestClaim corpus
 
 src/v2/tests/       v2 compiler test suite
-  testing-strategy.md Testing philosophy
 ```
 
 ## Documentation
 
-Read top-down. Each doc links to its parent and children.
-
-1. **[THESIS.md](THESIS.md)** — the goal: causal soundness for daglang
-2. **[ROADMAP.md](ROADMAP.md)** — what's done, what's next
-3. **[INVARIANTS.md](INVARIANTS.md)** — rules that enforce soundness
-4. **[MODELING.md](MODELING.md)** — how to model new concepts
-5. Design docs in `docs/` and `src/v2/` — drill into specifics
+1. **[DESIGN.md](DESIGN.md)** — the worldview, the principles (the review spine), and how to model.
+   Currently a working harvest TODO: the prior doc corpus (THESIS/INVARIANTS/MODELING and ~80 design
+   docs) was bankrupted 2026-06-16 and is being rebuilt from first principles. The old docs remain in
+   git history.
+2. **[ROADMAP.md](ROADMAP.md)** — current state and the active wave.
