@@ -346,6 +346,81 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
 }
 
 
+// ── Resistor statement emit/parse (Shape B — format data-model, NOT the
+//    compiler-language ingest boundary). The modeled `spice_wave1_lex` /
+//    `spice_wave1_grammar` above *declare* the char-level resistor surface
+//    (ident ident ident value, fixture `R1 n1 n2 1`); the functions below
+//    project that production's ordered field spine to/from a `Resistor`
+//    `Component` and prove the projection is lossless (emit ∘ parse = id).
+//
+//    SUBSTRATE GAP (deliberate, non-blocking): the round-trip is at the
+//    format data-model level, not the literal char surface. `String` is
+//    `FreeMonoid<Char>` (Char = Nat, Peano) and `Symbol` is opaque with no
+//    Symbol↔String bridge, so node names (`Symbol`) and the value lexeme
+//    (`String`) cannot be flattened to a single char-level token stream
+//    without that bridge. Each surface field therefore keeps its declared
+//    field type rather than collapsing to text. Emitting an
+//    actual ngspice netlist *string* (the lane's eventual oracle target)
+//    is blocked on that Symbol↔String substrate primitive — surfaced to the
+//    P4 SPICE lane manager, not improvised around here.
+//
+//    Future C/L/V/I/D single-line spines may introduce a shared
+//    `SpiceLineToken` coproduct (feature:spice-line-token-exhaustive-coverage);
+//    wave-1 uses the flat `SpiceResistorLine` named product only.
+
+
+// Resistor single-line statement carrier — named product matching
+// `spice_resistor_statement_formal_production` (ident ident ident value).
+// Illegal spines (wrong arity/kind/order) are unrepresentable; parse is
+// direct field projection.
+type SpiceResistorLine {
+  name: Symbol,
+  n_plus: NodeRef,
+  n_minus: NodeRef,
+  value: SpiceValue
+}
+
+
+// emit half — project a `Resistor` component to its ordered statement spine
+// (name, n+, n-, value). Rejects non-resistor components fail-closed.
+fn spice_emit_resistor_line(component: Component) -> Outcome<SpiceResistorLine> {
+  match component {
+    Resistor { name: name, n_plus: n_plus, n_minus: n_minus, value: value } =>
+      outcome_accepted(
+        value: SpiceResistorLine {
+          name: name,
+          n_plus: n_plus,
+          n_minus: n_minus,
+          value: value
+        }
+      )
+    _ => outcome_rejected(d: spice_emit_resistor_line_non_resistor_diagnostic())
+  }
+}
+
+
+// parse half — rebuild a `Resistor` component from the structurally typed line.
+fn spice_parse_resistor_line(line: SpiceResistorLine) -> Outcome<Component> {
+  outcome_accepted(
+    value: Resistor {
+      name: line.name,
+      n_plus: line.n_plus,
+      n_minus: line.n_minus,
+      value: line.value
+    }
+  )
+}
+
+
+fn spice_emit_resistor_line_non_resistor_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^spice_emit_resistor_line_expects_resistor_component,
+    at: port_locus(port: ^spice_emit_resistor_line),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
 // --- wave-1 Shape B emit/parse (extdeps-local; no v4.compiler imports) --------
 
 data spice_wave1_fixture_file: Symbol = ^spice_wave1_fixture_file

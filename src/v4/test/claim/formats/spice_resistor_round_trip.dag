@@ -1,0 +1,59 @@
+// src/v4/test/claim/formats/spice_resistor_round_trip.dag
+// Scope: P4 SPICE wave-1 — executed Bool witness for the resistor-statement
+//   emit/parse round-trip in v4.extdeps.formats.spice (Shape B — format
+//   data-model, NOT the compiler-language ingest boundary; no v4.compiler.*
+//   imports).
+// Claim: spice_parse_resistor_line ∘ spice_emit_resistor_line = id on the
+//   anchor fixture `R1 n1 n2 1`.
+// Anchor: v4.extdeps.formats.spice.spice_format_grammar_probe fixture
+//   `R1 n1 n2 1` (production: ident ident ident value).
+
+module v4.test.claim.formats.spice_resistor_round_trip
+
+import v4.extdeps.formats.spice {
+  Component,
+  Named,
+  NamedNode,
+  Resistor,
+  SpiceValue,
+  spice_emit_resistor_line,
+  spice_parse_resistor_line
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+
+// Anchor fixture `R1 n1 n2 1` as a structured Resistor component.
+fn spice_resistor_round_trip_fixture() -> Component {
+  Resistor {
+    name: ^R1,
+    n_plus: Named { node: NamedNode { name: ^n1 } },
+    n_minus: Named { node: NamedNode { name: ^n2 } },
+    value: SpiceValue { lexeme: "1" }
+  }
+}
+
+// emit→parse identity: the emitted statement line parses back to a Component
+// structurally equal to the source (lossless format data-model round-trip).
+fn spice_resistor_emit_parse_identity_holds() -> Bool {
+  let component = spice_resistor_round_trip_fixture()
+  match spice_emit_resistor_line(component: component) {
+    Accepted { value: line, diagnostics: _ } =>
+      match spice_parse_resistor_line(line: line) {
+        Accepted { value: recovered, diagnostics: _ } => recovered == component
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn spice_resistor_round_trip_holds() -> Bool {
+  spice_resistor_emit_parse_identity_holds()
+}
+
+data unified_claim_spice_resistor_round_trip: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/formats/spice_resistor_round_trip.dag",
+    function: spice_resistor_round_trip_holds
+  }
+}
