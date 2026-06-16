@@ -5,6 +5,7 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
+pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_syntax::BinOp::NullCoalesce;
@@ -4684,25 +4685,6 @@ pub fn emit_typed_block_join(
     }
 }
 
-pub fn rust_method_template_emit() -> Rc<HashMap<String, String>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("chars".to_string(), "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string());
-            __m.insert("count".to_string(), "({recv}.len() as i64)".to_string());
-            __m.insert("enumerate".to_string(), "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()".to_string());
-            __m.insert("first".to_string(), "{recv}.first().cloned()".to_string());
-            __m.insert("join".to_string(), "{recv}.join(&{arg})".to_string());
-            __m.insert("last".to_string(), "{recv}.last().cloned()".to_string());
-            __m.insert("skip".to_string(), "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string());
-            __m.insert("split".to_string(), "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string());
-            __m.insert("take".to_string(), "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string());
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
-}
-
 pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
@@ -4755,7 +4737,7 @@ pub fn method_template_emit_for_target(
     target: RenderTarget,
 ) -> Option<Rc<HashMap<String, String>>> {
     match target {
-        RenderTarget::Rust => Some(rust_method_template_emit()),
+        RenderTarget::Rust => Some(rust_method_templates()),
         RenderTarget::Python => Some(python_method_template_emit()),
         RenderTarget::Go => Some(go_method_template_emit()),
         RenderTarget::Dag => None,
