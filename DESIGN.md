@@ -133,7 +133,7 @@ still a violation) · internal review finds missing tests, external review finds
 ## Open threads
 
 - can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
-- ROADMAP's own lean pass; sweep dangling `docs/*.md` references in `.dag` comments; `dsl/extdeps/extdeps.md` keep/delete; secondary code cleanup (`fixtures/v4-mvp1/add` + its v2 parity test, `scripts/ci-merge/`, dead `tools/`).
+- sweep deleted-doc references in `.dag` comments (~100 files, mostly `Practice 4 (docs/modeling-discipline.md)` ledger marks) — fold into the dep-graph reform, not a blind repoint.
 
 ## Building & checks
 

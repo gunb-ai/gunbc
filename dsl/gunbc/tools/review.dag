@@ -1,8 +1,7 @@
 // gunbc/tools/review.dag -- PR review workflow.
 //
-// Per-op idempotency is classified by the compiler; see
-// docs/effects-derivation-design.md. CreateReview's externally-guarded
-// idempotency is a known workflow-modeling gap (§Q4 in that doc).
+// Per-op idempotency is classified by the compiler. CreateReview's
+// externally-guarded idempotency is a known workflow-modeling gap.
 //
 // Entrypoints:
 //   review_cycle(owner, repo) -- scan and review all open PRs
@@ -39,12 +38,11 @@ fn has_review_at_sha(reviews: List<PullReview>, sha: String) -> Bool {
 }
 
 fn build_system_prompt(
-  invariants: String,
-  algebra_ref: String,
-  extdeps_ref: String
+  design: String,
+  algebra_ref: String
 ) -> String {
-  let instructions = "Review on three axes:\n1. INVARIANT VIOLATIONS: check diff against INVARIANTS.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n3. CODING.md COMMENT DISCIPLINE: code should speak through clear names, small functions, structured types, and readable control flow instead of explanatory comments. Accept narrow comments only for non-obvious boundaries, genuinely complex decisions, historical/performance context, or load-bearing headers.\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSTYLE|file|line|description\nSUMMARY|one sentence\n\nNothing else."
-  "{instructions}\n\n--- INVARIANTS.md ---\n{invariants}\n\n--- std/algebra.dag ---\n{algebra_ref}\n\n--- extdeps.md ---\n{extdeps_ref}"
+  let instructions = "Review on three axes:\n1. PRINCIPLE VIOLATIONS: check diff against DESIGN.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n3. COMMENT DISCIPLINE (DESIGN.md): code should speak through clear names, small functions, structured types, and readable control flow instead of explanatory comments. Accept narrow comments only for non-obvious boundaries, genuinely complex decisions, historical/performance context, or load-bearing headers.\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSTYLE|file|line|description\nSUMMARY|one sentence\n\nNothing else."
+  "{instructions}\n\n--- DESIGN.md ---\n{design}\n\n--- std/algebra.dag ---\n{algebra_ref}"
 }
 
 fn build_user_message(
@@ -55,21 +53,6 @@ fn build_user_message(
   diff: String
 ) -> String {
   "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
-}
-
-fn build_review_prompt(
-  pr_title: String,
-  pr_number: Int,
-  branch: String,
-  base_ref: String,
-  diff: String,
-  invariants: String,
-  algebra_ref: String,
-  extdeps_ref: String
-) -> String {
-  let system = build_system_prompt(invariants: invariants, algebra_ref: algebra_ref, extdeps_ref: extdeps_ref)
-  let user_msg = build_user_message(pr_title: pr_title, pr_number: pr_number, branch: branch, base_ref: base_ref, diff: diff)
-  "{system}\n\n{user_msg}"
 }
 
 // -- Review a single PR -----------------------------------------------
@@ -107,21 +90,17 @@ func review_pr(
     repo: repo,
     pull_number: pr_number
   )
-  invariants = shell.Exec.Run(
-    script: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:INVARIANTS.md 2>/dev/null || echo '(not found)'"
+  design = shell.Exec.Run(
+    script: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'"
   )
   algebra_ref = shell.Exec.Run(
     script: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dsl/std/algebra.dag 2>/dev/null || echo '(not found)'"
   )
-  extdeps_ref = shell.Exec.Run(
-    script: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dsl/extdeps/extdeps.md 2>/dev/null || echo '(not found)'"
-  )
 
   // Step 4: Build context and invoke LLM via Anthropic REST API
   system_prompt = build_system_prompt(
-    invariants: invariants.stdout,
-    algebra_ref: algebra_ref.stdout,
-    extdeps_ref: extdeps_ref.stdout
+    design: design.stdout,
+    algebra_ref: algebra_ref.stdout
   )
   user_msg = build_user_message(
     pr_title: pr.pr.title,

@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v2_leaf_model_python_l1_static_receipts_test.rs` (INVARIANTS §P5(b) disposition (2): `EXPECTED_HAND_AUTHORED_TEST` 171 → 172; T-PB-B partition `sg0_census_test.rs` module doc + `tests/boundary/README.md`; workstream `docs/planning/v2-python-rca-manager-worksheets-2026-06-01.md` Worksheet B / #4137 §11.8; pairs with `scripts/v2-leaf-model-python-l1-mypy-static-verify.sh` — Worksheet A pyright host runner not in-tree post-#4252; pyright `.dag` authorities only). Follow-up dispatch: retire when modeled verification exercises `src/v2/test/claim/language_model/python_l1_static.dag` without this hand-Rust bridge — gunb-ai/gunbc#4223.

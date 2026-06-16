@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +0
-
-SG-0 pairing: (c) Net +0 on `EXPECTED_HAND_AUTHORED_TEST` — same-path expansion of `src/v3/compiler/tests/boundary/v2_leaf_model_go_r1_r2_r3_external_test.rs` (worksheet Go leaf-model fixtures: `go build`/`go run`, R2b happy+falsification runtime probes; pairs with `scripts/v2-leaf-model-go-r{1,2a,2b,3-external}-verify.sh`). Census path landed on main via #4228; this PR supersedes fixture authority in `.dag` + aligns boundary ratchet. INVARIANTS §P5(b) Mechanism (b). Dissolve when T-22 modeled `run_target_verification` exercises `go_r1.dag` / `go_r2a.dag` / `go_r2b.dag` / `go_r3_external.dag` without this hand-Rust bridge — **T-PB-B** / `_internal/ROADMAP_OPS.md` § **Nine lanes** row `pb_rust_tests_outside_residual_zero` (#4243).
