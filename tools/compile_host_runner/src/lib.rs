@@ -182,13 +182,14 @@ pub fn validate_compile_host_transport_inputs(
 
 /// Parse v2 compile receipt from combined compiler output (M1 probe pattern).
 pub fn parse_compiled_receipt(combined_output: &[u8]) -> Option<CompiledReceipt> {
-<<<<<<< HEAD
     // Scan from the end and return the last `compiled:` receipt, skipping any
     // non-matching trailing lines. Each fallible step must `continue` to the next
     // line on a miss — using `?` here would bail out of the whole function on the
-    // first non-matching line (the loop would never reach a second iteration), so
-    // a `compiled:` line followed by any trailing output would be missed and a
-    // valid compile would be falsely rejected by `compile_accepted`.
+    // first non-matching line, so a `compiled:` line followed by any trailing output
+    // would be missed and a valid compile would be falsely rejected by
+    // `compile_accepted`. (main's #5038 silenced clippy::never_loop with
+    // `lines().next_back()`, which only inspects the literal last line and so kept
+    // that fail-closed bug; this rev-scan restores the original intent and fixes it.)
     let text = String::from_utf8_lossy(combined_output);
     for line in text.lines().rev() {
         let trimmed = line.trim();
@@ -213,19 +214,6 @@ pub fn parse_compiled_receipt(combined_output: &[u8]) -> Option<CompiledReceipt>
         });
     }
     None
-=======
-    let text = String::from_utf8_lossy(combined_output);
-    let trimmed = text.lines().next_back()?.trim();
-    let rest = trimmed.strip_prefix("compiled: ")?;
-    let (files, diagnostics) = rest.split_once(" files emitted, ")?;
-    let diagnostic_count = diagnostics.strip_suffix(" diagnostics")?;
-    let files_emitted = files.parse().ok()?;
-    let diagnostic_count = diagnostic_count.parse().ok()?;
-    Some(CompiledReceipt {
-        files_emitted,
-        diagnostic_count,
-    })
->>>>>>> origin/main
 }
 
 struct BoundedChildOutput {
