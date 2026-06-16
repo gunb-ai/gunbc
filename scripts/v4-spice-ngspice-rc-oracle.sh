@@ -16,35 +16,56 @@
 # Exit codes:
 #   0  — emit correct + ngspice simulated to completion
 #   1  — emit mismatch OR ngspice failed
-#   77 — ngspice or gunbc not found (SKIP)
+#   2  — setup missing (gunbc/ngspice) when strict mode is on
+#   77 — ngspice or gunbc not found (SKIP; non-strict local dev)
 #
 # Env:
 #   NGSPICE        — ngspice binary (default: ngspice)
 #   GUNBC          — gunbc binary (default: path resolution order below)
 #   ORACLE_VERBOSE — set to 1 for full ngspice stdout
+#   V4_SPICE_NGSPICE_RC_ORACLE_STRICT — if 1, exit non-zero when ngspice/gunbc missing
 
 set -euo pipefail
 
 ngspice_bin="${NGSPICE:-ngspice}"
 verbose="${ORACLE_VERBOSE:-0}"
+strict="${V4_SPICE_NGSPICE_RC_ORACLE_STRICT:-${GITHUB_ACTIONS:+1}}"
+strict="${strict:-0}"
 
 if ! command -v "$ngspice_bin" >/dev/null 2>&1; then
+  echo "error: ngspice not found (set NGSPICE= to override)." >&2
+  if [[ "$strict" == "1" ]]; then
+    echo "::error title=spice ngspice rc oracle setup::ngspice missing"
+    exit 2
+  fi
   echo "SKIP: ngspice not found (set NGSPICE= to override)." >&2
   exit 77
 fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-# Resolve gunbc: env override > repo target/release > system PATH
+# Resolve gunbc: env override > repo target/release (build if needed) > system PATH
 if [[ -n "${GUNBC:-}" ]]; then
   gunbc_bin="$GUNBC"
 elif [[ -x "$root/target/release/gunbc" ]]; then
   gunbc_bin="$root/target/release/gunbc"
-elif command -v gunbc >/dev/null 2>&1; then
-  gunbc_bin="gunbc"
 else
-  echo "SKIP: gunbc not found; cannot verify emit correctness." >&2
-  exit 77
+  if [[ ! -x "$root/target/release/gunbc" ]]; then
+    (cd "$root" && cargo build -p v2-compiler --release --bin gunbc)
+  fi
+  if [[ -x "$root/target/release/gunbc" ]]; then
+    gunbc_bin="$root/target/release/gunbc"
+  elif command -v gunbc >/dev/null 2>&1; then
+    gunbc_bin="gunbc"
+  else
+    echo "error: gunbc not found; cannot verify emit correctness." >&2
+    if [[ "$strict" == "1" ]]; then
+      echo "::error title=spice ngspice rc oracle setup::gunbc missing"
+      exit 2
+    fi
+    echo "SKIP: gunbc not found; cannot verify emit correctness." >&2
+    exit 77
+  fi
 fi
 
 claim_entry="$root/src/v4/test/claim/formats/spice_rc_ngspice_oracle.dag"
@@ -65,6 +86,8 @@ echo "oracle: step 1 PASS — spice_emit_ngspice output matches spice_rc_tran_de
 fixture_dag="$root/src/v4/test/fixture/spice_rc_tran_deck.dag"
 
 # Step 2: ngspice execution — netlist bytes from the single golden authority in fixture.
+# 🟡 scaffold — feature:gunbc-golden-bytes-subcommand — regex over .dag source; dissolve-on-arrival:
+# replace with gunbc-evaluated golden literal export (avoids parallel parser fragility).
 netlist="$(python3 - "$fixture_dag" <<'PY'
 import re
 import sys
