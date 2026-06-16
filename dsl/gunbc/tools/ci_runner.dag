@@ -58,6 +58,10 @@ fn ensure_discover_owned_data_binary() -> String {
   "test -x target/release/discover_owned_data || cargo build -p v2-compiler --release --bin discover_owned_data"
 }
 
+fn ensure_layering_imports_scan_binary() -> String {
+  "test -x target/release/layering_imports_scan || cargo build -p layering_imports_scan --release"
+}
+
 fn run_logged_script(inner: String, log_label: String) -> String {
   // Avoid ${VAR:-default} in DSL strings — v2 parser treats `:` as syntax.
   // Honest-bar: redirect must not fail-open — capture inner ec before tail, then exit $ec
@@ -163,6 +167,7 @@ fn affected_tests_shell() -> String {
       ensure_claim_batch_binary(), " && ",
       ensure_claim_executor_binary(), " && ",
       ensure_discover_owned_data_binary(), " && ",
+      ensure_layering_imports_scan_binary(), " && ",
       run_logged_script(
         inner: "bash scripts/v4-affected-tests-gate.sh",
         log_label: "gate3"
