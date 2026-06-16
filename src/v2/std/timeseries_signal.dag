@@ -4,7 +4,7 @@
 // Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
 // spice.dag passive projection; Resistor=map (v=R·i), Capacitor/Inductor=fold over dt.
 // Anchor: SPICE3 passive element topology via v2.extdeps.formats.spice Component.
-// M9 receipt: v2.std.algebra {fold_list}, v2.std.integer {int_add,int_mul,int_div};
+// reuse receipt: v2.std.algebra {fold_list}, v2.std.integer {int_add,int_mul,int_div};
 //             v2.std.measure {Measure, Quantity, Scale} — domain aliases below.
 // Status: S1 canonical + Measure remodel (tidy-heron-718 / post-#4929 GATE1).
 
@@ -40,7 +40,7 @@ import v2.extdeps.formats.spice {
   SpiceVoltUnit
 }
 
-// --- SPICE domain aliases (compute_fabric pattern; M9-attach to #4929 Quantity members) ---
+// --- SPICE domain aliases (compute_fabric pattern; reuse-attach to #4929 Quantity members) ---
 //
 // 🟡 born-mark — feature:spice-dimensional-product-algebra — typed Ohm*Ampere->Volt and
 // Scale-exponent compose (µΩ·µA is pico-volts, not micro-volts) is a separate consumer
@@ -161,7 +161,7 @@ data timeseries_witness_spice_approx_zero: SpiceApproxVoltage = SpiceApproxVolta
 
 // --- spice.dag structural consumption --------------------------------------
 //
-// Practice 11: one parameterized topology carrier; R/L/C arms differ only by tag.
+// decompress→map→reduce (DESIGN.md §2): one parameterized topology carrier; R/L/C arms differ only by tag.
 
 type PassiveElementTopology {
   name: Symbol

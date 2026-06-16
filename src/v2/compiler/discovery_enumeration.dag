@@ -7,12 +7,11 @@
 // Status: types only — no membership filtering or folds here (those stay in the discovery
 //   lane's glob_discovery_law). Behavior-preserving move: definitions are byte-identical to
 //   the prior discovery_types.dag; only the module path changed.
-// Authority: docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md
-//   §"M9 — attach the ingest carrier to the discovery concept family, don't fork it"
+// Authority: attach the ingest carrier to the discovery concept family, don't fork it
 //   (snappy-crab-849 ruling 2026-06-13: promotion approved, one enumeration authority,
 //   attach-don't-mint, home = compiler/source-authority layer).
 //
-// M9 DFS (MODELING.md M9 — DFS the concept DAG before choosing a home):
+// Concept-DAG DFS (DESIGN.md §6 — DFS the concept DAG before choosing a home):
 //   The concept is "whole-tree enumeration → per-item resolved record → scalar OOM-guard
 //   receipt." DFS from v2/std/: std/algebra (FreeMonoid/fold) carries the *traversal*, not
 //   the *domain shape*; std/node (Symbol) and std/text (String) carry the leaf scalars.

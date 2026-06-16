@@ -285,7 +285,7 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
   ecmascript_facts_null
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: Symbol) -> Node {

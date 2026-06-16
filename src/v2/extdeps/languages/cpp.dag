@@ -1,6 +1,6 @@
 // src/v2/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`cpp_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence. Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`cpp_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence. Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows.
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v2.extdeps.languages.cpp
@@ -1279,5 +1279,5 @@ fn cpp_wave1_lex() -> LexRules {
 }
 
 // Anchor: https://eel.is/c++draft/basic.fundamental
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

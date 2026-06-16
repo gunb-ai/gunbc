@@ -7,20 +7,19 @@
 // as the OS distribution identity enum at `dsl/std/os/types.dag`
 // ("enum tag is stable id; catalog row is cited authority").
 //
-// Authority anchors (cited by rule-text quote per
-// `brief-authoring-checklist.md`; bare line-number cites prohibited):
-//   - Practice 8 (`docs/modeling-discipline.md#8-...` spec primitive):
-//     a type modeling a spec primitive carries a 🔴/🟡/🟢 disposition and
-//     names its cited external authority. ISO 4217 is that authority here.
-//   - Practice 4 (`docs/modeling-discipline.md#4-coproduct-dissolution`):
+// Authority anchors (cited by rule-text quote; bare line-number cites prohibited):
+//   - spec-primitive disposition: a type modeling a spec primitive carries a
+//     🔴/🟡/🟢 disposition and names its cited external authority. ISO 4217 is
+//     that authority here.
+//   - coproduct decomposition (DESIGN.md §2 decompress→map→reduce):
 //     "🟢 terminal -- the variants are irreducible distinctions at the
 //     user-input boundary (literals, keywords, source locations); no richer
 //     structure can be named."
-//   - `feedback_construction_over_ratchets`: "Don't build ... ahead of
+//   - construction over ratchets: "Don't build ... ahead of
 //     consumer demand." -> variants are enrolled per consumer demand, not
 //     pre-populated to the full ISO 4217 register.
 //
-// External authority (Practice 8 spec primitive):
+// External authority (spec primitive):
 //   ISO 4217:2015 "Codes for the representation of currencies" -- the
 //   alphabetic code register and per-currency minor-unit (exponent) table.
 //   The *domain* is closed against ISO 4217 (no ad-hoc currencies); the
@@ -32,10 +31,10 @@ import std.types { Int }
 
 // --- CurrencyCode: ISO 4217 alphabetic code (stable currency identity) ----
 //
-// PRACTICE 4 / PRACTICE 8 CHECKPOINT: 🟢 TERMINAL (spec primitive)
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 TERMINAL (spec primitive)
 // Each variant is an ISO 4217 alphabetic code -- an irreducible identity at
 // the financial-spec boundary. Dissolution patterns considered and rejected
-// (recorded for PR review per Practice 4 🟢):
+// (recorded for PR review):
 //   - "dissolve into a CurrencyCatalogRow record (numeric code, name,
 //     minor-unit exponent, ...)": rejected -- the row is data *keyed by*
 //     the code, not richer structure the tag reduces to. The code is the
@@ -43,12 +42,13 @@ import std.types { Int }
 //     identity enum (`std/os/types.dag`). The only currently-demanded
 //     projection is the minor-unit exponent (`currency_minor_unit_exponent`
 //     below); a full catalog row is deferred until a consumer needs it
-//     (`feedback_construction_over_ratchets`).
+//     (construction over ratchets — no carrier ahead of consumer demand).
 //
 // CLOSED DOMAIN / EXTENSION RULE: the domain is closed against ISO 4217 --
 // no ad-hoc currencies. Variants are enrolled per consumer demand only.
 // Adding a code requires (a) a real consumer denominating in it and
-// (b) its ISO 4217 minor-unit exponent in `currency_minor_unit_exponent`.
+// (b) its ISO 4217 minor-unit exponent in `currency_minor_unit_exponent`
+// (construction over ratchets — no variant ahead of consumer demand).
 // Eur is the live compute-supply consumer (Hetzner cost quotes); Usd is the
 // ISO 4217 reference numeraire, exercised by the money-carrier claim-run.
 type CurrencyCode =

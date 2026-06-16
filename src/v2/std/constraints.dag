@@ -1,6 +1,6 @@
 // src/v2/std/constraints.dag
 // Scope: canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper).
-// Anchor: design-v2-compiler-homomorphism.md; gunbc#4760; docs/modeling-discipline.md Practice 11.
+// Anchor: gunbc#4760.
 // Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
 
 

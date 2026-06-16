@@ -1,5 +1,5 @@
 // Scope: Wave-5-A — P3 commitment 6 public terminal; empty required-lens list + reject-before-compile gate.
-// Anchor: docs/design-v2-compiler-homomorphism.md P3 commitment 6
+// Anchor: P3 commitment 6 (DESIGN.md §6 — one fold)
 
 
 module v2.test.manual.validate_then_compile_public_terminal

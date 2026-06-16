@@ -10,15 +10,14 @@
 // follow-up; this layer carries dimensional semantics via the `Quantity` /
 // `Scale` tags only — no predicate refinement at the Measure level).
 //
-// Authority anchors (cited by rule-text quote per
-// `brief-authoring-checklist.md`; bare line-number cites prohibited):
-//   - Practice 4 (`docs/modeling-discipline.md#4-coproduct-dissolution`):
-//     "Any new Rust enum with N >= 2 variants must have a checkpoint
+// Authority anchors (cited by rule-text quote; bare line-number cites prohibited):
+//   - coproduct decomposition (DESIGN.md §2 decompress→map→reduce):
+//     "Any new sum with N >= 2 variants must have a checkpoint
 //     comment naming its classification (🟢/🟡/🔴), with a ledger entry
 //     if GREEN or a named trigger if YELLOW."
-//   - `feedback_construction_over_ratchets`: "Don't build the predicate
+//   - construction over ratchets: "Don't build the predicate
 //     ahead of consumer demand."
-//   - `feedback_reason_not_label`: "The predicate name is the label;
+//   - reason-not-label: "The predicate name is the label;
 //     the reason is the carrier's semantic content."
 // Director ratifications recorded in gunbc#828 issue comments cited above.
 // Worker brief lives outside this checkout (parent worktree); cross-program
@@ -57,13 +56,13 @@ import std.types { Int }
 
 // --- Quantity: what is being measured -------------------------------------
 //
-// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟡 SCAFFOLD
 // Dissolution trigger (Q-Unit-5 RATIFIED): "all Quantity values consumed
 // by >= 1 Grounding emission rule". Until each value gates a real
 // emission rule (Grounding consumer demonstrates need), the carrier
 // is hand-modeled / speculative. Adding a new value without a
-// corresponding emission rule violates
-// `feedback_construction_over_ratchets`; new values require the P1
+// corresponding emission rule violates construction-over-ratchets (no
+// carrier ahead of consumer demand); new values require the
 // substrate-fact-introduction procedure with named consumer demand.
 type Quantity =
     Time
@@ -90,7 +89,7 @@ type Quantity =
 
 // --- Scale: SI decimal scale exponent -------------------------------------
 //
-// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟡 SCAFFOLD
 // Same dissolution trigger as `Quantity`: "all Scale values consumed by
 // >= 1 Grounding emission rule" (Q-Unit-5 RATIFIED).
 //
@@ -149,7 +148,7 @@ fn scale_exponent(s: Scale) -> Int {
 
 // --- Measure<Q, S>: phantom-parameter dimensional carrier -----------------
 //
-// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
 // Parametric dimensional carrier: phantom `<Q>` / `<S>` tag semantics;
 // non-phantom `<M>` carries the magnitude type (see the MAGNITUDE
 // GENERALIZATION note at the type decl below). `count` holds the magnitude
@@ -219,7 +218,7 @@ type Measure<Q, S, M> {
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
-// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
 // carrier; Information's FIRST inhabitant — sets precedent: Information = digital
 // bits, atomic unit at scale One).
 // 🟡 feature:memory-information-byte-bit-conversion — bind first cross-conversion
@@ -236,7 +235,7 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 
 // --- MoneyAmount<S>: price magnitude carrier ------------------------------
 //
-// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
 // carrier; widening is on Scale, not new variants).
 //
 // `MoneyAmount<S> = Measure<Currency, S>` -- the money carrier the design

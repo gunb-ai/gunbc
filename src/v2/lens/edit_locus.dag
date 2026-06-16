@@ -43,7 +43,7 @@ type EditLocusBinding {
   locus: Node
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// 🟡 gated — predicate-dissolution interim —
 // feature: Q-Regex-Primitive — bind: gunbc#3560 — dissolve-on-arrival: replace
 // injected `path_regex_matches` with substrate regex primitive; forbidden: hand-maintained
 // path-regex in workflow YAML (Gate #103).
@@ -76,7 +76,7 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
 }
 
 
-// occurrence_id is excluded from structural equality (design-node-identity-channels.md).
+// occurrence_id is excluded from structural equality.
 // Deep canonical compare — parity with source_authority.dag source_authority_node_equal —
 // so loci dedup is not split by minted ids at any depth.
 fn node_eq(left: Node, right: Node) -> Bool {

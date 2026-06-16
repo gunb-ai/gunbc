@@ -187,7 +187,7 @@ data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafMo
 // pair, never a script-local literal. Go is a corroborating fixed-width witness (rust == go);
 // the runner asserts it only when the Go toolchain is present.
 //
-// FACTS FLOW FORWARD (INVARIANTS P1/P2): the drift is not asserted as a bare value pair — the
+// FACTS FLOW FORWARD (DESIGN.md §3): the drift is not asserted as a bare value pair — the
 // MODELED CAUSE travels with it. The three `*_fact` fields anchor the divergence to the extdeps
 // language representation facts that JUSTIFY it: Python int is `python_repr_int_arbitrary_precision`
 // (so the sum is exact) while Rust and Go integers are `rust_repr_integer_twos_complement` /
@@ -221,7 +221,7 @@ type LeafModelCrossRuntimeDriftProbe {
 // EQUALITY across Python, Rust, and Go, so the verification system demonstrably DISTINGUISHES parity
 // (common domain) from drift (boundary) rather than collapsing them.
 //
-// FACTS FLOW FORWARD (INVARIANTS P1/P2): parity is not a bare value equality — the MODELED CAUSE
+// FACTS FLOW FORWARD (DESIGN.md §3): parity is not a bare value equality — the MODELED CAUSE
 // travels with it. The three `*_fact` fields anchor the agreement to the extdeps facts that JUSTIFY
 // it: for R2a the integer representation facts (arbitrary-precision == two's-complement ON THE COMMON
 // SUBDOMAIN), for R3 the atom-realization facts (same nominal Symbol payload). `expected_parity`

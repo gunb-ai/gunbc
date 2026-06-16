@@ -6,7 +6,7 @@
 module v2.compiler.infer
 
 import v2.std.algebra { length, list_snoc_item }
-// kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not Practice-12 fuel.
+// kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not fuel.
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -67,7 +67,7 @@ type AlgebraRef {
   witness: Node
 }
 
-// Practice 2: InferredFacts bundles CanonicalGrounding + descent. std/constraints.dag
+// InferredFacts bundles CanonicalGrounding + descent. std/constraints.dag
 // CanonicalGrounding is not yet proof-by-construction (scaffold:T-9-ground) — infer
 // enforces admission at construction and re-export via canonical_grounding_admits_infer_facts
 // until std/constraints lands a structural carrier for node/witness/closedness alignment.
@@ -123,7 +123,7 @@ data infer_branch_cond_not_bool: Symbol = infer_branch_cond_not_bool
 data infer_branch_arm_type_mismatch: Symbol = infer_branch_arm_type_mismatch
 data infer_gather_fold_failure: Symbol = infer_gather_fold_failure
 
-// §1-tail A4 disposition (post-#4692): Practice-12 `_bounded` fuel residue = 0 in this stage.
+// §1-tail A4 disposition (post-#4692): `_bounded` fuel residue = 0 in this stage.
 // SG-6 BoundedLattice gather/gate → fuel-delete: rows in v2.std.bounded_lattice_completeness
 // (fold_node owns traversal; fold_init/fold_step are algebra rows, not fuel).
 // Constraint solve → kernel-mark: solve_constraints in v2.std.constraints (fixpoint; call-graph ≠ data-graph).
@@ -386,7 +386,7 @@ fn canonical_grounding_from_inferred_facts(
   }
 }
 
-// RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
+// RULING-1: infer-authored canonical witness only — no compiler-side fabrication.
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
@@ -434,7 +434,7 @@ fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
 }
 
 // 🟡 gated — branch infer M0 literal operand typing — feature:branch-infer-literal-types —
-// bind:docs/design-comprep-m0-branch-mapping.md §12.11 Q-B2 — dissolve-on: github.com/gunb-ai/gunbc#4772 constraint carriers at infer_node_facts
+// dissolve-on: github.com/gunb-ai/gunbc#4772 constraint carriers at infer_node_facts
 // assign literal operand types during infer_node_facts instead of Branch-row semantic projection.
 fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
   if infer_branch_is_bool_literal_atom(node: node) {

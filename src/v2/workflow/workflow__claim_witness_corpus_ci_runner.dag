@@ -2,7 +2,7 @@
 // Status: host gate scripts/v2-claim-witness-corpus-gate.sh (v2_claim_witness_corpus_{a,b}
 //   parallel shards). CI: --shard a|b --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
 // Design-sign notes (alternatives rejected):
-// - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (MODELING.md); one-row
+// - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (DESIGN.md §3); one-row
 //   enrollment must stay a single .dag data binding.
 // - Reuse LensCiClaimRunRow (must-pass only): rejected — no field for ExpectFail + bind_anchor;
 //   extending lens_ci_gate.dag would mix lens-analysis receipts with compiler-semantics keystones.
@@ -451,7 +451,7 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
-// Self-host M3a / Stage A (design-self-host-fixed-point.md §5): executed structural-equality of
+// Self-host M3a / Stage A (DESIGN.md §7): executed structural-equality of
 // emitted FIXTURE stages through self_host.stage_emission_equality — a matching candidate Holds,
 // a divergent candidate Violates (the discriminating red). NOT self-hosting achieved — these
 // de-risk the comparison machinery on hand-built fixtures only. The terminal self-host fixed

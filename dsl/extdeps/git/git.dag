@@ -55,7 +55,7 @@ type GitRemote {
 // exactly one checked-out HEAD; a branch may be checked out in at
 // most one worktree at a time.
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // 🟢 GREEN (terminal). Git's worktree HEAD is exactly one of two
 // irreducible states — checked out on a branch, or detached at a commit —
 // and `git worktree list` reports precisely this distinction. The

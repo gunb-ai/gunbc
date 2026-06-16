@@ -8,7 +8,7 @@
 //   dag is the source-authority row; JSON/IR output is boundary/debug, never source.
 // Route identity (name + semantics) is derived from the ROW TYPE, never stored as a
 //   caller-supplied field — so a row cannot be minted with an off-contract name or
-//   misclassified semantics (INVARIANTS P2 / M2 single authority).
+//   misclassified semantics (single authority, DESIGN.md §3).
 
 module v2.workflow.cli
 
@@ -65,12 +65,12 @@ fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) 
 
 // RR-A §5.2: bootstrap stage0 corpus harness — run entry lives on the modeled harness row,
 // not on `GunbcTestRoute.selection_fn` (that field mirrors `ci.dag` corpus narrowing only).
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) —
 // feature:rr-a-gunbc-test-corpus-harness-route — consumer: gunbc test manual-corpus harness
 // projection — bind RR-A §5.2 + bootstrap_manual_corpus_harness — dissolve-on-arrival: delete
 // when workflow/CI projection reads the harness substrate from `ci_pipeline` alone and this
 // separate CLI row is redundant; forbidden: storing the stage0 run entry on
-// `GunbcTestRoute.selection_fn` (P2 / INVARIANTS M2 single authority).
+// `GunbcTestRoute.selection_fn` (single authority, DESIGN.md §3).
 type GunbcTestCorpusHarnessRoute {
   harness: BootstrapEvaluatorCorpusHarnessEntry
 }

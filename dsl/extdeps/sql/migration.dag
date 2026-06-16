@@ -14,7 +14,7 @@
 
 module extdeps.sql.migration
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification:
 // GREEN (terminal). Migration operations have distinct externally visible
 // schema effects and rollback constraints. Keeping them as variants preserves
 // the operation class without requiring SQL string inspection downstream.

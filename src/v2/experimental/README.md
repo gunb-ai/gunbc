@@ -1,6 +1,6 @@
 # src/v2/experimental — quarantine for consumer-less models
 
-Per [INVARIANTS.md E-10](../../../INVARIANTS.md) ("No Code Without A Consumer"): a model /
+Per DESIGN.md §5 (fail-closed — a typecheck/`.contains()` is not a consumer): a model /
 function / type / field with **no real consumer** — nothing that breaks when its behavior is
 wrong — does not live in the active tree. It is quarantined here until a consumer exists, then
 promoted back out (with that consumer, in the same change).

@@ -25,7 +25,7 @@ type CloudEventSubject = NonEmptyStr where brand("CloudEventSubject")
 type CloudEventExtensionName = NonEmptyStr where brand("CloudEventExtensionName")
 type CloudEventExtensionValue = NonEmptyStr where brand("CloudEventExtensionValue")
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification:
 // GREEN (terminal). Actor source changes authorization and attribution
 // semantics; collapsing to a string would lose the external audit dimension.
 type AuditActorKind
@@ -33,7 +33,7 @@ type AuditActorKind
   | ServiceActor
   | SystemActor
 
-// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// Coproduct dissolution classification:
 // GREEN (terminal). Outcome is part of the externally reported audit fact
 // and drives different downstream compliance interpretations.
 type AuditOutcome

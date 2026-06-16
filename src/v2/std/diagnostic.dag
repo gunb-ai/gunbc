@@ -1,6 +1,6 @@
 // src/v2/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
-// Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v2-compiler-homomorphism.md Ratified Q11.
+// Anchor: fail-closed "show the correct code" (DESIGN.md §5); one fold (DESIGN.md §6) — Ratified Q11.
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
 

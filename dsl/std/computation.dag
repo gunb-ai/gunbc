@@ -11,8 +11,8 @@
 // DESIGN PRINCIPLE:
 // No pattern is rejected. Every computation has a finite bound. The
 // compiler always succeeds in lowering; the question is not "does this
-// terminate?" but "what is its bound?" INVARIANTS.md is aligned: the
-// lowering table is exhaustive and every call pattern has a bound.
+// terminate?" but "what is its bound?" The lowering table is exhaustive
+// and every call pattern has a bound.
 //
 // BOUNDED TRUTH:
 //

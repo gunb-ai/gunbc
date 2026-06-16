@@ -1,4 +1,4 @@
-// Status: emit-only receipt (INVARIANTS E-10): witnesses assert `emit(...)` source text and
+// Status: emit-only receipt (DESIGN.md §5 — a typecheck/string-assert is not an execution consumer): witnesses assert `emit(...)` source text and
 //   discriminating mutates; they do NOT execute TypeScript on Node. Runtime add(2,3)=5 for the
 //   produced DAG body is `comprep_eval_by_execution.dag`; Node exercise of emitted TS awaits
 //   emit-host wiring (typescript execute+eval row still missing on emit_host.dag).
@@ -442,7 +442,7 @@ fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<Ta
   )
 }
 
-// E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
+// emit-only green (DESIGN.md §5): producer-rooted bodied arrow renders the fidelity TS source string.
 // Not an execution consumer — no Node/tsc run; wrong emitted spelling fails this witness.
 test fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {

@@ -2,7 +2,7 @@
 //
 // Scope: complexity lens — structural fact carried by data model, not behavioral test.
 // Anchor: https://en.wikipedia.org/wiki/Computational_complexity_theory + https://en.wikipedia.org/wiki/Big_O_notation
-// Unifies: (per THESIS:187) coercion cost = complexity. The cost of converting between representations IS a complexity-lens read; no parallel CoercionCost carrier. A worker computing coercion cost reads via this lens.
+// Unifies: coercion cost = complexity. The cost of converting between representations IS a complexity-lens read; no parallel CoercionCost carrier. A worker computing coercion cost reads via this lens.
 //
 // U2 (ratified 2026-05-15): this lens is the asymptotic
 // PROJECTION of `lens/cost.dag`'s SymbolicCost — it CONSUMES that
@@ -13,7 +13,7 @@
 // foreclose).
 //
 // Status: ComplexityBound projection + complexity_lens consuming cost_lens + complexity_bound_dominates.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// This file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
 

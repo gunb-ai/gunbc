@@ -1,6 +1,6 @@
 // src/v2/std/verdict.dag
 // Scope: test-run verdict algebra.
-// Anchor: docs/design-v2-compiler-homomorphism.md P3 commitment 6 + T-22 eval runner.
+// Anchor: one-fold homomorphism (DESIGN.md §6) — P3 commitment 6 + T-22 eval runner.
 // Status: AI-10 substrate; Verdict<S,T> + Fail.falsification per verdict-surface-contract (#3961).
 // Migration (#3961 §3.1 / Runtime/TestClaim mgr): #3958 merges `Fail { actual, falsification }`;
 // bounded follow-up collapses to `Fail { receipt: FalsificationReceipt<Subj,T> }` (no dual-actual).
@@ -79,7 +79,7 @@ fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
 // so it is the canonical surface for "how many Pass / Fail / Deferred"
 // over a list — NOT per-variant `is_*` Bool predicates (which would be
 // unconditional predicate-dissolution triggers in std/ per
-// docs/modeling-discipline.md). Populations are `Nat` so negative counts
+// decompress→map→reduce, DESIGN.md §2). Populations are `Nat` so negative counts
 // are unrepresentable in the substrate (count invariant lives in the type,
 // not in a hand-checked predicate).
 type VerdictTally {

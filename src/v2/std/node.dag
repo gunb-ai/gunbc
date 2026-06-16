@@ -1,7 +1,7 @@
 // src/v2/std/node.dag
 // Scope: v2 substrate root for type and computation nodes.
-// Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Status: T-1 modeled; substrate-extension rule in src/v2/STRUCTURE.md.
+// Anchor: substrate shape — closed, grounded Node+Edge substrate (DESIGN.md §4).
+// Status: T-1 modeled; substrate-extension rule.
 // Note: bind_outcome + Outcome helpers live in v2.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
 // (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
 
@@ -9,7 +9,7 @@
 module v2.std.node
 type Symbol
 type Hash
-// PROV A-pivot (design-node-identity-channels.md, design-provenance-span.md §4.1):
+// PROV A-pivot:
 // opaque occurrence identity; sole mint via v2.std.occurrence_id.alloc_occurrence_id.
 // Distinct id space from binding_id (#4581). Excluded from structural equality / content hash.
 // Node.occurrence_id field lands atomically with #4604 span revert (Phase 1+2).
@@ -43,7 +43,7 @@ type Behavior
   | Bind
 
 
-// R-reflect Phase 2a — dissolving bridge + Path-3 I/O boundary (design §4.3 substrate-native).
+// R-reflect Phase 2a — dissolving bridge + Path-3 I/O boundary (substrate-native).
 // resolve_type_node: minimal Rust bridge (compiler Disj → substrate Node Value); dissolves when
 // v2 gains compile-graph access. Enumeration lives in v2.std.node_query (node_labeled_child_edges).
 // syntactic_coproduct_arm_keys: irreducible raw-source scan (Path 3 independence from parse+resolve).
@@ -80,7 +80,7 @@ type CoproductArmPayloadPair {
 data coproduct_nullary_payload_type_name: Symbol = ^coproduct_nullary_payload
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
@@ -145,9 +145,9 @@ type NodeShape {
   kind: NodeKind
   children: List<EdgeShape>
 }
-// 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
+// 🟡 gated — substrate-shape bridge — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
 data loop_bound_edge: Symbol = ^loop_bound_edge
-// 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
+// 🟢 TERMINAL — DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
 data arrow_body_edge: Symbol = ^arrow_body_edge
 
 fn node_with_occurrence_id(
@@ -174,7 +174,7 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   )
 }
 
-// design-node-identity-channels.md: occurrence_id excluded from structural equality / content hash.
+// occurrence_id excluded from structural equality / content hash.
 fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
@@ -251,9 +251,9 @@ type EdgeDiscipline
   = NoEdges
   | LabeledEdges
   | PositionalEdges
-  // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
+  // 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
   | LoopBoundEdges
-  // 🟢 TERMINAL — COMPREP wave 0/1: Arrow signature positional edges + optional Arrow.body named edge (design-computation-representation.md; INVARIANTS E-9).
+  // 🟢 TERMINAL — COMPREP wave 0/1: Arrow signature positional edges + optional Arrow.body named edge.
   | ArrowBodyEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
@@ -265,14 +265,14 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Instantiation => PositionalEdges
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Named-variant discriminant projection; forbidden: fold laundering.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Named-variant discriminant projection; forbidden: fold laundering.
 fn is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
     Positional => false
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Positional-variant discriminant projection; forbidden: fold laundering.
+// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Positional-variant discriminant projection; forbidden: fold laundering.
 fn is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
@@ -307,11 +307,11 @@ fn positional_child_count(children: List<Edge>) -> Int {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
 fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -320,7 +320,7 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   (bound_edges == 1)
@@ -336,7 +336,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
+// 🟡 gated — predicate-dissolution interim — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
 type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
@@ -364,7 +364,7 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 / INVARIANTS P5) — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v2.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
+// 🟡 gated — predicate-dissolution interim — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v2.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match target.kind {
     ComputationNode { behavior: _ } => true
@@ -390,7 +390,7 @@ fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
 fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
@@ -423,7 +423,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
     Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
@@ -436,7 +436,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
@@ -465,7 +465,7 @@ fn well_formed(n: Node) -> Bool {
     }
   )
 }
-// 🟢 predicate dissolution — api-review P5 receipt PR #3274 (SG-0 census N/A for v2-only substrate).
+// 🟢 predicate dissolution — api-review receipt PR #3274 (SG-0 census N/A for v2-only substrate).
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
@@ -510,7 +510,7 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
     Positional => ^canonical_tag_positional_edge
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
 fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
 }

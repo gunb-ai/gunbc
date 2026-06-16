@@ -108,8 +108,8 @@ data ps_arm64: PowerShellArchMapping = PowerShellArchMapping {
 
 // 32-bit Windows hosts. gunbc does not currently ship an x86-Windows InstallTarget (no tier1/
 // tier2 32-bit MSVC release in src/v2/std/target_triple.dag), but closing the PowerShell ABI
-// set here keeps the detection table faithful to Windows ABI docs (Practice 1 / P3 — every
-// documented external value has a substrate row). Install-channel selection downstream maps
+// set here keeps the detection table faithful to Windows ABI docs (faithful modeling, DESIGN.md
+// §3 — every documented external value has a substrate row). Install-channel selection downstream maps
 // X86 hosts to a fail-closed "unsupported architecture" diagnostic rather than fabricating an
 // aarch64/x86_64 fallback.
 data ps_x86: PowerShellArchMapping = PowerShellArchMapping {

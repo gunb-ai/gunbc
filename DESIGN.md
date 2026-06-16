@@ -163,7 +163,7 @@ still a violation) · internal review finds missing tests, external review finds
   the argument itself; the §7 recursion, with this document as the first target). (operator's next
   project)
 - can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
-- sweep deleted-doc references in `.dag` comments (~100 files, mostly `Practice 4 (docs/modeling-discipline.md)` ledger marks) — fold into the dep-graph reform, not a blind repoint.
+- the remaining deleted-`docs/` references in `.dag` comments — provenance / `bind:` pointers into the bankrupted `docs/` tree (e.g. `docs/planning/*`, `design-*.md`) — fold into the dep-graph reform, not a blind repoint. (The named-corpus ledger marks — `Practice N`, and `INVARIANTS` / `THESIS` / `MODELING` / `RELEASE_TODO` / … citations — were swept: dropped, or re-homed to DESIGN.md §-anchors.)
 
 ## Building & checks
 

@@ -26,7 +26,7 @@ module extdeps.cron.schedule_model
 import std.integer { NonNegativeInt, PositiveInt }
 import std.list { List }
 
-// Practice 4 (Coproduct dissolution — docs/modeling-discipline.md Practice 4): `CronField`.
+// Coproduct dissolution: `CronField`.
 //
 // Classification ledger (N≥2 variants — checkpoint names 🟢 / 🟡 / 🔴):
 //
@@ -45,7 +45,7 @@ import std.list { List }
 //      mis-model the field grammar.
 //
 // **🟡 YELLOW (scaffold — bounded refinements deferred)** — payloads still admit **ill-formed**
-// crontab facts this module does not rule out at the type layer (P2 / extdeps fidelity gap):
+// crontab facts this module does not rule out at the type layer (boundary discipline, DESIGN.md §3 / extdeps fidelity gap):
 //   - `Listed` may be an **empty** list (no corresponding empty-list field token in portable grammar).
 //   - `Ranged` may have **start > end** (inverted range — not a valid portable range token).
 //   - `Exact`, list elements, range endpoints, and step coordinates may sit **outside each field's
