@@ -6,9 +6,8 @@
 //
 // Cardinality is **not** enforced by the substrate today: fields stay `List<…>`
 // with no lowered field refinement, and type-alias `where` on `type X = …`
-// is still skipped in the handwritten parser (`parse_type_rhs_after_eq` /
-// `skip_where_clause`, src/v3/compiler/src/parse.rs) until M2+ wires alias
-// refinements. So arbitrary-length lists remain representable in these fields;
+// is still skipped in the handwritten parser until alias refinements are
+// wired. So arbitrary-length lists remain representable in these fields;
 // “exactly N bits/bytes” below is **documented intent** for authors and future
 // validators — not API-level or illegal-state guarantees yet.
 

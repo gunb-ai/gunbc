@@ -5,9 +5,7 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
-pub use crate::generated_method_template_projection::{
-    go_method_template_emit, python_method_template_emit, rust_method_template_emit,
-};
+pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_syntax::BinOp::NullCoalesce;
@@ -4687,11 +4685,59 @@ pub fn emit_typed_block_join(
     }
 }
 
+pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, String>> = {
+            let mut __m = HashMap::new();
+            __m.insert("all".to_string(), "all({arg}(x) for x in {recv})".to_string());
+            __m.insert("any".to_string(), "any({arg}(x) for x in {recv})".to_string());
+            __m.insert("append".to_string(), "{recv} + [{arg}]".to_string());
+            __m.insert("chars".to_string(), "[ord(c) for c in {recv}]".to_string());
+            __m.insert("count".to_string(), "len({recv})".to_string());
+            __m.insert("enumerate".to_string(), "list(enumerate({recv}))".to_string());
+            __m.insert("filter".to_string(), "[x for x in {recv} if {arg}(x)]".to_string());
+            __m.insert("first".to_string(), "{recv}[0] if {recv} else None".to_string());
+            __m.insert("flat_map".to_string(), "[y for x in {recv} for y in {arg}(x)]".to_string());
+            __m.insert("join".to_string(), "{arg}.join({recv})".to_string());
+            __m.insert("last".to_string(), "{recv}[-1] if {recv} else None".to_string());
+            __m.insert("skip".to_string(), "{recv}[{arg}:]".to_string());
+            __m.insert("sort_by".to_string(), "sorted({recv}, key={arg})".to_string());
+            __m.insert("split".to_string(), "{recv}.split({arg})".to_string());
+            __m.insert("string_contains".to_string(), "{arg} in {recv}".to_string());
+            __m.insert("take".to_string(), "{recv}[:{arg}]".to_string());
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+}
+
+pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, String>> = {
+            let mut __m = HashMap::new();
+            __m.insert("all".to_string(), "v2rt.All({recv}, {arg})".to_string());
+            __m.insert("any".to_string(), "v2rt.Any({recv}, {arg})".to_string());
+            __m.insert("append".to_string(), "append({recv}, {arg})".to_string());
+            __m.insert("count".to_string(), "len({recv})".to_string());
+            __m.insert("filter".to_string(), "v2rt.Filter({recv}, {arg})".to_string());
+            __m.insert("flat_map".to_string(), "v2rt.FlatMap({recv}, {arg})".to_string());
+            __m.insert("join".to_string(), "strings.Join({recv}, {arg})".to_string());
+            __m.insert("skip".to_string(), "{recv}[{arg}:]".to_string());
+            __m.insert("sort_by".to_string(), "v2rt.SortBy({recv}, {arg})".to_string());
+            __m.insert("split".to_string(), "strings.Split({recv}, {arg})".to_string());
+            __m.insert("string_contains".to_string(), "strings.Contains({recv}, {arg})".to_string());
+            __m.insert("take".to_string(), "{recv}[:{arg}]".to_string());
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+}
+
 pub fn method_template_emit_for_target(
     target: RenderTarget,
 ) -> Option<Rc<HashMap<String, String>>> {
     match target {
-        RenderTarget::Rust => Some(rust_method_template_emit()),
+        RenderTarget::Rust => Some(rust_method_templates()),
         RenderTarget::Python => Some(python_method_template_emit()),
         RenderTarget::Go => Some(go_method_template_emit()),
         RenderTarget::Dag => None,

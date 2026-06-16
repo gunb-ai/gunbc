@@ -5,9 +5,8 @@ pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
     rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
-    rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy,
+    rust_method_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy,
 };
-pub use crate::generated_method_template_projection::rust_method_template_emit;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
@@ -722,9 +721,18 @@ pub fn rust_nominal_ord_derives_for_shape(
     }
 }
 
-pub fn rust_nominal_ord_type_name_eligible(type_name: String) -> bool {
-    ((type_name.clone().as_str() == "Symbol".to_string().as_str())
-        || (type_name.clone().as_str() == "DiffId".to_string().as_str()))
+pub fn rust_nominal_ord_type_ref_eligible(
+    elem_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let type_name = authored_name_at(source_indices, elem_node.clone());
+        (((((elem_node.children.clone().len() as i64) == 0)
+            && ((elem_node.params.clone().len() as i64) == 0))
+            && (elem_node.connective.clone() == Connective::NoConnective))
+            && ((type_name.clone().as_str() == "Symbol".to_string().as_str())
+                || (type_name.clone().as_str() == "DiffId".to_string().as_str())))
+    }
 }
 
 pub fn rust_nominal_ord_type_eligible(
@@ -732,10 +740,7 @@ pub fn rust_nominal_ord_type_eligible(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
-        || rust_nominal_ord_type_name_eligible(authored_name_at(
-            source_indices.clone(),
-            elem_node.clone(),
-        )))
+        || rust_nominal_ord_type_ref_eligible(elem_node.clone(), source_indices.clone()))
         || rust_diff_id_ord_carrier_shape_eligible(
             authored_name_at(source_indices.clone(), elem_node.clone()),
             elem_node.children.clone(),
@@ -14255,7 +14260,7 @@ pub fn emit_typed_method_call(
                                                                     emit_info.clone(),
                                                                 );
                                                             match v1_rt::map_get(
-                                                                &rust_method_template_emit(),
+                                                                &rust_method_templates(),
                                                                 method_name.clone(),
                                                             ) {
                                                                 Some(tmpl) => {

@@ -1,5 +1,5 @@
 // src/v2/std/effects.dag
-// Scope: v2 effect algebra — idempotent/breaking partition (structural mirror of src/v3/std/effects.dag terminal carriers).
+// Scope: v2 effect algebra — idempotent/breaking partition (terminal carriers).
 // Status: T-19 idempotent-operation generator authority; full OperationEffect port = TASKS T-8.
 
 module v2.std.effects

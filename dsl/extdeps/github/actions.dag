@@ -8,9 +8,6 @@
 //
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
-// Consumers: `src/v3/std/t_ci_workflow_as_data_demo.dag` (gate-58 timing-lens
-// self-application fixture authors a `Workflow` value over these carriers).
-//
 // Related extdeps:
 //   extdeps/github/ci.dag — repository workflow path facts (complements this syntax model)
 

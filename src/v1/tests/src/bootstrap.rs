@@ -48,18 +48,7 @@ fn run_self_compile(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
 ) -> std::process::Output {
-    let generated_root = write_method_template_projection_generated_root("self-compile-generated");
-    run_self_compile_with_extra_source_roots(binary, output_dir, &[generated_root])
-}
-
-fn write_method_template_projection_generated_root(name: &str) -> std::path::PathBuf {
-    let root = temp_dir(name);
-    let _ = std::fs::remove_dir_all(&root);
-    // v2-resident projection source (single authority shared with regen_stage0); no
-    // external producer. Written ephemerally — never committed (bootstrap ratchet).
-    v1_compiler::method_template_projection_source::write_method_template_projection_dag(&root)
-        .expect("write method-template projection generated root");
-    root
+    run_self_compile_with_extra_source_roots(binary, output_dir, &[])
 }
 
 /// Run self-compile with additional dependency source roots appended after the
@@ -121,7 +110,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "v1_compiler_dag_collect.rs",
-        "method_template_projection_source.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -838,7 +826,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // Freshness: diff pass 1 output against committed stage0.
     // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
     //
-    // Committed stage0 is fmt-compliant (applied by gunbc-bootstrap / `make bootstrap`):
+    // Committed stage0 is fmt-compliant (regen_stage0 applies a
     // trailing `cargo fmt --all`). The v2 emitter itself does not produce
     // fmt-canonical output, so raw self-compile output differs from
     // committed stage0 only in whitespace/layout. Normalize pass1 output
@@ -994,7 +982,7 @@ fn ci_freshness() {
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
-             Run `make bootstrap-check` (or `cargo run -p gunbc-codegen --bin gunbc-bootstrap`) to update.\n\
+             Run `cargo run -p v1-compiler --bin regen_stage0` to update.\n\
              Diff:\n{}",
             diff
         );
