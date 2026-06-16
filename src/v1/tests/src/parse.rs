@@ -236,6 +236,28 @@ fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
 }
 
 #[test]
+fn parse_fn_expression_body() {
+    let source = r#"module test
+type Color = Red | Green
+fn is_red(c: Color) -> Bool =
+  match c {
+    Red => true
+    Green => false
+  }
+fn code_point(c: Int) -> Int = c + 0
+"#;
+    assert_parses(source, "expression-bodied fn");
+}
+
+#[test]
+fn parse_fn_brace_body_still_accepted() {
+    let source = r#"module test
+fn add(x: Int, y: Int) -> Int { x + y }
+"#;
+    assert_parses(source, "brace-bodied fn (legacy)");
+}
+
+#[test]
 fn item_ident_spans_point_at_identifiers_not_keywords() {
     let source = r#"module test
 type Widget = String
@@ -388,6 +410,11 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
 #[test]
 fn stack_parses_strict() {
     assert_parses_strict("dsl/std/stack.dag");
+}
+
+#[test]
+fn unicode_parses_strict() {
+    assert_parses_strict("dsl/std/unicode.dag");
 }
 
 // ── Phase 0: strict parse audit (.dag files) ────────────────────────────
