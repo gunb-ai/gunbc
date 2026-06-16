@@ -1650,7 +1650,9 @@ fn ts_program_target_model() -> TargetModel {
 data ts_host_transport_program_identity: Symbol = ts_host_transport_program_identity
 
 data ts_host_transport_program_harness_suffix: String = "
-import * as fs from 'fs';
+declare const process: { stdout: { write(s: string): void } };
+declare function require(name: string): any;
+const fs = require('fs');
 const __gunbc_effect_write = (p: string, c: string) => { fs.writeFileSync(p, c); return c; };
 const __gunbc_effect_read = (p: string) => fs.readFileSync(p, 'utf8');
 const ioPath = 'gunbc_program_io_target.txt';
@@ -1672,7 +1674,7 @@ fn ts_host_transport_program_descriptor() -> HostTransportDescriptor {
       ProcessInvocation {
         tool: host_tool_npx,
         args: [
-          LiteralArg { text: "-y" },
+          LiteralArg { text: "-p" },
           LiteralArg { text: "typescript@5.9.2" },
           LiteralArg { text: "tsc" },
           LiteralArg { text: "--target" },
@@ -1697,6 +1699,8 @@ fn ts_host_transport_program_descriptor() -> HostTransportDescriptor {
 data ts_host_transport_mvp1_identity: Symbol = ts_host_transport_mvp1_identity
 
 data ts_host_transport_mvp1_harness_suffix: String = "
+declare const process: { stdout: { write(b: unknown): void } };
+declare const Buffer: { alloc(n: number): { writeInt32LE(v: number, offset: number): void } };
 const __gunbc_r = add(2, 3);
 const __gunbc_b = Buffer.alloc(4);
 __gunbc_b.writeInt32LE(__gunbc_r, 0);
@@ -1716,7 +1720,7 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
       ProcessInvocation {
         tool: host_tool_npx,
         args: [
-          LiteralArg { text: "-y" },
+          LiteralArg { text: "-p" },
           LiteralArg { text: "typescript@5.9.2" },
           LiteralArg { text: "tsc" },
           LiteralArg { text: "--target" },

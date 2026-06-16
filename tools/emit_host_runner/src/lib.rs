@@ -255,6 +255,8 @@ pub const TS_HOST_TRANSPORT_MVP1_IDENTITY: &str = "ts_host_transport_mvp1_identi
 pub const TS_HOST_TRANSPORT_PROGRAM_IDENTITY: &str = "ts_host_transport_program_identity";
 
 const TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX: &str = "\
+declare const process: { stdout: { write(b: unknown): void } };
+declare const Buffer: { alloc(n: number): { writeInt32LE(v: number, offset: number): void } };
 const __gunbc_r = add(2, 3);
 const __gunbc_b = Buffer.alloc(4);
 __gunbc_b.writeInt32LE(__gunbc_r, 0);
@@ -262,7 +264,9 @@ process.stdout.write(__gunbc_b);
 ";
 
 const TS_HOST_TRANSPORT_PROGRAM_HARNESS_SUFFIX: &str = "\
-import * as fs from 'fs';
+declare const process: { stdout: { write(s: string): void } };
+declare function require(name: string): any;
+const fs = require('fs');
 const __gunbc_effect_write = (p: string, c: string) => { fs.writeFileSync(p, c); return c; };
 const __gunbc_effect_read = (p: string) => fs.readFileSync(p, 'utf8');
 const ioPath = 'gunbc_program_io_target.txt';
@@ -336,7 +340,7 @@ fn run_host_process_ts_mvp1(
 
     let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
     build_cmd.current_dir(work_dir).args([
-        "-y",
+        "-p",
         "typescript@5.9.2",
         "tsc",
         "--target",
@@ -392,7 +396,7 @@ fn run_host_process_ts_program(
 
     let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
     build_cmd.current_dir(work_dir).args([
-        "-y",
+        "-p",
         "typescript@5.9.2",
         "tsc",
         "--target",

@@ -125,7 +125,7 @@ fn program_emit_typescript_receipt_runs_on_node_with_effect_io_roundtrip() {
         TS_HOST_TRANSPORT_PROGRAM_IDENTITY,
         &source,
         &EmitHostTransportInputs {
-            claim_input_root: String::new(),
+            claim_input_root: "program_emit_typescript_claim_input".to_string(),
         },
         Path::new(&work_dir),
     )
