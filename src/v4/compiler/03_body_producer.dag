@@ -122,6 +122,63 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   }
 }
 
+// The structured-Behavior dispatch surface: given a resolved signature Arrow + the Behavior body
+// normalize emits (Transform call / Branch / Loop / Bind, keyed on the node.dag Behavior coproduct
+// node.dag:38; Transform callee-ref child[0] per node_query.node_is_call), validate it against the
+// per-variant edge contract (well_formed → behavior_edges_conform) and marry it to the Arrow.
+// Subsumes the four flat-index tables (produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved);
+// per-form reconstruction + atom→symbol bridging dissolve UP into normalize.
+// 🟡 gated — dormant structured-Behavior dispatch surface (docs/modeling-discipline.md Practice 4 /
+// INVARIANTS P5) — feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 —
+// dissolve-on: normalize emits the structured Behavior body (03_normalize.dag / std/compilers/
+// body_lowering.dag) and the pipeline rewires its produce_mvp1_*_from_resolved call sites to
+// produce_arrow_with_structured_body, deleting the four flat-index tables — that deletion is
+// licensed by the byte-identical subsumption witnesses (test/claim/manual/structured_body_dispatch.dag
+// = add; structured_body_subsumption_set.dag = pick/loop/bind) — forbidden: wiring this surface into
+// the pipeline while any flat-index table still runs (dual-authority half-rewire).
+fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
+  if well_formed(n: body) {
+    outcome_accepted(value: body)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: body_producer_reason_post_produce_not_well_formed,
+        n: body
+      )
+    )
+  }
+}
+
+// Recognize that the normalized body is a structured Behavior (vs a residual parse node) and
+// validate it. The Behavior variant is the dispatch key: control-flow forms (Branch/Loop/Bind)
+// and the call form (Transform, callee-keyed via the carrier) all flow through the per-variant
+// edge contract. A non-Behavior body is the malformed-normalize case.
+fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: body
+        )
+      )
+  }
+}
+
+// The dissolution producer: given a resolved signature Arrow and the structured Behavior body
+// normalize emitted, validate the body and attach it. Replaces the four per-form
+// produce_mvp1_*_from_resolved tables once normalize lands (slice i); the resolved-tree
+// signature/body extraction plumbing arrives with the emit's output shape.
+fn produce_arrow_with_structured_body(signature: Node, structured_body: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_producer_dispatch_structured_body(body: structured_body),
+    f: fn(validated) {
+      attach_arrow_body(arrow: signature, body: validated)
+    }
+  )
+}
+
 fn body_producer_arrow_domain_conj_from_binding_ids(bindings: List<Symbol>) -> Outcome<Node> {
   match list_at_optional(xs: bindings, index: 0) {
     Absent =>
