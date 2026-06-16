@@ -2,7 +2,7 @@
 
 Where the project stands and where it is headed. For the intellectual goal, the principles that protect it, and how to extend the language safely, read [DESIGN.md](DESIGN.md). (The prior doc corpus — THESIS/INVARIANTS/MODELING and ~80 design docs — was bankrupted 2026-06-16 and is being rebuilt from first principles; old docs remain in git history. This ROADMAP still needs its own lean pass.)
 
-> **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 is frozen. v2 remains the production self-hosted compiler today.
+> **v4 is the active development phase.** New substrate modeling and compiler pipeline work live in [`src/v4/`](src/v4/). v3 has been **removed** — its one load-bearing role (the method-template projection producer) was migrated into v2 (`src/v2/stage0/src/method_template_projection_source.rs`); v2 self-compile is verified green without it. v2 remains the production self-hosted compiler and v4's seed.
 
 ## Active wave — the stage-fold program
 
@@ -33,7 +33,7 @@ Keystone §1.1 landed (#4699): **4,912 → 3,973 lines** on main, `_go` accumula
 
 > **Priority fork (operator's call, after §2 lands):** §3 + self-host (compiler/breadth lane) vs §4 (a demo-able running program). Both unblock once §2 lands; the pick sets the deepest staffing.
 
-**§5 — self-hosting** (get-off-v3 caller-census ratchet → zero hand-maintained Rust). Depends on §3.
+**§5 — self-hosting** (census ratchet → zero hand-maintained Rust; the v2 seed is the last residual). Depends on §3.
 
 ### Cross-cutting requirements (portfolio scale — threaded here)
 
@@ -75,7 +75,7 @@ v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std 
 
 | Lane | Interim bridge | Dissolve-on |
 |------|----------------|-------------|
-| T-22 eval host transport dispatch | `run_emit_host_go` eval calls use the existing `emit_host_runner` host boundary while projecting the modeled `v4.std.host_run.EmitHostRunReceipt` / `Outcome` carriers. | Generated `.dag` eval dispatches `v4.compiler.emit_host.run_emit_host_go` host transports directly; delete the evaluator shim with the surrounding `src/v3/compiler/src/emit_host_bridge.rs` host-transport bridge. |
+| T-22 eval host transport dispatch | `run_emit_host_go` eval calls use the existing `emit_host_runner` host boundary while projecting the modeled `v4.std.host_run.EmitHostRunReceipt` / `Outcome` carriers. | Generated `.dag` eval dispatches `v4.compiler.emit_host.run_emit_host_go` host transports directly. (The v3-resident evaluator shim / `emit_host_bridge.rs` host-transport bridge was removed with the v3 tree.) |
 
 ### Public Operational Lanes
 
@@ -112,7 +112,7 @@ Work is organized around closing the bootstrap loop, not a calendar:
 
 | Lane | Gate / row | Tracked obligation |
 |------|------------|--------------------|
-| **T-PB-B** | `pb_rust_tests_outside_residual_zero` | Pure Bootstrap test floor: hand-maintained Rust tests under `src/v3/compiler/tests/` shrink toward zero as receipts migrate to `.dag` `TestClaim` declarations or generated harness coverage. Each temporary Rust test scaffold must be listed in the SG-0 hand-authored-test census with a dissolution trigger, and the same PR removes that census entry when the modeled or generated replacement lands. |
+| **T-PB-B** | `pb_rust_tests_outside_residual_zero` | Pure Bootstrap test floor: hand-maintained Rust tests shrink toward zero as receipts migrate to `.dag` `TestClaim` declarations or generated harness coverage. (The v3 test tree — the original SG-0 census scope, including `sg0_census_test.rs` — was removed with v3; the remaining residual is the v2/tools hand-Rust test surface.) |
 
 Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; that era's detailed operational tracking is not carried in this repo.
 

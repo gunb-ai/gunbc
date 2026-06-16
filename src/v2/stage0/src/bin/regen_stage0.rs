@@ -146,54 +146,7 @@ const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
     "json_quote",
 ];
 
-const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
-
-data rust_method_template_emit: Map<String, String> = {
-  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
-  "count": "(\{recv\}.len() as i64)",
-  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
-  "first": "\{recv\}.first().cloned()",
-  "join": "\{recv\}.join(&\{arg\})",
-  "last": "\{recv\}.last().cloned()",
-  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
-  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",
-}
-
-data python_method_template_emit: Map<String, String> = {
-  "all": "all(\{arg\}(x) for x in \{recv\})",
-  "any": "any(\{arg\}(x) for x in \{recv\})",
-  "append": "\{recv\} + [\{arg\}]",
-  "chars": "[ord(c) for c in \{recv\}]",
-  "count": "len(\{recv\})",
-  "enumerate": "list(enumerate(\{recv\}))",
-  "filter": "[x for x in \{recv\} if \{arg\}(x)]",
-  "first": "\{recv\}[0] if \{recv\} else None",
-  "flat_map": "[y for x in \{recv\} for y in \{arg\}(x)]",
-  "join": "\{arg\}.join(\{recv\})",
-  "last": "\{recv\}[-1] if \{recv\} else None",
-  "skip": "\{recv\}[\{arg\}:]",
-  "sort_by": "sorted(\{recv\}, key=\{arg\})",
-  "split": "\{recv\}.split(\{arg\})",
-  "string_contains": "\{arg\} in \{recv\}",
-  "take": "\{recv\}[:\{arg\}]",
-}
-
-data go_method_template_emit: Map<String, String> = {
-  "all": "v2rt.All(\{recv\}, \{arg\})",
-  "any": "v2rt.Any(\{recv\}, \{arg\})",
-  "append": "append(\{recv\}, \{arg\})",
-  "count": "len(\{recv\})",
-  "filter": "v2rt.Filter(\{recv\}, \{arg\})",
-  "flat_map": "v2rt.FlatMap(\{recv\}, \{arg\})",
-  "join": "strings.Join(\{recv\}, \{arg\})",
-  "skip": "\{recv\}[\{arg\}:]",
-  "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
-  "split": "strings.Split(\{recv\}, \{arg\})",
-  "string_contains": "strings.Contains(\{recv\}, \{arg\})",
-  "take": "\{recv\}[:\{arg\}]",
-}
-"#;
+use v2_compiler::method_template_projection_source::GENERATED_METHOD_TEMPLATE_PROJECTION_DAG;
 
 fn main() -> ExitCode {
     match run() {

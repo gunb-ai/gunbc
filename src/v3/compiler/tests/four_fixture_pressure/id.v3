@@ -1,9 +1,0 @@
-// §3.3 — `id`. Parameter reaches the return directly.
-//
-//   Expected disposition (post-Track-1-Phase-2): Consumed.
-//   Reachability fact today: UnusedParametersLens reports the
-//   parameter as USED (the body `x` is the bind result).
-//
-// Abstraction boundary probed: "reach return, no construct".
-fn id(x: Int) -> Int = x
-let sample: Int = id(1)

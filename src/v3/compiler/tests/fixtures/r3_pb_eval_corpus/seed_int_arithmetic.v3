@@ -1,6 +1,0 @@
-// Program authority for `pb_eval_corpus_seed_int_arithmetic_deferred`.
-module user.pb_eval_seed_int_arithmetic
-
-let pb_eval_seed_int_a: Int = 2 + 3
-let pb_eval_seed_int_b: Int = pb_eval_seed_int_a * 4
-let pb_eval_seed_int_out: Int = pb_eval_seed_int_b - 5
