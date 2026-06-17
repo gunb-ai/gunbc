@@ -115,7 +115,7 @@ fn probe() -> Int {
 
 // NB: the native-map-miss -> `Witness` `Violates` bridge (runtime completeness for the
 // `Map.lookup: fn(K) -> Witness<V>` contract) is regression-tested at the v2 layer in
-// src/v2/test/claim/manual/map_lookup_miss_witness_violates.dag — the bootstrap
+// src/v2/compiler/manual/map_lookup_miss_witness_violates_test.dag — the bootstrap
 // typechecker projects a raw `.lookup` result as Option (Some/None) unless it flows
 // through a `-> Witness` annotated wrapper, which the std `Map` contract provides but a
 // bare v2-harness fixture (no v2.std) cannot.

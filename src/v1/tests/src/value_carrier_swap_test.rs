@@ -1,7 +1,7 @@
 //! ctrl#1533 phase 2 — persistent-carrier swap probes.
 //!
 //! The v2.std.value_carrier sharing/identity laws have executable witnesses
-//! in src/v2/test/claim/std_grounding/value_carrier_laws.dag; those run at
+//! in src/v2/std/grounding/value_carrier_laws_test.dag; those run at
 //! small n. These probes cover what the witnesses cannot: collection sizes
 //! past the carriers' inline-chunk thresholds (so HAMT/RRB tree nodes are
 //! actually exercised), prior-version validity after derived updates (the

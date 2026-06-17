@@ -169,4 +169,8 @@ still a violation) · internal review finds missing tests, external review finds
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
 - one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)
+<<<<<<< HEAD
 - CI floor is one binary: `cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test`
+=======
+- CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test` — also enforces v2 `.dag` filename hygiene (no `__` in basenames; use subdirectories)
+>>>>>>> origin/main

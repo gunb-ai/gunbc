@@ -1,0 +1,101 @@
+// Scope: ProbeSelector keystone claims — ONE select kernel + availability conditioning.
+// Host gate: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv) (v2_lens_ci, --perturb-check).
+
+module v2.test.workflow.probe_selector_ci_runner
+
+import v2.std.algebra { fold_list_right, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.probe_selector {
+  CostBudget,
+  SuspectedCausePrior,
+  host_health_hypothesis_standoff_cap_vddq,
+  host_supply_srv2,
+  probe_availability_conditioning_keystone_holds
+}
+import v2.std.text { String }
+import v2.workflow.probe_selector_affected_tests { wf_affected_tests_one_kernel_with_host_health_holds }
+import v2.workflow.probe_selector_host_health {
+  wf_host_health_enumerate_available,
+  wf_host_health_select_probes
+}
+
+fn probe_selector_availability_conditioning_holds() -> Bool {
+  probe_availability_conditioning_keystone_holds()
+}
+
+fn probe_selector_one_kernel_inhabited_holds() -> Bool {
+  probe_availability_conditioning_keystone_holds()
+    && wf_affected_tests_one_kernel_with_host_health_holds()
+}
+
+fn probe_selector_srv2_walkthrough_spine_holds() -> Bool {
+  let available = wf_host_health_enumerate_available(supply: host_supply_srv2)
+  let selected = wf_host_health_select_probes(
+    prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
+    budget: CostBudget { max_cost: 100 },
+    available: available
+  )
+  length(xs: selected) == 1
+}
+
+// ── probe-selector keystone claim-run gate authority (host: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv)) ──
+type ProbeSelectorKeystoneClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data probe_selector_gate_entry: String = "src/v2/workflow/probe_selector_ci_runner.dag"
+
+data probe_selector_gate_row_availability: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector availability conditioning keystone",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_availability_holds"
+}
+
+data probe_selector_gate_row_one_kernel: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector one select kernel inhabited",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_one_kernel_holds"
+}
+
+data probe_selector_gate_row_srv2_spine: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
+  label: "probe-selector srv2 walkthrough spine",
+  entry: probe_selector_gate_entry,
+  function: "probe_selector_ci_runner_srv2_spine_holds"
+}
+
+data probe_selector_claim_run_rows: List<ProbeSelectorKeystoneClaimRunRow> = [
+  probe_selector_gate_row_availability,
+  probe_selector_gate_row_one_kernel,
+  probe_selector_gate_row_srv2_spine
+]
+
+fn probe_selector_ci_runner_availability_holds() -> Bool {
+  probe_selector_availability_conditioning_holds()
+}
+
+fn probe_selector_ci_runner_one_kernel_holds() -> Bool {
+  probe_selector_one_kernel_inhabited_holds()
+}
+
+fn probe_selector_ci_runner_srv2_spine_holds() -> Bool {
+  probe_selector_srv2_walkthrough_spine_holds()
+}
+
+// Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
+fn probe_selector_ci_runner_rows_tsv() -> String {
+  fold_list_right(
+    xs: probe_selector_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}
