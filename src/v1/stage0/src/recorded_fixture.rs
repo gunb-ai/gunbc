@@ -14,7 +14,6 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -195,13 +194,13 @@ impl RecordedFixtureStore {
         })
     }
 
-    fn assert_fresh(
+    pub fn assert_fresh(
         fixture: &RecordedFixture,
         operation: &str,
         input_hash: &str,
+        now_secs: u64,
     ) -> Result<(), FixtureError> {
-        let now = unix_now_secs()?;
-        let age = now.saturating_sub(fixture.recorded_at);
+        let age = now_secs.saturating_sub(fixture.recorded_at);
         if age > FIXTURE_FRESHNESS_SECS {
             return Err(FixtureError::Expired {
                 operation: operation.to_string(),
@@ -219,6 +218,7 @@ impl RecordedFixtureStore {
         operation: &str,
         input_hash: &str,
         inputs: &serde_json::Value,
+        now_secs: u64,
     ) -> Result<RecordedFixture, FixtureError> {
         expect_hash_digest(input_hash)?;
         let path = self.fixture_path(operation, input_hash);
@@ -249,7 +249,7 @@ impl RecordedFixtureStore {
                 input_hash: input_hash.to_string(),
             });
         }
-        Self::assert_fresh(&fixture, operation, input_hash)?;
+        Self::assert_fresh(&fixture, operation, input_hash, now_secs)?;
         Ok(fixture)
     }
 
@@ -260,6 +260,7 @@ impl RecordedFixtureStore {
         inputs: &serde_json::Value,
         response: &Value,
         ctx: &InterpContext,
+        now_secs: u64,
     ) -> Result<(), FixtureError> {
         expect_hash_digest(input_hash)?;
         let response_json = value_to_fixture_json(response, ctx)?;
@@ -278,7 +279,7 @@ impl RecordedFixtureStore {
             input_hash: input_hash.to_string(),
             inputs: inputs.clone(),
             response: response_json,
-            recorded_at: unix_now_secs()?,
+            recorded_at: now_secs,
         };
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| FixtureError::Io {
@@ -292,13 +293,6 @@ impl RecordedFixtureStore {
         })?;
         fs::write(&path, bytes).map_err(|e| FixtureError::Io { path, source: e })
     }
-}
-
-fn unix_now_secs() -> Result<u64, FixtureError> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .map_err(|_| FixtureError::ClockUnavailable)
 }
 
 /// Faithful JSON snapshot of bound service-operation inputs (param declaration order).
