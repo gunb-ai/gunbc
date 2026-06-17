@@ -31,10 +31,10 @@ data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = Extd
 }
 
 data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus cargo_build policy leak",
+  label: "corpus cargo_build de-fused (regression guard)",
   violation_kind: violation_kind_policy_leak,
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
-  function: "corpus_cargo_build_policy_leak_is_red_holds"
+  function: "corpus_cargo_build_defused_holds"
 }
 
 data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
