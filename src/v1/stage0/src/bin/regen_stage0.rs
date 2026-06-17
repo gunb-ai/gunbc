@@ -100,6 +100,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "coproduct_reflection.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
+    "wire_value_serialize.rs",
     "v1_compiler_dag_collect.rs",
     "v1_interpreter.rs",
 ];
