@@ -1,4 +1,0 @@
-module v2.test.complexity_gate.pbp
-import v2.std.logic { Bool }
-import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
-test fn pbp() -> Bool { true }
