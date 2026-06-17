@@ -390,7 +390,7 @@ fn main() {
             entry,
             claim_run,
         } => {
-            cli_run::handle_run(source_roots, function, entry, claim_run);
+            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);
         }
     };
 }
