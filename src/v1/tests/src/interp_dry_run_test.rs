@@ -34,15 +34,13 @@ fn resolve(src: &str) -> Rc<ResolvedPipelineResult> {
 fn run_subcommand_wires_cli_dry_run_flag() {
     let main_rs = read_v2_file("src/v1/stage0/src/main.rs");
     assert!(
-        main_rs.contains("handle_run_with_options")
-            && main_rs.contains("cli.dry_run"),
+        main_rs.contains("handle_run_with_options") && main_rs.contains("cli.dry_run"),
         "main.rs must forward global --dry-run into handle_run_with_options"
     );
 
     let emit_dag = read_v2_file("src/v1/05_emit_rust.dag");
     assert!(
-        emit_dag.contains("handle_run_with_options")
-            && emit_dag.contains("cli.dry_run"),
+        emit_dag.contains("handle_run_with_options") && emit_dag.contains("cli.dry_run"),
         "05_emit_rust.dag must emit cli.dry_run wiring for the Run subcommand"
     );
 }
@@ -74,11 +72,7 @@ fn witness() -> String {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        resolved.source_indices.clone(),
-        true,
-    );
+    let ctx = v1_interpreter::InterpContext::new(graph, resolved.source_indices.clone(), true);
 
     match v1_interpreter::run_in_context(&ctx, "witness", false) {
         Ok(Value::Str(s)) => assert_eq!(s, "dry-run-mock"),
