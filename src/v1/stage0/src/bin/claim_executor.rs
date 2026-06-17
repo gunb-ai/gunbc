@@ -1,7 +1,7 @@
 //! Batch claim executor: the host transport for the v2.workflow.executor .dag.
 //!
 //! The `.dag` is the batching AUTHORITY. A plan function (default
-//! `bre_claim_batches` in `src/v2/test/claim/workflow/batch_runner.dag`) folds
+//! `bre_claim_batches` in `src/v2/workflow/batch_runner.dag`) folds
 //! the dependency frontier through `v2.workflow.executor` and returns
 //! `List<List<ClaimRef>>` — the outer list is batches in execution order, the
 //! inner list is the claims runnable in parallel within that batch. This binary

@@ -22,7 +22,7 @@ type LayeringImportsClaimRunRow {
 
 data layering_imports_claim_run_row_clean_tree: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
   label: "layering_imports/clean_tree",
-  entry: "src/v2/test/claim/layering_imports/clean_tree.dag",
+  entry: "src/v2/compiler/layering_imports/clean_tree.dag",
   function: "clean_tree_no_wrong_direction_imports_holds"
 }
 

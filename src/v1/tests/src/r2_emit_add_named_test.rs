@@ -30,7 +30,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const CERT_ENTRY: &str = "src/v2/test/claim/manual/mvp1_rust_add_translate.dag";
+const CERT_ENTRY: &str = "src/v2/compiler/manual/mvp1_rust_add_translate_test.dag";
 const WITNESS_FN: &str = "mvp1_rust_emit_add_fn_accepts_holds";
 
 /// The exact canonical Rust source the R2 keystone pins (rust.dag:rust_mvp1_source_text).

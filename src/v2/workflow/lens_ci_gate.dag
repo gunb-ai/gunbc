@@ -25,25 +25,25 @@ type LensCiClaimRunRow {
 
 data lens_ci_claim_run_row_cost_atom_zero: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_cost/atom_zero",
-  entry: "src/v2/test/claim/lens_cost/atom_zero.dag",
+  entry: "src/v2/lens/cost/atom_zero.dag",
   function: "atom_zero_claim_holds"
 }
 
 data lens_ci_claim_run_row_synthesis_polynomial_dominates_linear: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_synthesis/polynomial_dominates_linear",
-  entry: "src/v2/test/claim/lens_synthesis/polynomial_dominates_linear.dag",
+  entry: "src/v2/lens/synthesis/polynomial_dominates_linear.dag",
   function: "polynomial_dominates_linear_claim_holds"
 }
 
 data lens_ci_claim_run_row_coverage_hollow_type_defect_key: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_coverage/hollow_type_defect_key",
-  entry: "src/v2/test/claim/lens_coverage/hollow_type_defect_key.dag",
+  entry: "src/v2/lens/coverage/hollow_type_defect_key.dag",
   function: "hollow_type_defect_key_claim_holds"
 }
 
 data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_structural_resolution/binds_to_resolved",
-  entry: "src/v2/test/claim/lens_structural_resolution/binds_to_resolved.dag",
+  entry: "src/v2/lens/structural_resolution/binds_to_resolved.dag",
   function: "binds_to_resolved_claim_holds"
 }
 
@@ -51,7 +51,7 @@ data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimR
 // root + nested mint cases; shallow RED guard on nested).
 data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "provenance/occurrence_id_model",
-  entry: "src/v2/test/claim/provenance/occurrence_id_model.dag",
+  entry: "src/v2/compiler/provenance/occurrence_id_model_test.dag",
   function: "witness_occurrence_id_model_substrate_holds"
 }
 
@@ -59,7 +59,7 @@ data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = L
 // dissolved Node.span); terminal FromSource ByteRange + sequence DerivedBy child-id pair.
 data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "provenance/parse_stamp_span_index",
-  entry: "src/v2/test/claim/provenance/parse_stamp_span_index.dag",
+  entry: "src/v2/compiler/provenance/parse_stamp_span_index_test.dag",
   function: "witness_parse_stamp_span_index_holds"
 }
 
@@ -67,63 +67,63 @@ data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow 
 // cost_lens → complexity projection; declared budget from roster row dominates computed class.
 data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "complexity_gate/source_bridged_add_budget",
-  entry: "src/v2/test/claim/complexity_gate/source_bridged_add_budget.dag",
+  entry: "src/v2/compiler/complexity_gate/source_bridged_add_budget.dag",
   function: "source_bridged_add_budget_claim_holds"
 }
 
 // complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows (empty roster → false).
 data lens_ci_claim_run_row_complexity_gate_budget_roster_completeness: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "complexity_gate/budget_roster_completeness",
-  entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag",
+  entry: "src/v2/compiler/complexity_gate/budget_roster_completeness.dag",
   function: "complexity_budget_roster_family_gate_holds"
 }
 
 // R-reflect Phase 2a: Path-3 key-set conformance (2FA proof) — Connective/Behavior FIRST.
 data lens_ci_claim_run_row_coproduct_reflection_connective_path3: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/connective_path3",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_connective_arm_key_set_path3"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_behavior_path3: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/behavior_path3",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_behavior_arm_key_set_path3"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_connective_pair_path3: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/connective_pair_path3",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_connective_arm_payload_pair_path3"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_behavior_pair_path3: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/behavior_pair_path3",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_behavior_arm_payload_pair_path3"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_behavior_nullary_inhabitants: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/behavior_nullary_inhabitants",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_behavior_nullary_inhabitant_set_matches_arm_keys"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_connective_nullary_failclosed: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/connective_nullary_failclosed",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_connective_nullary_inhabitants_fail_closed"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_distinct_arm_sets: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/distinct_arm_sets",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "witness_connective_behavior_arm_sets_are_distinct"
 }
 
 data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "coproduct_reflection/conformance",
-  entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
+  entry: "src/v2/compiler/manual/coproduct_reflection_conformance.dag",
   function: "coproduct_reflection_conformance_holds"
 }
 
@@ -134,13 +134,13 @@ data lens_ci_claim_run_row_coproduct_reflection_conformance: LensCiClaimRunRow =
 // count). All ExpectPass (the `*_holds` Bool asserts the gate verdict).
 data lens_ci_claim_run_row_unit_modeling_flat_scalar_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/flat_scalar_unit_leaf_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/flat_scalar_unit_leaf_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/flat_scalar_unit_leaf_flagged.dag",
   function: "flat_scalar_unit_leaf_flagged_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_modeled_field_passes: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/modeled_unit_field_passes",
-  entry: "src/v2/test/claim/lens_unit_modeling/modeled_unit_field_passes.dag",
+  entry: "src/v2/lens/unit_modeling/modeled_unit_field_passes.dag",
   function: "modeled_unit_field_passes_holds"
 }
 
@@ -149,38 +149,38 @@ data lens_ci_claim_run_row_unit_modeling_modeled_field_passes: LensCiClaimRunRow
 // (blocked-pending class).
 data lens_ci_claim_run_row_unit_modeling_novel_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/novel_unit_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/novel_unit_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/novel_unit_flagged.dag",
   function: "novel_unit_flagged_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_label_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/label_version_not_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/label_version_not_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/label_version_not_flagged.dag",
   function: "label_version_not_flagged_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_coordinate_exempt: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/coordinate_index_not_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/coordinate_index_not_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/coordinate_index_not_flagged.dag",
   function: "coordinate_index_not_flagged_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_electrical_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/electrical_blocked_pending_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/electrical_blocked_pending_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/electrical_blocked_pending_flagged.dag",
   function: "electrical_blocked_pending_flagged_holds"
 }
 
 // BitWidth token (Information): pointer/word/bit width — operator ruled in-scope.
 data lens_ci_claim_run_row_unit_modeling_bitwidth_flagged: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/bitwidth_flat_scalar_flagged",
-  entry: "src/v2/test/claim/lens_unit_modeling/bitwidth_flat_scalar_flagged.dag",
+  entry: "src/v2/lens/unit_modeling/bitwidth_flat_scalar_flagged.dag",
   function: "bitwidth_flat_scalar_flagged_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_bitwidth_passes: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/bitwidth_modeled_passes",
-  entry: "src/v2/test/claim/lens_unit_modeling/bitwidth_modeled_passes.dag",
+  entry: "src/v2/lens/unit_modeling/bitwidth_modeled_passes.dag",
   function: "bitwidth_modeled_passes_holds"
 }
 
@@ -191,13 +191,13 @@ data lens_ci_claim_run_row_unit_modeling_bitwidth_passes: LensCiClaimRunRow = Le
 // ByteSize field is admitted.
 data lens_ci_claim_run_row_unit_modeling_registration_blocked: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses",
-  entry: "src/v2/test/claim/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
+  entry: "src/v2/lens/unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
   function: "unit_modeling_blocked_via_always_required_lenses_holds"
 }
 
 data lens_ci_claim_run_row_unit_modeling_registration_passes: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses",
-  entry: "src/v2/test/claim/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
+  entry: "src/v2/lens/unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
   function: "modeled_unit_field_admitted_via_always_required_lenses_holds"
 }
 

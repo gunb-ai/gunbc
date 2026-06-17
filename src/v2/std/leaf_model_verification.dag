@@ -196,7 +196,7 @@ data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafMo
 // observed values — that is what makes this carrier reusable authority rather than a literal pair.
 //
 // 🟡 gated — feature:leaf-model-cross-runtime-drift — dissolve-on: the modeled `TestClaim` runner
-// exercises `src/v2/test/claim/language_model/python_cross_runtime_drift.dag` directly (retiring the
+// exercises `src/v2/extdeps/language_model/python_cross_runtime_drift.dag` directly (retiring the
 // boundary host-process bridge `scripts/v2-leaf-model-python-cross-runtime-drift-verify.sh` +
 // `v2_leaf_model_python_cross_runtime_drift_test.rs`, shrinking `EXPECTED_HAND_AUTHORED_TEST` by 1);
 // forbidden: a parallel drift-probe vocabulary outside this carrier — extend it, don't fork it.

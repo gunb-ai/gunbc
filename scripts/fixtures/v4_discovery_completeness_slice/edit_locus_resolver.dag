@@ -1,4 +1,4 @@
-// src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag
+// src/v2/lens/affected_set/edit_locus_resolver_test.dag
 // Scope: git diff → edit_locus Node resolver receipts (path-regex bindings).
 // Status: T-21 wire claim; host git projection lands with BinaryShim runner.
 
@@ -279,7 +279,7 @@ data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resol
 // Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_narrow_resolution_holds
   }
 }
@@ -288,7 +288,7 @@ data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
 // Co-located with `edit_locus_fail_closed_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_fail_closed_holds
   }
 }
@@ -297,7 +297,7 @@ data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
 // Co-located with `edit_locus_source_provenance_producer_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_source_provenance_producer_holds
   }
 }
@@ -306,7 +306,7 @@ data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = Boo
 // Co-located with `edit_locus_source_provenance_affected_set_wire_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_affected_set_wire: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_source_provenance_affected_set_wire_holds
   }
 }
@@ -315,7 +315,7 @@ data unified_claim_edit_locus_source_provenance_affected_set_wire: UnifiedTestCl
 // Co-located with `edit_locus_source_provenance_producer_rejects_malformed_source_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_edit_locus_source_provenance_producer_rejects_malformed_source: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_source_provenance_producer_rejects_malformed_source_holds
   }
 }
