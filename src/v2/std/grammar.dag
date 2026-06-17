@@ -1941,6 +1941,12 @@ fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
   }
 }
 
+// 🟡 gated — feature:concrete-syntax-fixed-token-match-inline — this is a named Bool classifier
+//   over the ConcreteSyntaxToken coproduct (FixedToken → class-equality, BoundToken → false)
+//   used at one reverse-parse call site (rebuild_emitted_rhs_walk_step), rather than the match
+//   being inlined there (§4/§6 predicate-dissolution: ops from inhabitance, not hand-rolled Bool
+//   predicates). dissolve-on: inline this match/fold at its call site (grammar.dag:~1977) so the
+//   coproduct discrimination lives in the walk, not a wrapper predicate.
 fn concrete_syntax_fixed_token_matches_terminal(
   token: ConcreteSyntaxToken,
   terminal: Symbol
