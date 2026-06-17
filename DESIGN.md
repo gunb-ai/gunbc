@@ -91,9 +91,15 @@ fact and modeling it in extdeps is a layer inversion (extdeps depending upward).
 leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`,
 `--all-targets`); the tell that (b) has fused is the same operation forked once per transport
 (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. This is not yet
-lens-enforced — until it is, it is §3 diligence.
+lens-enforced — until it is, it is §3 diligence. This holds at *any* interface↔realization seam, not
+only service ops: the cited data behind an agnostic std surface de-fuses exactly as a transport does, and
+its directional reading is the same — the *dispatch* that selects a realization is itself realization,
+so it sits peripheral (`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std
+projection that *matched* over its realizations would have to name them, inverting the import arrow
+above). What migrates outward is the cited data and the dispatch, never the taxonomy *type* — the
+agnostic shape and its grounded type stay central.
 
-- *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model.
+- *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model. Likewise `std/os.dag` projects per-vendor rows with no `match` ("projection only"), while the cited rows and the product→vendor dispatch (`cited_operating_system_surface`) live in `extdeps/os/{ubuntu,windows,macos,os}.dag` ("dispatch lives in extdeps/, not std/", promoted from that hub header); the POSIX `EntryKind` taxonomy *type* stays in `std` (no cited rows to move, every consumer std-side) — only its eventual cited realization would migrate.
 
 ## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
