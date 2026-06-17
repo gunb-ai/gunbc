@@ -48,9 +48,31 @@ import v2.std.witness { Holds, Violates }
 
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 
-data type_decl_point_source_text: String = "type Point { x: Int, y: Int }"
+fn type_decl_point_expected_source_text() -> String {
+  let s0 = list_append(left: "type", right: "Point")
+  let s1 = list_append(left: s0, right: "{")
+  let s2 = list_append(left: s1, right: "x")
+  let s3 = list_append(left: s2, right: ":")
+  let s4 = list_append(left: s3, right: "Int")
+  let s5 = list_append(left: s4, right: ",")
+  let s6 = list_append(left: s5, right: "y")
+  let s7 = list_append(left: s6, right: ":")
+  let s8 = list_append(left: s7, right: "Int")
+  list_append(left: s8, right: "}")
+}
 
-data type_decl_pixel_source_text: String = "type Pixel { px: Int, py: Int }"
+fn type_decl_pixel_expected_source_text() -> String {
+  let s0 = list_append(left: "type", right: "Pixel")
+  let s1 = list_append(left: s0, right: "{")
+  let s2 = list_append(left: s1, right: "px")
+  let s3 = list_append(left: s2, right: ":")
+  let s4 = list_append(left: s3, right: "Int")
+  let s5 = list_append(left: s4, right: ",")
+  let s6 = list_append(left: s5, right: "py")
+  let s7 = list_append(left: s6, right: ":")
+  let s8 = list_append(left: s7, right: "Int")
+  list_append(left: s8, right: "}")
+}
 
 fn type_decl_rules() -> Node {
   dag_type_decl_productions_only_translation_rules()
@@ -311,14 +333,14 @@ fn type_decl_forward_class_spine_ambiguous_rejects_holds() -> Bool {
 
 fn type_decl_point_emit_source_text_holds() -> Bool {
   match type_decl_emit_source_text(emitted: type_decl_point_emitted()) {
-    Accepted { value: text, diagnostics: _ } => text == type_decl_point_source_text
+    Accepted { value: text, diagnostics: _ } => text == type_decl_point_expected_source_text()
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_pixel_emit_source_text_holds() -> Bool {
   match type_decl_emit_source_text(emitted: type_decl_pixel_emitted()) {
-    Accepted { value: text, diagnostics: _ } => text == type_decl_pixel_source_text
+    Accepted { value: text, diagnostics: _ } => text == type_decl_pixel_expected_source_text()
     Rejected { diagnostics: _ } => false
   }
 }
