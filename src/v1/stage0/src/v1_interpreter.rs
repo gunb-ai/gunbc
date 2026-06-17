@@ -3479,17 +3479,35 @@ struct ShellResult {
     stderr: String,
 }
 
-/// Push one evaluated argv expression onto `argv`. `List<String>` carriers splice
-/// element-wise (faithful cargo-style flag lists); every other value is one token.
+/// Push one evaluated argv expression onto `argv`. List carriers splice
+/// element-wise; strings stay atomic (never exploded to codepoints).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
-    if let Value::List(items) = val {
-        for item in items.iter() {
-            push_shell_argv_tokens(argv, item.clone())?;
+    match &val {
+        Value::Str(s) => {
+            argv.push(s.clone());
+            Ok(())
         }
-        Ok(())
-    } else {
-        argv.push(format!("{}", val));
-        Ok(())
+        Value::List(items) => {
+            for item in items.iter() {
+                push_shell_argv_tokens(argv, item.clone())?;
+            }
+            Ok(())
+        }
+        Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(&val) {
+                for item in items {
+                    push_shell_argv_tokens(argv, item)?;
+                }
+                Ok(())
+            } else {
+                argv.push(format!("{}", val));
+                Ok(())
+            }
+        }
+        _ => {
+            argv.push(format!("{}", val));
+            Ok(())
+        }
     }
 }
 
