@@ -1,0 +1,45 @@
+// Scope: lens-unit RED witness — cargo_build fuses gunbc policy into argv.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_build
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsTransportArgvFact,
+  ExtdepsTransportFusionFact,
+  extdeps_shape_transport_policy_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data policy_leak_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    path: "dsl/extdeps/rust/cargo_build.dag",
+    service: "cargo.Build",
+    operation: "Build",
+    transport_kind: "shell",
+    argv_index: 2,
+    argv_token: "--all-targets",
+    is_consumer_policy_literal: true
+  }
+]
+
+data policy_leak_cargo_build_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+fn policy_leak_cargo_build_is_red_holds() -> Bool {
+  extdeps_shape_transport_policy_violation_count(
+    argv_facts: policy_leak_cargo_build_argv_facts,
+    fusion_facts: policy_leak_cargo_build_fusion_facts
+  ) == 1
+}
+
+data unified_claim_policy_leak_cargo_build: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag",
+    function: policy_leak_cargo_build_is_red_holds
+  }
+}

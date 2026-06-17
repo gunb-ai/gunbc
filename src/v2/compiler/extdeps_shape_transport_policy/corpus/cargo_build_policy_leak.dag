@@ -1,0 +1,63 @@
+// Scope: corpus RED witness — pinned scan snapshot of policy leaks in cargo_build.dag.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_build_policy_leak
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsTransportArgvFact,
+  extdeps_shape_transport_policy_policy_leak_count_for_path
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data cargo_build_path: String = "dsl/extdeps/rust/cargo_build.dag"
+
+// Snapshot from extdeps corpus at merge time — multiple consumer-policy literals in one file.
+data corpus_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    path: cargo_build_path,
+    service: "cargo.Build",
+    operation: "Build",
+    transport_kind: "shell",
+    argv_index: 2,
+    argv_token: "--all-targets",
+    is_consumer_policy_literal: true
+  },
+  ExtdepsTransportArgvFact {
+    path: cargo_build_path,
+    service: "cargo.Build",
+    operation: "Clippy",
+    transport_kind: "shell",
+    argv_index: 2,
+    argv_token: "--all-targets",
+    is_consumer_policy_literal: true
+  },
+  ExtdepsTransportArgvFact {
+    path: cargo_build_path,
+    service: "cargo.Build",
+    operation: "Clippy",
+    transport_kind: "shell",
+    argv_index: 4,
+    argv_token: "-D",
+    is_consumer_policy_literal: true
+  }
+]
+
+fn corpus_cargo_build_policy_leak_is_red_holds() -> Bool {
+  extdeps_shape_transport_policy_policy_leak_count_for_path(
+    argv_facts: corpus_cargo_build_argv_facts,
+    path: cargo_build_path
+  ) >= 1
+}
+
+data unified_claim_corpus_cargo_build_policy_leak: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak.dag",
+    function: corpus_cargo_build_policy_leak_is_red_holds
+  }
+}

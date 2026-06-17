@@ -1,0 +1,79 @@
+// Scope: lens-unit GREEN witness — git Diff uses faithful primitives + parameters only.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsTransportArgvFact,
+  ExtdepsTransportFusionFact,
+  extdeps_shape_transport_policy_violation_count_for_operation
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data clean_git_diff_path: String = "dsl/extdeps/git/git.dag"
+data clean_git_diff_service: String = "git.Core"
+data clean_git_diff_operation: String = "Diff"
+
+data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    path: clean_git_diff_path,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: "shell",
+    argv_index: 0,
+    argv_token: "git",
+    is_consumer_policy_literal: false
+  },
+  ExtdepsTransportArgvFact {
+    path: clean_git_diff_path,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: "shell",
+    argv_index: 1,
+    argv_token: "diff",
+    is_consumer_policy_literal: false
+  },
+  ExtdepsTransportArgvFact {
+    path: clean_git_diff_path,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: "shell",
+    argv_index: 2,
+    argv_token: "base-slot",
+    is_consumer_policy_literal: false
+  },
+  ExtdepsTransportArgvFact {
+    path: clean_git_diff_path,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: "shell",
+    argv_index: 3,
+    argv_token: "head-slot",
+    is_consumer_policy_literal: false
+  }
+]
+
+data clean_git_diff_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+fn clean_git_diff_is_green_holds() -> Bool {
+  extdeps_shape_transport_policy_violation_count_for_operation(
+    argv_facts: clean_git_diff_argv_facts,
+    fusion_facts: clean_git_diff_fusion_facts,
+    path: clean_git_diff_path,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation
+  ) == 0
+}
+
+data unified_claim_clean_git_diff: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag",
+    function: clean_git_diff_is_green_holds
+  }
+}

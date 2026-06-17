@@ -92,4 +92,5 @@ mod value_carrier_swap_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]
+mod extdeps_shape_transport_policy_lens_test;
 mod witness_option_bridge_test;
