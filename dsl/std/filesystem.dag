@@ -3,8 +3,8 @@
 // "What is a file?" -- answered compositionally from primitives.
 //
 // Layering:
-//   Layer 0: Taxonomy (EntryKind, SymlinkTarget -- OS-agnostic, defined here;
-//            per-fs cited realizations in extdeps/filesystem/{posix,ntfs}.dag)
+//   Layer 0: Taxonomy (EntryKind, SymlinkTarget -- OS-agnostic, in
+//            std.filesystem.types; per-fs realizations in extdeps/filesystem/)
 //   Layer 1: Categories (FileEntry -- the composed invariant)
 //   Layer 2: Pure functions (is_text_readable, partition_entries)
 //   Layer 3: Patterns (classify_files, read_text_files -- in patterns.dag)
@@ -14,47 +14,16 @@ module std.filesystem
 
 import std.encoding { Encoding }
 import std.types { FilePath, MimeType }
+import std.filesystem.types { EntryKind, SymlinkTarget }
 
-// -- Layer 0: Filesystem entry taxonomy (OS-agnostic reduction) -------------
+// -- Layer 0: Filesystem entry taxonomy -------------------------------------
 //
-// "What can a path point to?" / "What does a symlink resolve to?" — answered
-// once at the std layer as the OS-AGNOSTIC reduction across real filesystems,
-// NOT anchored to any single one. This mirrors std.os.types.FileSystemSemantics
-// (`Posix | Ntfs | Apfs | …`), which is itself a coproduct OVER filesystems:
-// the std layer holds the necessity (the reduced shape every consumer reasons
-// about), and each filesystem's CITED native taxonomy + its mapping into these
-// kinds lives down-layer, keyed to FileSystemSemantics:
-//
-//   extdeps/filesystem/posix.dag  — IEEE Std 1003.1-2017 st_mode S_IF* (7 native
-//                                   types: REG/DIR/LNK/IFO/SOCK/CHR/BLK)
-//   extdeps/filesystem/ntfs.dag   — [MS-FSCC] attributes + reparse tags (no
-//                                   fifo/socket/device-as-files; adds junctions)
-//
-// The reduction is real, not a POSIX rename: NTFS has no S_IFSOCK/S_IFIFO/
-// S_IFCHR/S_IFBLK entries and adds the mount-point junction, so the agnostic
-// `Other` is the genuine "exists but none of the above" across both. (extdeps/
-// filesystem/filesystem_io.dag stays the host read/write EFFECT — orthogonal.)
-//
-// DISSOLUTION TRIGGER (named, per §6): when the live probe path needs to
-// classify by reading a real stat/attribute result, the (FileSystemSemantics,
-// native-type) → EntryKind dispatch graduates into a hub module
-// (extdeps/filesystem/filesystem.dag), mirroring extdeps/os/os.dag's
-// product→surface dispatch. Until a runtime probe consumes it, the per-fs
-// mapping functions are the realization and no hub is minted.
-
-// "What can a path point to?" — the agnostic kinds (see per-fs realizations).
-type EntryKind
-  = RegularFile                    // a data container (every fs)
-  | Directory                      // a namespace container (every fs)
-  | Symlink                        // path indirection (posix S_IFLNK / ntfs symlink reparse)
-  | Missing                        // probe absence (ENOENT-class; orthogonal to storage layout)
-  | Other                          // exists but none of the above — fs-specific special
-
-// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
-type SymlinkTarget
-  = TargetFile
-  | TargetDir
-  | Broken                         // dangling symlink
+// EntryKind / SymlinkTarget — the OS-agnostic entry taxonomy — live in the thin
+// std.filesystem.types module (mirroring std.os.types), so a consumer that only
+// needs the kinds (the per-fs realizations + their witnesses) does not drag this
+// encoding-heavy carrier along. Cited per-fs realizations:
+// extdeps/filesystem/{posix,ntfs}.dag, keyed to std.os.types.FileSystemSemantics.
+// (extdeps/filesystem/filesystem_io.dag is the host read/write EFFECT — orthogonal.)
 
 // -- Layer 0.5–1: File referent (single record) -----------------------------
 //

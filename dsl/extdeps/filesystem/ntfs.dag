@@ -12,7 +12,7 @@
 
 module extdeps.filesystem.ntfs
 
-import std.filesystem { EntryKind }
+import std.filesystem.types { EntryKind }
 
 // NTFS native entry types as observed via file attributes + reparse tags.
 // Real spec names (the FILE_ATTRIBUTE_* / IO_REPARSE_TAG_* constants).

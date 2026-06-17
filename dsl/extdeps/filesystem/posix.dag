@@ -11,7 +11,7 @@
 
 module extdeps.filesystem.posix
 
-import std.filesystem { EntryKind }
+import std.filesystem.types { EntryKind }
 
 // The seven S_IFMT file types (sys/stat.h). Real spec names.
 type PosixFileType
