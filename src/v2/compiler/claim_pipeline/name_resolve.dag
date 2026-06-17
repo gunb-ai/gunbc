@@ -1,0 +1,201 @@
+// Scope: claim_pipeline spine for v2.compiler.name_resolve — cross-file admission
+//   over module-qualified roots (qualified_name_from_module_node spine).
+// Note: single-file K-1 resolve spine lives in claim_pipeline/resolve.dag.
+
+module v2.test.claim_pipeline.name_resolve
+
+import v2.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  resolve_with_admission
+}
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_named_edge
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data spine_name_resolve_module_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^spine_name_resolve_module } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn spine_name_resolve_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn spine_name_resolve_module_root(seg: Symbol, export_sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: spine_name_resolve_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: export_sym },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn spine_name_resolve_subject_name() -> QualifiedName {
+  QnCons { head: ^spine_name_resolve_subject_seg, tail: QnEmpty }
+}
+
+fn spine_name_resolve_import_target() -> QualifiedName {
+  QnCons { head: ^spine_name_resolve_import_seg, tail: QnEmpty }
+}
+
+fn spine_name_resolve_single_subject_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: spine_name_resolve_module_root(
+      seg: ^spine_name_resolve_subject_seg,
+      export_sym: ^spine_name_resolve_subject_export
+    ),
+    tail: Empty
+  }
+}
+
+fn spine_name_resolve_cross_file_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: spine_name_resolve_module_root(
+      seg: ^spine_name_resolve_subject_seg,
+      export_sym: ^spine_name_resolve_subject_export
+    ),
+    tail: Cons {
+      head: spine_name_resolve_module_root(
+        seg: ^spine_name_resolve_import_seg,
+        export_sym: ^spine_name_resolve_imported_export
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn spine_name_resolve_accepts_module_qualified_subject() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: spine_name_resolve_single_subject_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: spine_name_resolve_subject_name()
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn spine_name_resolve_accepts_visible_import_binding() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: spine_name_resolve_cross_file_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: spine_name_resolve_subject_name()
+      },
+      imports: Cons {
+        head: Import {
+          target: spine_name_resolve_import_target(),
+          visibility: ImportVisible
+        },
+        tail: Empty
+      }
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn spine_name_resolve_bool_atom(b: Bool) -> Node {
+  match b {
+    true =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^spine_name_resolve_pass } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    false =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^spine_name_resolve_fail } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+data claim_pipeline_name_resolve_module_compiles: TestClaim = CompilesClaim {
+  label: "claim_pipeline/name_resolve: v2.compiler.name_resolve stage module compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: spine_name_resolve_module_subject,
+  expected_value: spine_name_resolve_module_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_pipeline_name_resolve_accepts_module_qualified_subject: TestClaim = EqualsClaim {
+  label: "claim_pipeline/name_resolve: resolve_with_admission accepts module-qualified subject root",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: spine_name_resolve_bool_atom(b: spine_name_resolve_accepts_module_qualified_subject()),
+  rhs: spine_name_resolve_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_pipeline_name_resolve_accepts_visible_import_binding: TestClaim = EqualsClaim {
+  label: "claim_pipeline/name_resolve: visible import admits module-qualified export binding",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: spine_name_resolve_bool_atom(b: spine_name_resolve_accepts_visible_import_binding()),
+  rhs: spine_name_resolve_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
