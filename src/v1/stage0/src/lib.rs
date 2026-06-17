@@ -27,6 +27,7 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
+pub mod extdeps_shape_transport_policy_project;
 pub mod generic_instantiation_instrument;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
