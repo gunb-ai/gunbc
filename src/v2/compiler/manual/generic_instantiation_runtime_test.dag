@@ -14,13 +14,7 @@ import v2.std.generic_instantiation {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
-  Arrow,
   Atom,
-  Cardinality,
-  Conj,
-  Connective,
-  Disj,
-  Instantiation,
   Node,
   Symbol,
   TypeNode,
@@ -71,21 +65,14 @@ fn gi_type_atom_node(sym: Symbol) -> Node {
   )
 }
 
-fn gi_connective_atom_identity(c: Connective) -> Symbol {
-  match c {
-    Atom { identity: id } => id
-    Conj => ^gi_bind_once_bool_sym
-    Disj => ^gi_bind_once_bool_sym
-    Arrow => ^gi_bind_once_bool_sym
-    Cardinality => ^gi_bind_once_bool_sym
-    Instantiation => ^gi_bind_once_bool_sym
-  }
-}
-
 fn gi_node_atom_identity(node: Node) -> Symbol {
-  match node.kind {
-    TypeNode { connective: c } => gi_connective_atom_identity(c: c)
-    ComputationNode { behavior: _ } => ^gi_bind_once_bool_sym
+  match node {
+    Node {
+      kind: TypeNode { connective: Atom { identity: id } },
+      children: _,
+      occurrence_id: _
+    } => id
+    _ => ^gi_bind_once_bool_sym
   }
 }
 
