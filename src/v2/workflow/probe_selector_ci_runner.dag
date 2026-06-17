@@ -46,7 +46,7 @@ type ProbeSelectorKeystoneClaimRunRow {
   function: String
 }
 
-data probe_selector_gate_entry: String = "src/v2/test/claim/workflow/probe_selector_ci_runner.dag"
+data probe_selector_gate_entry: String = "src/v2/workflow/probe_selector_ci_runner.dag"
 
 data probe_selector_gate_row_availability: ProbeSelectorKeystoneClaimRunRow = ProbeSelectorKeystoneClaimRunRow {
   label: "probe-selector availability conditioning keystone",
