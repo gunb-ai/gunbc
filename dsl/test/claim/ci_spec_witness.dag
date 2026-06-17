@@ -4,11 +4,12 @@
 
 module test.claim.ci_spec_witness
 
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase,
-  gunbc_ci_spec, witness_layer_roots,
+  gunbc_ci_spec, witness_layer_roots, witness_discovery_scan_dirs,
   claim_batch_script, gunbc_ci_run_script, git_fetch_script, ci_gates_invoke,
   gate_roster_matches_coproduct_arms,
   witness_layer_source_flags, witness_layer_scan_flags
@@ -30,8 +31,8 @@ fn witness_layers_fold_into_claim_batch() -> Bool {
   let script = claim_batch_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: " --source-root src/v2") &&
     string_contains(s: script, pattern: " --source-root dsl") &&
-    string_contains(s: script, pattern: " --scan-dir src/v2") &&
-    string_contains(s: script, pattern: " --scan-dir dsl")
+    string_contains(s: script, pattern: " --scan-dir dsl/test/claim") &&
+    string_contains(s: script, pattern: " --scan-dir src/v2/test/claim/layering_imports")
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
@@ -41,14 +42,14 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
     !string_contains(s: flags, pattern: "Z9Z9Z9-witness-root")
 }
 
-fn witness_layer_roots_emit_scan_dirs() -> Bool {
+fn witness_discovery_scan_dirs_emit_scan_flags() -> Bool {
   string_contains(
-    s: witness_layer_scan_flags(roots: witness_layer_roots),
-    pattern: " --scan-dir src/v2"
+    s: witness_layer_scan_flags(),
+    pattern: " --scan-dir dsl/test/claim"
   ) && string_contains(
-    s: witness_layer_scan_flags(roots: witness_layer_roots),
-    pattern: " --scan-dir dsl"
-  )
+    s: witness_layer_scan_flags(),
+    pattern: " --scan-dir src/v2/test/claim/layering_imports"
+  ) && (length(xs: witness_discovery_scan_dirs) == 2)
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
@@ -85,7 +86,7 @@ fn witness_gate_roster_matches_coproduct() -> Bool {
 fn ci_spec_witnesses() -> Bool {
   witness_layers_fold_into_claim_batch() &&
     witness_layer_authority_drives_source_flags() &&
-    witness_layer_roots_emit_scan_dirs() &&
+    witness_discovery_scan_dirs_emit_scan_flags() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
     witness_run_script_composes_from_spec() &&

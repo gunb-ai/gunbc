@@ -33,6 +33,12 @@ type CiSpec {
 // Single authority for CI witness layer roots (§3 — replaces triple-fork in ci.yml / transport scripts).
 data witness_layer_roots: List<String> = ["src/v2", "dsl"]
 
+// Narrow discovery scan dirs for unified_claim_* markers (not whole layer trees).
+data witness_discovery_scan_dirs: List<String> = [
+  "dsl/test/claim",
+  "src/v2/test/claim/layering_imports"
+]
+
 data reflect_gate_type: Symbol = ^Gate
 
 // 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
@@ -98,8 +104,8 @@ fn witness_layer_source_flags(roots: List<String>) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
 }
 
-fn witness_layer_scan_flags(roots: List<String>) -> String {
-  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --scan-dir ", r)))
+fn witness_layer_scan_flags() -> String {
+  fold(witness_discovery_scan_dirs, init: "", f: (acc, d) => concat(acc, concat(" --scan-dir ", d)))
 }
 
 fn witness_layer_source_shell_flags(roots: List<String>) -> String {
@@ -112,7 +118,7 @@ fn claim_batch_script(spec: CiSpec) -> String {
       concat(
         concat(
           concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
-          witness_layer_scan_flags(roots: witness_layer_roots)
+          witness_layer_scan_flags()
         ),
         " --roster-from-discovery"
       ),
