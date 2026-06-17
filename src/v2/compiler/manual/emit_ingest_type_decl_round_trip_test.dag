@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_formal_productions,
   dag_type_decl_structural_target_model
 }
-import v2.std.algebra { Empty, fold_list, list_append }
+import v2.std.algebra { Empty, fold_list, list_append, zip_eq }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
@@ -461,6 +461,46 @@ fn type_decl_emit_then_reparse_step_tokenize_accepts(emitted: Node) -> Bool {
   }
 }
 
+fn type_decl_concrete_token_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, t) {
+      list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+    }
+  )
+}
+
+fn type_decl_lexer_token_classes(tokens: List<Token>) -> List<Symbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, t) {
+      list_append(left: acc, right: [t.class])
+    }
+  )
+}
+
+fn type_decl_emit_row_and_lexed_classes_match_holds(emitted: Node) -> Bool {
+  match type_decl_emit_row_tokens(emitted: emitted) {
+    Accepted { value: row_tokens, diagnostics: _ } =>
+      match type_decl_emit_source_text(emitted: emitted) {
+        Accepted { value: source, diagnostics: _ } =>
+          match type_decl_tokenize_source_text(source: source) {
+            Accepted { value: lex_tokens, diagnostics: _ } =>
+              zip_eq(
+                a: type_decl_concrete_token_classes(tokens: row_tokens),
+                b: type_decl_lexer_token_classes(tokens: lex_tokens),
+                eq: fn(x, y) { x == y }
+              )
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn type_decl_forward_from_lexed_source_holds(emitted: Node) -> Bool {
   match type_decl_emit_source_text(emitted: emitted) {
     Accepted { value: source, diagnostics: _ } =>
@@ -478,6 +518,10 @@ fn type_decl_forward_from_lexed_source_holds(emitted: Node) -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn type_decl_emit_row_lexed_classes_match_point_holds() -> Bool {
+  type_decl_emit_row_and_lexed_classes_match_holds(emitted: type_decl_point_emitted())
 }
 
 test fn type_decl_emit_lexed_forward_point_holds() -> Bool {
