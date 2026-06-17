@@ -2082,7 +2082,6 @@ fn rebuild_production_match_fold_step(
           RebuildProductionMatchMany => RebuildProductionMatchMany
         }
       Violates { diagnostic: _ } => acc
-      Holds { value: RebuildEmittedFail } => acc
     }
   } else {
     acc
@@ -2164,14 +2163,6 @@ fn grammar_relation_emitted_rebuild_from_token_spine(
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
-    Holds { value: RebuildEmittedFail } =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
   }
 }
 
