@@ -7279,10 +7279,7 @@ pub fn wire_variant_rename_attr_for_policy(
             Some(style) => {
                 if style.as_str() == "StripAffixAndSnakeCase" {
                     v1_rt::concat(
-                        v1_rt::concat(
-                            "    #[serde(rename = \"".to_string(),
-                            tag,
-                        ),
+                        v1_rt::concat("    #[serde(rename = \"".to_string(), tag),
                         "\")]\n".to_string(),
                     )
                 } else {
