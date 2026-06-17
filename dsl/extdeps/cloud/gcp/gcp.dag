@@ -212,12 +212,3 @@ service shell.GCloud {
     }
   }
 }
-
-service shell.OAuth2 {
-  operation RefreshToken {
-    input { refresh_token: Secret }
-    output { access_token: Secret from "stdout" }
-    transport shell { argv: ["curl", "-X", "POST"] }
-    exit { 0 => Unit }
-  }
-}
