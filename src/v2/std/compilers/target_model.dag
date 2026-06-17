@@ -435,18 +435,24 @@ fn target_binding_spelling_lookup(
   match map_get(target.binding_spellings, binding) {
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-      Absent =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: pending,
-            rejected: diagnostics_singleton(
-              d: target_binding_spelling_not_found_diagnostic(binding: binding)
-            )
-          )
-        }
+      Absent => symbol_interned_spelling(binding: binding)
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
+}
+
+// Case (a): parse preserves surface name in atom identity; Symbol values are their interned
+// source spelling (name_interning_covers_all_domains — no per-instance Map<Symbol,String>).
+// 🟡 gated — feature:symbol-interned-string-coercion — this returns binding (a Symbol) where
+//   Outcome<String> is declared, relying on the substrate identity Symbol ≡ its interned source
+//   spelling. There is no named Symbol→String coercion primitive (String = FreeMonoid<Char>,
+//   Symbol is a distinct opaque primitive), so the conversion is an implicit return-type pun at
+//   this single authority for binding-spelling lookup — ungrounded (§3/§4). It is functionally
+//   correct (the emit→tokenize→reparse keystone is green), but the coercion is unnamed.
+//   dissolve-on: introduce a named symbol_to_interned_string(s: Symbol) -> String primitive at the
+//   interning boundary and call it here, so the Symbol→String bridge is the explicit authority.
+fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
+  outcome_accepted(value: binding)
 }
 
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
