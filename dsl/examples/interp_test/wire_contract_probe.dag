@@ -1,0 +1,25 @@
+// Interpreter REST wire-serde probe: a coproduct with a CoproductWireContract
+// declaring InternallyTaggedObject encoding, plus a sample value of that
+// coproduct. Consumed by the v1 interpreter dispatch_rest request-body test
+// (`wire_contract_body_serde_test`) to prove `value_to_json` CONSUMES the
+// modeled contract — the variant serializes with its declared discriminator
+// (`role`/`type`) and affix-stripped snake_case wire name, not a raw field dump.
+module examples.wire_contract_probe
+
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type ProbeMessage
+  = UserMessage { content: String }
+  | AssistantMessage { content: String }
+
+// Affix strip + snake_case: UserMessage -> "user" under the "role" tag.
+data probe_message_wire_contract: CoproductWireContract = {
+  coproduct: "ProbeMessage",
+  encoding: InternallyTaggedObject { tag_field: "role", naming: StripSuffixAndSnakeCase { suffix: "Message" } }
+}
+
+// A nested coproduct that has NO contract — exercises the untagged fallback.
+type ProbeBlock
+  = TextBlock { text: String }
+
+data probe_sample_message: ProbeMessage = UserMessage { content: "hello" }

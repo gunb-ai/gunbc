@@ -3774,7 +3774,11 @@ fn variant_to_json(
     let vname = resolve_sym(variant_name);
     let encoding = match contracts.get(&coproduct) {
         Some(e) => e,
-        None => return Ok(serde_json::Value::Object(variant_fields_object(fields, contracts)?)),
+        None => {
+            return Ok(serde_json::Value::Object(variant_fields_object(
+                fields, contracts,
+            )?))
+        }
     };
     let (enc_name, enc_fields) = match encoding {
         Value::Variant {
@@ -3794,9 +3798,9 @@ fn variant_to_json(
     };
     match enc_name.as_str() {
         // Untagged: payload-shape determines the variant on the wire; no discriminator.
-        "UntaggedVariant" => {
-            Ok(serde_json::Value::Object(variant_fields_object(fields, contracts)?))
-        }
+        "UntaggedVariant" => Ok(serde_json::Value::Object(variant_fields_object(
+            fields, contracts,
+        )?)),
         // Internally tagged: {"_variant": "Name", ...payload} (the .dag default tagging).
         "TaggedVariant" => {
             let mut obj = variant_fields_object(fields, contracts)?;
@@ -3813,10 +3817,13 @@ fn variant_to_json(
                     ),
                 });
             }
-            let naming = field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
-                msg: format!("StringVariant encoding for {} missing naming", coproduct),
-            })?;
-            Ok(serde_json::Value::String(variant_wire_name(&vname, naming)?))
+            let naming =
+                field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
+                    msg: format!("StringVariant encoding for {} missing naming", coproduct),
+                })?;
+            Ok(serde_json::Value::String(variant_wire_name(
+                &vname, naming,
+            )?))
         }
         // Explicit discriminator field carrying the wire name, plus the payload.
         "InternallyTaggedObject" => {
@@ -3831,9 +3838,13 @@ fn variant_to_json(
                     })
                 }
             };
-            let naming = field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
-                msg: format!("InternallyTaggedObject encoding for {} missing naming", coproduct),
-            })?;
+            let naming =
+                field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "InternallyTaggedObject encoding for {} missing naming",
+                        coproduct
+                    ),
+                })?;
             let tag = variant_wire_name(&vname, naming)?;
             let mut obj = variant_fields_object(fields, contracts)?;
             obj.insert(tag_field, serde_json::Value::String(tag));
@@ -4869,5 +4880,111 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod wire_contract_tests {
+    //! REST request-body wire serde: `value_to_json` must CONSUME the modeled
+    //! `CoproductWireContract`. Compiles the `wire_contract_probe` fixture, then
+    //! serializes a real evaluated coproduct value through the same registry the
+    //! dispatch_rest body path uses. Discriminating: revert `value_to_json`'s
+    //! variant arm to a raw field dump and the asserted discriminator vanishes.
+    use super::*;
+    use crate::cli_run::load_sources_for_entry;
+    use crate::v1_compiler_compile::compile_to_resolved;
+
+    fn workspace_root() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn build_ctx() -> InterpContext {
+        let ws = workspace_root();
+        let roots = vec![
+            ws.join("src/v1").to_string_lossy().to_string(),
+            ws.join("dsl").to_string_lossy().to_string(),
+        ];
+        let entry = ws
+            .join("dsl/examples/interp_test/wire_contract_probe.dag")
+            .to_string_lossy()
+            .to_string();
+        let sources =
+            load_sources_for_entry(&roots, &entry).unwrap_or_else(|e| panic!("load: {e}"));
+        let resolved = compile_to_resolved(Rc::new(sources));
+        let graph = resolved
+            .graph
+            .clone()
+            .unwrap_or_else(|| panic!("fixture did not resolve: graph is None"));
+        InterpContext::new(&graph, resolved.source_indices.clone(), false)
+    }
+
+    #[test]
+    fn wire_contract_body_serde_applies_modeled_contract() {
+        let ctx = build_ctx();
+        with_active_ctx(&ctx, || {
+            let contracts = coproduct_wire_contracts(&ctx).expect("build wire contracts");
+            assert!(
+                contracts.contains_key("ProbeMessage"),
+                "registry must read the source-level CoproductWireContract; got keys {:?}",
+                contracts.keys().collect::<Vec<_>>()
+            );
+
+            // Evaluate the real `data probe_sample_message = UserMessage { content: "hello" }`.
+            let node = ctx
+                .lookup_fn("probe_sample_message")
+                .expect("sample data item");
+            let body = node.body.clone().expect("data item body");
+            let val = eval_expr(&body, &Env::empty(), &ctx).expect("eval sample");
+
+            let json = value_to_json(&val, &contracts).expect("serialize body");
+            let obj = json
+                .as_object()
+                .expect("variant serializes to a JSON object");
+
+            // InternallyTaggedObject { tag_field: "role", StripSuffixAndSnakeCase "Message" }:
+            // UserMessage -> {"role": "user", ...}. Old code emitted no discriminator.
+            assert_eq!(
+                obj.get("role").and_then(|v| v.as_str()),
+                Some("user"),
+                "request body must carry the modeled discriminator; got {json}"
+            );
+            assert_eq!(
+                obj.get("content").and_then(|v| v.as_str()),
+                Some("hello"),
+                "payload fields must survive alongside the discriminator; got {json}"
+            );
+            assert!(
+                !obj.contains_key("_variant"),
+                "InternallyTaggedObject must not also emit the default _variant tag; got {json}"
+            );
+        });
+    }
+
+    #[test]
+    fn variant_without_contract_falls_back_to_untagged_fields() {
+        let ctx = build_ctx();
+        with_active_ctx(&ctx, || {
+            // ProbeBlock has no CoproductWireContract: no discriminator, just fields.
+            let empty = HashMap::new();
+            let val = Value::Variant {
+                type_name: ctx.sym("ProbeBlock"),
+                variant_name: ctx.sym("TextBlock"),
+                fields: Rc::new(HashMap::from([(
+                    ctx.sym("text"),
+                    Value::Str("hi".to_string()),
+                )])),
+            };
+            let json = value_to_json(&val, &empty).expect("serialize");
+            let obj = json.as_object().expect("object");
+            assert_eq!(obj.get("text").and_then(|v| v.as_str()), Some("hi"));
+            assert!(
+                !obj.contains_key("type") && !obj.contains_key("role"),
+                "no contract -> no discriminator; got {json}"
+            );
+        });
     }
 }
