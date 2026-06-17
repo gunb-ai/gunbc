@@ -39,6 +39,14 @@ fn argv_expr_token(
             LiteralValue::LitStr { value } => value.clone(),
             other => format!("{other:?}"),
         },
+        ExprData::ExprVar { .. } => {
+            let name = crate::v1_std_core::expr_var_name_at(node.clone(), source_indices.clone());
+            if name.is_empty() {
+                node.name.clone()
+            } else {
+                format!("{{{name}}}")
+            }
+        }
         ExprData::ExprStringInterp => node
             .children
             .iter()
@@ -50,7 +58,11 @@ fn argv_expr_token(
                 ExprData::ExprVar { .. } => {
                     let name =
                         crate::v1_std_core::expr_var_name_at(child.clone(), source_indices.clone());
-                    format!("{{{name}}}")
+                    if name.is_empty() {
+                        child.name.clone()
+                    } else {
+                        format!("{{{name}}}")
+                    }
                 }
                 _ => String::new(),
             })
