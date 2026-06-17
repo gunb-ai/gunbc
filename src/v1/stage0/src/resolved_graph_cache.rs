@@ -303,3 +303,57 @@ pub fn build_valid_artifact_bytes(
     bytes.extend_from_slice(&payload_bytes);
     Ok(bytes)
 }
+
+/// Test-scoped fixture payload serde (reuses `CachePayload` — no parallel serializer).
+/// Dissolve-on: hermetic inter-stage fixture loader lands in pipeline proper (P5).
+pub fn serialize_fixture_payload_for_test(
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+) -> Result<Vec<u8>, String> {
+    let si_plain: HashMap<String, NewlineIndex> = source_indices
+        .iter()
+        .map(|(k, v)| (k.clone(), (**v).clone()))
+        .collect();
+    let payload = CachePayload {
+        graph: graph.clone(),
+        source_indices: si_plain,
+    };
+    serde_json::to_vec(&payload).map_err(|e| format!("fixture payload encode: {e}"))
+}
+
+/// Test-scoped fixture loader (inverse of `serialize_fixture_payload_for_test`).
+/// Dissolve-on: hermetic inter-stage fixture loader lands in pipeline proper (P5).
+pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
+    let payload: CachePayload = serde_json::from_slice(bytes)
+        .map_err(|e| format!("fixture payload decode: {e}"))?;
+    let source_indices = Rc::new(
+        payload
+            .source_indices
+            .into_iter()
+            .map(|(k, v)| (k, Rc::new(v)))
+            .collect(),
+    );
+    Ok(CachedResolvedGraph {
+        graph: Rc::new(payload.graph),
+        source_indices,
+    })
+}
+
+/// Guard: binding keys must resolve to their bound names in the fixture's embedded intern_table.
+/// Dissolve-on: guard moves into pipeline loader when P5 hermetic fixtures land.
+pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> Result<(), String> {
+    use crate::v1_std_core::intern_str;
+    for m in cached.graph.modules.iter() {
+        let env = m.type_env.clone();
+        for (id, binding) in env.bindings.iter() {
+            let resolved = intern_str(env.intern_table.clone(), *id);
+            if resolved != binding.name {
+                return Err(format!(
+                    "fixture intern-table born-mark mismatch: id {id} resolves to {resolved:?}, expected {:?}",
+                    binding.name
+                ));
+            }
+        }
+    }
+    Ok(())
+}

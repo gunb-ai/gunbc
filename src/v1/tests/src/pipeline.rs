@@ -2614,19 +2614,6 @@ fn countdown(n: Int) -> Int {
 //
 // Default compile pipeline skips complexity (analyze_complexity: false).
 // We call build_complexity_report directly to get real complexity results.
-//
-// SOUNDNESS PROPERTY (born-mark) — SINGLE-CLOSURE IR FIXTURE SEAM.
-// Manual stage stitching (`front_end_sources` → `normalize_graph` → `reconcile` with
-// `frontend.intern_table`) is sound within one import closure: parse and reconcile
-// share the same intern-table growth history, matching `compile_to_resolved_with_options`.
-// Empty `source_indices` is sound for complexity-class receipts on tested subjects.
-//
-// This is NOT cross-entry typed-module cache soundness — reusing typed results across
-// entries with different table prefixes requires `seed_kernel_intern_names` (see the
-// INTERN-ID CONTENT-STABILITY born-mark in `cli_run.rs` and
-// `resolve_typed_cache_equivalence_test`).
-//
-// Witness: `ir_fixture_seam_spike_test` (fixture seam == production complexity oracle).
 
 fn compile_dag_with_complexity(
     source: &str,
