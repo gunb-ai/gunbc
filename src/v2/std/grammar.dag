@@ -1105,6 +1105,24 @@ fn derive_grammar_relation_token_edges_recursive(
 }
 
 
+// The recursive token-edge derivation accumulates Positional edges; the grammar-relation token
+// spine authority (grammar_relation_tokens_node, the only shape concrete_syntax_token_list_from_node
+// decodes — grammar.dag:535) is the fold_list_node named-cons spine, NOT a positional Conj. Project
+// the derived edges to their ordered token-node targets so the row's tokens field is built through
+// that single authority. Producing a positional Conj here (the prior shape) typechecked but was
+// undecodable by the emit/ingest selectors — a spec-without-execution gap surfaced by running the
+// grammar-inverse round trip on a type-decl Conj node (DESIGN.md §5).
+fn grammar_relation_token_edge_targets(edges: List<Edge>) -> List<Node> {
+  fold(
+    edges,
+    init: Empty,
+    f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: e.target)
+    }
+  )
+}
+
+
 // 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind gunbc#4761 — derive production+emitted+bindings
 // into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
 // 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion only; non-Conj emitted
@@ -1125,13 +1143,10 @@ fn derive_grammar_relation_row_node(
           Holds {
             value: grammar_relation_row_to_node(
               row: derive_grammar_relation_row(production: production, emitted: emitted),
-              tokens: Node {
-                kind: TypeNode {
-                  connective: Conj
-                },
-                children: token_edges,
-                occurrence_id: SyntheticOccurrence
-}
+              tokens: grammar_relation_tokens_node(
+                tokens: grammar_relation_token_edge_targets(edges: token_edges),
+                token_to_node: fn(token_node) { token_node }
+              )
             )
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
