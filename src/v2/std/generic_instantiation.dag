@@ -1,0 +1,67 @@
+// src/v2/std/generic_instantiation.dag
+// Scope: value-level generic instantiation substrate — Lane 2b / R2 §4a.
+// Status: 🟡 scaffold — GenericSubstitution + bind-once only. NOT migrated yet:
+// v1/04_infer.dag remains authority for is_type_variable_name, ArgGenericFoldState,
+// and self-named generic-decl discrimination (infer-local).
+// Dissolve-on: v2.compiler.04_infer imports this module and drops parallel carriers.
+
+module v2.std.generic_instantiation
+
+import v2.std.collection {
+  Absent,
+  Map,
+  Present,
+  empty_map,
+  map_get,
+  map_insert
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.node { Node, Symbol, content_hash }
+import v2.std.text { String }
+
+// Substitution map: generic name → concrete type node at a call site.
+type GenericSubstitution = Map<String, Node>
+
+data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port
+data generic_substitution_bind_conflict: Symbol = generic_substitution_bind_conflict
+
+fn empty_generic_substitution() -> GenericSubstitution {
+  empty_map()
+}
+
+fn generic_substitution_bind_conflict_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^generic_substitution_bind_conflict,
+    at: port_locus(port: ^generic_substitution_bind_once_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Fail-closed: bind a generic name once (first wins); reject conflicting re-bind.
+fn generic_substitution_bind_once(
+  subst: GenericSubstitution,
+  name: String,
+  concrete: Node,
+) -> Outcome<GenericSubstitution> {
+  match map_get(subst, name) {
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_accepted(value: map_insert(subst, name, concrete))
+    Accepted { value: Present { value: bound }, diagnostics: _ } =>
+      if content_hash(n: bound) == content_hash(n: concrete) {
+        outcome_accepted(value: subst)
+      } else {
+        outcome_rejected(d: generic_substitution_bind_conflict_diagnostic())
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}

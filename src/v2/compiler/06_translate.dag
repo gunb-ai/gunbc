@@ -836,29 +836,15 @@ fn serialize_concrete_syntax_tokens_to_source(
                 }
               )
             BoundToken { token_class: _, binding: binding } =>
-              match map_get(target.binding_spellings, binding) {
-                Accepted { value: opt, diagnostics: pending } =>
-                  match opt {
-                    Present { value: spelling } =>
-                      Accepted {
-                        value: list_append(left: partial, right: spelling),
-                        diagnostics: diagnostics_merge(outer: ad, inner: pending)
-                      }
-                    Absent =>
-                      Rejected {
-                        diagnostics: rejected_with_pending(
-                          pending: ad,
-                          rejected: diagnostics_singleton(
-                            d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                          )
-                        )
-                      }
+              bind_outcome(
+                o: target_binding_spelling_lookup(target: target, binding: binding),
+                f: fn(spelling) {
+                  Accepted {
+                    value: list_append(left: partial, right: spelling),
+                    diagnostics: ad
                   }
-                Rejected { diagnostics: r } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                  }
-              }
+                }
+              )
           }
       }
     }
