@@ -1,4 +1,7 @@
 // tools/source_root_ingest_transport.dag — shell transport for Lane 3a real ingest gate.
+//
+// Transport authority: scripts/source-root-ingest-gate.sh (host realization).
+// This module only binds the script path — no embedded shell templating.
 
 module tools.source_root_ingest_transport
 
@@ -6,7 +9,6 @@ import extdeps.shell
 import std.logic { Bool }
 
 fn run_real_ingest_gate() -> Bool {
-  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nMANIFEST=\"$ROOT/target/v2-source-root-ingest-manifest.dag\"\nMANIFEST_DIR=\"$(dirname \"$MANIFEST\")\"\ncargo run -p v1-compiler --release --bin discover_source_root_ingest -- \\\n  --source-root src/v2 \\\n  --scan-dir src/v2/test/fixture/program_assembly \\\n  --emit-dag-manifest \"$MANIFEST\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then cargo build -p v1-compiler --release --bin gunbc || exit 1; fi\n\"$GUNBC\" run --source-root src/v2 --source-root \"$MANIFEST_DIR\" --entry src/v2/test/claim/program_assembly/real_ingest_test.dag --function program_assembly_real_ingest_module_roots_parse_holds --claim-run\n\"$GUNBC\" run --source-root src/v2 --source-root \"$MANIFEST_DIR\" --entry src/v2/test/claim/program_assembly/real_ingest_test.dag --function program_assembly_real_ingest_host_manifest_receipt_holds --claim-run\n\"$GUNBC\" run --source-root src/v2 --source-root \"$MANIFEST_DIR\" --entry src/v2/test/claim/program_assembly/real_ingest_test.dag --function program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots --claim-run"
-  let result = shell.Exec.Run(script: script)
+  let result = shell.Exec.Run(script: "bash scripts/source-root-ingest-gate.sh")
   result.success
 }
