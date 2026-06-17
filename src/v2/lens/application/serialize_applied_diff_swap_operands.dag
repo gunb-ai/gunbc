@@ -39,6 +39,26 @@ data serialize_loop_body_diff: Diff = Diff {
 
 data serialize_loop_target: TargetModel = dag_mvp1_target_model()
 
+test fn serialize_loop_before_accepts() -> Bool {
+  match serialize_dag_source(
+    emitted: dag_mvp1_loop_arrow_with_body_fixture,
+    target: serialize_loop_target
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn serialize_loop_after_accepts() -> Bool {
+  match serialize_dag_source(
+    emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
+    target: serialize_loop_target
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn serialize_loop_before_after_differ() -> Bool {
   match serialize_dag_source(
     emitted: dag_mvp1_loop_arrow_with_body_fixture,
