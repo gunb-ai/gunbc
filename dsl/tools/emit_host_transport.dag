@@ -30,7 +30,8 @@ fn run_python_mvp2_smoke() -> Bool {
 }
 
 fn run_go_mvp2_smoke() -> Bool {
-  let script = "set -e\ncommand -v go >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
+  // Bootstrap portable Go when absent from PATH (self-hosted CI has cargo/rust but not always go).
+  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
   let result = shell.Exec.Run(script: script)
   result.success
 }
