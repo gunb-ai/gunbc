@@ -4673,11 +4673,9 @@ fn eval_builtin(
             }))
         }
 
-        "fact_cardinality_cross_tree_fork_count" => {
-            Ok(Some(Value::Int(
-                crate::fact_cardinality_census::cross_tree_fork_count(),
-            )))
-        }
+        "fact_cardinality_cross_tree_fork_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_fork_count(),
+        ))),
 
         "fact_cardinality_cross_tree_is_fork" => {
             let key = expect_str(

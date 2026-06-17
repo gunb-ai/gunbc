@@ -79,9 +79,7 @@ fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
         while i < lines.len() {
             let next = lines[i];
             if depth <= 0
-                && ITEM_KEYWORDS
-                    .iter()
-                    .any(|kw| next.starts_with(kw))
+                && ITEM_KEYWORDS.iter().any(|kw| next.starts_with(kw))
                 && !next.starts_with("test ")
             {
                 break;
