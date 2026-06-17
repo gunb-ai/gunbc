@@ -9510,6 +9510,15 @@ fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim —
+// feature:t6-value-expr-bodied-arrow-serialize — consumer:06_translate + program_partition —
+// bind: bodied-arrow OR-dispatch (branch/bind/loop/match/record_construct) delegates to gated shape
+// predicates below; combiner target_value_expr_arrow_has_value_expression_body —
+// owner: Lane 2a value-expression (jolly-wren-91) —
+// lane: compiler 06_value_expression + 06_translate —
+// dissolve-on-arrival: bodied Arrow serialize routes through grammar relation-row / connective dispatch;
+// delete per-behavior Bool has_* predicates steady-state;
+// forbidden: ComputationNode behavior match for binding-validation dispatch past M0.
 fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -9765,6 +9774,13 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   )
 }
 
+// 🟡 gated — predicate-dissolution interim —
+// feature:value-expression-branch-bool-condition-m0 —
+// consumer:target_value_expr_branch_bool_gate —
+// bind: M0 bool-if-else branch condition (kw_true / kw_false TypeNode atoms) —
+// lane: compiler 06_value_expression —
+// dissolve-on: Q-B1 named pattern edges for branch (M0-B5);
+// forbidden: hand-rolled symbol literal identity checks past grammar relation rows.
 fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -9775,6 +9791,13 @@ fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
 
 // ^dag_token_kw_true / ^dag_token_kw_false are symbol literals (no extdep import required).
 // These inline the dag_mvp1_node_is_kw_true_atom / dag_mvp1_node_is_kw_false_atom predicates.
+// 🟡 gated — predicate-dissolution interim —
+// feature:value-expression-branch-bool-condition-m0 —
+// consumer:target_project_branch_bool_if_else —
+// bind: design-comprep-m0-branch-mapping.md §12.9(A) positional Branch + bool-literal condition —
+// lane: compiler 06_value_expression —
+// dissolve-on: Q-B1 named pattern edges for branch (M0-B5);
+// forbidden: silent ordinal coupling past M0 Bool-if-else.
 fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   if length(xs: node_positional_child_targets(node: node)) != 3 {
     false

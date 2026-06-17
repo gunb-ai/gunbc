@@ -3743,6 +3743,11 @@ fn dag_grammar_sequence_from_token_classes_match() -> GrammarExpr {
   }
 }
 
+// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_binding: record-field
+// literal-binding whitelist for `Rec { field: <lit> }` positions. Hard-lists the mvp1 rec-lit
+// binding the emit round-trip re-ingests as an ident. WHY stopgap: no value_expression grammar
+// production exists in dag.dag yet. dissolve-on: replace with the value_expression production
+// when it lands in dag.dag (same debt as pick-arm terminal + binding whitelist).
 fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
   (binding == ^dag_binding_mvp1_rec_lit_nine)
 }
