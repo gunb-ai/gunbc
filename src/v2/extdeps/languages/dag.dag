@@ -2906,11 +2906,25 @@ fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
   }
 }
 
+fn dag_language_model_mvp1_binding_canonical(sym: Symbol) -> Bool {
+  sym == ^dag_binding_fn_add
+    || sym == ^dag_binding_param_x
+    || sym == ^dag_binding_param_y
+    || sym == ^dag_binding_type_int
+    || sym == ^dag_binding_fn_one_or_two
+    || sym == ^dag_binding_fn_one
+    || sym == ^dag_binding_mvp1_bind_x
+    || sym == ^dag_binding_mvp1_pick_lit_one
+    || sym == ^dag_binding_mvp1_pick_lit_two
+}
+
+
 fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
-        grammar_carries_symbol(grammar: dag_wave1_grammar(), sym: sym)
+        grammar_carries_symbol(grammar: dag_wave1_grammar(), sym: sym) ||
+        dag_language_model_mvp1_binding_canonical(sym: sym)
     }
   }
 }

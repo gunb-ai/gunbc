@@ -202,7 +202,10 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 
 fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
   Namespace {
-    bindings: add_module_named_exports(root: tree, acc: empty_map()),
+    bindings: harvest_direct_atom_binding(
+      root: tree,
+      acc: add_module_named_exports(root: tree, acc: empty_map())
+    ),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
   }
 }
