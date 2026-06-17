@@ -6,7 +6,6 @@ import v2.compiler.infer {
   InferredFacts,
   algebra_ref_is_grounded,
   canonical_grounding_from_inferred_facts,
-  infer_algebra_ref_ungrounded
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.constraints {

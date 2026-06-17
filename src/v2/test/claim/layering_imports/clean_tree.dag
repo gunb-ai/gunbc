@@ -1,5 +1,4 @@
 // Scope: clean-tree witness — host-enumerated import facts must have zero violations.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.layering_imports.clean_tree
 

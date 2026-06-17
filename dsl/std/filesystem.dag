@@ -3,7 +3,8 @@
 // "What is a file?" -- answered compositionally from primitives.
 //
 // Layering:
-//   Layer 0: Primitives (EntryKind, SymlinkTarget)
+//   Layer 0: Taxonomy (EntryKind, SymlinkTarget -- OS-agnostic, in
+//            std.filesystem.types; per-fs realizations in extdeps/filesystem/)
 //   Layer 1: Categories (FileEntry -- the composed invariant)
 //   Layer 2: Pure functions (is_text_readable, partition_entries)
 //   Layer 3: Patterns (classify_files, read_text_files -- in patterns.dag)
@@ -12,10 +13,17 @@
 module std.filesystem
 
 import std.encoding { Encoding }
-import std.types { FilePath, MimeType, EntryKind, SymlinkTarget }
+import std.types { FilePath, MimeType }
+import std.filesystem.types { EntryKind, SymlinkTarget }
 
-// EntryKind and SymlinkTarget are defined in std.types (the lower module)
-// and imported here to avoid circular dependencies.
+// -- Layer 0: Filesystem entry taxonomy -------------------------------------
+//
+// EntryKind / SymlinkTarget — the OS-agnostic entry taxonomy — live in the thin
+// std.filesystem.types module (mirroring std.os.types), so a consumer that only
+// needs the kinds (the per-fs realizations + their witnesses) does not drag this
+// encoding-heavy carrier along. Cited per-fs realizations:
+// extdeps/filesystem/{posix,ntfs}.dag, keyed to std.os.types.FileSystemSemantics.
+// (extdeps/filesystem/filesystem_io.dag is the host read/write EFFECT — orthogonal.)
 
 // -- Layer 0.5–1: File referent (single record) -----------------------------
 //

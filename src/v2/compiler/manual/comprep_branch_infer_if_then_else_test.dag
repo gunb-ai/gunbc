@@ -5,7 +5,6 @@ module v2.test.manual.comprep_branch_infer_if_then_else
 
 import v2.compiler.infer {
   infer,
-  infer_branch_arm_type_mismatch
 }
 import v2.extdeps.languages.dag {
   dag_mvp1_pick_if_body_fixture,
@@ -44,7 +43,7 @@ fn comprep_branch_infer_bool_cond_accepts_holds() -> Bool {
 fn comprep_branch_infer_arm_mismatch_red_holds() -> Bool {
   match infer(tree: comprep_branch_infer_arm_mismatch_body()) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == infer_branch_arm_type_mismatch
+    Rejected { diagnostics: d } => d.head.reason == ^infer_branch_arm_type_mismatch
   }
 }
 

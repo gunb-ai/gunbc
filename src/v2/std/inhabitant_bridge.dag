@@ -8,12 +8,7 @@ module v2.std.inhabitant_bridge
 import v2.std.node { Symbol }
 
 // Structural field label: labeled edge on PrimitiveFacts carrying the std_projection atom.
-data facts_field_std_projection: Symbol = facts_field_std_projection
 
 // Cross-language inhabitant carrier field labels (selection_policy alignment tiebreak).
-data inhabitant_field_atom: Symbol = inhabitant_field_atom
-data facts_field_surface_spelling: Symbol = facts_field_surface_spelling
-data facts_field_width: Symbol = facts_field_width
 
 // Canonical bridge key VALUE: MVP1 additive int/number slice (python int, ts number, go int).
-data std_projection_additive_numeric: Symbol = std_projection_additive_numeric

@@ -1,12 +1,12 @@
 
 module v2.test.lens_application.rejecting_lens_blocks_before_compile
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {
   CompileOutput,
   CompileLens,
   TranslateTo,
   Validated,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic,
   validate_then_compile
 }
@@ -33,7 +33,8 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
     children: [],
     occurrence_id: SyntheticOccurrence
 },
-  authority_source_text: Empty
+  authority_source_text: Empty,
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 data rejecting_lens_authority_node: Node = Node {
@@ -56,7 +57,7 @@ fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
     lenses: [rejecting_lens],
     mode: TranslateTo { target: rejecting_lens_target_model_stub }
   ) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

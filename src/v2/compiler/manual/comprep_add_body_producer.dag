@@ -13,7 +13,6 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
@@ -43,7 +42,6 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  arrow_body_edge,
   node_synthetic,
   well_formed
 }
@@ -142,7 +140,7 @@ fn comprep_arrow_with_atom_body_rejects() -> Bool {
         )
       },
       Edge {
-        label: Named { name: arrow_body_edge },
+        label: Named { name: ^arrow_body_edge },
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
           children: []
@@ -167,7 +165,7 @@ fn comprep_mvp1_add_parse_root() -> GrammarRoot {
 
 fn comprep_parse_mvp1_add_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   let root = comprep_mvp1_add_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
         tokens: tokens,

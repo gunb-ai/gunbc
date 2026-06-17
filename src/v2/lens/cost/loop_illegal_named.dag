@@ -2,7 +2,6 @@
 module v2.test.lens_cost.loop_illegal_named
 
 import v2.lens.cost { cost_lens }
-import v2.std.cardinality { cardinality_loop_bound_malformed }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -15,7 +14,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  loop_bound_edge,
   SyntheticOccurrence
 }
 import v2.std.verification {
@@ -50,7 +48,7 @@ data loop_illegal_named_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_illegal_named_body_leaf },
-    Edge { label: Named { name: loop_bound_edge }, target: loop_illegal_named_measure_leaf },
+    Edge { label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
     Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ],
   occurrence_id: SyntheticOccurrence
@@ -58,7 +56,7 @@ data loop_illegal_named_input: Node = Node {
 
 fn loop_illegal_named_claim_holds() -> Bool {
   match cost_lens(n: loop_illegal_named_input) {
-    Violates { diagnostic: d } => d.reason == cardinality_loop_bound_malformed
+    Violates { diagnostic: d } => d.reason == ^cardinality_loop_bound_malformed
     _ => false
   }
 }

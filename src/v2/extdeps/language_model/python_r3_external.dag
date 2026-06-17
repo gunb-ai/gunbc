@@ -20,7 +20,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_python_r3_external_symbol_projection,
   TargetPythonExerciseVerdict,
   TargetPythonExecRejected,
-  target_diagnostic_python_type_error_init_arity_mismatch
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -87,5 +86,5 @@ data claim_python_r3_external_verification_receipt_shape: TestClaim = EqualsClai
 }
 
 data python_r3_external_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
-  diagnostic_code: target_diagnostic_python_type_error_init_arity_mismatch
+  diagnostic_code: ^target_diagnostic_python_type_error_init_arity_mismatch
 }

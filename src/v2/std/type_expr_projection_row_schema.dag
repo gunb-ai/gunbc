@@ -6,8 +6,3 @@ module v2.std.type_expr_projection_row_schema
 
 import v2.std.node { Symbol }
 
-data target_type_expr_field_child_slot_discipline: Symbol = target_type_expr_field_child_slot_discipline
-data target_type_expr_field_child_slots: Symbol = target_type_expr_field_child_slots
-data target_type_expr_discipline_no_edges: Symbol = target_type_expr_discipline_no_edges
-data target_type_expr_discipline_labeled: Symbol = target_type_expr_discipline_labeled
-data target_type_expr_discipline_positional: Symbol = target_type_expr_discipline_positional

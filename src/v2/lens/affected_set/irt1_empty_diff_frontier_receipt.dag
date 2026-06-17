@@ -40,7 +40,6 @@ import v2.std.node {
   Symbol,
   TypeNode,
   SyntheticOccurrence,
-  canonical_tag_conj
 }
 import v2.std.verification {
   EqualsClaim,
@@ -248,7 +247,7 @@ fn irt1_public_changed_dimension_receipt_classifies_union() -> Bool {
     edit: irt1_public_changed_edit
   ) {
     ChangedDimensions { first: first, rest: rest } =>
-      (first == canonical_tag_conj)
+      (first == ^canonical_tag_conj)
         && contains(
           xs: rest,
           item: ^affected_set_claim_failure_symbol,

@@ -36,11 +36,10 @@ import v2.std.compilers.sugar {
 
 type NormalizedTree = Node
 
-data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: normalize_reason_post_normalize_not_well_formed,
+    reason: ^normalize_reason_post_normalize_not_well_formed,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }

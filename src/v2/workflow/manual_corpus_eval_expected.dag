@@ -8,8 +8,6 @@ module v2.test.workflow.manual_corpus_eval_expected
 
 import v2.compiler.eval {
   TestClaimRun,
-  eval_rejected_invalid_node,
-  eval_structural_equals_mismatch
 }
 import v2.std.collection { List }
 import v2.std.diagnostic { Rejected }
@@ -127,19 +125,19 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_lens_effect_depends_on_runtime_verdict,
     observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
+    primary_reason: ^eval_rejected_invalid_node,
     dissolution_target: ^dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_mechanical_reverification,
     observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
+    primary_reason: ^eval_rejected_invalid_node,
     dissolution_target: ^dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
     observation: ExecutedFail,
-    primary_reason: eval_structural_equals_mismatch,
+    primary_reason: ^eval_structural_equals_mismatch,
     dissolution_target: ^dissolution_target_subsumption_tree_eval
   }
 ]

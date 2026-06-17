@@ -38,8 +38,6 @@ import v2.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  impossible_bug_reason_suboptimal_complexity,
-  impossible_bug_reason_suboptimal_inhabitance,
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
@@ -93,7 +91,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticCla
   input: falsification_overcost_against_structural_bound,
   expected_rejection: expected_complexity_rejection(
     input: falsification_overcost_against_structural_bound,
-    reason: impossible_bug_reason_suboptimal_complexity,
+    reason: ^impossible_bug_reason_suboptimal_complexity,
     correction: within_bound_input
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -109,7 +107,7 @@ data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
   input: falsification_cost_contradicts_inhabitance,
   expected_rejection: expected_complexity_rejection(
     input: falsification_cost_contradicts_inhabitance,
-    reason: impossible_bug_reason_suboptimal_inhabitance,
+    reason: ^impossible_bug_reason_suboptimal_inhabitance,
     correction: within_bound_input
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
