@@ -52,10 +52,15 @@ data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow =
 }
 
 data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus gcp oauth fusion",
+  label: "corpus gcp oauth de-fused (regression guard)",
   violation_kind: violation_kind_transport_fusion,
+<<<<<<< HEAD
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
   function: "corpus_gcp_oauth_fusion_fork_is_red_holds"
+=======
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
+  function: "corpus_gcp_oauth_defused_holds"
+>>>>>>> origin/main
 }
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
