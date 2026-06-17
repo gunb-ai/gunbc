@@ -1,16 +1,19 @@
 // src/v2/lens/extdeps_shape_transport_policy.dag
 // Scope: extdeps shape/transport/policy guard — DESIGN.md §3 extdeps corollary (#5059).
-// Flags two tells only:
+// Flags three tells:
 //   (1) POLICY LEAK — argv literal that should be a parameter (consumer intent, not
-//       faithful upstream surface like git's `diff` / `--name-only`).
+//       faithful upstream/git surface primitives like git's `diff` / `--name-only`).
 //   (2) TRANSPORT-FUSION FORK — same logical endpoint modeled once per transport.
-// Status: 🟡 M1 — violation semantics + lens-unit synthetic facts; corpus RED witnesses
-//   read live `dsl/extdeps/**` via filesystem_read. Dissolve-on: Node-tree argv projection.
+//   (3) DEAD PARAM — operation input declared but absent from argv placeholder projection.
+// Status: 🟡 M2 — structural argv projection over synthetic input+argv fact bundles;
+//   dead-param detection wired; corpus regression guards still text-scan via filesystem_read.
+//   Dissolve-on: Node-tree argv projection from parsed service decls supersedes text scan.
 // Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
 
 module v2.lens.extdeps_shape_transport_policy
 
 import v2.std.algebra {
+  any,
   fold_list,
   length,
   list_snoc_item
@@ -37,6 +40,12 @@ type ExtdepsShapeTransportPolicyViolation
       service_b: String
       endpoint_key: String
     }
+  | DeadParamInArgv {
+      path: String
+      service: String
+      operation: String
+      param_name: String
+    }
 
 data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
 
@@ -57,8 +66,26 @@ type ExtdepsTransportFusionFact {
   service_b: String
 }
 
+// Operation input row — synthetic (lens-unit) or derived from a parsed service decl (corpus).
+type ExtdepsOperationInputFact {
+  path: String
+  service: String
+  operation: String
+  param_name: String
+}
+
+// Per-operation structural argv projection: declared inputs joined to argv tokens.
+type ExtdepsOperationArgvProjection {
+  path: String
+  service: String
+  operation: String
+  input_facts: List<ExtdepsOperationInputFact>
+  argv_facts: List<ExtdepsTransportArgvFact>
+}
+
 data empty_extdeps_transport_argv_facts: List<ExtdepsTransportArgvFact> = []
 data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
+data empty_extdeps_operation_input_facts: List<ExtdepsOperationInputFact> = []
 
 // filesystem_read bridge result (dissolve-on: std.filesystem read-result type).
 type FilesystemReadResult { content: String }
@@ -112,6 +139,139 @@ fn argv_fact_matches_operation(
 
 fn fusion_fact_matches_path(fact: ExtdepsTransportFusionFact, path: String) -> Bool {
   fact.path == path
+}
+
+fn input_fact_matches_operation(
+  fact: ExtdepsOperationInputFact,
+  path: String,
+  service: String,
+  operation: String
+) -> Bool {
+  fact.path == path && fact.service == service && fact.operation == operation
+}
+
+// Transport-layer bindings — not argv-placeholder wired (shell env map, etc.).
+fn extdeps_input_param_is_transport_bound(param_name: String) -> Bool {
+  param_name == "env"
+}
+
+fn extdeps_argv_token_references_param(token: String, param_name: String) -> Bool {
+  string_contains(token, concat("{", concat(param_name, "}")))
+}
+
+fn extdeps_argv_facts_reference_param(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  path: String,
+  service: String,
+  operation: String,
+  param_name: String
+) -> Bool {
+  any(
+    xs: filter_argv_facts_for_operation(
+      facts: argv_facts,
+      path: path,
+      service: service,
+      operation: operation
+    ),
+    predicate: fn(fact) {
+      extdeps_argv_token_references_param(
+        token: fact.argv_token,
+        param_name: param_name
+      )
+    }
+  )
+}
+
+fn filter_input_facts_for_operation(
+  facts: List<ExtdepsOperationInputFact>,
+  path: String,
+  service: String,
+  operation: String
+) -> List<ExtdepsOperationInputFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_operation_input_facts,
+    cons: fn(acc, fact) {
+      if input_fact_matches_operation(
+        fact: fact,
+        path: path,
+        service: service,
+        operation: operation
+      ) {
+        list_snoc_item(xs: acc, item: fact)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn extdeps_project_operation_argv(
+  path: String,
+  service: String,
+  operation: String,
+  input_facts: List<ExtdepsOperationInputFact>,
+  argv_facts: List<ExtdepsTransportArgvFact>
+) -> ExtdepsOperationArgvProjection {
+  ExtdepsOperationArgvProjection {
+    path: path,
+    service: service,
+    operation: operation,
+    input_facts: filter_input_facts_for_operation(
+      facts: input_facts,
+      path: path,
+      service: service,
+      operation: operation
+    ),
+    argv_facts: filter_argv_facts_for_operation(
+      facts: argv_facts,
+      path: path,
+      service: service,
+      operation: operation
+    )
+  }
+}
+
+fn scan_input_facts_for_dead_param_violations(
+  input_facts: List<ExtdepsOperationInputFact>,
+  argv_facts: List<ExtdepsTransportArgvFact>
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  fold_list(
+    xs: input_facts,
+    empty: empty_extdeps_shape_transport_policy_violations,
+    cons: fn(acc, fact) {
+      if extdeps_input_param_is_transport_bound(param_name: fact.param_name) {
+        acc
+      } else if extdeps_argv_facts_reference_param(
+        argv_facts: argv_facts,
+        path: fact.path,
+        service: fact.service,
+        operation: fact.operation,
+        param_name: fact.param_name
+      ) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: DeadParamInArgv {
+            path: fact.path,
+            service: fact.service,
+            operation: fact.operation,
+            param_name: fact.param_name
+          }
+        )
+      }
+    }
+  )
+}
+
+fn scan_projection_for_dead_param_violations(
+  projection: ExtdepsOperationArgvProjection
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  scan_input_facts_for_dead_param_violations(
+    input_facts: projection.input_facts,
+    argv_facts: projection.argv_facts
+  )
 }
 
 fn scan_argv_facts_for_violations(
@@ -171,11 +331,32 @@ fn merge_violation_lists(
 
 fn scan_facts_for_violations(
   argv_facts: List<ExtdepsTransportArgvFact>,
-  fusion_facts: List<ExtdepsTransportFusionFact>
+  fusion_facts: List<ExtdepsTransportFusionFact>,
+  input_facts: List<ExtdepsOperationInputFact>
 ) -> List<ExtdepsShapeTransportPolicyViolation> {
   merge_violation_lists(
-    a: scan_argv_facts_for_violations(facts: argv_facts),
-    b: scan_fusion_facts_for_violations(facts: fusion_facts)
+    a: merge_violation_lists(
+      a: scan_argv_facts_for_violations(facts: argv_facts),
+      b: scan_fusion_facts_for_violations(facts: fusion_facts)
+    ),
+    b: scan_input_facts_for_dead_param_violations(
+      input_facts: input_facts,
+      argv_facts: argv_facts
+    )
+  )
+}
+
+fn extdeps_shape_transport_policy_violation_count_with_inputs(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>,
+  input_facts: List<ExtdepsOperationInputFact>
+) -> Int {
+  length(
+    xs: scan_facts_for_violations(
+      argv_facts: argv_facts,
+      fusion_facts: fusion_facts,
+      input_facts: input_facts
+    )
   )
 }
 
@@ -183,11 +364,10 @@ fn extdeps_shape_transport_policy_violation_count(
   argv_facts: List<ExtdepsTransportArgvFact>,
   fusion_facts: List<ExtdepsTransportFusionFact>
 ) -> Int {
-  length(
-    xs: scan_facts_for_violations(
-      argv_facts: argv_facts,
-      fusion_facts: fusion_facts
-    )
+  extdeps_shape_transport_policy_violation_count_with_inputs(
+    argv_facts: argv_facts,
+    fusion_facts: fusion_facts,
+    input_facts: empty_extdeps_operation_input_facts
   )
 }
 
@@ -306,6 +486,26 @@ fn extdeps_shape_transport_policy_fusion_count_for_path(
   length(
     xs: scan_fusion_facts_for_violations(
       facts: filter_fusion_facts_for_path(facts: fusion_facts, path: path)
+    )
+  )
+}
+
+fn extdeps_shape_transport_policy_dead_param_count_for_operation(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  input_facts: List<ExtdepsOperationInputFact>,
+  path: String,
+  service: String,
+  operation: String
+) -> Int {
+  length(
+    xs: scan_projection_for_dead_param_violations(
+      projection: extdeps_project_operation_argv(
+        path: path,
+        service: service,
+        operation: operation,
+        input_facts: input_facts,
+        argv_facts: argv_facts
+      )
     )
   )
 }

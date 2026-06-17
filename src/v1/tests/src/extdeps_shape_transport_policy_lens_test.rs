@@ -71,4 +71,17 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         Value::Bool(true) => {}
         other => panic!("expected clean git diff witness true, got {other:?}"),
     }
+
+    let dead_param_entry =
+        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag";
+    let dead_param_content = std::fs::read_to_string(workspace_root().join(dead_param_entry))
+        .unwrap_or_else(|e| panic!("read {dead_param_entry}: {e}"));
+    match run_v4_module(
+        dead_param_entry,
+        &dead_param_content,
+        "dead_param_cargo_build_is_red_holds",
+    ) {
+        Value::Bool(true) => {}
+        other => panic!("expected dead param witness true, got {other:?}"),
+    }
 }
