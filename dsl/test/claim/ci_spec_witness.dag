@@ -1,13 +1,16 @@
 // dsl/test/claim/ci_spec_witness.dag
 //
-// Prove CiSpec fields drive emitted scripts (not decorative literals).
+// Prove CiSpec fields drive the scheduler invocation `gunbc ci` runs (not
+// decorative literals), and that the run script invokes the dependency-ordered
+// scheduler — NOT a flat claim_batch + gates lane (DESIGN §3, the operator's
+// "default runtime, not a parallel dogfood lane").
 
 module test.claim.ci_spec_witness
 
 import gunbc.ci_spec {
   CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase,
   gunbc_ci_spec,
-  claim_batch_script, gunbc_ci_run_script, git_fetch_script, ci_gates_invoke
+  scheduler_invoke, gunbc_ci_run_script, git_fetch_script
 }
 
 data spec_alternate_root: CiSpec = {
@@ -30,15 +33,15 @@ data spec_with_scan_subtree: CiSpec = {
   notice_title: "scan-test"
 }
 
-fn witness_roots_fold_into_claim_batch() -> Bool {
-  let script = claim_batch_script(spec: gunbc_ci_spec)
+fn witness_roots_fold_into_scheduler() -> Bool {
+  let script = scheduler_invoke(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: " --source-root src/v2") &&
     string_contains(s: script, pattern: " --source-root dsl")
 }
 
-fn witness_edit_witness_root_changes_claim_batch() -> Bool {
-  let base = claim_batch_script(spec: gunbc_ci_spec)
-  let alt = claim_batch_script(spec: spec_alternate_root)
+fn witness_edit_witness_root_changes_scheduler() -> Bool {
+  let base = scheduler_invoke(spec: gunbc_ci_spec)
+  let alt = scheduler_invoke(spec: spec_alternate_root)
   (base != alt) &&
     string_contains(s: alt, pattern: "Z9Z9Z9-witness-root") &&
     !string_contains(s: alt, pattern: " --source-root src/v2")
@@ -46,7 +49,7 @@ fn witness_edit_witness_root_changes_claim_batch() -> Bool {
 
 fn witness_scan_subtree_emits_scan_dir() -> Bool {
   string_contains(
-    s: claim_batch_script(spec: spec_with_scan_subtree),
+    s: scheduler_invoke(spec: spec_with_scan_subtree),
     pattern: " --scan-dir src/v2/test"
   )
 }
@@ -63,23 +66,26 @@ fn witness_diff_policy_drives_fetch() -> Bool {
 
 fn witness_notice_title_from_spec() -> Bool {
   string_contains(
-    s: claim_batch_script(spec: gunbc_ci_spec),
+    s: scheduler_invoke(spec: gunbc_ci_spec),
     pattern: concat(concat(" --notice-title \"", gunbc_ci_spec.notice_title), "\"")
   )
 }
 
-fn witness_run_script_composes_from_spec() -> Bool {
+// The run script invokes the scheduler over the floor plan — and does NOT
+// flat-invoke claim_batch (the parallel lane is gone, not shadowed).
+fn witness_run_script_invokes_scheduler() -> Bool {
   let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
-    string_contains(s: script, pattern: claim_batch_script(spec: gunbc_ci_spec)) &&
-    string_contains(s: script, pattern: ci_gates_invoke(spec: gunbc_ci_spec))
+    string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
+    !string_contains(s: script, pattern: "--bin claim_batch")
 }
 
 fn ci_spec_witnesses() -> Bool {
-  witness_roots_fold_into_claim_batch() &&
-    witness_edit_witness_root_changes_claim_batch() &&
+  witness_roots_fold_into_scheduler() &&
+    witness_edit_witness_root_changes_scheduler() &&
     witness_scan_subtree_emits_scan_dir() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
-    witness_run_script_composes_from_spec()
+    witness_run_script_invokes_scheduler()
 }

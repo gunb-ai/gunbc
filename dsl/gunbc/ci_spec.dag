@@ -48,6 +48,7 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
+    { entry: "dsl/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" }
   ],
   gates: [
@@ -100,37 +101,31 @@ fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
   )
 }
 
-fn witness_entry_flags(row: WitnessEntry) -> String {
-  concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
-}
+// The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
+// the host entry the executor evaluates. The scheduler — NOT a flat claim_batch +
+// gates pair — is the default CI runtime: both the discovery corpus and the gates
+// are scheduler plan nodes (`dsl/gunbc/ci_floor_plan.dag`), run dependency-ordered
+// and parallel-where-independent, fail-closed (DESIGN §4/§5).
+data floor_plan_entry: String = "dsl/gunbc/ci_floor_plan.dag"
+data floor_plan_function: String = "gunbc_ci_floor_batches"
 
-fn claim_batch_script(spec: CiSpec) -> String {
+fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
-        " --roster-from-discovery"
+        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_flags(roots: spec.witness_roots)),
+        concat(" --plan-entry ", floor_plan_entry)
       ),
-      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+      concat(" --plan-function ", floor_plan_function)
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")
   )
 }
 
-fn ci_gates_invoke(spec: CiSpec) -> String {
-  concat(
-    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
-    " --entry dsl/tools/ci_gates.dag --function main"
-  )
-}
-
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
-    concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-      concat(claim_batch_script(spec: spec), "\n")
-    ),
-    ci_gates_invoke(spec: spec)
+    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    scheduler_invoke(spec: spec)
   )
 }
 

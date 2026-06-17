@@ -651,6 +651,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut plan_entry: Option<String> = None;
     let mut plan_function = "bre_claim_batches".to_string();
+    let mut notice_title: Option<String> = None;
     let mut perturb_check = false;
 
     let mut i = 1;
@@ -667,6 +668,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--plan-function" => {
                 i += 1;
                 plan_function = require_value(&args, i, "--plan-function")?;
+            }
+            "--notice-title" => {
+                i += 1;
+                notice_title = Some(require_value(&args, i, "--notice-title")?);
             }
             "--perturb-check" => perturb_check = true,
             other => {
@@ -705,7 +710,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
 
     eprintln!(
-        "claim_executor: executor plan = {} batch(es) from {}::{}",
+        "claim_executor: [{}] executor plan = {} batch(es) from {}::{}",
+        notice_title.as_deref().unwrap_or("ci floor"),
         batches.len(),
         plan_entry,
         plan_function
