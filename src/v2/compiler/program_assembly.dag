@@ -10,7 +10,6 @@
 
 module v2.compiler.program_assembly
 
-import v2.compiler.compile { CoreNode }
 import v2.compiler.name_resolve {
   Admission,
   resolve_with_admission,
@@ -129,7 +128,7 @@ fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: DagLanguageModel
-) -> Outcome<CoreNode> {
+) -> Outcome<Node> {
   bind_outcome(
     o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
     f: fn(roots) {
