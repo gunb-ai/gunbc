@@ -6,9 +6,7 @@ import v2.extdeps.languages.dag {
   dag_mvp1_fixture_emitted_loop_fn,
   dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
   dag_mvp1_loop_body_wrong_value_node,
-  dag_mvp1_loop_source_text,
-  dag_mvp1_loop_target_model,
-  dag_mvp1_loop_wrong_value_source_text
+  dag_mvp1_loop_target_model
 }
 import v2.lens.application { apply_diff }
 import v2.lens.application_serializer {
@@ -97,8 +95,7 @@ fn serialize_loop_patch_carrier_holds() -> Bool {
       if patch.after == patch.before {
         false
       } else {
-        patch.before == dag_mvp1_loop_source_text
-          && patch.after == dag_mvp1_loop_wrong_value_source_text
+        serialize_loop_applied_diff_matches_authority_after()
       }
     Rejected { diagnostics: _ } => false
   }
