@@ -422,8 +422,10 @@ type RuntimePlatform {
 // --- Filesystem entry taxonomy: see std/filesystem.dag ------------------
 // EntryKind / SymlinkTarget were rehomed out of this catch-all into their
 // dedicated module std.filesystem (the single authority for the filesystem
-// taxonomy + its FileEntry carrier), POSIX-anchored on st_mode. Mirrors the
-// os precedent (taxonomy SHAPES live in the std module, not the catch-all).
+// taxonomy + its FileEntry carrier). They are the OS-AGNOSTIC reduction across
+// real filesystems; each filesystem's cited native taxonomy + its mapping live
+// down-layer in extdeps/filesystem/{posix,ntfs}.dag, keyed to
+// std.os.types.FileSystemSemantics — std holds the agnostic shape, not POSIX.
 
 // --- Content encoding: see std/encoding.dag (single authority) --------
 
