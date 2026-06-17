@@ -8,10 +8,13 @@
 module v2.std.generic_instantiation
 
 import v2.std.collection {
+  Absent,
+  Present,
   empty_map,
-  map_contains_key,
+  map_get,
   map_insert
 }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node }
 
 // Substitution map: generic name → concrete type node at a call site.
@@ -22,14 +25,17 @@ fn empty_generic_substitution() -> GenericSubstitution {
 }
 
 // Fail-closed: bind a generic name once (first wins); never silently overwrite.
+// Rebind path uses map_get Absent branch only; Present branch avoids Node payload
+// destructure (runtime Witness<Node> wildcard limitation — follow-on with 04_infer wire).
 fn generic_substitution_bind_once(
   subst: GenericSubstitution,
   name: String,
   concrete: Node,
 ) -> GenericSubstitution {
-  match map_contains_key(m: subst, key: name) {
-    true => subst
-    false => map_insert(subst, name, concrete)
+  match map_get(subst, name) {
+    Accepted { value: Absent, diagnostics: _ } => map_insert(subst, name, concrete)
+    Accepted { value: Present { value: _ }, diagnostics: _ } => subst
+    Rejected { diagnostics: _ } => subst
   }
 }
 

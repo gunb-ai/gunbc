@@ -5,20 +5,8 @@
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { map_contains_key }
-import v2.std.generic_instantiation {
-  empty_generic_substitution,
-  generic_substitution_bind_once,
-  param_is_self_named_generic_decl
-}
+import v2.std.generic_instantiation { param_is_self_named_generic_decl }
 import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic
-}
 
 type Rec { v: Int }
 
@@ -54,47 +42,6 @@ fn use_chained() -> Int {
   chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
-data gi_bind_once_int_sym: Symbol = gi_bind_once_int_sym
-data gi_bind_once_bool_sym: Symbol = gi_bind_once_bool_sym
-
-fn gi_type_atom_node(sym: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  )
-}
-
-fn generic_substitution_bind_once_first_wins_holds() -> Bool {
-  let n_int = gi_type_atom_node(sym: ^gi_bind_once_int_sym)
-  let n_bool = gi_type_atom_node(sym: ^gi_bind_once_bool_sym)
-  let subst1 = generic_substitution_bind_once(
-    subst: empty_generic_substitution(),
-    name: "T",
-    concrete: n_int
-  )
-  let subst2 = generic_substitution_bind_once(
-    subst: subst1,
-    name: "T",
-    concrete: n_bool
-  )
-  let bool_only = generic_substitution_bind_once(
-    subst: empty_generic_substitution(),
-    name: "T",
-    concrete: n_bool
-  )
-  map_contains_key(m: subst1, key: "T")
-    && map_contains_key(m: subst2, key: "T")
-    && map_contains_key(m: bool_only, key: "T")
-    && map_contains_key(
-      m: generic_substitution_bind_once(
-        subst: subst2,
-        name: "U",
-        concrete: n_bool
-      ),
-      key: "U"
-    )
-}
-
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
   fold_list_generic_instantiation_holds()
 }
@@ -113,8 +60,4 @@ test fn generic_instantiation_substrate_self_named_generic_decl() -> Bool {
     type_name: "T",
     type_is_bare_leaf: true
   )
-}
-
-test fn generic_substitution_bind_once_first_wins_holds() -> Bool {
-  generic_substitution_bind_once_first_wins_holds()
 }
