@@ -37,8 +37,6 @@ import v2.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  impossible_bug_reason_idempotency_repetition,
-  impossible_bug_reason_idempotency_violation,
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
@@ -84,7 +82,7 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = Diagnostic
   input: falsification_repeated_append_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: impossible_bug_reason_idempotency_repetition,
+        reason: ^impossible_bug_reason_idempotency_repetition,
         at: node_locus(node: falsification_repeated_append_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
@@ -99,7 +97,7 @@ data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticCl
   input: falsification_nonidempotent_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: impossible_bug_reason_idempotency_violation,
+        reason: ^impossible_bug_reason_idempotency_violation,
         at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }

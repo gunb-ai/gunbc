@@ -30,7 +30,6 @@ import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
-  grammar_relation_field_tokens
 }
 import v2.std.diagnostic {
   Accepted,
@@ -53,7 +52,7 @@ import v2.std.verification {
 // mirroring v2.compiler.ingest row_token_spine_classes — the frontier forward selection keys on.
 fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
@@ -85,7 +84,6 @@ fn emit_ingest_python_canonical_emitted() -> Node {
 }
 
 // Hermetic perturb token: not on the python_mvp1 add-fn production spine (bogus append target).
-data emit_ingest_python_perturb_bogus_tok: Symbol = emit_ingest_python_perturb_bogus_tok
 
 // Backward selector (emit/serialize): keys on grammar_relation_field_emitted.
 fn emit_python_backward_selects_canonical_row_holds() -> Bool {
@@ -166,7 +164,7 @@ fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
-        frontier: list_append(left: frontier, right: [emit_ingest_python_perturb_bogus_tok]),
+        frontier: list_append(left: frontier, right: [^emit_ingest_python_perturb_bogus_tok]),
         rules: emit_ingest_python_shared_rules()
       ) {
         Accepted { value: _, diagnostics: _ } => false
@@ -184,7 +182,7 @@ fn emit_ingest_python_unperturbed_frontier_accepts() -> Bool {
 // Hermetic perturb-RED: a single-token frontier off the python_mvp1 add spine -> fail closed.
 fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
-    frontier: Cons { head: emit_ingest_python_perturb_bogus_tok, tail: Empty },
+    frontier: Cons { head: ^emit_ingest_python_perturb_bogus_tok, tail: Empty },
     rules: emit_ingest_python_shared_rules()
   ) {
     Accepted { value: _, diagnostics: _ } => false

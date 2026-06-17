@@ -19,7 +19,6 @@ import v2.compiler.eval {
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
-  translate_target_bundle_malformed
 }
 import v2.extdeps.languages.python {
   python_facts_int,
@@ -34,8 +33,7 @@ import v2.extdeps.languages.python {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
-import v2.std.inhabitant_bridge { std_projection_additive_numeric }
-import v2.std.compilers.target_model { TargetModel}
+import v2.std.compilers.target_model { TargetModel }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add_mvp {
   infer_receipt_context
@@ -208,7 +206,7 @@ fn mvp1_python_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding
         algebra: mvp1_python_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: std_projection_additive_numeric) {
+  } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
     Holds {
       value: mvp1_python_canonical_grounding(
         node: node,
@@ -393,7 +391,7 @@ data claim_mvp1_python_serialize_rejects_missing_translation_rules: TestClaim = 
   input: mvp1_python_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
-      reason: translate_target_bundle_malformed,
+      reason: ^translate_target_bundle_malformed,
       at: node_locus(node: mvp1_python_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

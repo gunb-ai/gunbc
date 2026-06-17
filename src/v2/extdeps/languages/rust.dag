@@ -73,9 +73,6 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth,
   ModelCorePrimitiveFactAxis,
-  model_core_wave1_law_field_algebra,
-  model_core_wave1_law_field_kind,
-  model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
@@ -98,32 +95,14 @@ import v2.std.compilers.target_model {
   ValueBoolLiteral,
   ValueCharUnicodeScalar,
   ValueSymbolToOwnedString,
-  char_kernel_type_atom,
   char_kernel_type_node,
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  serialize_source_field_source_grammar,
-  serialize_source_field_source_text,
-  symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_realization_catalog_node,
   TargetFunctionSignatureRealization,
   FunctionBoundaryParam,
   FunctionBoundaryReturn,
   target_function_signature_realization_catalog_node,
-  target_model_edge_signature_realizations,
-  target_model_edge_atom_realizations,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules,
-  target_model_edge_serialize_source,
-  target_model_edge_type_expression_projection,
   type_expr_projection_step_algebra,
-  target_model_edge_collection_realization,
-  target_model_edge_use_site_ownership_realizations,
-  target_model_edge_reference_layer_tokens,
-  target_model_edge_value_semantics_carriers,
   TargetUseSiteOwnershipRealization,
   TargetUseSiteOwnershipSourceProjection,
   TargetOwnershipUseSite,
@@ -138,14 +117,6 @@ import v2.std.compilers.target_model {
   ReferenceLayerOwned,
   ReferenceLayerRc,
   ReferenceLayerBox,
-  target_carrier_diagnostics,
-  target_carrier_node,
-  target_carrier_test_claim,
-  target_carrier_free_monoid,
-  target_carrier_outcome,
-  target_carrier_model_core,
-  target_carrier_algebra_inhabitance_decl,
-  target_carrier_probe_heap,
   target_carrier_diagnostics_node,
   target_carrier_node_node,
   target_carrier_test_claim_node,
@@ -165,47 +136,13 @@ import v2.std.compilers.target_model {
   TargetCollectionWitnessOrd,
   TargetCollectionWitnessHash,
   TargetCollectionWitnessEq,
-  target_collection_set_carrier,
   target_collection_set_carrier_node,
   target_collection_set_no_representation_diagnostic,
-  target_collection_free_monoid_no_representation,
-  target_collection_trait_ord,
-  target_collection_trait_hash,
-  target_collection_trait_eq,
-  target_collection_type_param_t,
-  target_collection_repr_field_kind,
-  target_collection_repr_field_apply,
-  target_collection_choice_field_form,
-  target_collection_choice_field_constraints,
-  target_collection_witness_field_trait_name,
-  target_collection_witness_field_type_param,
-  target_collection_row_field_source_carrier,
-  target_collection_row_field_primary,
-  target_collection_row_field_alternatives,
-  target_collection_row_field_fallback,
-  target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
   TargetCollectionReprVec,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
-  target_type_expr_field_atom,
-  target_type_expr_field_arrow,
-  target_type_expr_field_cardinality,
-  target_type_expr_field_close,
-  target_type_expr_field_conj,
-  target_type_expr_field_disj,
-  target_type_expr_field_field_label_separator,
-  target_type_expr_field_ident_token,
-  target_type_expr_field_instantiation,
-  target_type_expr_field_open,
-  target_type_expr_field_param_ident_token,
-  target_type_expr_field_param_list_separator,
-  target_type_expr_field_param_type_separator,
-  target_type_expr_field_separator,
-  target_type_expr_field_variant_separator,
-  target_type_expr_field_surface,
-  target_type_expr_field_kind,
   target_type_expr_surface_edge,
   target_type_expr_cardinality_emitted,
   target_type_expr_instantiation_emitted,
@@ -230,7 +167,7 @@ import v2.std.node {
   Instantiation,
   SyntheticOccurrence
 }
-import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.algebra {
   BooleanAlgebra,
   algebra_binary_fn_node,
@@ -258,7 +195,6 @@ import v2.std.host_transport {
   ProcessInvocation,
   WorkspaceContent,
   WorkspaceFile,
-  host_tool_cargo,
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.integer {
@@ -1186,7 +1122,7 @@ fn rust_mvp1_serialize_source_children() -> List<Edge> {
     left: rust_mvp1_serialize_source_prefix_edges(),
     right: [
       rust_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: rust_mvp1_concrete_tokens(),
           token_to_node: rust_concrete_token_node
@@ -1254,12 +1190,12 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: grammar_relation_field_production,
+        name: ^grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      rust_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: rust_concrete_token_node
@@ -1318,7 +1254,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
       apply: rust_set_collection_apply_btree()
     },
     constraints: [
-      TargetCollectionWitnessOrd { type_param: target_collection_type_param_t }
+      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
     ]
   }
 }
@@ -1330,8 +1266,8 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
       apply: rust_set_collection_apply_hash()
     },
     constraints: [
-      TargetCollectionWitnessHash { type_param: target_collection_type_param_t },
-      TargetCollectionWitnessEq { type_param: target_collection_type_param_t }
+      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
+      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
     ]
   }
 }
@@ -1362,28 +1298,28 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_collection_repr_field_kind,
+        name: ^target_collection_repr_field_kind,
         target: rust_inhabitant_atom(id: discriminant(v: form.kind))
       ),
       rust_named_edge(
-        name: target_collection_repr_field_apply,
+        name: ^target_collection_repr_field_apply,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             rust_named_edge(
-              name: target_type_expr_field_surface,
+              name: ^target_type_expr_field_surface,
               target: rust_inhabitant_atom(id: form.apply.surface)
             ),
             rust_named_edge(
-              name: target_type_expr_field_open,
+              name: ^target_type_expr_field_open,
               target: rust_inhabitant_atom(id: form.apply.open)
             ),
             rust_named_edge(
-              name: target_type_expr_field_separator,
+              name: ^target_type_expr_field_separator,
               target: rust_inhabitant_atom(id: form.apply.separator)
             ),
             rust_named_edge(
-              name: target_type_expr_field_close,
+              name: ^target_type_expr_field_close,
               target: rust_inhabitant_atom(id: form.apply.close)
             )
           ],
@@ -1402,11 +1338,11 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: target_collection_trait_ord)
+            name: ^target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: ^target_collection_trait_ord)
           ),
           rust_named_edge(
-            name: target_collection_witness_field_type_param,
+            name: ^target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
         ],
@@ -1417,11 +1353,11 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: target_collection_trait_hash)
+            name: ^target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: ^target_collection_trait_hash)
           ),
           rust_named_edge(
-            name: target_collection_witness_field_type_param,
+            name: ^target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
         ],
@@ -1432,11 +1368,11 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: target_collection_trait_eq)
+            name: ^target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: ^target_collection_trait_eq)
           ),
           rust_named_edge(
-            name: target_collection_witness_field_type_param,
+            name: ^target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
         ],
@@ -1450,11 +1386,11 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_collection_choice_field_form,
+        name: ^target_collection_choice_field_form,
         target: rust_collection_repr_bundle_node(form: choice.form)
       ),
       rust_named_edge(
-        name: target_collection_choice_field_constraints,
+        name: ^target_collection_choice_field_constraints,
         target: fold_list_node(
           xs: choice.constraints,
           item_node: rust_collection_witness_bundle_node
@@ -1470,23 +1406,23 @@ fn rust_set_collection_realization_bundle_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_collection_row_field_source_carrier,
+        name: ^target_collection_row_field_source_carrier,
         target: target_collection_set_carrier_node()
       ),
       rust_named_edge(
-        name: target_collection_row_field_primary,
+        name: ^target_collection_row_field_primary,
         target: rust_collection_choice_bundle_node(choice: rust_set_collection_primary_choice())
       ),
       rust_named_edge(
-        name: target_collection_row_field_alternatives,
+        name: ^target_collection_row_field_alternatives,
         target: fold_list_node(
           xs: rust_set_collection_alternative_choices(),
           item_node: rust_collection_choice_bundle_node
         )
       ),
       rust_named_edge(
-        name: target_collection_row_field_fallback,
-        target: rust_inhabitant_atom(id: target_collection_set_no_representation)
+        name: ^target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: ^target_collection_set_no_representation)
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1498,23 +1434,23 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_collection_row_field_source_carrier,
+        name: ^target_collection_row_field_source_carrier,
         target: target_carrier_free_monoid_node()
       ),
       rust_named_edge(
-        name: target_collection_row_field_primary,
+        name: ^target_collection_row_field_primary,
         target: rust_collection_choice_bundle_node(choice: rust_free_monoid_collection_primary_choice())
       ),
       rust_named_edge(
-        name: target_collection_row_field_alternatives,
+        name: ^target_collection_row_field_alternatives,
         target: fold_list_node(
           xs: rust_free_monoid_collection_alternative_choices(),
           item_node: rust_collection_choice_bundle_node
         )
       ),
       rust_named_edge(
-        name: target_collection_row_field_fallback,
-        target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
+        name: ^target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: ^target_collection_free_monoid_no_representation)
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1542,43 +1478,43 @@ fn rust_collection_realization_catalog_node() -> Node {
 fn rust_mvp1_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
-      name: target_model_edge_selection_policy,
+      name: ^target_model_edge_selection_policy,
       target: rust_mvp1_selection_policy_node()
     ),
     rust_named_edge(
-      name: target_model_edge_declared_inhabitants,
+      name: ^target_model_edge_declared_inhabitants,
       target: rust_mvp1_declared_inhabitants_root()
     ),
     rust_named_edge(
-      name: target_model_edge_translation_rules,
+      name: ^target_model_edge_translation_rules,
       target: rust_mvp1_translation_rules_node()
     ),
     rust_named_edge(
-      name: target_model_edge_serialize_source,
+      name: ^target_model_edge_serialize_source,
       target: rust_mvp1_serialize_source_node()
     ),
     rust_named_edge(
-      name: target_model_edge_collection_realization,
+      name: ^target_model_edge_collection_realization,
       target: rust_collection_realization_catalog_node()
     ),
     rust_named_edge(
-      name: target_model_edge_reference_layer_tokens,
+      name: ^target_model_edge_reference_layer_tokens,
       target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
     ),
     rust_named_edge(
-      name: target_model_edge_use_site_ownership_realizations,
+      name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
         rows: rust_sg_rc_use_site_ownership_catalog()
       )
     ),
     rust_named_edge(
-      name: target_model_edge_value_semantics_carriers,
+      name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
         atoms: rust_value_semantics_carrier_atoms()
       )
     ),
     rust_named_edge(
-      name: target_model_edge_type_expression_projection,
+      name: ^target_model_edge_type_expression_projection,
       target: rust_type_expression_projection_bundle_node()
     )
   ]
@@ -1599,16 +1535,14 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m3 = map_insert(m2, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
-  map_insert(m5, target_collection_set_carrier, "Set")
+  map_insert(m5, ^target_collection_set_carrier, "Set")
 }
 
 // T-22 emit-host runtime row — gunbc#4750 (replaces authority_source_text dispatch in emit_host.dag).
-data rust_host_transport_mvp1_identity: Symbol = rust_host_transport_mvp1_identity
-data rust_emit_host_runtime_primitive_symbol: Symbol = rust_emit_host_runtime_primitive_symbol
 
 fn rust_emit_host_runtime_primitive_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: rust_emit_host_runtime_primitive_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^rust_emit_host_runtime_primitive_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1616,7 +1550,7 @@ fn rust_emit_host_runtime_primitive_type_node() -> Node {
 
 fn rust_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
-    identity: rust_host_transport_mvp1_identity,
+    identity: ^rust_host_transport_mvp1_identity,
     workspace: [
       WorkspaceFile {
         path: "src/main.rs",
@@ -1625,12 +1559,12 @@ fn rust_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        tool: host_tool_cargo,
+        tool: ^host_tool_cargo,
         args: [LiteralArg { text: "build" }]
       }
     ],
     run: ProcessInvocation {
-      tool: host_tool_cargo,
+      tool: ^host_tool_cargo,
       args: [LiteralArg { text: "run" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -1672,7 +1606,7 @@ data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomReal
   type_form: rust_target_atom_type_form(spelling: ^rust_target_atom_type_spelling_string),
   value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
   constructor_form: optional_absent(),
-  display_name: symbol_kernel_type_atom
+  display_name: ^symbol_kernel_type_atom
 }
 
 data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
@@ -1681,7 +1615,7 @@ data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealiz
   type_form: rust_target_atom_type_form(spelling: ^rust_surface_spelling_bool),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
-  display_name: bool_node_symbol
+  display_name: ^bool_node_symbol
 }
 
 data rust_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
@@ -1690,7 +1624,7 @@ data rust_target_atom_realization_char: TargetAtomRealization = TargetAtomRealiz
   type_form: rust_target_atom_type_form(spelling: ^rust_surface_spelling_char),
   value_form: target_value_template_for_kind(kind: ValueCharUnicodeScalar),
   constructor_form: optional_absent(),
-  display_name: char_kernel_type_atom
+  display_name: ^char_kernel_type_atom
 }
 
 data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
@@ -1735,7 +1669,7 @@ fn rust_mvp1_target_model_node() -> Node {
     children: list_snoc_item(
       xs: rust_mvp1_target_model_core_edges(),
       item: rust_named_edge(
-        name: target_model_edge_atom_realizations,
+        name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
           rows: rust_target_atom_realization_catalog,
           host_bundle: rust_mvp1_target_model_bundle_core()
@@ -2045,10 +1979,10 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: model_core_wave1_law_field_subject, target: witness),
-      rust_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      rust_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
+      rust_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
       rust_named_edge(
-        name: model_core_wave1_law_field_kind,
+        name: ^model_core_wave1_law_field_kind,
         target: rust_inhabitant_atom(id: discriminant(v: key))
       )
     ],
@@ -3465,18 +3399,18 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^rust_binding_sg2_y, "Y")
   let m3 = map_insert(m2, ^rust_binding_sg2_rc, "Rc")
   let m4 = map_insert(m3, ^rust_binding_sg_rc_box, "Box")
-  let m5 = map_insert(m4, target_carrier_diagnostics, "Diagnostics")
-  let m6 = map_insert(m5, target_carrier_node, "Node")
-  let m7 = map_insert(m6, target_carrier_test_claim, "TestClaim")
-  let m8 = map_insert(m7, target_carrier_free_monoid, "FreeMonoid")
-  let m9 = map_insert(m8, target_carrier_outcome, "Outcome")
-  let m10 = map_insert(m9, target_carrier_model_core, "ModelCore")
-  let m11 = map_insert(m10, target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
-  let m12 = map_insert(m11, target_carrier_probe_heap, "ProbeHeap")
+  let m5 = map_insert(m4, ^target_carrier_diagnostics, "Diagnostics")
+  let m6 = map_insert(m5, ^target_carrier_node, "Node")
+  let m7 = map_insert(m6, ^target_carrier_test_claim, "TestClaim")
+  let m8 = map_insert(m7, ^target_carrier_free_monoid, "FreeMonoid")
+  let m9 = map_insert(m8, ^target_carrier_outcome, "Outcome")
+  let m10 = map_insert(m9, ^target_carrier_model_core, "ModelCore")
+  let m11 = map_insert(m10, ^target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
+  let m12 = map_insert(m11, ^target_carrier_probe_heap, "ProbeHeap")
   let m13 = map_insert(m12, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m14 = map_insert(m13, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m15 = map_insert(m14, ^rust_collection_surface_vec, "Vec")
-  let m16 = map_insert(m15, target_collection_set_carrier, "Set")
+  let m16 = map_insert(m15, ^target_collection_set_carrier, "Set")
   let m18 = map_insert(m16, ^rust_target_atom_type_spelling_string, "String")
   let m19 = map_insert(m18, ^rust_sg_rc_ctor_rc_new, "Rc::new")
   map_insert(m19, ^rust_sg_rc_ctor_box_new, "Box::new")
@@ -3507,15 +3441,15 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_model_edge_type_expression_projection,
+        name: ^target_model_edge_type_expression_projection,
         target: rust_type_expression_projection_bundle_node()
       ),
       rust_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: rust_sg2_serialize_source_node()
       ),
       rust_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: Empty,
@@ -3523,23 +3457,23 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
 }
       ),
       rust_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: rust_mvp1_selection_policy_node()
       ),
       rust_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: rust_declared_inhabitants_root()
       ),
       rust_named_edge(
-        name: target_model_edge_collection_realization,
+        name: ^target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
-        name: target_model_edge_reference_layer_tokens,
+        name: ^target_model_edge_reference_layer_tokens,
         target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
       ),
       rust_named_edge(
-        name: target_model_edge_use_site_ownership_realizations,
+        name: ^target_model_edge_use_site_ownership_realizations,
         target: target_use_site_ownership_catalog_node(
           rows: rust_sg_rc_use_site_ownership_catalog()
         )
@@ -3557,7 +3491,7 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
         children: list_snoc_item(
           xs: rust_sg2_type_expr_target_model_bundle_core().children,
           item: rust_named_edge(
-            name: target_model_edge_signature_realizations,
+            name: ^target_model_edge_signature_realizations,
             target: target_function_signature_realization_catalog_node(
               rows: rust_target_function_signature_realization_catalog
             )
@@ -3578,7 +3512,7 @@ fn rust_sg2_serialize_source_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: serialize_source_field_source_text,
+        name: ^serialize_source_field_source_text,
         target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
       )
     ],
@@ -3604,15 +3538,15 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: target_model_edge_type_expression_projection,
+        name: ^target_model_edge_type_expression_projection,
         target: rust_type_expression_projection_bundle_node()
       ),
       rust_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: rust_sg2_serialize_source_node()
       ),
       rust_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: Empty,
@@ -3620,15 +3554,15 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
 }
       ),
       rust_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: rust_mvp1_selection_policy_node()
       ),
       rust_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: rust_declared_inhabitants_root()
       ),
       rust_named_edge(
-        name: target_model_edge_collection_realization,
+        name: ^target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
       )
     ],
@@ -3911,7 +3845,7 @@ fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
       form: rust_type_expression_projection().atom_form,
       identity: ^rust_binding_sg2_x
     ),
-    field: target_type_expr_field_surface
+    field: ^target_type_expr_field_surface
   )
 }
 
@@ -3940,7 +3874,7 @@ fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
   Node {
     kind: base.kind,
     children: list_snoc_item(
-      xs: rust_sg2_emitted_without_named_edge(base: base, field: target_type_expr_field_surface).children,
+      xs: rust_sg2_emitted_without_named_edge(base: base, field: ^target_type_expr_field_surface).children,
       item: target_type_expr_surface_edge(surface: ^rust_binding_sg2_bogus_meta)
     ),
     occurrence_id: SyntheticOccurrence

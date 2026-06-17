@@ -20,12 +20,6 @@ import v2.std.integer { integer_interval_spec_node_contains }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
 import v2.std.node_query { find_named_child }
 
-data integer_value_set_field_kind: Symbol = integer_value_set_field_kind
-data integer_value_set_field_interval: Symbol = integer_value_set_field_interval
-data integer_value_set_field_extra: Symbol = integer_value_set_field_extra
-data integer_value_set_kind_unbounded: Symbol = integer_value_set_kind_unbounded
-data integer_value_set_kind_interval: Symbol = integer_value_set_kind_interval
-data integer_value_set_decode_invalid: Symbol = integer_value_set_decode_invalid
 
 // 🟡 coproduct dissolution — feature:integer-value-set-coproduct — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: general value-set lattice authority lands and integer-only decode can fold into the shared substrate predicate; forbidden: unclassified long-lived Node/tag carrier.
 type IntegerValueSet
@@ -45,8 +39,8 @@ fn integer_unbounded_value_set_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: integer_value_set_field_kind },
-        target: integer_value_set_atom(id: integer_value_set_kind_unbounded)
+        label: Named { name: ^integer_value_set_field_kind },
+        target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -58,11 +52,11 @@ fn integer_interval_value_set_node(interval: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: integer_value_set_field_kind },
-        target: integer_value_set_atom(id: integer_value_set_kind_interval)
+        label: Named { name: ^integer_value_set_field_kind },
+        target: integer_value_set_atom(id: ^integer_value_set_kind_interval)
       },
       Edge {
-        label: Named { name: integer_value_set_field_interval },
+        label: Named { name: ^integer_value_set_field_interval },
         target: interval
       }
     ],
@@ -72,7 +66,7 @@ fn integer_interval_value_set_node(interval: Node) -> Node {
 
 fn integer_value_set_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: integer_value_set_decode_invalid,
+    reason: ^integer_value_set_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -86,11 +80,11 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
         )
       }
   } else {
-    match find_named_child(root: value_set, name: integer_value_set_field_kind) {
+    match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
       Accepted { value: found_kind, diagnostics: None } =>
-        if found_kind == integer_value_set_atom(id: integer_value_set_kind_unbounded) {
+        if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_unbounded) {
           if count(value_set.children) == 1 {
-            match find_named_child(root: value_set, name: integer_value_set_field_interval) {
+            match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: _, diagnostics: None } =>
                 Rejected {
                   diagnostics: diagnostics_singleton(
@@ -107,9 +101,9 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
               )
             }
           }
-        } else if found_kind == integer_value_set_atom(id: integer_value_set_kind_interval) {
+        } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
           if count(value_set.children) == 2 {
-            match find_named_child(root: value_set, name: integer_value_set_field_interval) {
+            match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: interval, diagnostics: None } =>
                 if integer_interval_spec_node_contains(container: interval, contained: interval) {
                   Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: None }

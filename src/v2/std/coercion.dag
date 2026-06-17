@@ -32,26 +32,10 @@ import v2.std.find_witness {
   TargetSelection,
   TargetSelectionPolicy,
   find_witness,
-  find_witness_reason_ambiguous_candidate,
-  find_witness_reason_invalid_witness,
-  find_witness_reason_no_candidate,
-  find_witness_reason_not_realized,
-  preservation_rule_exact_structural_equality_zip_fold,
-  preservation_rule_refinement_widening
 }
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
-data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
-data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
-data coercion_homomorphism_evidence_source: Symbol = coercion_homomorphism_evidence_source
-data coercion_homomorphism_evidence_candidate: Symbol = coercion_homomorphism_evidence_candidate
-data coercion_homomorphism_evidence_find_witness: Symbol = coercion_homomorphism_evidence_find_witness
-data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
-data homomorphism_rule_refinement_widening: Symbol = homomorphism_rule_refinement_widening
-data coercion_not_realized: Symbol = coercion_not_realized
-data coercion_mismatch_candidate_set_not_closed: Symbol = coercion_mismatch_candidate_set_not_closed
-data coercion_find_witness_reason_unmapped: Symbol = coercion_find_witness_reason_unmapped
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type FindWitnessRejectionKind
   = FindWitnessNoCandidate
@@ -100,12 +84,12 @@ fn declared_candidates_for_algebra(
         node: algebra_instance,
         witness: CanonicalGroundingWitness {
           structural: StructuralPropertyWitness {
-            property: coercion_property_closed_candidate_set,
+            property: ^coercion_property_closed_candidate_set,
             evidence: target_model
           },
           // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
           closedness: StructuralPropertyWitness {
-            property: coercion_property_candidate_set_closedness,
+            property: ^coercion_property_candidate_set_closedness,
             evidence: target_model
           }
         }
@@ -119,7 +103,7 @@ fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
 }
 fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> Diagnostic {
   Diagnostic {
-    reason: coercion_mismatch_candidate_set_not_closed,
+    reason: ^coercion_mismatch_candidate_set_not_closed,
     at: node_locus(node: inhabitants_root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -161,7 +145,7 @@ fn coercion_find_witness_reason_unmapped_diagnostic(
   source: CanonicalGrounding,
 ) -> Diagnostic {
   Diagnostic {
-    reason: coercion_find_witness_reason_unmapped,
+    reason: ^coercion_find_witness_reason_unmapped,
     at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -170,13 +154,13 @@ fn find_witness_rejection_kind_from_reason(
   source: CanonicalGrounding,
   reason: Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
-  if reason == find_witness_reason_no_candidate {
+  if reason == ^find_witness_reason_no_candidate {
     Accepted { value: FindWitnessNoCandidate, diagnostics: None }
-  } else if reason == find_witness_reason_ambiguous_candidate {
+  } else if reason == ^find_witness_reason_ambiguous_candidate {
     Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
-  } else if reason == find_witness_reason_not_realized {
+  } else if reason == ^find_witness_reason_not_realized {
     Accepted { value: FindWitnessNotRealized, diagnostics: None }
-  } else if reason == find_witness_reason_invalid_witness {
+  } else if reason == ^find_witness_reason_invalid_witness {
     Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
   } else {
     outcome_rejected(
@@ -249,9 +233,9 @@ fn coercion_homomorphism_evidence(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: coercion_homomorphism_evidence_source }, target: source.node },
-      Edge { label: Named { name: coercion_homomorphism_evidence_candidate }, target: fw.candidate },
-      Edge { label: Named { name: coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source.node },
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -266,7 +250,7 @@ fn coercion_fold_exact_structural(
     candidates: candidates.set,
     predicate: PreservationPredicate {
       algebra: source.node,
-      preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
@@ -277,7 +261,7 @@ fn coercion_fold_exact_structural(
           quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
-              rule: homomorphism_rule_exact_structural_equality,
+              rule: ^homomorphism_rule_exact_structural_equality,
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
           }
@@ -322,7 +306,7 @@ fn coercion_fold_refinement_widening(
           quality: Widened,
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
-              rule: homomorphism_rule_refinement_widening,
+              rule: ^homomorphism_rule_refinement_widening,
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
           }

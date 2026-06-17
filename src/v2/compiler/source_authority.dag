@@ -15,7 +15,6 @@ import v2.compiler.parse {
   parse,
   parse_module,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
@@ -129,18 +128,12 @@ type SourceAuthorityRoundTripLaw {
 }
 
 
-data source_authority_port: Symbol = source_authority_port
-data source_authority_ast_mismatch: Symbol = source_authority_ast_mismatch
-data source_authority_ir_mismatch: Symbol = source_authority_ir_mismatch
-data source_authority_normalized_ast_mismatch: Symbol = source_authority_normalized_ast_mismatch
-data source_authority_serializer_nondeterministic: Symbol = source_authority_serializer_nondeterministic
-data source_authority_read_artifact_not_source_file: Symbol = source_authority_read_artifact_not_source_file
 
 
 fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: source_authority_port),
+    at: port_locus(port: ^source_authority_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -168,7 +161,7 @@ fn parse_dag_source_ast_with_model(
 fn parse_dag_source_ast(source: DagSource) -> Outcome<DagSourceAst> {
   parse_dag_source_ast_with_model(
     source: source,
-    compilation_unit: source_authority_port,
+    compilation_unit: ^source_authority_port,
     lm: dag_language_model_wave1_modeled()
   )
 }
@@ -220,7 +213,7 @@ fn semantic_ir_from_source_with_model(
 fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
   semantic_ir_from_source_with_model(
     source: source,
-    compilation_unit: source_authority_port,
+    compilation_unit: ^source_authority_port,
     lm: dag_language_model_wave1_modeled()
   )
 }
@@ -245,7 +238,7 @@ fn source_authority_parse_source_file_tokens(
   tokens: TokenStream
 ) -> Outcome<ParseArtifact> {
   let root = source_authority_mvp1_fn_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production_tree(
         tokens: tokens.tokens,
@@ -296,7 +289,7 @@ fn source_ir_artifact_provenance_from_model(
         }
       )
     _ =>
-      outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 
@@ -366,7 +359,7 @@ fn source_ir_node_artifact_provenance_mvp1_from_model(
         }
       )
     _ =>
-      outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 
@@ -454,7 +447,7 @@ fn source_ast_equal_witness(
     Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
-      diagnostic: source_authority_diagnostic(reason: source_authority_ast_mismatch)
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_ast_mismatch)
     }
   }
 }
@@ -468,7 +461,7 @@ fn normalized_source_ast_equal_witness(
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
-      diagnostic: source_authority_diagnostic(reason: source_authority_normalized_ast_mismatch)
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_normalized_ast_mismatch)
     }
   }
 }
@@ -482,7 +475,7 @@ fn semantic_ir_equal_witness(
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
-      diagnostic: source_authority_diagnostic(reason: source_authority_ir_mismatch)
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_ir_mismatch)
     }
   }
 }
@@ -496,7 +489,7 @@ fn deterministic_dag_source_serializer_witness(
     Holds { value: DeterministicDagSourceSerializerLaw {} }
   } else {
     Violates {
-      diagnostic: source_authority_diagnostic(reason: source_authority_serializer_nondeterministic)
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_serializer_nondeterministic)
     }
   }
 }
@@ -591,7 +584,7 @@ fn source_authority_round_trip_with_model(
   bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
-      compilation_unit: source_authority_port,
+      compilation_unit: ^source_authority_port,
       lm: lm
     ),
     f: fn(original_ast) {
@@ -613,7 +606,7 @@ fn source_authority_round_trip_with_model(
                   bind_outcome(
                     o: parse_dag_source_ast_with_model(
                       source: canonical_source,
-                      compilation_unit: source_authority_port,
+                      compilation_unit: ^source_authority_port,
                       lm: lm
                     ),
                     f: fn(reparsed_ast) {

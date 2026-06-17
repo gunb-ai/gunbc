@@ -71,31 +71,26 @@ import v2.std.verification {
 import v2.std.witness { Holds, Violates }
 
 
-data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
-data emit_host_transport_port: Symbol = emit_host_transport_port
-data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
-data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
-data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_transport_not_wired,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_transport_not_wired,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_run_unsupported_target,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_run_unsupported_target,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: emit_host_emit_vs_eval_deferred,
+    reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
     correction: None
   }
@@ -103,8 +98,8 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
 
 fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_exit_not_ok,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_exit_not_ok,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }

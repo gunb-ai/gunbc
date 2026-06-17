@@ -75,14 +75,12 @@ fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
 }
 
 
-data per_language_fact_bundle_duplicate_key_reason: Symbol = per_language_fact_bundle_duplicate_key_reason
-data per_language_fact_bundle_ungrounded_subject_reason: Symbol = per_language_fact_bundle_ungrounded_subject_reason
 
 
 fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: per_language_fact_bundle_duplicate_key_reason,
-    at: port_locus(port: per_language_fact_bundle_duplicate_key_reason),
+    reason: ^per_language_fact_bundle_duplicate_key_reason,
+    at: port_locus(port: ^per_language_fact_bundle_duplicate_key_reason),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -90,7 +88,7 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 
 fn per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: per_language_fact_bundle_ungrounded_subject_reason,
+    reason: ^per_language_fact_bundle_ungrounded_subject_reason,
     at: node_locus(node: subject_carrier),
     correction: Unavailable { reason: UserInputBoundary }
   }

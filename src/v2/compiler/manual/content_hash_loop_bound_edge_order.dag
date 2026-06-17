@@ -14,7 +14,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  loop_bound_edge,
   SyntheticOccurrence
 }
 import v2.std.verification {
@@ -69,7 +68,7 @@ fn content_hash_loop_bound_last() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body() },
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       }
     ],
@@ -82,7 +81,7 @@ fn content_hash_loop_bound_first() -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body() }
@@ -97,7 +96,7 @@ fn content_hash_loop_bound_middle() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body_two() }
@@ -113,7 +112,7 @@ fn content_hash_loop_bound_last_two_body() -> Node {
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       }
     ],
@@ -142,7 +141,7 @@ fn content_hash_loop_with_extra_named() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body() },
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: content_hash_loop_measure_leaf()
       },
       Edge {

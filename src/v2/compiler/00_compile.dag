@@ -95,16 +95,11 @@ type Validated<T> {
 }
 
 
-data compile_stage_locus_port: Symbol = compile_stage_locus_port
-data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_file
-data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
-data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
-data compile_eval_not_realized: Symbol = compile_eval_not_realized
 
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_pipeline_not_realized,
+    reason: ^compile_pipeline_not_realized,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -113,7 +108,7 @@ fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_lens_gate_rejected,
+    reason: ^compile_lens_gate_rejected,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -122,7 +117,7 @@ fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
 
 fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_eval_not_realized,
+    reason: ^compile_eval_not_realized,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -300,7 +295,7 @@ fn compile_inferred(
     Eval { runtime: _ } =>
       outcome_rejected(
         compile_eval_not_realized_diagnostic(
-          at: port_locus(port: compile_stage_locus_port)
+          at: port_locus(port: ^compile_stage_locus_port)
         )
       )
   }
@@ -381,7 +376,7 @@ fn compile_ingest_with_admission(
   bind_outcome(
     o: tokenize(
       text: source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -412,7 +407,7 @@ fn compile_ingest_with_admission(
                         EvalResult { value: _ } =>
                           outcome_rejected(
                             compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
+                              at: port_locus(port: ^compile_stage_locus_port)
                             )
                           )
                       }
@@ -451,7 +446,7 @@ fn compile_source_root_ingest_with_admission(
             EvalResult { value: _ } =>
               outcome_rejected(
                 compile_eval_not_realized_diagnostic(
-                  at: port_locus(port: compile_stage_locus_port)
+                  at: port_locus(port: ^compile_stage_locus_port)
                 )
               )
           }
@@ -467,7 +462,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
   bind_outcome(
     o: tokenize(
       text: source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -493,7 +488,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
                         EvalResult { value: _ } =>
                           outcome_rejected(
                             compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
+                              at: port_locus(port: ^compile_stage_locus_port)
                             )
                           )
                       }

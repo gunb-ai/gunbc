@@ -20,10 +20,8 @@ import v2.std.logic { Bool, bool_node }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
 import v2.std.compilers.target_model {
   symbol_kernel_type_node,
-  target_atom_realization_catalog_row_decode_invalid,
   target_atom_realization_lookup_in_catalog,
   target_atom_realization_lookup_in_catalog_node,
-  target_atom_realization_lookup_miss,
   target_atom_realization_to_node
 }
 import v2.std.verification {
@@ -106,7 +104,7 @@ fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
     source_carrier: atom_lookup_dissolution_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == target_atom_realization_lookup_miss
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
   }
 }
 
@@ -119,7 +117,7 @@ fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
     host_target_model: ts_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == target_atom_realization_catalog_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 

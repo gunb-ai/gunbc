@@ -5,7 +5,6 @@ import v2.compiler.compile {
   CompileLens,
   CompileLensEnforce,
   apply_compile_lens,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
 }
 import v2.compiler.infer { InferredTree }
@@ -50,7 +49,7 @@ data enforce_rejecting_lens: CompileLens = CompileLens { gate: enforce_rejecting
 
 fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
   match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -20,15 +20,13 @@ import v2.std.language_model {
 }
 import v2.std.compilers.target_model {
   TargetModel,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules
 }
 import v2.extdeps.languages.rust { rust_mvp1_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
   v2_evaluator_runtime_wave1
 }
-import v2.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
+import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
 // RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later; T-15 dissolution replaces placeholder Hash data with computed merkle digests).
 data v2_stage0_hash: Hash = v2_stage0_hash
@@ -255,9 +253,9 @@ fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstru
 }
 
 fn bootstrap_target_model_bundle_construct_facet(label: Symbol) -> List<BootstrapConstruct> {
-  if label == target_model_edge_selection_policy {
+  if label == ^target_model_edge_selection_policy {
     [BootstrapConstruct { identity: ^bootstrap_construct_target_model_subset }]
-  } else if label == target_model_edge_translation_rules {
+  } else if label == ^target_model_edge_translation_rules {
     [BootstrapConstruct { identity: ^bootstrap_construct_lowering_subset }]
   } else {
     []

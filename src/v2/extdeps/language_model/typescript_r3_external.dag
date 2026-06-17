@@ -20,7 +20,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_ts_r3_external_symbol_projection,
   TargetTypeScriptCompileVerdict,
   TargetTypeScriptCompileRejected,
-  target_diagnostic_ts7009_new_expression_not_constructable
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -87,5 +86,5 @@ data claim_typescript_r3_external_verification_receipt_shape: TestClaim = Equals
 }
 
 data typescript_r3_external_modeled_falsification_expectation: TargetTypeScriptCompileVerdict = TargetTypeScriptCompileRejected {
-  diagnostic_code: target_diagnostic_ts7009_new_expression_not_constructable
+  diagnostic_code: ^target_diagnostic_ts7009_new_expression_not_constructable
 }

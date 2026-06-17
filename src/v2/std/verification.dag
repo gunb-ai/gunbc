@@ -30,15 +30,12 @@ import v2.std.diagnostic {
 }
 
 
-data v2_std_verification_file: Symbol = v2_std_verification_file
-data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
-data unified_test_claim_bool_witness_absent: Symbol = unified_test_claim_bool_witness_absent
 
 
 fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: test_claim_expected_outcome_undeclared,
-    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    reason: ^test_claim_expected_outcome_undeclared,
+    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -46,8 +43,8 @@ fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
 
 fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: unified_test_claim_bool_witness_absent,
-    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    reason: ^unified_test_claim_bool_witness_absent,
+    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -105,27 +102,14 @@ fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
 
 
 // Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (fail-closed impossible-bug classes, DESIGN.md §5).
-data impossible_bug_reason_suboptimal_complexity: Symbol = impossible_bug_reason_suboptimal_complexity
-data impossible_bug_reason_suboptimal_inhabitance: Symbol = impossible_bug_reason_suboptimal_inhabitance
-data impossible_bug_reason_idempotency_violation: Symbol = impossible_bug_reason_idempotency_violation
-data impossible_bug_reason_idempotency_repetition: Symbol = impossible_bug_reason_idempotency_repetition
-data impossible_bug_reason_transport_drift: Symbol = impossible_bug_reason_transport_drift
-data impossible_bug_reason_target_transport_drift: Symbol = impossible_bug_reason_target_transport_drift
-data impossible_bug_reason_nested_optional: Symbol = impossible_bug_reason_nested_optional
-data impossible_bug_reason_double_unwrap: Symbol = impossible_bug_reason_double_unwrap
-data impossible_bug_reason_redundant_read: Symbol = impossible_bug_reason_redundant_read
-data impossible_bug_reason_unhandled_division: Symbol = impossible_bug_reason_unhandled_division
-data impossible_bug_reason_unhandled_index: Symbol = impossible_bug_reason_unhandled_index
-data impossible_bug_reason_force_unwrap: Symbol = impossible_bug_reason_force_unwrap
 
 
-data impossible_bug_diagnostic_reason_unmapped: Symbol = impossible_bug_diagnostic_reason_unmapped
 
 
 fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: impossible_bug_diagnostic_reason_unmapped,
-    at: Textual { file: v2_std_verification_file, extent: WholeFile },
+    reason: ^impossible_bug_diagnostic_reason_unmapped,
+    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -134,23 +118,23 @@ fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
 // 🟡 gated — feature:impossible-bug-reason-projection — bind gunbc#4759
 // dissolve-on-arrival: TestClaim/DiagnosticClaim carries ImpossibleBugClass directly in verification.dag; delete this reason→class bridge.
 fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
-  if reason == impossible_bug_reason_suboptimal_complexity ||
-    reason == impossible_bug_reason_suboptimal_inhabitance {
+  if reason == ^impossible_bug_reason_suboptimal_complexity ||
+    reason == ^impossible_bug_reason_suboptimal_inhabitance {
     Accepted { value: SuboptimalComplexity, diagnostics: None }
-  } else if reason == impossible_bug_reason_idempotency_violation ||
-    reason == impossible_bug_reason_idempotency_repetition {
+  } else if reason == ^impossible_bug_reason_idempotency_violation ||
+    reason == ^impossible_bug_reason_idempotency_repetition {
     Accepted { value: IdempotencyContract, diagnostics: None }
-  } else if reason == impossible_bug_reason_transport_drift ||
-    reason == impossible_bug_reason_target_transport_drift {
+  } else if reason == ^impossible_bug_reason_transport_drift ||
+    reason == ^impossible_bug_reason_target_transport_drift {
     Accepted { value: TransportTypeDrift, diagnostics: None }
-  } else if reason == impossible_bug_reason_nested_optional ||
-    reason == impossible_bug_reason_double_unwrap {
+  } else if reason == ^impossible_bug_reason_nested_optional ||
+    reason == ^impossible_bug_reason_double_unwrap {
     Accepted { value: NestedOptionalFlatten, diagnostics: None }
-  } else if reason == impossible_bug_reason_redundant_read {
+  } else if reason == ^impossible_bug_reason_redundant_read {
     Accepted { value: UnenumeratedEffects, diagnostics: None }
-  } else if reason == impossible_bug_reason_unhandled_division ||
-    reason == impossible_bug_reason_unhandled_index ||
-    reason == impossible_bug_reason_force_unwrap {
+  } else if reason == ^impossible_bug_reason_unhandled_division ||
+    reason == ^impossible_bug_reason_unhandled_index ||
+    reason == ^impossible_bug_reason_force_unwrap {
     Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
   } else {
     Rejected {

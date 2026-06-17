@@ -14,7 +14,6 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
@@ -52,14 +51,6 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 
-data pbf_source_file: Symbol = pbf_source_file
-data pbf_imported_seg: Symbol = pbf_imported_seg
-data pbf_subject_seg: Symbol = pbf_subject_seg
-data pbf_export_sym: Symbol = pbf_export_sym
-data pbf_imported_decl: Symbol = pbf_imported_decl
-data pbf_import_use_sym: Symbol = pbf_import_use_sym
-data pbf_unbound_sym: Symbol = pbf_unbound_sym
-data pbf_ambiguous_export_sym: Symbol = pbf_ambiguous_export_sym
 
 fn pbf_parse_root() -> GrammarRoot {
   GrammarRoot {
@@ -72,7 +63,7 @@ fn pbf_parse_root() -> GrammarRoot {
 fn pbf_tokenize() -> Outcome<List<Token>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: pbf_source_file, rules: lm.lex),
+    o: tokenize(text: dag_mvp1_source_text, file: ^pbf_source_file, rules: lm.lex),
     f: fn(stream) {
       outcome_accepted(value: stream.tokens)
     }
@@ -82,7 +73,7 @@ fn pbf_tokenize() -> Outcome<List<Token>> {
 fn pbf_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   match grammar_validate_for_parse(
     root: pbf_parse_root(),
-    at: port_locus(port: parse_stage_locus_port)
+    at: port_locus(port: ^parse_stage_locus_port)
   ) {
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
@@ -245,12 +236,12 @@ fn pbf_subject_with_import_use() -> Node {
       ),
       dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
-        target: pbf_qn_node(seg: pbf_subject_seg)
+        target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       Edge {
-        label: Named { name: pbf_import_use_sym },
+        label: Named { name: ^pbf_import_use_sym },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: pbf_imported_decl } },
+          kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -265,8 +256,8 @@ fn pbf_cross_file_roots() -> FreeMonoid<Node> {
     head: pbf_subject_with_import_use(),
     tail: Cons {
       head: pbf_module_root(
-        seg: pbf_imported_seg,
-        export_sym: pbf_imported_decl,
+        seg: ^pbf_imported_seg,
+        export_sym: ^pbf_imported_decl,
         export_atom: ^dag_c3_surface_sugar_service
       ),
       tail: Empty
@@ -280,11 +271,11 @@ fn pbf_cross_file_import_resolves() -> Bool {
     roots: pbf_cross_file_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: pbf_subject_seg, tail: QnEmpty }
+        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
       },
       imports: Cons {
         head: Import {
-          target: QnCons { head: pbf_imported_seg, tail: QnEmpty },
+          target: QnCons { head: ^pbf_imported_seg, tail: QnEmpty },
           visibility: ImportVisible
         },
         tail: Empty
@@ -303,7 +294,7 @@ fn pbf_unbound_atom_tree() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: pbf_unbound_sym } },
+          kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -333,12 +324,12 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
       ),
       dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
-        target: pbf_qn_node(seg: pbf_subject_seg)
+        target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       Edge {
-        label: Named { name: pbf_ambiguous_export_sym },
+        label: Named { name: ^pbf_ambiguous_export_sym },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: pbf_ambiguous_export_sym } },
+          kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -354,13 +345,13 @@ fn pbf_ambiguous_import_roots() -> FreeMonoid<Node> {
     tail: Cons {
       head: pbf_module_root(
         seg: ^pbf_ambiguous_import_a_seg,
-        export_sym: pbf_ambiguous_export_sym,
+        export_sym: ^pbf_ambiguous_export_sym,
         export_atom: ^dag_c3_surface_sugar_service
       ),
       tail: Cons {
         head: pbf_module_root(
           seg: ^pbf_ambiguous_import_b_seg,
-          export_sym: pbf_ambiguous_export_sym,
+          export_sym: ^pbf_ambiguous_export_sym,
           export_atom: ^dag_c3_surface_sugar_type
         ),
         tail: Empty
@@ -375,7 +366,7 @@ fn pbf_ambiguous_export_rejects() -> Bool {
     roots: pbf_ambiguous_import_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: pbf_subject_seg, tail: QnEmpty }
+        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
       },
       imports: Cons {
         head: Import {
