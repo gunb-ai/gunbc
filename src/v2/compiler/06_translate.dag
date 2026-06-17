@@ -192,6 +192,7 @@ import v2.std.algebra {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.grammar { grammar_relation_row_reverse_parse_selection }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution
 type TargetBundleChildLookup
@@ -448,41 +449,15 @@ fn grammar_relation_row_tokens_root(row: Node) -> Outcome<Node> {
   conj_named_child(parent: row, edge_name: ^grammar_relation_field_tokens)
 }
 fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node> {
-  match rules.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        rules.children,
-        init: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: translate_grammar_relation_row_not_found_diagnostic(emitted: emitted)
-          )
-        },
-        f: fn(acc, e) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match e.label {
-                Named { name: _ } =>
-                  match grammar_relation_row_emitted(row: e.target) {
-                    Accepted { value: row_emitted, diagnostics: rd } =>
-                      if row_emitted == emitted {
-                        Accepted { value: e.target, diagnostics: rd }
-                      } else {
-                        acc
-                      }
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Accepted { value: row, diagnostics: d } =>
-          Accepted { value: row, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  match grammar_relation_row_reverse_parse_selection(rules: rules, emitted: emitted) {
+    Accepted { value: row, diagnostics: d } =>
+      Accepted { value: row, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      if r.head.reason == ^grammar_relation_row_backward_selection_ambiguous {
+        Rejected { diagnostics: r }
+      } else {
+        outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: emitted))
       }
-    _ =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
 // Bodied-arrow serialize: resolve scaffold from the translation-rules row that carries

@@ -1,0 +1,21 @@
+// tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
+//
+// Host runs `gunbc compile --source-root <dsl> --target rust` over the live tree (GREEN) and
+// a temp-tree perturb receipt (RED: planted optional Some/None skew must fail typecheck).
+
+module tools.dsl_compile_clean_transport
+
+import extdeps.shell
+
+fn run_clean_tree_compile() -> Bool {
+  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nOUT=$(mktemp -d)\n\"$GUNBC\" compile --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust\nrm -rf \"$OUT\""
+  let result = shell.Exec.Run(script: script)
+  result.success
+}
+
+// RED receipt: copy dsl/ + one module with legacy Some/None on builtin T?; compile must fail.
+fn run_perturb_optional_skew_red_receipt() -> Bool {
+  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\ncp -r \"$ROOT/dsl\" \"$TMP/dsl\"\ncat > \"$TMP/dsl/test/_perturb_compile_clean_red.dag\" <<'PERTURB'\nmodule test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\nPERTURB\nif \"$GUNBC\" compile --source-root \"$TMP/dsl\" --output-dir \"$TMP/out\" --target rust >/dev/null 2>&1; then\n  rm -rf \"$TMP\"\n  exit 1\nfi\nrm -rf \"$TMP\"\nexit 0"
+  let result = shell.Exec.Run(script: script)
+  result.success
+}

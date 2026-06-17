@@ -292,6 +292,10 @@ impl Hash for CanonKey {
 /// Structural hash of a key `Value`, consistent with `Value::eq`: every pair of
 /// values that `Value::eq` considers equal hashes identically. Collisions are
 /// permitted (that is what equality resolves), but eq-inconsistency is not.
+pub(crate) fn value_hash_public(v: &Value) -> u64 {
+    value_hash(v)
+}
+
 fn value_hash(v: &Value) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut h = DefaultHasher::new();
@@ -1029,17 +1033,27 @@ fn account_value(
     }
 }
 
-/// How service operations are executed: hermetic witnesses use modeled
-/// `mock_response` data; wet mode dispatches live transports.
+/// How service operations are executed: hermetic replays recorded fixtures (when a
+/// fixture store is configured) or modeled `mock_response` data; wet dispatches
+/// live transports; record is wet capture into the fixture store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionMode {
     Hermetic,
     Wet,
+    Record,
 }
 
 impl ExecutionMode {
     pub fn is_hermetic(self) -> bool {
         matches!(self, ExecutionMode::Hermetic)
+    }
+
+    pub fn is_record(self) -> bool {
+        matches!(self, ExecutionMode::Record)
+    }
+
+    pub fn is_wet_dispatch(self) -> bool {
+        matches!(self, ExecutionMode::Wet | ExecutionMode::Record)
     }
 }
 
@@ -1054,8 +1068,10 @@ pub struct InterpContext {
     fn_nodes: HashMap<String, Rc<Node>>,
     /// Service registry: "service.Operation" → (service_node, op_node).
     service_ops: HashMap<String, ServiceOp>,
-    /// Service execution mode: hermetic uses mock responses; wet dispatches live.
+    /// Service execution mode: hermetic replays fixtures or mock responses; wet/record dispatch live.
     pub execution_mode: ExecutionMode,
+    /// Optional fixture store for hermetic replay and `--record` wet capture.
+    pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     /// Cache for evaluated `data` items (immutable global constants), keyed by
     /// the data item's node identity. Preserves structural sharing across
     /// references so a `data` referenced N times yields ONE Value, not N
@@ -1152,6 +1168,15 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
+        Self::with_fixture_store(graph, source_indices, execution_mode, None)
+    }
+
+    pub fn with_fixture_store(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        execution_mode: ExecutionMode,
+        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
@@ -1193,6 +1218,7 @@ impl InterpContext {
             fn_nodes,
             service_ops,
             execution_mode,
+            fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -3191,6 +3217,117 @@ fn eval_algebra_method(
 // Service dispatch (I-2)
 // ---------------------------------------------------------------------------
 
+/// Infra clock for RecordedFixture `recorded_at` / freshness.
+/// Routes through `Clock.UnixSecs` when the op is in the compiled closure; otherwise
+/// uses the same transport realization (bootstrap — fixture stamping cannot recurse
+/// through the fixture seam). Never `SystemTime`. `Clock.Now` (ISO) is for DAG consumers only.
+pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    if ctx.service_ops.contains_key("Clock.UnixSecs") {
+        let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty())
+            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+        unix_secs_from_clock_value(&val, ctx)
+    } else {
+        realize_clock_unix_secs_transport()
+    }
+}
+
+/// Wet dispatch only — no hermetic fixture lookup (bootstrap / infra paths).
+fn wet_service_call(
+    ctx: &InterpContext,
+    service_name: &str,
+    op_name: &str,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let key = format!("{}.{}", service_name, op_name);
+    let (service_node, op_node) =
+        ctx.service_ops
+            .get(&key)
+            .ok_or_else(|| InterpError::Unimplemented {
+                what: format!("unknown service operation: {}", key),
+            })?;
+    let transport = op_node
+        .transport
+        .as_ref()
+        .or(service_node.transport.as_ref())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("no transport for service {}", key),
+        })?;
+    let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)
+}
+
+fn unix_secs_from_clock_value(
+    val: &Value,
+    ctx: &InterpContext,
+) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    match val {
+        Value::Record { fields, .. } => {
+            let raw = ctx
+                .field(&fields, "unix_secs")
+                .map(|v| format!("{v}"))
+                .ok_or(crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+            raw.parse::<u64>()
+                .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
+        }
+        Value::Str(s) => s
+            .parse::<u64>()
+            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable),
+        Value::Int(n) if *n >= 0 => Ok(*n as u64),
+        _ => Err(crate::recorded_fixture::FixtureError::ClockUnavailable),
+    }
+}
+
+/// Transport realization for `Clock.UnixSecs` when the op is absent from the closure.
+fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::FixtureError> {
+    let output = std::process::Command::new("date")
+        .args(["+%s"])
+        .output()
+        .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+    if !output.status.success() {
+        return Err(crate::recorded_fixture::FixtureError::ClockUnavailable);
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    s.parse::<u64>()
+        .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
+}
+
+/// Wet shell.Env.Get transport — printenv realization (extdeps/shell/shell.dag).
+fn wet_env_var(name: &str) -> Option<String> {
+    let output = std::process::Command::new("printenv")
+        .arg(name)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
+    if ctx.service_ops.contains_key("shell.Env.Get") {
+        let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
+        match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
+            Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
+                Value::Str(s) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            }),
+            Ok(Value::Str(s)) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    } else if ctx.execution_mode.is_hermetic() {
+        // Fail-closed: no raw printenv outside RecordedFixture on hermetic path.
+        None
+    } else {
+        wet_env_var(var_name)
+    }
+}
+
 fn eval_service_call(
     service_name: &str,
     op_name: &str,
@@ -3217,27 +3354,75 @@ fn eval_service_call(
 
     // Bind input params to arg values
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    let inputs_hash =
+        crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
+    let inputs_json =
+        crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
+            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
-    // Hermetic: return modeled mock response instead of live dispatch.
+    // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
-        eprintln!("[hermetic] {}.{}", service_name, op_name);
+        if let Some(store) = &ctx.fixture_store {
+            eprintln!(
+                "[hermetic:fixture] {}.{} inputs_hash={}",
+                service_name, op_name, inputs_hash
+            );
+            let now_secs =
+                fixture_now_secs(ctx).map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+            let fixture = store
+                .lookup(&key, &inputs_hash, &inputs_json, now_secs)
+                .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+            return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
+                .map_err(|e| InterpError::TypeError { msg: e.to_string() });
+        }
+        eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
 
+    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)?;
+
+    if ctx.execution_mode.is_record() {
+        let store = ctx
+            .fixture_store
+            .as_ref()
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "--record requires --fixture-store".to_string(),
+            })?;
+        let now_secs =
+            fixture_now_secs(ctx).map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+        store
+            .record(&key, &inputs_hash, &inputs_json, &result, ctx, now_secs)
+            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+        eprintln!(
+            "[record] {}.{} inputs_hash={}",
+            service_name, op_name, inputs_hash
+        );
+    }
+
+    Ok(result)
+}
+
+fn dispatch_service_wet(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     // Shell transport dispatch
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, &param_env, ctx)?;
+        let result = dispatch_shell(transport, param_env, ctx)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
     // File transport dispatch (filesystem read/write at the configured path)
     if is_file_transport(transport.clone(), ctx.si()) {
-        let result = dispatch_file(op_node, transport, &param_env, ctx)?;
+        let result = dispatch_file(op_node, transport, param_env, ctx)?;
         return map_file_outputs(&result, op_node, ctx);
     }
 
     // REST transport dispatch (any non-shell transport with service config endpoint)
-    return dispatch_rest(service_node, op_node, transport, &param_env, ctx);
+    dispatch_rest(service_node, op_node, transport, param_env, ctx)
 }
 
 /// Build an environment with service operation params bound to arg values.
@@ -3635,7 +3820,7 @@ fn dispatch_rest(
     };
 
     // 4. Auth header
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si);
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si, ctx);
 
     // 5. Custom headers from transport properties.
     // Non-reserved properties on the transport node are custom headers.
@@ -3779,6 +3964,7 @@ fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ctx: &InterpContext,
 ) -> (String, Option<String>) {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
@@ -3830,7 +4016,7 @@ fn resolve_auth(
         }
     }
 
-    let token = env_var_name.and_then(|var| std::env::var(&var).ok());
+    let token = env_var_name.and_then(|var| resolve_env_var_token(ctx, &var));
     (header_name, token)
 }
 
@@ -4116,8 +4302,12 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
             return eval_expr(&val_node, &Env::empty(), ctx);
         }
     }
-    // No mock response — return Unit
-    Ok(Value::Unit)
+    let op_name = authored_name_at(ctx.si(), op_node.clone());
+    Err(InterpError::TypeError {
+        msg: format!(
+            "hermetic mode: no mock_response for operation {op_name} — refusing to fabricate Unit"
+        ),
+    })
 }
 
 // ---------------------------------------------------------------------------

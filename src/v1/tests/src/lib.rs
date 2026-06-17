@@ -48,11 +48,15 @@ mod int_pow_bounded_test;
 #[cfg(test)]
 mod interp_dry_run_test;
 #[cfg(test)]
+mod interp_recorded_fixture_test;
+#[cfg(test)]
 mod interp_stats_test;
 #[cfg(test)]
 mod interp_wire_serialize_test;
 #[cfg(test)]
 mod interpreted_parse_termination_test;
+#[cfg(test)]
+mod ir_fixture_seam_soundness_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]

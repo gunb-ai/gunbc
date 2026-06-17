@@ -48,10 +48,17 @@
 //!    `ci_claim_gate` carried was flag-gated (`--perturb-check`) and never run
 //!    in CI, so it is intentionally dropped with that binary.
 //!
+//! 4. **Discovery + explicit append** (consolidated CI floor witnesses):
+//!    `--roster-from-discovery` may be combined with explicit `--entry`/
+//!    `--function` rows. Discovered rows run first; explicit rows are appended
+//!    with (entry, function) dedup. `--scan-dir` is optional when explicit rows
+//!    are given (the `test fn` walk still runs over all `--source-root`s).
+//!
 //! Usage (discovery — the CI floor shape):
 //!   claim_batch --source-root <dir> [--source-root <dir> ...] \
 //!               --roster-from-discovery \
-//!               --scan-dir <dir> [--scan-dir <dir> ...] \
+//!               [--scan-dir <dir> ...] \
+//!               [--entry <file.dag> --function <fn> ...] \
 //!               [--notice-title <title>] [--wet] [--hermetic]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
@@ -83,9 +90,10 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, discover_owned_data_decls, make_eval_context,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context_with_fixture_store,
     resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
 };
+use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
@@ -389,9 +397,11 @@ struct ParsedArgs {
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
     /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
-    /// `--hermetic` selects modeled `mock_response`; `--wet` is explicit Wet
-    /// (Phase 2 opt-in when default flips Hermetic).
+    /// `--hermetic` replays recorded fixtures when `--fixture-store` is set, else
+    /// modeled `mock_response`; `--record` is wet capture into the fixture store.
     execution_mode: ExecutionMode,
+    /// Directory for recorded fixture JSON files (`--fixture-store <path>`).
+    fixture_store: Option<PathBuf>,
 }
 
 /// Discovery-mode config (set when `--roster-from-discovery` is given).
@@ -409,6 +419,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
     // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
     let mut execution_mode = ExecutionMode::Wet;
+    let mut fixture_store: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -466,6 +477,11 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--claim-run" => {}
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
+            "--record" => execution_mode = ExecutionMode::Record,
+            "--fixture-store" => {
+                i += 1;
+                fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
+            }
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -475,14 +491,10 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     }
 
     let discovery = if roster_from_discovery {
-        if !entry_groups.is_empty() {
+        if scan_dirs.is_empty() && entry_groups.is_empty() {
             eprintln!(
-                "claim_batch: --roster-from-discovery is exclusive with --entry/--function/--functions"
+                "claim_batch: --roster-from-discovery requires at least one --scan-dir and/or explicit --entry row"
             );
-            return Err(ExitCode::from(2));
-        }
-        if scan_dirs.is_empty() {
-            eprintln!("claim_batch: --roster-from-discovery requires at least one --scan-dir");
             return Err(ExitCode::from(2));
         }
         Some(DiscoveryConfig {
@@ -498,6 +510,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         entry_groups,
         discovery,
         execution_mode,
+        fixture_store,
     })
 }
 
@@ -621,15 +634,33 @@ fn print_eval_profile(function: &str) {
     }
 }
 
+fn fixture_store_rc(path: &Option<PathBuf>) -> Option<Rc<RecordedFixtureStore>> {
+    path.as_ref()
+        .map(|p| Rc::new(RecordedFixtureStore::open(p.clone())))
+}
+
+fn validate_fixture_flags(
+    execution_mode: ExecutionMode,
+    fixture_store: &Option<PathBuf>,
+) -> Result<(), ExitCode> {
+    if execution_mode.is_record() && fixture_store.is_none() {
+        eprintln!("claim_batch: --record requires --fixture-store <path>");
+        return Err(ExitCode::from(2));
+    }
+    Ok(())
+}
+
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
     execution_mode: ExecutionMode,
+    fixture_store: Option<Rc<RecordedFixtureStore>>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
-    let ctx = make_eval_context(&graph, source_indices, execution_mode);
+    let ctx =
+        make_eval_context_with_fixture_store(&graph, source_indices, execution_mode, fixture_store);
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
     }
@@ -657,14 +688,18 @@ fn run() -> Result<ExitCode, ExitCode> {
     let parsed = parse_args(&args)?;
     let source_roots = parsed.source_roots;
     let execution_mode = parsed.execution_mode;
+    let fixture_store_path = parsed.fixture_store;
+    validate_fixture_flags(execution_mode, &fixture_store_path)?;
+    let fixture_store = fixture_store_rc(&fixture_store_path);
 
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
 
-    // Discovery mode: reflect over the scan dirs for the roster, group by entry,
-    // and run through the SAME batch loop the explicit path uses.
+    // Discovery mode: reflect over the scan dirs for the roster, optionally append
+    // explicit `--entry` rows, group by entry, and run through the SAME batch
+    // loop the explicit-only path uses.
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
         // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
@@ -673,17 +708,37 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let rows = match discover_roster(&source_roots, &disc.scan_dirs) {
+        let mut rows = match discover_roster(&source_roots, &disc.scan_dirs) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("claim_batch: discovery roster failed: {e}");
                 return Err(ExitCode::from(2));
             }
         };
+        let mut seen: std::collections::BTreeSet<(String, String)> = rows
+            .iter()
+            .map(|r| (r.entry.clone(), r.function.clone()))
+            .collect();
+        for group in &parsed.entry_groups {
+            for function in &group.functions {
+                if seen.insert((group.entry.clone(), function.clone())) {
+                    rows.push(GateRow {
+                        label: function.clone(),
+                        entry: group.entry.clone(),
+                        function: function.clone(),
+                    });
+                }
+            }
+        }
         if rows.is_empty() {
             eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
             return Err(ExitCode::from(2));
         }
+        rows.sort_by(|a, b| {
+            a.entry
+                .cmp(&b.entry)
+                .then_with(|| a.function.cmp(&b.function))
+        });
         (group_discovered_rows(rows), Some(disc.notice_title))
     } else {
         (parsed.entry_groups, None)
@@ -728,7 +783,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        let ctx = make_eval_context(&graph, source_indices, execution_mode);
+        let ctx = make_eval_context_with_fixture_store(
+            &graph,
+            source_indices,
+            execution_mode,
+            fixture_store.clone(),
+        );
         for function in &group.functions {
             run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
         }
@@ -743,7 +803,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(&index, group, execution_mode, &mut any_failed, &mut timings)?;
+            run_witnesses(
+                &index,
+                group,
+                execution_mode,
+                fixture_store.clone(),
+                &mut any_failed,
+                &mut timings,
+            )?;
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);

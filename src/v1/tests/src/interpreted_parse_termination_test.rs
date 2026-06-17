@@ -1,7 +1,7 @@
-//! Regression: v2 `build_parse_table` / `parse` must terminate under the v2 interpreter.
+//! Regression: v2 `parse` / `parse_module` must terminate under the v2 interpreter.
 //!
-//! Bisect authority: `validate_ingest_staging_stage_bisect.dag` (tokenize ok; parse hung on
-//! interpreted `fold_list`/`fold_list_right` recursion before native fast paths).
+//! Bisect authority: `validate_ingest_staging_stage_bisect_test.dag` — termination witnesses plus
+//! `witness_bisect_wave1_parse_module_add_correctness_holds` (binding fidelity + truncated RED).
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -11,7 +11,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage_bisect.dag";
+const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage_bisect_test.dag";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     vec![workspace_root().join("src/v2")]
@@ -75,6 +75,14 @@ fn interpreted_parse_bisect_tokenize_terminates() {
 #[test]
 fn interpreted_parse_bisect_parse_terminates() {
     assert_witness_terminates("bisect_parse_terminates", Duration::from_secs(60));
+}
+
+#[test]
+fn interpreted_parse_bisect_wave1_add_correctness_holds() {
+    assert_witness_terminates(
+        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        Duration::from_secs(90),
+    );
 }
 
 #[test]

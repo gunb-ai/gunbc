@@ -100,7 +100,7 @@ fn install_hint(sources: List<InstallSource>) -> String {
 func resolve(tool: CliTool) -> ResolveResult {
   let check = shell.Which.Check(command: tool.name)
   match check.path {
-    Some { value: p } => Resolved { resolved: { tool: tool, path: p } }
-    None => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
+    Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
+    Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
   }
 }

@@ -10,11 +10,6 @@ import v2.lens.extdeps_shape_transport_policy {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 
 data transport_fusion_gcp_oauth_argv_facts: List<ExtdepsTransportArgvFact> = []
 
@@ -27,16 +22,9 @@ data transport_fusion_gcp_oauth_fusion_facts: List<ExtdepsTransportFusionFact> =
   }
 ]
 
-fn transport_fusion_gcp_oauth_is_red_holds() -> Bool {
+test fn transport_fusion_gcp_oauth_is_red_holds() -> Bool {
   extdeps_shape_transport_policy_violation_count(
     argv_facts: transport_fusion_gcp_oauth_argv_facts,
     fusion_facts: transport_fusion_gcp_oauth_fusion_facts
   ) == 1
-}
-
-data unified_claim_transport_fusion_gcp_oauth: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth.dag",
-    function: transport_fusion_gcp_oauth_is_red_holds
-  }
 }

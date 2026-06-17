@@ -639,6 +639,23 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
     },
     loop_form: TargetLoopShape {
       loop_token: ^ts_token_unwired_loop
+    },
+    // 🟡 stub — record/field/match emit not wired for TS yet (M0 dag only).
+    record_construct_form: TargetRecordConstructShape {
+      open: ^ts_token_lbrace,
+      close: ^ts_token_rbrace,
+      separator: ^ts_token_comma,
+      assign: ^ts_token_colon
+    },
+    field_access_form: TargetFieldAccessShape {
+      dot: ^ts_token_unwired_dot
+    },
+    match_form: TargetMatchShape {
+      match_token: ^ts_token_unwired_match,
+      open: ^ts_token_lbrace,
+      close: ^ts_token_rbrace,
+      fat_arrow: ^ts_token_fat_arrow,
+      arm_separator: ^ts_token_comma
     }
   }
 }
