@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_target_model
 }
 import v2.std.algebra { Empty, fold_list, list_append, zip_eq }
-import v2.std.collection { List }
+import v2.std.collection { List, list_nth }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -35,10 +35,15 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
+  Unavailable,
   bind_outcome,
-  outcome_accepted
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
 }
 import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.logic { Bool }
@@ -481,6 +486,62 @@ fn type_decl_lexer_token_classes(tokens: List<Token>) -> List<Symbol> {
   )
 }
 
+fn type_decl_first_row_token_class(emitted: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: type_decl_emit_row_tokens(emitted: emitted),
+    f: fn(tokens) {
+      match list_nth(
+        xs: tokens,
+        wanted: 0,
+        absent: Diagnostic {
+          reason: ^grammar_relation_emitted_conj_slot_missing,
+          at: node_locus(node: emitted),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      ) {
+        Holds { value: token } => outcome_accepted(value: concrete_syntax_token_class(token: token))
+        Violates { diagnostic: d } => outcome_rejected(d)
+      }
+    }
+  )
+}
+
+fn type_decl_first_lexed_token_class(emitted: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: type_decl_emit_source_text(emitted: emitted),
+    f: fn(source) {
+      bind_outcome(
+        o: type_decl_tokenize_source_text(source: source),
+        f: fn(tokens) {
+          match list_nth(
+            xs: tokens,
+            wanted: 0,
+            absent: Diagnostic {
+              reason: ^grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: token } => outcome_accepted(value: token.class)
+            Violates { diagnostic: d } => outcome_rejected(d)
+          }
+        }
+      )
+    }
+  )
+}
+
+fn type_decl_first_row_and_lexed_classes_match_holds(emitted: Node) -> Bool {
+  match type_decl_first_row_token_class(emitted: emitted) {
+    Accepted { value: row_class, diagnostics: _ } =>
+      match type_decl_first_lexed_token_class(emitted: emitted) {
+        Accepted { value: lex_class, diagnostics: _ } => row_class == lex_class
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn type_decl_emit_row_and_lexed_classes_match_holds(emitted: Node) -> Bool {
   match type_decl_emit_row_tokens(emitted: emitted) {
     Accepted { value: row_tokens, diagnostics: _ } =>
@@ -518,6 +579,10 @@ fn type_decl_forward_from_lexed_source_holds(emitted: Node) -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn type_decl_first_row_lexed_class_match_point_holds() -> Bool {
+  type_decl_first_row_and_lexed_classes_match_holds(emitted: type_decl_point_emitted())
 }
 
 test fn type_decl_emit_row_lexed_classes_match_point_holds() -> Bool {

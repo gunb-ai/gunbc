@@ -3897,7 +3897,7 @@ fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
       dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
-      dag_keyword_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
+      dag_literal_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
       dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: " { "),
       dag_literal_lex_rule(token_class: ^dag_token_colon, text: ": "),
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ", "),
