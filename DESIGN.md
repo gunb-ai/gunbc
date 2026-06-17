@@ -62,7 +62,7 @@ along exactly two directions — not separate "DRY rules," but one move seen two
   atomic. The move is `decompress → map → reduce`: reveal the structure the source names, **map** each
   part onto the concept that already exists (DFS the concept DAG first), **reduce** duplicates. A
   `String` leaf hiding named parts is anemic modeling.
-  - *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }` (the number is a grounded `Int`); `Cost = Time|Space|Energy` → a record (every cost has all three); still-anemic today: `DramModuleCatalogRow.{ddr4_pc4_class, rank_label}` are bare `NonEmptyStr`.
+  - *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }` (the number is a grounded `Int`) and `"HMA82GR7AFR4N-VK"` → `DramModuleCatalogRow { chip_width: bit_width(4), rank_count: 1, buffering: Registered }` (the numeric organization axes decoded from the part number ground into existing magnitudes — `chip_width` reuses `BitWidth`, `rank_count` is a cardinal `Int` — not a fresh enum re-inventing bit-width; the categorical axis stays a closed enum); `Cost = Time|Space|Energy` → a record (every cost has all three); still-anemic today: `product.compute_fabric`'s `StorageDevice` has no PCIe-gen/lane-count axis (storage's rank/width), and `GpuFacts.vendor` is a bare `NonEmptyStr` where `CpuVendor` is a closed enum.
 
 The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow
 by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is
@@ -90,6 +90,7 @@ for git's diff *semantics*; libgit2 and the compare API are the other handlers);
 fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has
 leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`,
 `--all-targets`); the tell that (b) has fused is the same operation forked once per transport
+<<<<<<< HEAD
 (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. This is not yet
 lens-enforced — until it is, it is §3 diligence. This holds at *any* interface↔realization seam, not
 only service ops: the cited data behind an agnostic std surface de-fuses exactly as a transport does, and
@@ -100,6 +101,12 @@ above). What migrates outward is each realization's grounded specifics — cited
 taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays central. A
 std type that privileged one realization's taxonomy (POSIX `st_mode` over the `Ntfs`/`Apfs` that
 `FileSystemSemantics` already enumerates) is itself that inversion.
+=======
+(GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers.
+Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact
+rows; corpus RED witnesses execute against live `dsl/extdeps/**` via `filesystem_read`
+(dissolve-on: Node-tree argv projection supersedes text scan).
+>>>>>>> origin/main
 
 - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model. Likewise `std/os.dag` projects per-vendor rows with no `match` ("projection only"), while the cited rows and the product→vendor dispatch (`cited_operating_system_surface`) live in `extdeps/os/{ubuntu,windows,macos,os}.dag` ("dispatch lives in extdeps/, not std/", promoted from that hub header).
 
@@ -123,6 +130,7 @@ procedure run in different directions (the epistemic chain *is* the emission alg
 N×M adapters; every refusal a located, typed mismatch).
 
 - *e.g.* `dsl/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring (ops aren't listed per type); idempotency dissolved from an `idempotent: Bool` flag into the `EffectShape` variant; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed.
+- *e.g.* **one grammar, read in both directions** (§2 horizontal, not an adapter pair): ingest selects a production *forward* to fold surface syntax into a core `Node`; emit (`serialize_target ∘ translate`) selects from the *same* `target_model_edge_translation_rules` rows *backward* — the structural inverse, not a second emitter — so a new target language is rows authored in `extdeps/languages/`, never an edit to the fold (N rows, not N×M parser/emitter pairs). Coercion is that same move turned sideways: whether one model inhabits another is a homomorphism check (`coercion_fold` via `find_witness`), the same epistemic chain the emitter walks. One procedure asked in three directions, not three procedures.
 
 ## 5. Fail-closed (§1's safety axis — harm reduction)
 

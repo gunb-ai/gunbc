@@ -1,0 +1,81 @@
+// Scope: coverage-domain-equivalence witness — perturb roster spans each violation kind.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence
+
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data violation_kind_policy_leak: String = "policy leak in argv"
+data violation_kind_transport_fusion: String = "transport fusion fork"
+
+data violation_kinds: List<String> = [
+  violation_kind_policy_leak,
+  violation_kind_transport_fusion
+]
+
+type ExtdepsShapeTransportPolicyReceiptRow {
+  label: String
+  violation_kind: String
+  entry: String
+  function: String
+}
+
+data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo_build policy leak",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag",
+  function: "policy_leak_cargo_build_is_red_holds"
+}
+
+data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo_build policy leak",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak.dag",
+  function: "corpus_cargo_build_policy_leak_is_red_holds"
+}
+
+data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit clean git diff",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag",
+  function: "clean_git_diff_is_green_holds"
+}
+
+data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit gcp oauth fusion",
+  violation_kind: violation_kind_transport_fusion,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth.dag",
+  function: "transport_fusion_gcp_oauth_is_red_holds"
+}
+
+data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gcp oauth fusion",
+  violation_kind: violation_kind_transport_fusion,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
+  function: "corpus_gcp_oauth_fusion_fork_is_red_holds"
+}
+
+data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
+  receipt_policy_leak_lens_unit,
+  receipt_policy_leak_corpus,
+  receipt_clean_git_diff,
+  receipt_transport_fusion_lens_unit,
+  receipt_transport_fusion_corpus
+]
+
+fn rows_cover_kind(kind: String) -> Bool {
+  any(
+    xs: extdeps_shape_transport_policy_receipt_rows,
+    predicate: fn(row) { row.violation_kind == kind }
+  )
+}
+
+fn coverage_domain_equivalence_argument_holds() -> Bool {
+  rows_cover_kind(kind: violation_kind_policy_leak)
+    && rows_cover_kind(kind: violation_kind_transport_fusion)
+    && length(xs: violation_kinds) == 2
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 5
+}
