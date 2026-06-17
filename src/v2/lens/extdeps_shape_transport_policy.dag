@@ -167,7 +167,8 @@ fn extdeps_input_param_is_transport_bound(param_name: String) -> Bool {
 }
 
 fn extdeps_argv_token_references_param(token: String, param_name: String) -> Bool {
-  string_contains(token, concat("{", concat(param_name, "}")))
+  token == param_name
+    || string_contains(token, concat("{", concat(param_name, "}")))
 }
 
 fn extdeps_argv_facts_reference_param(

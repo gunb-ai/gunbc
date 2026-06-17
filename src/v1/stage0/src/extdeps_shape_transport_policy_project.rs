@@ -60,7 +60,7 @@ fn argv_expr_token(
 }
 
 fn argv_token_references_param(token: &str, param_name: &str) -> bool {
-    token.contains(&format!("{{{param_name}}}"))
+    token == param_name || token.contains(&format!("{{{param_name}}}"))
 }
 
 // dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_input_param_is_transport_bound
@@ -175,4 +175,21 @@ pub fn dead_param_count_for_path(path: String) -> i64 {
         }
     }
     total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
+        assert_eq!(
+            dead_param_count_for_operation(
+                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+                "cargo.Build".to_string(),
+                "Clippy".to_string(),
+            ),
+            0
+        );
+    }
 }

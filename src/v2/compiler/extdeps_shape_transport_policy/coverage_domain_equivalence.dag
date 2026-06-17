@@ -32,7 +32,6 @@ data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = Extd
   function: "policy_leak_cargo_build_is_red_holds"
 }
 
-<<<<<<< HEAD
 data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "corpus cargo_build de-fused (regression guard)",
   violation_kind: violation_kind_policy_leak,
@@ -47,8 +46,6 @@ data receipt_git_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = Ext
   function: "corpus_git_policy_leak_defused_holds"
 }
 
-=======
->>>>>>> origin/main
 data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit clean git diff",
   violation_kind: violation_kind_policy_leak,
@@ -106,10 +103,10 @@ data receipt_dead_param_cargo_clippy_lens_unit: ExtdepsShapeTransportPolicyRecei
 }
 
 data receipt_dead_param_cargo_clippy_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus cargo clippy dead param",
+  label: "corpus cargo clippy dead param de-fused (regression guard)",
   violation_kind: violation_kind_dead_param,
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
-  function: "corpus_cargo_clippy_dead_param_is_red_holds"
+  function: "corpus_cargo_clippy_dead_param_defused_holds"
 }
 
 data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
@@ -121,11 +118,8 @@ data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow 
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
   receipt_policy_leak_lens_unit,
-<<<<<<< HEAD
   receipt_policy_leak_corpus,
   receipt_git_policy_leak_corpus,
-=======
->>>>>>> origin/main
   receipt_clean_git_diff,
   receipt_clean_gist_create,
   receipt_gist_create_corpus,
@@ -148,12 +142,7 @@ fn rows_cover_kind(kind: String) -> Bool {
 fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_kind(kind: violation_kind_policy_leak)
     && rows_cover_kind(kind: violation_kind_transport_fusion)
-<<<<<<< HEAD
-    && length(xs: violation_kinds) == 2
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 8
-=======
     && rows_cover_kind(kind: violation_kind_dead_param)
     && length(xs: violation_kinds) == 3
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 11
->>>>>>> origin/main
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 13
 }
