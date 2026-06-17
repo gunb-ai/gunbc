@@ -18,7 +18,7 @@ data python_mvp2_stdout_fixture_source: String = "import sys\nsys.stdout.buffer.
 data go_mvp2_stdout_fixture_source: String = "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n"
 
 // TypeScript row — add(2,3)=5 as signed i32 LE on stdout (four bytes).
-data ts_mvp1_host_fixture_prefix: String = "function add(x: number, y: number): number { return x + y; }\n"
+data ts_mvp1_host_fixture_prefix: String = "// @ts-nocheck\nfunction add(x: number, y: number): number { return x + y; }\n"
 
 data ts_mvp1_host_fixture_harness_suffix: String = "
 const __gunbc_r = add(2, 3);

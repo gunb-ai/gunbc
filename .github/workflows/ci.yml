@@ -55,5 +55,8 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      - name: CI floor (.dag claim gate)
-        run: cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+      - name: CI floor (.dag claim gate + emit-host gate via gunbc)
+        run: |
+          cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses --claim-run
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/emit_host_gate.dag --function main

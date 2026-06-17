@@ -1,8 +1,8 @@
 // tools/emit_host_transport.dag — shell transports for emit-host MVP smoke rows.
 //
 // Each operation writes a fixture to a temp dir, runs the target toolchain, and checks
-// stdout byte count. Mirrors `tools/emit_host_runner` behavior until substrate host rows
-// wire through gunbc Realization (DESIGN §7: gate logic is `.dag` authority).
+// stdout byte count. Scripts are POSIX `sh` (gunbc shell transport uses `sh -c`, not bash).
+// Mirrors `tools/emit_host_runner` behavior until substrate host rows wire through gunbc.
 
 module tools.emit_host_transport
 
@@ -18,25 +18,25 @@ import tools.emit_host_fixtures {
 
 // Run emitted rust fixture: cargo build + run; pass iff stdout is exactly five bytes.
 fn run_rust_mvp2_smoke() -> Bool {
-  let script = "set -euo pipefail\nWORKDIR=$(mktemp -d)\ntrap 'rm -rf \"$WORKDIR\"' EXIT\nmkdir -p \"$WORKDIR/src\"\ncat > \"$WORKDIR/Cargo.toml\" <<'EOF'\n[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\"\nEOF\ncat > \"$WORKDIR/src/main.rs\" <<'EOF'\n{rust_mvp2_stdout_fixture_source}\nEOF\nCARGO_TARGET_DIR=\"$WORKDIR/target\" cargo build --quiet --manifest-path \"$WORKDIR/Cargo.toml\"\nBYTES=$(\"$WORKDIR/target/debug/fixture\" | wc -c | tr -d ' ')\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\nmkdir -p \"$WORKDIR/src\"\ncat > \"$WORKDIR/Cargo.toml\" <<'EOF'\n[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\"\nEOF\ncat > \"$WORKDIR/src/main.rs\" <<'EOF'\n{rust_mvp2_stdout_fixture_source}\nEOF\nCARGO_TARGET_DIR=\"$WORKDIR/target\" cargo build --quiet --manifest-path \"$WORKDIR/Cargo.toml\"\nBYTES=$(\"$WORKDIR/target/debug/fixture\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
   let result = shell.Exec.Run(script: script)
   result.success
 }
 
 fn run_python_mvp2_smoke() -> Bool {
-  let script = "set -euo pipefail\nWORKDIR=$(mktemp -d)\ntrap 'rm -rf \"$WORKDIR\"' EXIT\ncat > \"$WORKDIR/fixture.py\" <<'EOF'\n{python_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(python3 \"$WORKDIR/fixture.py\" | wc -c | tr -d ' ')\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.py\" <<'EOF'\n{python_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(python3 \"$WORKDIR/fixture.py\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
   let result = shell.Exec.Run(script: script)
   result.success
 }
 
 fn run_go_mvp2_smoke() -> Bool {
-  let script = "set -euo pipefail\nWORKDIR=$(mktemp -d)\ntrap 'rm -rf \"$WORKDIR\"' EXIT\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
+  let script = "set -e\ncommand -v go >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {mvp2_stdout_byte_count}"
   let result = shell.Exec.Run(script: script)
   result.success
 }
 
 fn run_ts_mvp1_smoke() -> Bool {
-  let script = "set -euo pipefail\nWORKDIR=$(mktemp -d)\ntrap 'rm -rf \"$WORKDIR\"' EXIT\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\ntest \"$BYTES\" -eq {ts_signed_i32_le_byte_count}"
+  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {ts_signed_i32_le_byte_count}"
   let result = shell.Exec.Run(script: script)
   result.success
 }

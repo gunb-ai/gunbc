@@ -13,7 +13,6 @@ members = [
     "tools/ci_claim_gate",
     "tools/layering_imports_scan",
     "tools/compile_host_runner",
-    "tools/emit_host_runner",
 ]
 
 [workspace.metadata]
