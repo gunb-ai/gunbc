@@ -1,0 +1,33 @@
+// src/v2/workflow/lens_synthesis_family_eval_test.dag
+//
+// Compiler-wide synthesis-lens gate. Folds the synthesis subject roster
+// (lens/synthesis/family_corpus.dag) — the synthesis lens read over the REAL
+// source-bridged `add` body plus a synthetic gap control — and gates green
+// only when every verdict holds AND the roster is non-empty (fail-closed:
+// an empty roster is a RED, never a vacuous pass). Discovered + run by the
+// CI floor `claim_batch` discovery (`test data` in a `*_test.dag`).
+
+module v2.test.workflow.lens_synthesis_family_eval
+
+import v2.std.algebra { for_all, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.test.lens_synthesis.family_corpus {
+  lens_synthesis_family_verdicts
+}
+
+fn lens_synthesis_family_all_pass(verdicts: List<Bool>) -> Bool {
+  for_all(xs: verdicts, predicate: fn(v) { v })
+}
+
+fn lens_synthesis_family_gate(verdicts: List<Bool>) -> Bool {
+  if is_empty(xs: verdicts) {
+    false
+  } else {
+    lens_synthesis_family_all_pass(verdicts: verdicts)
+  }
+}
+
+test data witness_lens_synthesis_family_gate_closed: Bool = lens_synthesis_family_gate(
+  verdicts: lens_synthesis_family_verdicts
+)

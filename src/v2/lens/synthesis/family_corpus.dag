@@ -1,0 +1,76 @@
+// src/v2/lens/synthesis/family_corpus.dag
+//
+// Scope: synthesis-lens compiler-wide subject roster — the synthesis lens
+//        (lens/synthesis.dag) read over REAL compiler-produced I/O relations,
+//        not only synthetic Node fixtures. Each verdict is a discriminating
+//        Bool: the gate (workflow/lens_synthesis_family_eval_test.dag) folds
+//        them fail-closed.
+//
+// Subjects:
+//   A (real): the source-bridged `add` body — tokenize→parse→normalize→resolve→body,
+//             reused from the complexity_gate producer (single subject-supply authority,
+//             no second pipeline path). Constant realization cost is OPTIMAL against the
+//             DecisionTree Θ(n log n) lower bound → no optimality gap (empty reports).
+//   B (real): the same `add` body under InformationTheoretic — a sub-linear realization
+//             has no lower-bound comparison for that technique → SynthesisNoTechnique
+//             diagnostic (honest no-engine channel, not a fabricated gap).
+//   C (synthetic control): the polynomial gap node (reused from synthesis_gap_polynomial.dag,
+//             single authority) whose realization EXCEEDS the DecisionTree lower bound →
+//             the gap FIRES (non-empty reports). Proves the lens is not vacuously green.
+
+module v2.test.lens_synthesis.family_corpus
+
+import v2.lens.synthesis {
+  DecisionTree,
+  InformationTheoretic,
+  synthesis_lens,
+  synthesis_lens_diagnostics
+}
+import v2.std.algebra { is_empty, non_empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.test.complexity_gate.lens_subject_body_supply {
+  lens_subject_arrow_body_for_budget_row
+}
+import v2.test.complexity_gate.subject_complexity_budget_roster {
+  complexity_budget_row_comprep_source_bridged_add
+}
+import v2.test.lens_synthesis.synthesis_gap_polynomial {
+  synthesis_gap_poly_input
+}
+
+// Acquire the real source-bridged `add` body and apply a structural check; a producer
+// failure is a fail-closed false (the gate must not pass on an unavailable subject).
+fn source_bridged_add_body_verdict(check: fn(Node) -> Bool) -> Bool {
+  match lens_subject_arrow_body_for_budget_row(row: complexity_budget_row_comprep_source_bridged_add) {
+    Accepted { value: body, diagnostics: _ } => check(body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Subject A (real): constant `add` is OPTIMAL vs the DecisionTree Θ(n log n) lower bound → no gap.
+fn add_decision_tree_optimal() -> Bool {
+  source_bridged_add_body_verdict(check: fn(body) {
+    is_empty(xs: synthesis_lens(n: body, declared_technique: DecisionTree))
+  })
+}
+
+// Subject B (real): InformationTheoretic over a sub-linear realization → no-technique diagnostic.
+fn add_information_theoretic_no_technique() -> Bool {
+  source_bridged_add_body_verdict(check: fn(body) {
+    non_empty(synthesis_lens_diagnostics(n: body, declared_technique: InformationTheoretic))
+  })
+}
+
+// Subject C (synthetic control): polynomial realization EXCEEDS the DecisionTree lower bound → gap fires.
+fn polynomial_gap_fires() -> Bool {
+  non_empty(synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree))
+}
+
+data lens_synthesis_family_verdicts: List<Bool> = [
+  add_decision_tree_optimal(),
+  add_information_theoretic_no_technique(),
+  polynomial_gap_fires()
+]
