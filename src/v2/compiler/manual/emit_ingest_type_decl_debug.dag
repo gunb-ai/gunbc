@@ -82,6 +82,14 @@ fn type_decl_record_emitted(name: Symbol, fields: Node) -> Node {
   }
 }
 
+data type_decl_point_text_spaced: String = "type Point { x: Int, y: Int }"
+
+data type_decl_point_text_v1: String = "typePoint{ x: Int, y: Int }"
+
+data type_decl_point_text_v2: String = "type Point{ x: Int, y: Int }"
+
+data type_decl_point_text_v3: String = "typePoint { x: Int, y: Int }"
+
 fn type_decl_point_emitted() -> Node {
   type_decl_record_emitted(
     name: ^Point,
@@ -95,6 +103,31 @@ test fn type_decl_full_row_derive_accepts_holds() -> Bool {
     emitted: type_decl_point_emitted()
   ) {
     Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn type_decl_serialize_accepts_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: dag_type_decl_productions_only_translation_rules(),
+    emitted: type_decl_point_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      match grammar_relation_row_tokens_root(row: row) {
+        Accepted { value: tokens_root, diagnostics: _ } =>
+          match concrete_syntax_token_list_from_node(list_node: tokens_root) {
+            Accepted { value: tokens, diagnostics: _ } =>
+              match serialize_concrete_syntax_tokens_to_source(
+                target: dag_type_decl_structural_target_model(),
+                tokens: tokens
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -113,7 +146,7 @@ test fn type_decl_emit_text_holds() -> Bool {
                 target: dag_type_decl_structural_target_model(),
                 tokens: tokens
               ) {
-                Accepted { value: text, diagnostics: _ } => text == "type Point { x: Int, y: Int }"
+                Accepted { value: text, diagnostics: _ } => text == type_decl_point_text_spaced
                 Rejected { diagnostics: _ } => false
               }
             Rejected { diagnostics: _ } => false
