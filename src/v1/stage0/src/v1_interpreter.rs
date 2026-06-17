@@ -3221,13 +3221,10 @@ fn eval_algebra_method(
 /// Routes through `Clock.UnixSecs` when the op is in the compiled closure; otherwise
 /// uses the same transport realization (bootstrap — fixture stamping cannot recurse
 /// through the fixture seam). Never `SystemTime`. `Clock.Now` (ISO) is for DAG consumers only.
-pub fn fixture_now_secs(
-    ctx: &InterpContext,
-) -> Result<u64, crate::recorded_fixture::FixtureError> {
+pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
     if ctx.service_ops.contains_key("Clock.UnixSecs") {
-        let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty()).map_err(|_| {
-            crate::recorded_fixture::FixtureError::ClockUnavailable
-        })?;
+        let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty())
+            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
         unix_secs_from_clock_value(&val, ctx)
     } else {
         realize_clock_unix_secs_transport()
@@ -3323,6 +3320,9 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
             Ok(Value::Str(s)) if !s.is_empty() => Some(s),
             _ => None,
         }
+    } else if ctx.execution_mode.is_hermetic() {
+        // Fail-closed: no raw printenv outside RecordedFixture on hermetic path.
+        None
     } else {
         wet_env_var(var_name)
     }
