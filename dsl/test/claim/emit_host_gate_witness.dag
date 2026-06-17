@@ -8,6 +8,7 @@
 
 module test.claim.emit_host_gate_witness
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import std.measure { byte_size_count }
 import tools.emit_host_fixtures {
   rust_mvp2_stdout_fixture_source,

@@ -7,6 +7,7 @@
 
 module test.claim.rust_stage0_gates_witness
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import tools.rust_stage0_gates { path_is_rust_monolith, should_run_gates }
 
 // POSITIVE — each Rust-marker tail selects (suffix match, including nested paths).
@@ -61,4 +62,11 @@ fn rust_stage0_gates_witnesses() -> Bool {
   w_generic_config_no_select() &&
   w_empty_no_fire() &&
   w_git_fail_fires()
+}
+
+data unified_claim_rust_stage0_gates: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/rust_stage0_gates_witness.dag",
+    function: rust_stage0_gates_witnesses
+  }
 }
