@@ -208,7 +208,8 @@ type GrammarExprFold<R> {
 // First consumer: v2.compiler.parse.expr_is_nullable_given_set.
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
-    Terminal { token_class: token_class } => algebra.terminal(token_class)
+    Terminal { token_class: token_class, binding: binding } =>
+      algebra.terminal(token_class, binding)
     Nonterminal { production: production } => algebra.nonterminal(production)
     Sequence { left: left, right: right } =>
       algebra.sequence(
@@ -295,6 +296,7 @@ type GrammarSymbolFoldState {
 
 
 data grammar_terminal_token_class_node_projection: Symbol = ^grammar_terminal_token_class_node_projection
+data grammar_terminal_binding_node_projection: Symbol = ^grammar_terminal_binding_node_projection
 data grammar_nonterminal_production_node_projection: Symbol = ^grammar_nonterminal_production_node_projection
 data grammar_sequence_left_node_projection: Symbol = ^grammar_sequence_left_node_projection
 data grammar_sequence_right_node_projection: Symbol = ^grammar_sequence_right_node_projection
@@ -1166,10 +1168,18 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(token_class) {
-        grammar_expr_node(children: [
-          grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
-        ])
+      terminal: fn(token_class, binding) {
+        match binding {
+          Present { value: b } =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+              grammar_named_edge(name: ^grammar_terminal_binding_node_projection, target: grammar_atom(identity: b))
+            ])
+          Absent =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+            ])
+        }
       },
       nonterminal: fn(production) {
         grammar_expr_node(children: [

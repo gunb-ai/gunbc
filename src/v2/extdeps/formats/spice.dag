@@ -248,7 +248,7 @@ fn spice_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
 
 
 fn spice_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 

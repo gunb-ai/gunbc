@@ -24,6 +24,9 @@ import v2.std.grammar {
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   grammar_expr_optional,
+  grammar_expr_terminal,
+  grammar_expr_terminal_bound,
+  formal_grammar_symbol_to_grammar_expr,
   ParseGrammar,
   FormalGrammarSymbol,
   FormalNonterminalOccurrence,
@@ -1719,7 +1722,19 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
 }
 
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  grammar_expr_terminal(token_class: token_class)
+}
+
+
+fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
+  grammar_expr_terminal_bound(token_class: token_class, binding: binding)
+}
+
+
+fn dag_grammar_terminal_from_concrete_token(token: ConcreteSyntaxToken) -> GrammarExpr {
+  formal_grammar_symbol_to_grammar_expr(
+    sym: dag_formal_grammar_symbol_from_token(token: token)
+  )
 }
 
 fn dag_grammar_nonterminal(production: Symbol) -> GrammarExpr {
@@ -3279,10 +3294,6 @@ fn dag_mvp1_serialize_source_node() -> Node {
 }
 }
 
-fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
-}
-
 type DagGramBuild1State
   = DagGramBuild1StateInit
   | DagGramBuild1StateReady { expr: GrammarExpr }
@@ -3295,13 +3306,13 @@ fn dag_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         DagGramBuild1StateInit =>
           DagGramBuild1StateReady {
-            expr: dag_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: dag_grammar_terminal_from_concrete_token(token: token)
           }
         DagGramBuild1StateReady { expr: acc } =>
           DagGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: dag_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: dag_grammar_terminal_from_concrete_token(token: token)
             }
           }
       }
@@ -3391,9 +3402,9 @@ fn dag_grammar_terminal_for_mvp1_loop_token(token: ConcreteSyntaxToken) -> Gramm
         if (c == ^dag_token_ident) && dag_grammar_loop_body_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
-          dag_grammar_terminal(token_class: cls)
+          dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal(token_class: cls)
+      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3474,9 +3485,9 @@ fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> Gramm
         if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
-          dag_grammar_terminal(token_class: cls)
+          dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal(token_class: cls)
+      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3611,35 +3622,49 @@ data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_a
 
 // Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
 fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
-    _ => false
+  match dag_mvp1_binding_branded_atom_identity(node: node) {
+    Present { value: _ } => true
+    Absent =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
+        _ => false
+      }
   }
 }
 
-// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold — feature:COMPREP-WAVE1-BODY-BRIDGE —
-// consumer:dag_mvp1_captured_flat_atom_binding_for_ident (via
-// produce_mvp1_add_arrow_signature_from_resolved in 03_body_producer) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
-// flat-index table (indices 5/9/12); owner/lane: Mgr-RUNTIME (neat-bat-593) —
-// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
-// flat-index binding lookup in extdeps. diagnostic-at: port_locus only — flat_index is a
-// token-table index, not a byte offset (ByteRange elsewhere is byte positions); distinct
-// locus variant deferred until scaffold dissolves.
+
+// Parse-stage binding fidelity: atoms stamped with per-identifier binding carry the binding
+// Symbol as their Atom identity (not the collapsed dag_token_ident token class).
+fn dag_mvp1_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match id == ^dag_token_ident {
+        true => Absent
+        false => Present { value: id }
+      }
+    _ => Absent
+  }
+}
+
+
 fn dag_mvp1_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
 ) -> Outcome<Symbol> {
-  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-  } else if flat_index == 5 {
-    outcome_accepted(^dag_binding_param_x)
-  } else if flat_index == 9 {
-    outcome_accepted(^dag_binding_param_y)
-  } else if flat_index == 12 {
-    outcome_accepted(^dag_binding_type_int)
-  } else {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  match dag_mvp1_binding_branded_atom_identity(node: ident_atom) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      } else if flat_index == 5 {
+        outcome_accepted(^dag_binding_param_x)
+      } else if flat_index == 9 {
+        outcome_accepted(^dag_binding_param_y)
+      } else if flat_index == 12 {
+        outcome_accepted(^dag_binding_type_int)
+      } else {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      }
   }
 }
 
@@ -3654,12 +3679,16 @@ fn dag_mvp1_pick_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
 ) -> Outcome<Symbol> {
-  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-  } else if flat_index == 5 {
-    outcome_accepted(^dag_binding_type_int)
-  } else {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  match dag_mvp1_binding_branded_atom_identity(node: ident_atom) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      } else if flat_index == 5 {
+        outcome_accepted(^dag_binding_type_int)
+      } else {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      }
   }
 }
 
@@ -3756,12 +3785,16 @@ fn dag_mvp1_loop_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
 ) -> Outcome<Symbol> {
-  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-  } else if flat_index == 5 {
-    outcome_accepted(^dag_binding_type_int)
-  } else {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  match dag_mvp1_binding_branded_atom_identity(node: ident_atom) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      } else if flat_index == 5 {
+        outcome_accepted(^dag_binding_type_int)
+      } else {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      }
   }
 }
 
@@ -4144,9 +4177,9 @@ fn dag_grammar_terminal_for_mvp1_bind_token(token: ConcreteSyntaxToken) -> Gramm
         if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
-          dag_grammar_terminal(token_class: cls)
+          dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal(token_class: cls)
+      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -4194,14 +4227,18 @@ fn dag_mvp1_bind_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
 ) -> Outcome<Symbol> {
-  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-  } else if flat_index == 5 {
-    outcome_accepted(^dag_binding_type_int)
-  } else if (flat_index == 8) || (flat_index == 12) {
-    outcome_accepted(^dag_binding_mvp1_bind_x)
-  } else {
-    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  match dag_mvp1_binding_branded_atom_identity(node: ident_atom) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      } else if flat_index == 5 {
+        outcome_accepted(^dag_binding_type_int)
+      } else if (flat_index == 8) || (flat_index == 12) {
+        outcome_accepted(^dag_binding_mvp1_bind_x)
+      } else {
+        outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+      }
   }
 }
 

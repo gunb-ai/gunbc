@@ -1135,7 +1135,7 @@ fn cpp_wave1_formal_productions() -> List<FormalProduction> {
 }
 
 fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 type CppGramBuild1State

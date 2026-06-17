@@ -95,7 +95,7 @@ fn ingest_fixture_root() -> GrammarRoot {
     productions: Cons {
       head: GrammarProduction {
         name: ingest_fixture_start,
-        expression: Terminal { token_class: ingest_fixture_tok },
+        expression: Terminal { token_class: ingest_fixture_tok, binding: Absent },
         emitted: dag_mvp1_fixture_emitted_add_fn
       },
       tail: Empty

@@ -1144,7 +1144,7 @@ fn kotlin_mvp1_serialize_source_node() -> Node {
 }
 
 fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 fn kotlin_concrete_tokens_list(

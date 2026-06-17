@@ -585,7 +585,7 @@ fn wasm_mvp1_serialize_source_node() -> Node {
 }
 
 fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
