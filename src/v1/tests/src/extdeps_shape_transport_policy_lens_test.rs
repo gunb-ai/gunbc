@@ -51,7 +51,7 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
     )));
 
     let policy_leak_entry =
-        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag";
+        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag";
     let policy_leak_content = std::fs::read_to_string(workspace_root().join(policy_leak_entry))
         .unwrap_or_else(|e| panic!("read {policy_leak_entry}: {e}"));
     match run_v4_module(
@@ -63,7 +63,8 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         other => panic!("expected policy leak witness true, got {other:?}"),
     }
 
-    let clean_entry = "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag";
+    let clean_entry =
+        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag";
     let clean_content = std::fs::read_to_string(workspace_root().join(clean_entry))
         .unwrap_or_else(|e| panic!("read {clean_entry}: {e}"));
     match run_v4_module(clean_entry, &clean_content, "clean_git_diff_is_green_holds") {
