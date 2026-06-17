@@ -3388,8 +3388,11 @@ fn dispatch_file(
 
     // Resolve the target path: `base_path` (the key the file-transport parser
     // stores `path:`/`base_path:` under), evaluated then `{param}`-substituted.
-    let path = match find_property(transport.properties.clone(), "base_path".to_string(), si.clone())
-    {
+    let path = match find_property(
+        transport.properties.clone(),
+        "base_path".to_string(),
+        si.clone(),
+    ) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
             substitute_template(&format!("{}", path_val), param_env, ctx)
@@ -3417,7 +3420,10 @@ fn dispatch_file(
             Some(v) => format!("{}", v),
             None => {
                 return Err(InterpError::TypeError {
-                    msg: format!("file write operation missing `content` argument for {}", path),
+                    msg: format!(
+                        "file write operation missing `content` argument for {}",
+                        path
+                    ),
                 })
             }
         };
