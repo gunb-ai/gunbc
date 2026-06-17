@@ -78,6 +78,8 @@ jobs:
             --roster-from-discovery \
             --scan-dir src/v2/test \
             --scan-dir src/v2/compiler/extdeps_shape_transport_policy \
+            # SCAFFOLD — dissolve when these four witnesses enroll as discoverable
+            # `test fn` rows under a scanned dsl root (then drop the explicit --entry lines).
             --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses \
             --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses \
             --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds \
