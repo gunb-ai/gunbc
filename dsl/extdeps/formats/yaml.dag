@@ -136,57 +136,38 @@ fn emit_flow_sequence(elements: List<YamlValue>) -> String {
   )
 }
 
+fn prefix_block_sequence_mapping(body: String, depth: Int) -> String {
+  let lines = split(s: body, delimiter: "\n")
+  fold(lines, init: { index: 0, out: "" }, f: (acc, line) => {
+    if line == "" {
+      acc
+    } else if acc.index == 0 {
+      {
+        index: acc.index + 1,
+        out: concat(acc.out, concat(concat(concat(indent(depth: depth), "- "), line), "\n"))
+      }
+    } else {
+      {
+        index: acc.index + 1,
+        out: concat(acc.out, concat(concat(indent(depth: depth + 1), line), "\n"))
+      }
+    }
+  }).out
+}
+
 fn emit_block_sequence(elements: List<YamlValue>, depth: Int) -> String {
   fold(elements, init: "", f: (acc, e) => {
     let line = match e {
       YamlMapping { entries: ents } =>
-        concat(
-          concat(concat(indent(depth: depth), "- "), emit_mapping_first_line(entries: ents, depth: depth + 1)),
-          emit_mapping_rest(entries: ents, depth: depth + 1)
+        prefix_block_sequence_mapping(
+          body: emit_mapping_body(entries: ents, depth: 0),
+          depth: depth
         )
       _ =>
         concat(concat(concat(indent(depth: depth), "- "), emit_scalar(v: e)), "\n")
     }
-    concat(acc, concat(line, "\n"))
+    concat(acc, line)
   })
-}
-
-fn emit_mapping_first_line(entries: List<YamlKeyValue>, depth: Int) -> String {
-  if entries.length() == 0 {
-    ""
-  } else {
-    let first = entries.first()
-    let key = first.key
-    let val = first.value
-    emit_mapping_entry_line(key: key, val: val, depth: depth)
-  }
-}
-
-fn emit_mapping_entry_line(key: String, val: YamlValue, depth: Int) -> String {
-  match val {
-    YamlMapping { entries: nested } =>
-      concat(concat(key, ":\n"), emit_mapping_body(entries: nested, depth: depth))
-    YamlSequence { elements: els } =>
-      emit_mapping_entry_sequence_line(key: key, els: els, depth: depth)
-    _ =>
-      concat(concat(concat(key, ": "), emit_scalar(v: val)), "\n")
-  }
-}
-
-fn emit_mapping_entry_sequence_line(key: String, els: List<YamlValue>, depth: Int) -> String {
-  if all_scalars_flowable(elements: els) {
-    concat(concat(concat(key, ": "), emit_flow_sequence(elements: els)), "\n")
-  } else {
-    concat(concat(concat(key, ":\n"), emit_block_sequence(elements: els, depth: depth)), "")
-  }
-}
-
-fn emit_mapping_rest(entries: List<YamlKeyValue>, depth: Int) -> String {
-  if entries.length() <= 1 {
-    ""
-  } else {
-    emit_mapping_body(entries: entries.skip(n: 1), depth: depth)
-  }
 }
 
 fn emit_mapping_body(entries: List<YamlKeyValue>, depth: Int) -> String {

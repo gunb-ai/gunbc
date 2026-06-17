@@ -1,7 +1,3 @@
-# The whole CI floor is one `.dag` binary: claim_batch discovers the
-# single-representation `test fn`/`test data` corpus under src/v2/test and evaluates
-# every claim in-interpreter — no shell gate, no hand roster, no `.dag` shell-out.
-# Branch protection should require job id `ci`.
 name: ci
 on:
   workflow_dispatch:
@@ -24,8 +20,6 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 240
     steps:
-      # Toolchain isolation: the shared-$HOME self-hosted runners race on a global
-      # rustup/cargo dir, so pin CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP per job.
       - name: Isolate toolchain dirs
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
@@ -34,9 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # 0 (not 1): full history so `origin/main...HEAD` merge-base resolves for the
-          # Rust-gate affected-set below. claim_batch fail-closes (runs the gates) if
-          # the base is unavailable, so safety holds regardless. Revert to 1 if clone slows.
           fetch-depth: 0
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
@@ -47,32 +38,18 @@ jobs:
         env:
           HOME: ${{ runner.temp }}
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+        run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\""
       - name: Cache Cargo
         uses: actions/cache@v5
         with:
-          path: |
-            ${{ runner.temp }}/cargo/registry/index/
-            ${{ runner.temp }}/cargo/registry/cache/
-            ${{ runner.temp }}/cargo/git/db/
-            target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          path: ${{ runner.temp }}/cargo/registry/index/
+        ${{ runner.temp }}/cargo/registry/cache/
+        ${{ runner.temp }}/cargo/git/db/
+        target/
+          key: "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}"
           restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      # CI floor — two composed passes (was nine separate cargo-run lines on main):
-      #   (1) claim_batch: discovery over src/v2 (test fn / unified_claim_* corpus)
-      #       PLUS hand-enrolled Bool witnesses (rust_stage0, emit_host, layering coverage,
-      #       filesystem entry-kind, power/watt consuming-fold, dsl compile-clean) that lived
-      #       on separate `gunbc run --claim-run` lines. One module index, one resolve per
-      #       distinct entry — not one cold resolve per witness.
-      #   SCAFFOLD — dissolve when the hand-enrolled witnesses enroll as discoverable
-      #   `test fn` rows under a scanned dsl root (then drop the explicit --entry lines).
-      #   (2) gunbc: tools.ci_floor_gates — the four effectful ProcessExit gates
-      #       (rust fmt/clippy selector, emit-host MVP smokes, layering-imports host scan +
-      #       perturb receipts, dsl whole-tree compile-clean) composed behind one entry
-      #       resolve. The compile-clean gate is a SCAFFOLD (`--target rust` pending the
-      #       v1.compiler.dag_collect identity-key fix).
-      # The git fetch makes `origin/main...HEAD` resolvable for the rust gate.
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+          
       - name: CI floor (.dag witness corpus + gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
