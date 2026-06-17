@@ -12,10 +12,16 @@ import v2.compiler.compile {
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
+  grammar_lookup_production,
   grammar_validate_for_parse,
   parse,
+  parse_expr,
   parse_production_tree,
+  parse_prov_initial,
   parse_stage_locus_port,
+  parse_table_empty,
+  ParseExprAccepted,
+  ParseExprRejected,
   ParseTree
 }
 import v2.compiler.resolve { resolve }
@@ -27,6 +33,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   bind_outcome,
+  outcome_accepted,
   port_locus
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
@@ -138,6 +145,49 @@ fn bisect_through_parse_production() -> Outcome<ParseTree> {
 
 fn bisect_parse_production_terminates() -> Bool {
   match bisect_through_parse_production() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_single_module_parse_expr() -> Bool {
+  let lm = dag_language_model_wave1()
+  match lm.grammar {
+    ModeledGrammar { root: root } =>
+      bind_outcome(
+        o: tokenize(
+          text: bisect_empty_source,
+          file: compile_ingest_staging_source_file,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          match grammar_lookup_production(root: root, name: root.start) {
+            Holds { value: production } =>
+              match parse_expr(
+                expr: production.expression,
+                tokens: token_stream.tokens,
+                all_tokens: token_stream.tokens,
+                root: root,
+                table: parse_table_empty(),
+                prov: parse_prov_initial()
+              ) {
+                ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } =>
+                  outcome_accepted(value: true)
+                ParseExprRejected { diagnostics: _ } =>
+                  outcome_accepted(value: true)
+              }
+            Violates { diagnostic: _ } =>
+              Rejected { diagnostics: None }
+          }
+        }
+      )
+    _ =>
+      Rejected { diagnostics: None }
+  }
+}
+
+fn bisect_single_module_parse_expr_terminates() -> Bool {
+  match bisect_single_module_parse_expr() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
   }
