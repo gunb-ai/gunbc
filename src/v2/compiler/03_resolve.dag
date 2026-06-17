@@ -169,7 +169,10 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
       if count(n.children) >= 1 {
         match first(n.children) {
           Present { value: e0 } =>
-            harvest_conj_named_bindings(root: e0.target, acc: acc)
+            harvest_direct_atom_binding(
+              root: e0.target,
+              acc: harvest_conj_named_bindings(root: e0.target, acc: acc)
+            )
           Absent => acc
         }
       } else {
