@@ -41,7 +41,7 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
             for item in items {
                 match item {
                     Value::Int(c) => {
-                        if let Some(ch) = char::from_u32(*c as u32) {
+                        if let Some(ch) = char::from_u32(c as u32) {
                             spelling.push(ch);
                         }
                     }

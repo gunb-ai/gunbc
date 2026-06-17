@@ -178,3 +178,8 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
     ModeledLexRules { root: _ } => lex_empty_node()
   }
 }
+
+// T-8 wave-1: materialize source lexeme spelling as Symbol (parse StampLexeme).
+fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
+  symbol_intern_lexeme(lexeme: lexeme)
+}

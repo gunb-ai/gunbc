@@ -50,7 +50,6 @@ import v2.std.node {
   node_occurrence_minted,
   node_synthetic,
   node_with_occurrence_id,
-  symbol_intern_lexeme,
   SyntheticOccurrence,
   well_formed
 }
@@ -72,7 +71,7 @@ import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map,
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.compilers.lexing { Lexeme, Token, TokenStream }
+import v2.std.compilers.lexing { Lexeme, Token, TokenStream, symbol_intern_lexeme }
 import v2.std.grammar {
   Choice,
   ParseGrammar,
