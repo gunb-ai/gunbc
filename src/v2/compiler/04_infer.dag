@@ -704,7 +704,7 @@ fn infer_match_bool(
   entries: List<InferredFactsEntry>,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
-  if !all_edges_positional(children: node.children) || length(xs: positional_targets) < 2 {
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {

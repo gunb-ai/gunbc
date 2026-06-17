@@ -10070,7 +10070,7 @@ fn target_value_expr_match_arm_node_conforms(arm: Node) -> Bool {
 fn target_value_expr_match_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Match } =>
-      length(xs: node_positional_child_targets(node: node)) >= 2
+      length(xs: node_positional_child_targets(node: node)) == 3
         && match_arm_children_conform_skip_first(
           children: node.children,
           skipped_scrutinee: false

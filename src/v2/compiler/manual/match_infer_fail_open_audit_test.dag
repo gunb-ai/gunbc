@@ -74,6 +74,48 @@ test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> Bool {
   }
 }
 
+fn match_infer_fail_open_audit_extra_arm_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Match },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_match_arm_node(
+          pattern_lit: ^dag_token_kw_true,
+          body_lit: ^dag_mvp1_pick_lit_one
+        )
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_match_arm_node(
+          pattern_lit: ^dag_token_kw_false,
+          body_lit: ^dag_mvp1_pick_lit_one
+        )
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_match_arm_node(
+          pattern_lit: ^dag_token_kw_true,
+          body_lit: ^dag_mvp1_pick_lit_two
+        )
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// RED when infer accepts Match with scrutinee + 3 arms (M0 bool match pins arity == 3).
+test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
+  match infer(tree: match_infer_fail_open_audit_extra_arm_body()) {
+    Accepted { value: _, diagnostics: d } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 // Main-line control: literal-arm match body should still infer-accept (not over-reject).
 fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
   match infer(tree: dag_mvp1_match_if_body_fixture) {
