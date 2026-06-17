@@ -22,6 +22,7 @@ import v2.std.collection {
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
+  grammar_formal_terminal_free,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   grammar_expr_optional,
@@ -557,15 +558,15 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_qualified_name,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_qualified_name,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_dot),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name_repeat_suffix)
       ]
     ),
@@ -574,7 +575,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_qualified_name_repeat_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_dot),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name_repeat_suffix)
       ]
     ),
@@ -589,15 +590,15 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_ident_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_comma_ident_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_ident_list_suffix)
       ]
     ),
@@ -606,14 +607,14 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_comma_ident_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_ident_list_suffix)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_comma_ident_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_comma)
       ]
     ),
@@ -641,7 +642,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_typed_param_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr)
       ]
@@ -649,11 +650,11 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_typed_param_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_typed_param_list_suffix)
@@ -664,7 +665,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_comma_typed_param_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_typed_param_list_suffix)
@@ -673,7 +674,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_typed_param_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_terminal(identity: ^dag_token_comma)
@@ -809,7 +810,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_field_decl_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr)
       ]
@@ -817,11 +818,11 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_field_decl_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list_suffix)
@@ -832,7 +833,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_comma_field_decl_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list_suffix)
@@ -841,7 +842,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_comma_field_decl_list,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_terminal(identity: ^dag_token_comma)
@@ -893,7 +894,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_let_expr,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_let),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_eq),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
@@ -959,7 +960,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_postfix_expr_repeat_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_dot),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_postfix_expr_repeat_suffix)
       ]
     ),
@@ -967,7 +968,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_postfix_expr_repeat_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_dot),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_postfix_call_suffix),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_postfix_expr_repeat_suffix)
       ]
@@ -1027,13 +1028,13 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_primary_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_primary_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_primary_ident_suffix)
       ]
     ),
@@ -1183,7 +1184,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_arg,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
@@ -1197,7 +1198,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_field_init,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
@@ -1262,13 +1263,13 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_constructor_pattern,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_constructor_pattern,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_constructor_pattern_suffix)
       ]
     ),
@@ -1366,7 +1367,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_field_pattern,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_pattern)
       ]
@@ -1374,7 +1375,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_field_pattern,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
@@ -1516,14 +1517,14 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params)
       ]
     ),
@@ -1531,7 +1532,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
       ]
     ),
@@ -1539,7 +1540,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_eq),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_alias_rhs)
       ]
@@ -1548,7 +1549,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
       ]
@@ -1557,7 +1558,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_terminal(identity: ^dag_token_eq),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_alias_rhs)
@@ -1567,7 +1568,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_data_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_data),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_terminal(identity: ^dag_token_eq),
@@ -1578,7 +1579,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_body)
       ]
@@ -1587,7 +1588,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_terminal(identity: ^dag_token_arrow),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
@@ -1598,7 +1599,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_body)
@@ -1608,7 +1609,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal(identity: ^dag_token_ident),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_terminal(identity: ^dag_token_arrow),
@@ -3822,274 +3823,39 @@ fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
   }
 }
 
-// DESIGN-6 / grammar-inverse wave-2a — `.dag` type-decl Conj keystone (record with field block).
-data dag_wave2a_task_type_decl_source_text: String = "type Task { id: TaskId, title: String, status: TaskStatus }"
-
-// DESIGN-1: Conj positional slots = bound-terminal atoms + nonterminal RHS children only.
-fn dag_wave2a_qualified_name_emitted(binding: Symbol) -> Node {
+// Grammar-inverse type-decl — wave-1 free-ident productions; rows derived at emit (no fixture rows).
+fn dag_type_decl_productions_only_translation_rules() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: dag_inhabitant_atom(id: binding) }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_type_expr_name_emitted(binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: dag_wave2a_qualified_name_emitted(binding: binding)
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_comma_field_decl_suffix_emitted() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: dag_inhabitant_atom(id: ^dag_binding_wave2a_field_status) },
-      Edge {
-        label: Positional,
-        target: dag_wave2a_type_expr_name_emitted(binding: ^dag_binding_wave2a_type_task_status)
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_comma_field_decl_list_emitted() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: dag_inhabitant_atom(id: ^dag_binding_wave2a_field_id) },
-      Edge {
-        label: Positional,
-        target: dag_wave2a_type_expr_name_emitted(binding: ^dag_binding_wave2a_type_task_id)
-      },
-      Edge { label: Positional, target: dag_inhabitant_atom(id: ^dag_binding_wave2a_field_title) },
-      Edge {
-        label: Positional,
-        target: dag_wave2a_type_expr_name_emitted(binding: ^dag_binding_type_string)
-      },
-      Edge { label: Positional, target: dag_wave2a_comma_field_decl_suffix_emitted() }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_field_decl_block_emitted() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: dag_wave2a_comma_field_decl_list_emitted() }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_type_decl_record_emitted(name_binding: Symbol, field_block: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: dag_inhabitant_atom(id: name_binding) },
-      Edge { label: Positional, target: field_block }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn dag_wave2a_task_type_decl_emitted() -> Node {
-  dag_wave2a_type_decl_record_emitted(
-    name_binding: ^dag_binding_wave2a_task,
-    field_block: dag_wave2a_field_decl_block_emitted()
-  )
-}
-
-fn dag_wave2a_type_decl_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal_bound(
-          identity: ^dag_token_ident,
-          binding: ^dag_binding_wave2a_type_task_id
+      dag_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(
+          productions: dag_wave1_formal_productions()
         )
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal_bound(identity: ^dag_token_ident, binding: ^dag_binding_type_string)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal_bound(
-          identity: ^dag_token_ident,
-          binding: ^dag_binding_wave2a_type_task_status
-        )
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal_bound(identity: ^dag_token_ident, binding: ^dag_binding_wave2a_field_id),
-        grammar_formal_terminal(identity: ^dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
-        grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal_bound(
-          identity: ^dag_token_ident,
-          binding: ^dag_binding_wave2a_field_title
-        ),
-        grammar_formal_terminal(identity: ^dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^dag_production_comma_field_decl_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^dag_production_comma_field_decl_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal_bound(
-          identity: ^dag_token_ident,
-          binding: ^dag_binding_wave2a_field_status
-        ),
-        grammar_formal_terminal(identity: ^dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_field_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list),
-        grammar_formal_terminal(identity: ^dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal_bound(identity: ^dag_token_ident, binding: ^dag_binding_wave2a_task),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
-      ]
-    )
-  ]
-}
-
-fn dag_wave2a_task_type_decl_relation_row_witness() -> Witness<Node> {
-  match formal_production_for_lhs_exact(
-    productions: dag_wave2a_type_decl_formal_productions(),
-    lhs: ^dag_production_type_decl,
-    child: dag_wave2a_task_type_decl_emitted()
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: dag_wave2a_type_decl_formal_productions(),
-        emitted: dag_wave2a_task_type_decl_emitted()
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
-fn dag_wave2a_type_decl_translation_rules_witness() -> Witness<Node> {
-  match dag_wave2a_task_type_decl_relation_row_witness() {
-    Holds { value: row } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            dag_named_edge(
-              name: ^grammar_relation_rules_formal_productions,
-              target: formal_productions_catalog_to_node(
-                productions: dag_wave2a_type_decl_formal_productions()
-              )
-            ),
-            dag_named_edge(name: ^dag_relation_rule_wave2a_type_decl_task, target: row)
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+fn dag_type_decl_structural_target_model() -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        dag_named_edge(
+          name: ^target_model_edge_translation_rules,
+          target: dag_type_decl_productions_only_translation_rules()
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: dag_wave1_lex(),
+    binding_spellings: empty_map(),
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
-}
-
-fn dag_wave2a_task_type_decl_serialize_source_children() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: dag_inhabitant_atom(id: ^dag_wave2a_task_type_decl_source_literal)
-    ),
-    dag_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: dag_inhabitant_atom(id: ^dag_production_type_decl)
-    )
-  ]
-}
-
-fn dag_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<Edge>> {
-  match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    Accepted { value: tokens_root, diagnostics: _ } =>
-      match tokens_root.kind {
-        TypeNode { connective: Conj } => Holds { value: tokens_root.children }
-        _ =>
-          Violates {
-            diagnostic: Diagnostic {
-              reason: ^grammar_relation_row_tokens_not_conj,
-              at: node_locus(node: tokens_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          }
-      }
-    Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-  }
-}
-
-// DESIGN-6 bit-identical authority: dag_wave2a_task_type_decl_source_text
-fn dag_wave2a_task_type_decl_serialize_source_witness() -> Witness<Node> {
-  match dag_wave2a_task_type_decl_relation_row_witness() {
-    Holds { value: row } =>
-      match dag_grammar_relation_row_token_edges_witness(row: row) {
-        Holds { value: token_edges } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: list_append(
-                left: dag_wave2a_task_type_decl_serialize_source_children(),
-                right: token_edges
-              ),
-              occurrence_id: SyntheticOccurrence
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn dag_wave2a_type_decl_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^dag_binding_wave2a_task, "Task")
-  let m1 = map_insert(m0, ^dag_binding_wave2a_field_id, "id")
-  let m2 = map_insert(m1, ^dag_binding_wave2a_field_title, "title")
-  let m3 = map_insert(m2, ^dag_binding_wave2a_field_status, "status")
-  let m4 = map_insert(m3, ^dag_binding_wave2a_type_task_id, "TaskId")
-  let m5 = map_insert(m4, ^dag_binding_wave2a_type_task_status, "TaskStatus")
-  map_insert(m5, ^dag_binding_type_string, "String")
 }
 
 fn dag_mvp1_grammar_relation_row_node() -> Node {
