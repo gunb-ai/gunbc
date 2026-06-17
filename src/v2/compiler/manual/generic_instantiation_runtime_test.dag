@@ -5,8 +5,8 @@
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Present, map_get }
-import v2.std.diagnostic { Accepted }
+import v2.std.collection { Absent, Optional, Present, map_get }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.generic_instantiation {
   empty_generic_substitution,
   generic_substitution_bind_once,
@@ -17,8 +17,8 @@ import v2.std.node {
   Atom,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
+  node_synthetic
 }
 
 type Rec { v: Int }
@@ -59,10 +59,26 @@ data gi_bind_once_int_sym: Symbol = gi_bind_once_int_sym
 data gi_bind_once_bool_sym: Symbol = gi_bind_once_bool_sym
 
 fn gi_type_atom_node(sym: Symbol) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
+    children: []
+  )
+}
+
+fn gi_node_atom_identity(node: Node) -> Symbol {
+  match node {
+    Node {
+      kind: TypeNode { connective: Atom { identity: id } },
+      children: _,
+      occurrence_id: _
+    } => id
+  }
+}
+
+fn gi_bound_atom_is(opt: Optional<Node>, sym: Symbol) -> Bool {
+  match opt {
+    Present { value: bound } => gi_node_atom_identity(node: bound) == sym
+    Absent => false
   }
 }
 
@@ -80,12 +96,9 @@ fn generic_substitution_bind_once_first_wins_holds() -> Bool {
     concrete: n_bool
   )
   match map_get(subst2, "T") {
-    Accepted { value: Present { value: bound }, diagnostics: _ } =>
-      match bound.kind {
-        TypeNode { connective: Atom { identity: id } } => id == ^gi_bind_once_int_sym
-        _ => false
-      }
-    _ => false
+    Accepted { value: opt, diagnostics: _ } =>
+      gi_bound_atom_is(opt: opt, sym: ^gi_bind_once_int_sym)
+    Rejected { diagnostics: _ } => false
   }
 }
 
