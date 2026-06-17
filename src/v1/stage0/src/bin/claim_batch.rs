@@ -41,17 +41,18 @@
 //!
 //! 3. **Discovery batch** (CI floor; absorbed from the retired
 //!    `ci_claim_gate` binary). Instead of a hand-typed `--entry`/`--function`
-//!    roster, reflect over the discovered `unified_claim_*` BoolWitness corpus
-//!    plus the single-representation `test fn`/`test data` decls under the scan
-//!    dirs, group the discovered rows by entry, and run them through the SAME
-//!    batch loop. No hand roster, no rows-fn. The perturb pass that
-//!    `ci_claim_gate` carried was flag-gated (`--perturb-check`) and never run
-//!    in CI, so it is intentionally dropped with that binary.
+//!    roster, reflect over two leg(s) and run them through the SAME batch loop:
+//!    (a) the single-representation `test fn`/`test data` decls in `*_test.dag`
+//!    files across the whole `--source-root` (no scan-dir), and (b) the legacy
+//!    `unified_claim_*` BoolWitness decls inside any `--scan-dir` dirs. No hand
+//!    roster, no rows-fn. The perturb pass that `ci_claim_gate` carried was
+//!    flag-gated (`--perturb-check`) and never run in CI, so it is intentionally
+//!    dropped with that binary.
 //!
 //! Usage (discovery — the CI floor shape):
 //!   claim_batch --source-root <dir> [--source-root <dir> ...] \
 //!               --roster-from-discovery \
-//!               --scan-dir <dir> [--scan-dir <dir> ...] \
+//!               [--scan-dir <dir> ...]   # OPTIONAL: scopes leg (b) only \
 //!               [--notice-title <title>] [--wet] [--hermetic]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
@@ -481,10 +482,12 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             );
             return Err(ExitCode::from(2));
         }
-        if scan_dirs.is_empty() {
-            eprintln!("claim_batch: --roster-from-discovery requires at least one --scan-dir");
-            return Err(ExitCode::from(2));
-        }
+        // `--scan-dir` is OPTIONAL: it scopes ONLY the legacy `unified_claim_*`
+        // discovery leg. The single-representation `test fn`/`test data` leg walks
+        // the whole `--source-root` regardless (see `discover_roster`), so with no
+        // scan-dir the roster is the `test fn` corpus alone — the §3 single-mechanism
+        // end-state. An accidental no-op stays fail-closed: an empty roster exits 2
+        // downstream ("roster produced no rows").
         Some(DiscoveryConfig {
             scan_dirs,
             notice_title,
