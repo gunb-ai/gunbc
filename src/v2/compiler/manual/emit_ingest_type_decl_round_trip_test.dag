@@ -43,7 +43,7 @@ import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates }
 
 // A perturbed name binding declared by no row — drives the fail-closed control.
-data type_decl_round_trip_foreign_binding: Symbol = type_decl_round_trip_foreign_binding
+data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 
 // n: the type-decl Conj node under test (typescript `type Task = { ... }`).
 fn type_decl_emitted() -> Node {

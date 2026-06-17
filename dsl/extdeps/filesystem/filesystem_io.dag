@@ -19,6 +19,11 @@
 // output record is realized from captured stdout/exit. Like shell, a failed
 // effect does NOT throw: the op returns its record with `success = false` and
 // the OS error in `error`, so the caller branches on `result.success`.
+//
+// 🟡 dissolved — feature:filesystem-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
+// --fixture-store (recorded wet via --record); forbidden: reintroducing mock_response
+// constants for Hermetic dispatch on this shape.
 
 module extdeps.filesystem.filesystem_io
 
@@ -34,9 +39,6 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}" }
-    mock_response {
-      0 => { success: true, bytes_written: 0, path: "", error: "" } "Write committed"
-    }
   }
 
   // Read the file at `path` back into a String. `success` is false (and
@@ -50,8 +52,5 @@ service Filesystem {
     }
     readonly
     transport file { path: "{path}" }
-    mock_response {
-      0 => { content: "", success: true, error: "" } "File contents"
-    }
   }
 }
