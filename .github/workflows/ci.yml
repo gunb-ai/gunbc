@@ -42,27 +42,15 @@ jobs:
       - name: Cache Cargo
         uses: actions/cache@v5
         with:
-          path: ${{ runner.temp }}/cargo/registry/index/
-        ${{ runner.temp }}/cargo/registry/cache/
-        ${{ runner.temp }}/cargo/git/db/
-        target/
+          path: |
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+            target/
           key: "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}"
           restore-keys: |
-          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-          
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: CI floor (.dag witness corpus + gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p v1-compiler --release --bin claim_batch -- \
-            --source-root src/v2 --source-root dsl \
-            --roster-from-discovery \
-            --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses \
-            --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses \
-            --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds \
-            --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses \
-            --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses \
-            --entry dsl/test/claim/dsl_compile_clean_witness.dag --function dsl_compile_clean_witnesses \
-            --notice-title "v2 claim corpus"
-          cargo run -p v1-compiler --release --bin gunbc -- run \
-            --source-root dsl --source-root src/v2 \
-            --entry dsl/tools/ci_floor_gates.dag --function main
+          cargo run -p v1-compiler --release --bin gunbc -- ci

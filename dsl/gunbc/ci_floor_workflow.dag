@@ -6,7 +6,8 @@
 
 module gunbc.ci_floor_workflow
 
-import extdeps.formats.yaml { YamlValue, YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
+import gunbc.ci_floor_spec { gunbc_ci_floor_spec, gunbc_ci_workflow_run }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -148,46 +149,7 @@ data ci_floor_workflow: Workflow = {
       RunStep {
         name: Present { value: "CI floor (.dag witness corpus + gates via gunbc)" },
         id: none,
-        run: concat(
-          concat(
-            concat(
-              "git fetch --no-tags origin main 2>/dev/null || true\n",
-              "cargo run -p v1-compiler --release --bin claim_batch -- \\\n"
-            ),
-            concat(
-              concat(
-                concat(
-                  "  --source-root src/v2 --source-root dsl \\\n",
-                  "  --roster-from-discovery \\\n"
-                ),
-                concat(
-                  "  --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses \\\n",
-                  "  --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses \\\n"
-                )
-              ),
-              concat(
-                concat(
-                  "  --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds \\\n",
-                  "  --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses \\\n"
-                ),
-                concat(
-                  "  --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses \\\n",
-                  "  --entry dsl/test/claim/dsl_compile_clean_witness.dag --function dsl_compile_clean_witnesses \\\n"
-                )
-              )
-            )
-          ),
-          concat(
-            concat(
-              "  --notice-title \"v2 claim corpus\"\n",
-              "cargo run -p v1-compiler --release --bin gunbc -- run \\\n"
-            ),
-            concat(
-              "  --source-root dsl --source-root src/v2 \\\n",
-              "  --entry dsl/tools/ci_floor_gates.dag --function main"
-            )
-          )
-        ),
+        run: gunbc_ci_workflow_run(spec: gunbc_ci_floor_spec),
         shell: none,
         env: none,
         working_directory: none,

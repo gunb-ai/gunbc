@@ -1,0 +1,105 @@
+// gunbc/ci_floor_spec.dag — CI floor intent as data (Stop B).
+//
+// The workflow YAML is derived from this spec; `gunbc ci` is the collapsed consumer.
+// Diff base is parameterized here — not hardwired in extdeps/git transport argv.
+
+module gunbc.ci_floor_spec
+
+type WitnessRoot {
+  root: String
+  scan_subtrees: List<String>
+}
+
+type WitnessEntry {
+  entry: String
+  function: String
+}
+
+type Gate
+  = RustMonolithGate
+  | EmitHostGate
+  | LayeringImportsGate
+  | DslCompileCleanGate
+  | CiYamlGate
+
+type DiffMode = DiffMergeBase | DiffTwoDot
+
+type DiffPolicy {
+  base: String
+  head: String
+  mode: DiffMode
+}
+
+type CiFloorSpec {
+  witness_roots: List<WitnessRoot>
+  witness_entries: List<WitnessEntry>
+  gates: List<Gate>
+  diff_policy: DiffPolicy
+  notice_title: String
+}
+
+data gunbc_ci_floor_spec: CiFloorSpec = {
+  witness_roots: [
+    { root: "src/v2", scan_subtrees: [] },
+    { root: "dsl", scan_subtrees: [] }
+  ],
+  witness_entries: [
+    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
+    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
+    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
+    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
+    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
+    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" }
+  ],
+  gates: [
+    RustMonolithGate,
+    EmitHostGate,
+    LayeringImportsGate,
+    DslCompileCleanGate,
+    CiYamlGate
+  ],
+  diff_policy: {
+    base: "origin/main",
+    head: "HEAD",
+    mode: DiffMergeBase
+  },
+  notice_title: "v2 claim corpus"
+}
+
+fn witness_entry_flags(row: WitnessEntry) -> String {
+  concat(
+    concat(concat(" --entry ", row.entry), concat(" --function ", row.function)),
+    ""
+  )
+}
+
+fn claim_batch_script(spec: CiFloorSpec) -> String {
+  concat(
+    concat(
+      "cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --source-root dsl --roster-from-discovery",
+      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+    ),
+    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+  )
+}
+
+fn gunbc_ci_run_script(spec: CiFloorSpec) -> String {
+  concat(
+    concat(
+      "git fetch --no-tags origin main 2>/dev/null || true\n",
+      concat(claim_batch_script(spec: spec), "\n")
+    ),
+    "cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --source-root src/v2 --entry dsl/tools/ci_floor_gates.dag --function main"
+  )
+}
+
+// Collapsed one-liner for the workflow run step (invokes the `gunbc ci` seed subcommand).
+fn gunbc_ci_workflow_run(spec: CiFloorSpec) -> String {
+  concat(
+    concat(
+      "git fetch --no-tags origin main 2>/dev/null || true\n",
+      "cargo run -p v1-compiler --release --bin gunbc -- ci"
+    ),
+    ""
+  )
+}

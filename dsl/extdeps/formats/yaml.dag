@@ -84,17 +84,22 @@ fn escape_double_quoted(s: String) -> String {
   replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
 }
 
-fn emit_scalar_string(s: String) -> String {
-  if is_expression(s: s) {
-    s
-  } else if s == "" {
+fn emit_scalar_string(s: String, depth: Int) -> String {
+  if s == "" {
     "''"
   } else if string_contains(s: s, pattern: "\n") {
     concat("|\n", fold(
       split(s: s, delimiter: "\n"),
       init: "",
-      f: (acc, line) => concat(concat(acc, "  "), concat(line, "\n"))
+      f: (acc, line) =>
+        if line == "" {
+          acc
+        } else {
+          concat(concat(acc, indent(depth: depth + 1)), concat(line, "\n"))
+        }
     ))
+  } else if is_expression(s: s) {
+    s
   } else if needs_double_quotes(s: s) {
     concat(concat("\"", escape_double_quoted(s: s)), "\"")
   } else {
@@ -102,13 +107,13 @@ fn emit_scalar_string(s: String) -> String {
   }
 }
 
-fn emit_scalar(v: YamlValue) -> String {
+fn emit_scalar(v: YamlValue, depth: Int) -> String {
   match v {
     YamlNull => ""
     YamlBool { value: b } => if b { "true" } else { "false" }
     YamlInt { lexeme: l } => l
     YamlFloat { lexeme: l } => l
-    YamlString { value: s } => emit_scalar_string(s: s)
+    YamlString { value: s } => emit_scalar_string(s: s, depth: depth)
     YamlSequence { elements: _ } => ""
     YamlMapping { entries: _ } => ""
   }
@@ -128,7 +133,7 @@ fn emit_flow_sequence(elements: List<YamlValue>) -> String {
     concat(
       "[",
       fold(elements, init: "", f: (acc, e) => {
-        let part = emit_scalar(v: e)
+        let part = emit_scalar(v: e, depth: 0)
         if acc == "" { part } else { concat(concat(acc, ", "), part) }
       })
     ),
@@ -164,7 +169,7 @@ fn emit_block_sequence(elements: List<YamlValue>, depth: Int) -> String {
           depth: depth
         )
       _ =>
-        concat(concat(concat(indent(depth: depth), "- "), emit_scalar(v: e)), "\n")
+        concat(concat(concat(indent(depth: depth), "- "), emit_scalar(v: e, depth: depth)), "\n")
     }
     concat(acc, line)
   })
@@ -192,7 +197,7 @@ fn emit_mapping_body(entries: List<YamlKeyValue>, depth: Int) -> String {
           )
         }
       _ =>
-        concat(concat(concat(indent(depth: depth), concat(key, ": ")), emit_scalar(v: val)), "\n")
+        concat(concat(concat(indent(depth: depth), concat(key, ": ")), emit_scalar(v: val, depth: depth)), "\n")
     }
     concat(acc, line)
   })
@@ -207,7 +212,7 @@ fn emit_yaml_value(v: YamlValue, depth: Int) -> String {
       } else {
         emit_block_sequence(elements: els, depth: depth)
       }
-    _ => concat(emit_scalar(v: v), "\n")
+    _ => concat(emit_scalar(v: v, depth: depth), "\n")
   }
 }
 
