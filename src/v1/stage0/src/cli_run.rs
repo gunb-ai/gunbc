@@ -1864,3 +1864,246 @@ pub fn owned_data_bool_witness_transport_tsv(
     }
     Ok(out)
 }
+
+// ── Floor discovery corpus (shared by claim_batch + claim_executor) ──────────
+//
+// The discovery ROSTER (which `(entry, function)` Bool witnesses make up the CI
+// floor corpus) is a single authority (DESIGN §3): the `--roster-from-discovery`
+// scan in `claim_batch` and the scheduler's `DiscoveryBatch` node (driven by
+// `claim_executor`) both reflect over the SAME corpus via the functions below,
+// rather than either re-coining the roster or duplicating the scan. The exclude
+// set, the `unified_claim_*`/`test fn`/`test data` reflection, and the
+// `*_test.dag`-only convention live here once.
+
+/// One discovered witness row. `label` is for diagnostics; the `(entry,
+/// function)` pair is what gets resolved and run.
+pub struct DiscoveryRow {
+    pub label: String,
+    pub entry: String,
+    pub function: String,
+}
+
+/// Summary of running the floor discovery corpus: how many witnesses ran, how
+/// many passed, and a rendered failure line per non-pass (empty on full green).
+pub struct DiscoverySummary {
+    pub total: usize,
+    pub passed: usize,
+    pub failures: Vec<String>,
+}
+
+/// Default exclude set for floor discovery. Manifest/law files that import the
+/// ephemeral discovery output would otherwise re-enter discovery acyclically;
+/// the manual lane (`test/manual/`) carries its own ExpectPass|ExpectFail
+/// expected-outcome (some pinned red to tracking anchors), so a universal-green
+/// floor must not run them as must-pass. Single home (was duplicated in the
+/// claim_batch bin as `DISCOVERY_EXCLUDES`).
+pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
+    "impossible_bug",
+    "test/manual/",
+    "glob_discovery.dag",
+    "glob_discovery_law.dag",
+    "host_discovered_owned_data_manifest.dag",
+    "unified_test_claim_substrate_equivalence.dag",
+];
+
+/// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
+/// on a transient read error). The eager `collect_dag_files` above panics, which
+/// is wrong for the floor scan.
+fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files_tolerant(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
+/// declaration in source text (the v2 parser drops the contextual `test`
+/// keyword, so the marker is detected in source text — same posture as the
+/// `data unified_claim_` scan).
+fn scan_test_decl_names(content: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let rest = trimmed
+            .strip_prefix("test fn ")
+            .or_else(|| trimmed.strip_prefix("test data "));
+        if let Some(rest) = rest {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+/// Fail-closed filename hygiene: `.dag` basenames under the source roots must not
+/// contain `__` (legacy flat-dir encoding; use subdirectories). Preserved from
+/// the retired `ci_claim_gate` (#5051).
+pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
+    let mut violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        for path in dag_files {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.contains("__"))
+            {
+                violations.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if violations.is_empty() {
+        return Ok(());
+    }
+    violations.sort();
+    Err(format!(
+        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
+         offending file(s): {}",
+        violations.join(", ")
+    ))
+}
+
+/// Reflect over the scan dirs for the floor corpus roster: every discovered
+/// `unified_claim_*` BoolWitness decl plus every single-representation
+/// `test fn`/`test data` decl (the latter only in `*_test.dag` files — a `test`
+/// decl found in an implementation file is a hard error). Rows are deduped on
+/// `(entry, function)` and sorted. This is the single roster authority.
+pub fn discover_floor_corpus_rows(
+    source_roots: &[String],
+    scan_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let mut rows: Vec<DiscoveryRow> = Vec::new();
+    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
+    for scan_dir in scan_dirs {
+        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        for rec in discovery.records {
+            if let OwnedDataDeclInitializer::BoolWitnessClaim {
+                witness_entry,
+                witness_function,
+            } = rec.initializer
+            {
+                if witness_entry.is_empty() || witness_function.is_empty() {
+                    return Err(format!(
+                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
+                        rec.decl_name
+                    ));
+                }
+                if seen.insert((witness_entry.clone(), witness_function.clone())) {
+                    let label = rec
+                        .decl_name
+                        .strip_prefix("unified_claim_")
+                        .unwrap_or(&rec.decl_name)
+                        .to_string();
+                    rows.push(DiscoveryRow {
+                        label,
+                        entry: witness_entry,
+                        function: witness_function,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut test_fn_violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let names = scan_test_decl_names(&content);
+            if names.is_empty() {
+                continue;
+            }
+            if !entry.ends_with("_test.dag") {
+                test_fn_violations.push(entry);
+                continue;
+            }
+            for name in names {
+                if seen.insert((entry.clone(), name.clone())) {
+                    rows.push(DiscoveryRow {
+                        label: name.clone(),
+                        entry: entry.clone(),
+                        function: name,
+                    });
+                }
+            }
+        }
+    }
+    if !test_fn_violations.is_empty() {
+        test_fn_violations.sort();
+        return Err(format!(
+            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
+            test_fn_violations.join(", ")
+        ));
+    }
+    rows.sort_by(|a, b| a.entry.cmp(&b.entry).then_with(|| a.function.cmp(&b.function)));
+    Ok(rows)
+}
+
+/// Run the whole floor discovery corpus through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary. Fail-closed: an
+/// empty roster is an error (a zero-witness corpus is never a successful run).
+/// This is the `DiscoveryBatch` scheduler-node handler; `claim_batch` keeps its
+/// own timing/stats loop but shares the roster (`discover_floor_corpus_rows`).
+pub fn run_discovery_corpus(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    check_floor_filename_hygiene(source_roots)?;
+    let rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    if rows.is_empty() {
+        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    let index = build_multi_entry_index(source_roots);
+
+    // Group by entry (rows are sorted by (entry, function)), resolve each entry
+    // once, run its witnesses against the shared graph.
+    let mut summary = DiscoverySummary {
+        total: rows.len(),
+        passed: 0,
+        failures: Vec::new(),
+    };
+    let mut current_entry: Option<String> = None;
+    let mut ctx: Option<v1_interpreter::InterpContext> = None;
+    for row in &rows {
+        if current_entry.as_deref() != Some(row.entry.as_str()) {
+            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
+                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
+            current_entry = Some(row.entry.clone());
+        }
+        let ctx_ref = ctx.as_ref().expect("ctx set above");
+        match run_claim(ctx_ref, &row.function) {
+            ClaimOutcome::Pass => summary.passed += 1,
+            ClaimOutcome::Fail => summary
+                .failures
+                .push(format!("{} ({}) returned Bool(false)", row.function, row.entry)),
+            ClaimOutcome::NotBool { got } => summary
+                .failures
+                .push(format!("{} ({}) returned `{}`, not Bool", row.function, row.entry, got)),
+            ClaimOutcome::RuntimeError { message } => summary
+                .failures
+                .push(format!("{} ({}) runtime error: {}", row.function, row.entry, message)),
+        }
+    }
+    Ok(summary)
+}
