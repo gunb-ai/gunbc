@@ -4160,16 +4160,6 @@ fn eval_builtin(
                 Err(_) => Ok(Some(Value::Null)),
             }
         }
-
-        // Function-call `length(xs)` — mirrors method `.length` for std/algebra hot loops.
-        "length" => match positional.as_slice() {
-            [xs] => match free_monoid_to_vec(xs) {
-                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        },
-
         "concat" => {
             // Variadic string concat (common in .dag code)
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
