@@ -1,4 +1,4 @@
-// Status: modeled claim + emit-coupling receipt; host runner scripts/v2-leaf-model-rust-r3-internal-verify.sh.
+// Status: modeled claim + emit-coupling receipt.
 
 module v2.test.language_model.rust_r3_internal
 

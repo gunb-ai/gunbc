@@ -1,4 +1,4 @@
-// Status: modeled claim + fixture pair; host runner scripts/v2-leaf-model-typescript-r2a-verify.sh.
+// Status: modeled claim + fixture pair.
 
 module v2.test.language_model.typescript_r2a
 

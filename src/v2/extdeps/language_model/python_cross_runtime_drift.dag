@@ -1,8 +1,7 @@
 // Scope: PY-L2-CROSS-RUNTIME-DRIFT — positive cross-runtime divergence receipt (complement of
 //   the L2 cross-target parity lane). The same modeled program (exact integer add at the
 //   fixed-width boundary) diverges: Python arbitrary precision vs Rust i64 / Go int64 wraparound.
-// Status: modeled claim + drift probe row; host runner
-//   scripts/v2-leaf-model-python-cross-runtime-drift-verify.sh.
+// Status: modeled claim + drift probe row.
 
 module v2.test.language_model.python_cross_runtime_drift
 
