@@ -25,6 +25,7 @@ import v2.std.compilers.target_model {
   target_model_edge_translation_rules,
   target_project_arrow_body_to_value_expression,
   target_project_transform_primitive_apply_in_arrow_scope,
+  target_project_transform_callable_apply_in_arrow_scope,
   target_transform_surface_op_atom,
   target_value_expr_arrow_has_value_expression_body,
   target_value_expression_projection_from_target,
@@ -950,7 +951,18 @@ fn translate_project_transform_in_arrow_scope(
             canonical_op: canonical_op,
             target: target
           )
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        // Lane 2c — a Transform head that does NOT canonicalize to an operator is a callee
+        // reference: project the body as a value-level call `callee(arg, ...)`, recursing through
+        // this same projector for nested calls and inline-closure arguments.
+        Rejected { diagnostics: _ } =>
+          target_project_transform_callable_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            target: target,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
+          )
       }
     }
   )

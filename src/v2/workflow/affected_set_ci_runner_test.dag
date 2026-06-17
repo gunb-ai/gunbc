@@ -1,5 +1,5 @@
 // Status: node-frontier selection claim-run witnesses (affected-set-3a); `test fn`
-// rows below are discovered by `ci-claim-gate --roster-from-discovery`.
+// rows below are discovered by `claim_batch --roster-from-discovery`.
 
 module v2.test.workflow.affected_set_ci_runner
 

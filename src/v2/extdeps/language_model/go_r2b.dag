@@ -1,5 +1,5 @@
 // Status: modeled claim + runtime fixture pair; the executable receipt is the
-// in-file claim witness, run in-process by the ci_claim_gate binary.
+// in-file claim witness, run in-process by the claim_batch binary.
 
 module v2.test.language_model.go_r2b
 

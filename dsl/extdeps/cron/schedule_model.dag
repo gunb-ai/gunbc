@@ -1,4 +1,4 @@
-// extdeps/cron/schedule_model.dag — POSIX crontab schedule field grammar (carriers + wire render).
+// extdeps/cron/schedule_model.dag — POSIX crontab schedule protocol (carriers + wire render).
 //
 // Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
 //   Spec: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html

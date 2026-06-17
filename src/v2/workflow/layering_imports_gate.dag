@@ -4,7 +4,7 @@
 // Host enumerates import facts via layering_imports_scan; v2.lens.layering_imports
 // owns violation semantics. Green pass runs clean_tree on the live scanned manifest.
 // Scanner-execution perturb receipts are driven by scripts/v2-layering-imports-gate.sh
-// (plant -> scan -> witness), not ci-claim-gate data-only perturb.
+// (plant -> scan -> witness), not claim_batch data-only perturb.
 //
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
