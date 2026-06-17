@@ -57,6 +57,7 @@ data pbf_imported_seg: Symbol = pbf_imported_seg
 data pbf_subject_seg: Symbol = pbf_subject_seg
 data pbf_export_sym: Symbol = pbf_export_sym
 data pbf_imported_decl: Symbol = pbf_imported_decl
+data pbf_import_use_sym: Symbol = pbf_import_use_sym
 data pbf_unbound_sym: Symbol = pbf_unbound_sym
 data pbf_ambiguous_export_sym: Symbol = pbf_ambiguous_export_sym
 
@@ -247,7 +248,7 @@ fn pbf_subject_with_import_use() -> Node {
         target: pbf_qn_node(seg: pbf_subject_seg)
       ),
       Edge {
-        label: Named { name: pbf_imported_decl },
+        label: Named { name: pbf_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: pbf_imported_decl } },
           children: [],
