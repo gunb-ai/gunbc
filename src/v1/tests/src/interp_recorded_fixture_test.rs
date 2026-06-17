@@ -693,7 +693,10 @@ fn hermetic_env_fixture_staleness_fails_closed() {
         "--fixture-store",
         store_dir.to_str().expect("store path"),
     ]);
-    assert!(record.status.success(), "record must capture Environment.Read");
+    assert!(
+        record.status.success(),
+        "record must capture Environment.Read"
+    );
 
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");

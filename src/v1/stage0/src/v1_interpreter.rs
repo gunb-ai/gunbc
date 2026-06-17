@@ -3219,7 +3219,9 @@ fn eval_algebra_method(
 
 /// Infra clock for RecordedFixture `recorded_at` / freshness — always wet shell
 /// transport (`date +%s`), matching extdeps/clock/clock.dag. Never SystemTime.
-pub fn fixture_now_secs(_ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
+pub fn fixture_now_secs(
+    _ctx: &InterpContext,
+) -> Result<u64, crate::recorded_fixture::FixtureError> {
     wet_clock_unix_secs_via_shell()
 }
 
@@ -3344,8 +3346,8 @@ fn eval_service_call(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
                 service_name, op_name, inputs_hash
             );
-            let now_secs = fixture_now_secs(ctx)
-                .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+            let now_secs =
+                fixture_now_secs(ctx).map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
             let fixture = store
                 .lookup(&key, &inputs_hash, &inputs_json, now_secs)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
@@ -3365,8 +3367,8 @@ fn eval_service_call(
             .ok_or_else(|| InterpError::TypeError {
                 msg: "--record requires --fixture-store".to_string(),
             })?;
-        let now_secs = fixture_now_secs(ctx)
-            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
+        let now_secs =
+            fixture_now_secs(ctx).map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
         store
             .record(&key, &inputs_hash, &inputs_json, &result, ctx, now_secs)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
