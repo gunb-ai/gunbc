@@ -1,9 +1,9 @@
 // src/v2/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 rust/go/python rows — substrate `run_emit_host_*` bodies stay fail-closed in
-//   src/v2 (no host effects). Executable host boundary: `dsl/tools/emit_host_gate.dag`
-//   (gunbc run; replaces deleted `tools/emit_host_runner`). Eval intercept for in-corpus
-//   emit-vs-eval awaits T-22 Realization wiring.
+// Status: T-22 runtime_row on TargetModel — generic row-lookup in run_emit_host / runtime_value_parse
+//   (gunbc#4750). Substrate host bodies stay fail-closed; executable boundary:
+//   `dsl/tools/emit_host_gate.dag` (gunbc run). Eval intercept for in-corpus emit-vs-eval
+//   awaits T-22 Realization wiring.
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
