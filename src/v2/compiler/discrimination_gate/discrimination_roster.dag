@@ -3,8 +3,9 @@
 //        units (each a List<TestClaim> covering one change). Every row's unit must be
 //        DISCRIMINATING per v2.lens.discrimination (a positive AND a perturbed negative);
 //        empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent);
-//        an all-positive negative control must be REJECTED by the lens (semantic-red,
-//        so the gate cannot pass vacuously). The rows REUSE already-landed impossible-bug
+//        TWO semantic-red controls must each be REJECTED by the lens — an all-positive unit
+//        (polarity axis) AND a green+red unit over the IDENTICAL input (perturbation axis) —
+//        so neither §5 axis can be stubbed without reddening the gate. The rows REUSE impossible-bug
 //        perturbation pairs — a CompilesClaim over a base input paired with a DiagnosticClaim
 //        over its perturbed falsification — rather than fork synthetic fixtures.
 //        Module is v2.test.discrimination_gate.* (test layer) though the file sits under
@@ -18,10 +19,27 @@ import v2.lens.discrimination { unit_is_discriminating }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.verification { TestClaim }
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 import v2.test.impossible_bug.suboptimal_complexity {
   claim_within_structural_bound_passes,
-  claim_overcost_against_structural_bound_violates
+  claim_overcost_against_structural_bound_violates,
+  within_bound_input
 }
 import v2.test.impossible_bug.nested_optional_flatten {
   claim_optional_chaining_no_double_unwrap,
@@ -58,15 +76,51 @@ fn discrimination_subject_rows() -> List<List<TestClaim>> {
   ]
 }
 
-// Semantic-red negative control: an all-positive unit (only a green assertion, no
-// discriminating negative) is exactly the §5 spec-without-execution trap. The lens
-// MUST reject it; the gate asserts that rejection so it cannot pass vacuously.
+// The gate guards TWO independent non-vacuity axes, each with its own semantic-red
+// control unit the lens MUST reject — so neither the polarity check nor the perturbation
+// check can be stubbed-out without reddening the gate (DESIGN.md §5 spec-without-execution
+// / §6 coverage-by-illusion; matches the per-axis controls in budget_roster_completeness
+// and optimality_gap_completeness).
+
+// Axis 1 — POLARITY: an all-positive unit (only a green assertion, no discriminating
+// negative) is the §5 spec-without-execution trap. The lens MUST reject it
+// (discrimination_reason_no_discriminating_negative).
 data all_positive_control_unit: List<TestClaim> = [
   claim_within_structural_bound_passes
 ]
 
 fn negative_control_correctly_rejected() -> Bool {
   !unit_is_discriminating(unit: all_positive_control_unit)
+}
+
+// Axis 2 — PERTURBATION: a unit that DOES pair a green and a red, but over the IDENTICAL
+// input, is not a real discriminator — a negative over the input the positive accepts proves
+// nothing. The lens MUST reject it (discrimination_reason_negative_not_perturbed). Without
+// this control, unit_has_perturbation could be stubbed to always-true and the gate would
+// still pass on the curated roster. The red claim is a synthetic DiagnosticClaim over the
+// SAME `within_bound_input` the green CompilesClaim accepts (cf. the synthetic semantic-red
+// fixtures in sibling gates).
+data non_perturbed_red_over_green_input: TestClaim = DiagnosticClaim {
+  label: "non-perturbation control: red asserted over the SAME input the positive accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: within_bound_input,
+  expected_rejection: diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^discrimination_control_non_perturbed_reason,
+      at: Textual { file: ^discrimination_gate_virtual_file, extent: WholeFile },
+      correction: Unavailable { reason: UserInputBoundary }
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data non_perturbed_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  non_perturbed_red_over_green_input
+]
+
+fn non_perturbed_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
 fn all_rows_discriminating(rows: List<List<TestClaim>>) -> Bool {
@@ -84,6 +138,8 @@ fn discrimination_family_gate() -> Bool {
   if is_empty(xs: rows) {
     false
   } else {
-    all_rows_discriminating(rows: rows) && negative_control_correctly_rejected()
+    all_rows_discriminating(rows: rows)
+      && negative_control_correctly_rejected()
+      && non_perturbed_control_correctly_rejected()
   }
 }
