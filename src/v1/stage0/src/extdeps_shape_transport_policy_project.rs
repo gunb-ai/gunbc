@@ -63,6 +63,9 @@ fn argv_token_references_param(token: &str, param_name: &str) -> bool {
     token.contains(&format!("{{{param_name}}}"))
 }
 
+// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_input_param_is_transport_bound
+// (single authority for transport-bound param names; delete this mirror when the parse
+// bridge reads the .dag predicate instead of hardcoding).
 fn input_param_is_transport_bound(param_name: &str) -> bool {
     param_name == "env"
 }
