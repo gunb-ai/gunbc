@@ -1,8 +1,6 @@
-// gunbc/ci_floor_spec.dag — CI floor intent as data (Stop B).
-//
-// Every env script and gate composition are derived from this spec — no parallel literals.
+// gunbc/ci_spec.dag — CI intent as data (witness roots, gates, diff policy).
 
-module gunbc.ci_floor_spec
+module gunbc.ci_spec
 
 type WitnessRoot {
   root: String
@@ -29,7 +27,7 @@ type DiffPolicy {
   mode: DiffMode
 }
 
-type CiFloorSpec {
+type CiSpec {
   witness_roots: List<WitnessRoot>
   witness_entries: List<WitnessEntry>
   gates: List<Gate>
@@ -37,7 +35,7 @@ type CiFloorSpec {
   notice_title: String
 }
 
-data gunbc_ci_floor_spec: CiFloorSpec = {
+data gunbc_ci_spec: CiSpec = {
   witness_roots: [
     { root: "src/v2", scan_subtrees: [] },
     { root: "dsl", scan_subtrees: [] }
@@ -104,7 +102,7 @@ fn witness_entry_flags(row: WitnessEntry) -> String {
   concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
 }
 
-fn claim_batch_script(spec: CiFloorSpec) -> String {
+fn claim_batch_script(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
@@ -117,24 +115,24 @@ fn claim_batch_script(spec: CiFloorSpec) -> String {
   )
 }
 
-fn ci_floor_gates_invoke(spec: CiFloorSpec) -> String {
+fn ci_gates_invoke(spec: CiSpec) -> String {
   concat(
     concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
-    " --entry dsl/tools/ci_floor_gates.dag --function main"
+    " --entry dsl/tools/ci_gates.dag --function main"
   )
 }
 
-fn gunbc_ci_run_script(spec: CiFloorSpec) -> String {
+fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
     concat(
       concat(git_fetch_script(policy: spec.diff_policy), "\n"),
       concat(claim_batch_script(spec: spec), "\n")
     ),
-    ci_floor_gates_invoke(spec: spec)
+    ci_gates_invoke(spec: spec)
   )
 }
 
-fn gunbc_ci_workflow_run(spec: CiFloorSpec) -> String {
+fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   concat(
     concat(git_fetch_script(policy: spec.diff_policy), "\n"),
     "cargo run -p v1-compiler --release --bin gunbc -- ci"

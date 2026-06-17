@@ -1,13 +1,13 @@
-// gunbc/ci_floor_workflow.dag — authoritative CI floor Workflow value.
+// gunbc/ci_workflow.dag — authoritative GitHub Actions Workflow value for repo CI.
 //
 // Single authority for `.github/workflows/ci.yml` (DESIGN §3). The committed file
-// is the literal byte output of `serialize_yaml(project_workflow_to_yaml(ci_floor_workflow))`
+// is the literal byte output of `serialize_yaml(project_workflow_to_yaml(ci_workflow))`
 // — no hash pin, no dual representation.
 
-module gunbc.ci_floor_workflow
+module gunbc.ci_workflow
 
 import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
-import gunbc.ci_floor_spec { gunbc_ci_floor_spec, gunbc_ci_workflow_run }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -18,7 +18,7 @@ import extdeps.github.actions {
   checkout_action, setup_rust_action, cache_action
 }
 
-data ci_floor_workflow: Workflow = {
+data ci_workflow: Workflow = {
   name: "ci",
   on: [
     WorkflowDispatch { inputs: [] },
@@ -147,9 +147,9 @@ data ci_floor_workflow: Workflow = {
         timeout_minutes: none
       },
       RunStep {
-        name: Present { value: "CI floor (.dag witness corpus + gates via gunbc)" },
+        name: Present { value: "gunbc ci (.dag witnesses + gates)" },
         id: none,
-        run: gunbc_ci_workflow_run(spec: gunbc_ci_floor_spec),
+        run: gunbc_ci_workflow_run(spec: gunbc_ci_spec),
         shell: none,
         env: none,
         working_directory: none,
