@@ -1,14 +1,14 @@
 // tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
 //
-// Host runs `gunbc compile --source-root <dsl> --target rust` over the live tree (GREEN) and
-// a temp-tree perturb receipt (RED: planted optional Some/None skew must fail typecheck).
+// GREEN: compile_cached over live dsl/ (resolved_graph_cache memo; dsl_compile_clean_memo.dag).
+// RED: temp-tree perturb receipt (legacy Some/None skew must fail typecheck via gunbc compile).
 
 module tools.dsl_compile_clean_transport
 
 import extdeps.shell
 
 fn run_clean_tree_compile() -> Bool {
-  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --features text_lookup_work_counter --bin gunbc) || exit 1; fi\nOUT=$(mktemp -d)\n\"$GUNBC\" compile --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust\nrm -rf \"$OUT\""
+  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nCACHE=\"$ROOT/.cache/resolved-graph\"\nmkdir -p \"$CACHE\"\nexport GUNBC_RESOLVED_GRAPH_CACHE_DIR=\"$CACHE\"\nCC=\"$ROOT/target/release/compile_cached\"\nif [ ! -x \"$CC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --features text_lookup_work_counter --bin compile_cached) || exit 1; fi\nOUT=$(mktemp -d)\n\"$CC\" --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust\nrm -rf \"$OUT\""
   let result = shell.Exec.Run(script: script)
   result.success
 }

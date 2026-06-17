@@ -25,6 +25,10 @@ serde_yaml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 
 [[bin]]
+name = "compile_cached"
+path = "src/bin/compile_cached.rs"
+
+[[bin]]
 name = "gunbc"
 path = "src/main.rs"
 

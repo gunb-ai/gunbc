@@ -90,6 +90,9 @@ out.txt
 # --- GitHub CLI local cache (dashboard / gh API) ---
 .gh-cache/
 
+# --- resolved_graph_cache (dsl compile-clean memo; CI restores via actions/cache) ---
+.cache/
+
 # --- Python bytecode (local script runs) ---
 __pycache__/
 *.pyc

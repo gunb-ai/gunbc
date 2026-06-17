@@ -143,7 +143,10 @@ data ci_workflow: Workflow = {
                 ),
                 concat(
                   "${{ runner.temp }}/cargo/git/db/\n",
-                  "target/"
+                  concat(
+                    ".cache/resolved-graph/\n",
+                    "target/"
+                  )
                 )
               ),
               ""

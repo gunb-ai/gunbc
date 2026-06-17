@@ -2084,3 +2084,65 @@ pub fn emit_source_root_ingest_manifest(
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
 }
+
+fn resolved_pipeline_from_cached_graph(
+    graph: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<v1_compiler_compile::ResolvedPipelineResult> {
+    let ownership = v1_compiler_compile::extract_ownership_proofs(graph.clone());
+    let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership.clone());
+    let newline_indices = Rc::new(source_indices.values().cloned().collect::<Vec<_>>());
+    Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+        graph: Some(graph),
+        diagnostics: ownership_diags,
+        source_indices,
+        complexity: crate::v1_compiler_complexity::empty_complexity_report(),
+        ownership,
+        newline_indices,
+    })
+}
+
+fn resolved_has_blocking_errors(resolved: &v1_compiler_compile::ResolvedPipelineResult) -> bool {
+    resolved
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+}
+
+/// Whole-tree compile with resolved_graph_cache lookup/write (kernel extension for
+/// dsl_compile_clean; authority: dsl/tools/dsl_compile_clean_memo.dag).
+pub fn compile_sources_with_resolved_graph_cache(
+    sources: Rc<Vec<Rc<v1_compiler_compile::SourceFile>>>,
+    target: crate::v1_compiler_artifact::RenderTarget,
+) -> Rc<v1_compiler_compile::PipelineResult> {
+    let subject = subject_digest_for_closure(sources.as_ref());
+    if let Some(cache_root) = resolved_graph_cache_root_from_env() {
+        if let CacheLookupResult::Hit(hit) = cross_process_lookup(&cache_root, &subject) {
+            let resolved =
+                resolved_pipeline_from_cached_graph(hit.graph.clone(), hit.source_indices.clone());
+            if !resolved_has_blocking_errors(resolved.as_ref()) {
+                return v1_compiler_compile::emit_resolved_for_target(resolved, target);
+            }
+        }
+    }
+
+    let resolved = v1_compiler_compile::compile_to_resolved(sources.clone());
+    if !resolved_has_blocking_errors(resolved.as_ref()) {
+        if let (Some(cache_root), Some(graph)) =
+            (resolved_graph_cache_root_from_env(), resolved.graph.as_ref())
+        {
+            let si: HashMap<String, Rc<NewlineIndex>> = resolved
+                .source_indices
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let _ = cross_process_write(&cache_root, &subject, graph, &si);
+        }
+    }
+    v1_compiler_compile::emit_resolved_for_target(resolved, target)
+}
+
+/// Import-driven source closure for `gunbc compile --source-root` (first root = entries).
+pub fn load_compile_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    load_sources(source_roots)
+}

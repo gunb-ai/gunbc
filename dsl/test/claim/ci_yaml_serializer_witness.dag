@@ -94,13 +94,16 @@ fn witness_cache_path_block_scalar() -> Bool {
   ) &&
     string_contains(
       s: yaml,
-      pattern: concat(
-        concat(
-          "            ${{ runner.temp }}/cargo/registry/cache/\n",
-          "            ${{ runner.temp }}/cargo/git/db/\n"
-        ),
-        "            target/"
-      )
+      pattern:         concat(
+          concat(
+            "            ${{ runner.temp }}/cargo/registry/cache/\n",
+            "            ${{ runner.temp }}/cargo/git/db/\n"
+          ),
+          concat(
+            "            .cache/resolved-graph/\n",
+            "            target/"
+          )
+        )
     )
 }
 

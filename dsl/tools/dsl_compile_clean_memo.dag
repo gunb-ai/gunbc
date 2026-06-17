@@ -1,0 +1,49 @@
+// tools/dsl_compile_clean_memo.dag — closed-world compile-clean memo authority.
+//
+// Pure-compute gate: key = content_hash(dsl import-closure file contents) + resolve-logic
+// version pins (via resolved_graph_cache subject_digest). Handler = resolved_graph_cache
+// kernel (NOT RecordedFixture — that seam is open-world service ops only).
+//
+// Realization: GUNBC_RESOLVED_GRAPH_CACHE_DIR env + compile_cached bin calling
+// compile_sources_with_resolved_graph_cache (same kernel as resolve_entry_with_parse_cache).
+
+module tools.dsl_compile_clean_memo
+
+import std.cache_interface {
+  resolved_graph_cache_facts, resolved_graph_cache_id,
+  ArtifactIdentity, CacheKeyProjection, cache_key_projection
+}
+import std.cache_identity { resolved_graph_artifact_kind }
+
+type DslCompileCleanVerdict {
+  graph_resolved: Bool
+}
+
+data dsl_compile_clean_cache_env_var: String = "GUNBC_RESOLVED_GRAPH_CACHE_DIR"
+
+// Subject inputs declared for the lens/corpus: sorted module_name → file content over the
+// whole dsl/ tree loaded by compile_cached (closure_content_digest in
+// resolved_graph_cache.rs). Invalidation = tree bytes change OR resolve-logic version bump.
+data dsl_compile_clean_memo_inputs: List<String> = [
+  "dsl_tree_module_to_content_pairs",
+  "resolve_logic_version",
+  "kernel_intern_seed_version"
+]
+
+fn dsl_compile_clean_artifact(subject_digest: String) -> ArtifactIdentity<DslCompileCleanVerdict> {
+  ArtifactIdentity {
+    subject_digest: subject_digest,
+    artifact_kind: resolved_graph_artifact_kind
+  }
+}
+
+fn dsl_compile_clean_cache_projection(subject_digest: String) -> CacheKeyProjection<DslCompileCleanVerdict> {
+  cache_key_projection(
+    artifact: dsl_compile_clean_artifact(subject_digest: subject_digest),
+    backend: resolved_graph_cache_facts
+  )
+}
+
+fn dsl_compile_clean_cache_store_id() -> String {
+  resolved_graph_cache_id
+}
