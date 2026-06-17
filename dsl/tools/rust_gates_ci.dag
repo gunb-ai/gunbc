@@ -1,0 +1,40 @@
+// tools/rust_gates_ci.dag -- the Rust-monolith CI gate, run by `gunbc` (NOT a Rust binary).
+//
+// Realizes the two dependents of the Rust monolith (cargo fmt, cargo clippy) selected by
+// `tools.rust_stage0_gates`. `git diff` and the cargo invocations are shell transports
+// (extdeps.git / extdeps.cargo_build); the decision is the pure selector. This is the §7 shape:
+// the gate logic is `.dag` authority, the only Rust left is the `gunbc` interpreter seed.
+//
+// Run in CI: gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
+//   (host maps the returned ProcessExit: ExitSuccess → 0, ExitFailure { code } → code.)
+//
+// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7): no Rust monolith, no gate.
+
+module tools.rust_gates_ci
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git
+import extdeps.cargo_build
+import tools.rust_stage0_gates { should_run_gates }
+
+// Run cargo fmt AND clippy (both evaluated — no short-circuit, so both failures surface),
+// pass iff both succeed.
+func run_gates() -> ProcessExit {
+  fmt = cargo.Build.Fmt()
+  clippy = cargo.Build.Clippy()
+  return if fmt.success && clippy.success {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings" }
+  }
+}
+
+// Entry: consult the diff, fire the gates only when the Rust monolith is touched.
+func main() -> ProcessExit {
+  changed = git.Core.ChangedFiles()
+  return if should_run_gates(paths: changed.paths, git_success: changed.success) {
+    run_gates()
+  } else {
+    ExitSuccess
+  }
+}
