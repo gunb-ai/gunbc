@@ -1,19 +1,20 @@
-// gunbc/gunbhub_serve_html.dag — Html consumer arm for gunbhub serve (isolated
-// import to avoid ElementNode variant collision with std.react_markup).
+// gunbc/gunbhub_serve_html.dag — Html consumer arm for gunbhub serve.
 
 module gunbc.gunbhub_serve_html
 
-import std.html_markup {
-  HtmlNode,
+import std.markup {
+  MarkupNode,
   ElementNode,
   TextNode,
+}
+import std.html_markup {
   Serialized,
   Rejected,
   HtmlSerializeResult,
   try_serialize_html_node,
 }
 
-fn sample_html_page() -> HtmlNode {
+fn sample_html_page() -> MarkupNode {
   ElementNode {
     tag: "p",
     attrs: [],

@@ -8,10 +8,10 @@
 
 module test.claim.html_markup_xss_witness
 
-import std.markup { escape_url }
-import std.html_markup {
-  HtmlAttr,
-  HtmlNode,
+import std.markup {
+  escape_url,
+  MarkupAttr,
+  MarkupNode,
   ElementNode,
   TextNode,
   SafeHref,
@@ -20,9 +20,11 @@ import std.html_markup {
   SchemeNotAllowlisted,
   JavascriptScheme,
   DataScheme,
+  validate_href,
+}
+import std.html_markup {
   Serialized,
   Rejected,
-  validate_href,
   try_serialize_html_node,
 }
 
@@ -91,10 +93,10 @@ fn witness_mailto_href_accepted() -> Bool {
   }
 }
 
-fn javascript_link_node() -> HtmlNode {
+fn javascript_link_node() -> MarkupNode {
   ElementNode {
     tag: "a",
-    attrs: [ HtmlAttr { name: "href", value: "javascript:alert(1)" } ],
+    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
     children: [ TextNode { text: "x" } ],
   }
 }

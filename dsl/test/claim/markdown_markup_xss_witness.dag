@@ -8,8 +8,9 @@
 
 module test.claim.markdown_markup_xss_witness
 
-import std.markup { escape_url, serialize_fragment }
-import std.html_markup {
+import std.markup {
+  escape_url,
+  serialize_fragment,
   DangerousScheme,
   DataScheme,
   JavascriptScheme,
