@@ -611,21 +611,33 @@ fn infer_branch_bool_if_else(
   }
 }
 
-type InferMatchArmExhaustiveness {
-  has_true: Bool
-  has_false: Bool
-}
+type InferBoolLiteralPattern
+  = InferBoolLiteralPatternTrue
+  | InferBoolLiteralPatternFalse
+  | InferBoolLiteralPatternOther
+
+type InferBoolLiteralArmCoverage
+  = InferBoolLiteralArmCoversTrue
+  | InferBoolLiteralArmCoversFalse
+  | InferBoolLiteralArmCoversNeither
+
+type InferBoolLiteralExhaustiveness
+  = InferBoolLiteralExhaustive
+  | InferBoolLiteralMissingTrue
+  | InferBoolLiteralMissingFalse
+  | InferBoolLiteralMissingBoth
 
 type InferMatchArmRow {
-  has_true: Bool
-  has_false: Bool
+  coverage: InferBoolLiteralArmCoverage
   body_type: Node
 }
 
-fn infer_match_pattern_is_bool_literal(pattern: Node) -> Bool {
-  infer_branch_is_bool_literal_atom(node: pattern)
-}
-
+// 🟡 gated — feature:match-infer-bool-literal-pattern-m0 — consumer:infer_match_bool_arm_row —
+// bind: Lane 2a bool-only match infer — dissolve-on: Q-B1 named pattern edges replace literal-atom classify;
+// forbidden: parallel hand-rolled has_true/has_false exhaustiveness records.
+// 🟡 gated — predicate-dissolution interim — feature:branch-infer-bool-literal-atom-classify —
+// consumer:infer_bool_literal_pattern_classify — dissolve-on: grammar-backed literal pattern carrier (M0-B5);
+// forbidden: parallel is_* bool-literal atom predicates outside this classify cluster.
 fn infer_branch_is_bool_true_literal_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
@@ -640,13 +652,47 @@ fn infer_branch_is_bool_false_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn infer_match_arm_contributes_exhaustiveness(pattern: Node) -> InferMatchArmExhaustiveness {
+fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern {
   if infer_branch_is_bool_true_literal_atom(node: pattern) {
-    InferMatchArmExhaustiveness { has_true: true, has_false: false }
+    InferBoolLiteralPatternTrue
   } else if infer_branch_is_bool_false_literal_atom(node: pattern) {
-    InferMatchArmExhaustiveness { has_true: false, has_false: true }
+    InferBoolLiteralPatternFalse
   } else {
-    InferMatchArmExhaustiveness { has_true: false, has_false: false }
+    InferBoolLiteralPatternOther
+  }
+}
+
+fn infer_bool_literal_arm_coverage_from_pattern(pattern: Node) -> InferBoolLiteralArmCoverage {
+  match infer_bool_literal_pattern_classify(pattern: pattern) {
+    InferBoolLiteralPatternTrue => InferBoolLiteralArmCoversTrue
+    InferBoolLiteralPatternFalse => InferBoolLiteralArmCoversFalse
+    InferBoolLiteralPatternOther => InferBoolLiteralArmCoversNeither
+  }
+}
+
+fn infer_bool_literal_exhaustiveness_merge(
+  left: InferBoolLiteralArmCoverage,
+  right: InferBoolLiteralArmCoverage
+) -> InferBoolLiteralExhaustiveness {
+  match left {
+    InferBoolLiteralArmCoversTrue =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralMissingFalse
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralExhaustive
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingFalse
+      }
+    InferBoolLiteralArmCoversFalse =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralExhaustive
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralMissingTrue
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingTrue
+      }
+    InferBoolLiteralArmCoversNeither =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralMissingFalse
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralMissingTrue
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingBoth
+      }
   }
 }
 
@@ -664,25 +710,25 @@ fn infer_match_bool_arm_row(
             Rejected { diagnostics: _ } =>
               outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
             Accepted { value: body_target, diagnostics: bd } =>
-              if !infer_match_pattern_is_bool_literal(pattern: pat) {
-                outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
-              } else {
-                let exhaust = infer_match_arm_contributes_exhaustiveness(pattern: pat)
-                match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
-                  Violates { diagnostic: diag } => outcome_rejected(diag)
-                  Holds { value: body_facts } =>
-                    Accepted {
-                      value: InferMatchArmRow {
-                        has_true: exhaust.has_true,
-                        has_false: exhaust.has_false,
-                        body_type: infer_branch_operand_resolved_type(
-                          node: body_target,
-                          facts: body_facts
-                        )
-                      },
-                      diagnostics: diagnostics_merge(outer: pd, inner: bd)
-                    }
-                }
+              match infer_bool_literal_pattern_classify(pattern: pat) {
+                InferBoolLiteralPatternOther =>
+                  outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
+                _ =>
+                  let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
+                  match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
+                    Violates { diagnostic: diag } => outcome_rejected(diag)
+                    Holds { value: body_facts } =>
+                      Accepted {
+                        value: InferMatchArmRow {
+                          coverage: coverage,
+                          body_type: infer_branch_operand_resolved_type(
+                            node: body_target,
+                            facts: body_facts
+                          )
+                        },
+                        diagnostics: diagnostics_merge(outer: pd, inner: bd)
+                      }
+                  }
               }
           }
       }
