@@ -346,7 +346,8 @@ fn lazy_arm_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: lazy_arm_call_primitive },
     branch: BranchInterpreter { choose_branch: lazy_arm_choose_branch },
     loop: LoopInterpreter { step_loop: lazy_arm_step_loop },
-    bind: BindInterpreter { bind_value: lazy_arm_bind_value }
+    bind: BindInterpreter { bind_value: lazy_arm_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -356,7 +357,8 @@ fn lazy_arm_interpretation_structure_witness() -> InterpretationStructureWitness
     call_primitive: ^lazy_arm_call_primitive_sym,
     choose_branch: ^lazy_arm_choose_branch_sym,
     step_loop: ^lazy_arm_step_loop_sym,
-    bind_value: ^lazy_arm_bind_value_sym
+    bind_value: ^lazy_arm_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

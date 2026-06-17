@@ -209,6 +209,7 @@ fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
     Branch => unit_cost()
     Loop => base_cost_for_loop(n: n)
     Bind => zero_cost()
+    Match => unit_cost()
   }
 }
 
@@ -230,6 +231,7 @@ fn cost_mode_for_behavior(b: Behavior) -> CostCompositionMode {
     Branch => AlternativeCost
     Loop => IterativeCost
     Bind => SequentialCost
+    Match => AlternativeCost
   }
 }
 

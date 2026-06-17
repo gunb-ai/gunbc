@@ -230,7 +230,8 @@ fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWi
     call_primitive: ^infer_receipt_call_primitive_sym,
     choose_branch: ^infer_receipt_choose_branch_sym,
     step_loop: ^infer_receipt_step_loop_sym,
-    bind_value: ^infer_receipt_bind_value_sym
+    bind_value: ^infer_receipt_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

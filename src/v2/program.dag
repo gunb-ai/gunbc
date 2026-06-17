@@ -307,7 +307,8 @@ fn program_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: program_reject_primitive },
     branch: BranchInterpreter { choose_branch: program_choose_branch },
     loop: LoopInterpreter { step_loop: program_step_loop },
-    bind: BindInterpreter { bind_value: program_bind_value }
+    bind: BindInterpreter { bind_value: program_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -317,7 +318,8 @@ fn program_structure_witness() -> InterpretationStructureWitness {
     call_primitive: ^program_reject_primitive_sym,
     choose_branch: ^program_choose_branch_sym,
     step_loop: ^program_step_loop_sym,
-    bind_value: ^program_bind_value_sym
+    bind_value: ^program_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

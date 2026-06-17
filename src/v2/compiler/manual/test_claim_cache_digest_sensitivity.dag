@@ -451,7 +451,8 @@ fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
     call_primitive: ^v2_eval_wave1_call_primitive_sym,
     choose_branch: ^v2_eval_wave1_choose_branch_sym,
     step_loop: ^v2_eval_wave1_step_loop_sym,
-    bind_value: ^v2_eval_wave1_bind_value_sym
+    bind_value: ^v2_eval_wave1_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -461,7 +462,8 @@ fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
     call_primitive: ^tcc_stub_call_b_sym,
     choose_branch: ^v2_eval_wave1_choose_branch_sym,
     step_loop: ^v2_eval_wave1_step_loop_sym,
-    bind_value: ^v2_eval_wave1_bind_value_sym
+    bind_value: ^v2_eval_wave1_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

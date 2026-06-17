@@ -224,7 +224,8 @@ fn bind_eval_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: bind_eval_call_primitive },
     branch: BranchInterpreter { choose_branch: bind_eval_choose_branch },
     loop: LoopInterpreter { step_loop: bind_eval_step_loop },
-    bind: BindInterpreter { bind_value: bind_eval_bind_value }
+    bind: BindInterpreter { bind_value: bind_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -234,7 +235,8 @@ fn bind_eval_interpretation_structure_witness() -> InterpretationStructureWitnes
     call_primitive: ^bind_eval_call_primitive_sym,
     choose_branch: ^bind_eval_choose_branch_sym,
     step_loop: ^bind_eval_step_loop_sym,
-    bind_value: ^bind_eval_bind_value_sym
+    bind_value: ^bind_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

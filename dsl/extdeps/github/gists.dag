@@ -49,6 +49,7 @@ service github.Gist {
   operation Create {
     input {
       description: String
+      filename: String
       content: String
       public: Bool = false
       auth_token: Secret
@@ -63,7 +64,7 @@ service github.Gist {
       body: {
         description: description,
         public: public,
-        files: { "snapshot.md": { content: content } }
+        files: { "\{filename\}": { content: content } }
       }
     }
     response {

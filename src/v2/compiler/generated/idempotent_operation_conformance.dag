@@ -116,7 +116,8 @@ fn idempotent_operation_interpretation_structure_witness() -> InterpretationStru
     call_primitive: ^idempotent_operation_eval_call_primitive,
     choose_branch: ^idempotent_operation_eval_choose_branch,
     step_loop: ^idempotent_operation_eval_step_loop,
-    bind_value: ^idempotent_operation_eval_bind_value
+    bind_value: ^idempotent_operation_eval_bind_value,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

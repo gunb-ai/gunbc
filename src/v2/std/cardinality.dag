@@ -236,6 +236,7 @@ fn behavior_multiplicity(b: Behavior) -> Multiplicity {
     Branch => Bounded
     Loop => RequiresTerminationProof
     Bind => Bounded
+    Match => Bounded
   }
 }
 
