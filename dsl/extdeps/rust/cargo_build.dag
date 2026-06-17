@@ -10,10 +10,9 @@
 
 module extdeps.cargo_build
 
-// Default input values for the cargo ops below. These were referenced by the op defaults
-// (`env = cargo_compile_env`) but never defined — so Build/Test/Clippy errored at runtime
-// (`undefined variable`) and had no by-execution consumer until tools.rust_gates_ci ran them
-// (DESIGN §5: spec-without-execution).
+// Default input values for the cargo ops below. Build/Test reference `env` in their input
+// blocks (not yet wired into shell argv). Clippy is invoked from rust_gates_ci and must
+// not carry a Map input — RecordedFixture cannot serialize Map (fail-closed §5).
 data cargo_compile_env: Map<String, String> = empty_map()
 
 // -- Service: shell transport wiring -----------------------------
@@ -51,7 +50,6 @@ service cargo.Build {
     input {
       extra_args: List<String> = []
       lint_args: List<String> = []
-      env: Map<String, String> = cargo_compile_env
     }
     output {
       success: Bool from "exit_success"
