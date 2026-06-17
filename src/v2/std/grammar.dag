@@ -49,6 +49,7 @@ import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
   BoundToken,
   FixedToken,
+  ConcreteSyntaxToken,
   concrete_syntax_token_to_node,
 }
 import v2.std.text { String }
@@ -348,6 +349,34 @@ fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGra
     terminal: FormalTerminal { identity: identity },
     binding: optional_present(value: binding)
   }
+}
+
+
+// Free-name-slot marker: one emitted Atom per ident terminal, binding spelled from atom identity
+// (symbol interning — parse text→intern→^Name, emit ^Name→name→"Name"). Distinct from fixed
+// grammar_formal_terminal_bound spellings; invertibility requires exactly one atom per slot.
+// 🟡 gated — feature:grammar-free-name-slot-binding — the free-vs-fixed terminal binding is
+//   carried as a sentinel Symbol (^grammar_free_name_slot) + the predicate
+//   formal_binding_is_free_name_slot, an in-band three-way discriminator over
+//   binding: Optional<Symbol> (Absent | Present{sentinel} | Present{real ident}) on the core
+//   FormalGrammarSymbol carrier — a hand-rolled sum, not a declared coproduct (§3/§4;
+//   the sentinel could collide with a real ident). dissolve-on: declare
+//   FormalTerminalBinding = AbsentBinding | FixedBinding { symbol: Symbol } | FreeNameSlot,
+//   carry it on the formal terminal instead of the bare Symbol, and replace every
+//   formal_binding_is_free_name_slot(...) call (formal_production_rhs_matches_emitted_conj_step,
+//   formal_production_matches_emitted_child, derive_grammar_relation_token_edges_recursive_step)
+//   with a match — once the carrier change is scoped against the forward parser consumers
+//   (03_ingest / 02_parse). The sentinel + predicate dissolve with it.
+data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
+
+
+fn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {
+  binding == ^grammar_free_name_slot
+}
+
+
+fn grammar_formal_terminal_free(identity: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(identity: identity, binding: ^grammar_free_name_slot)
 }
 
 
@@ -1114,26 +1143,46 @@ fn formal_production_rhs_matches_emitted_conj_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              match list_nth(
-                xs: children,
-                wanted: index,
-                absent: Diagnostic {
-                  reason: ^grammar_relation_emitted_conj_slot_missing,
-                  at: node_locus(node: emitted),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              ) {
-                Holds { value: slot_child } =>
-                  match node_atom_identity_optional(node: slot_child) {
-                    Present { value: atom_id } =>
-                      if atom_id == binding_symbol {
-                        EmittedRhsMatchOk { children: children, index: index + 1 }
-                      } else {
-                        EmittedRhsMatchFail
-                      }
-                    Absent => EmittedRhsMatchFail
+              if formal_binding_is_free_name_slot(binding: binding_symbol) {
+                match list_nth(
+                  xs: children,
+                  wanted: index,
+                  absent: Diagnostic {
+                    reason: ^grammar_relation_emitted_conj_slot_missing,
+                    at: node_locus(node: emitted),
+                    correction: Unavailable { reason: ExternalContractUnknown }
                   }
-                Violates { diagnostic: _ } => EmittedRhsMatchFail
+                ) {
+                  Holds { value: slot_child } =>
+                    match node_atom_identity_optional(node: slot_child) {
+                      Present { value: _ } =>
+                        EmittedRhsMatchOk { children: children, index: index + 1 }
+                      Absent => EmittedRhsMatchFail
+                    }
+                  Violates { diagnostic: _ } => EmittedRhsMatchFail
+                }
+              } else {
+                match list_nth(
+                  xs: children,
+                  wanted: index,
+                  absent: Diagnostic {
+                    reason: ^grammar_relation_emitted_conj_slot_missing,
+                    at: node_locus(node: emitted),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  }
+                ) {
+                  Holds { value: slot_child } =>
+                    match node_atom_identity_optional(node: slot_child) {
+                      Present { value: atom_id } =>
+                        if atom_id == binding_symbol {
+                          EmittedRhsMatchOk { children: children, index: index + 1 }
+                        } else {
+                          EmittedRhsMatchFail
+                        }
+                      Absent => EmittedRhsMatchFail
+                    }
+                  Violates { diagnostic: _ } => EmittedRhsMatchFail
+                }
               }
             Absent =>
               EmittedRhsMatchOk { children: children, index: index }
@@ -1220,7 +1269,12 @@ fn formal_production_matches_emitted_child(
         Present { value: terminal_id } => atom_id == terminal_id
         Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
-            Present { value: binding } => atom_id == binding
+            Present { value: binding } =>
+              if formal_binding_is_free_name_slot(binding: binding) {
+                true
+              } else {
+                atom_id == binding
+              }
             Absent => false
           }
       }
@@ -1277,41 +1331,11 @@ fn formal_production_for_lhs_exact_supported(
   lhs: Symbol,
   child: Node
 ) -> Witness<FormalProduction> {
-  let emitted_slot_count = emitted_node_slot_count(emitted: child)
-  match fold_list(
-    xs: productions,
-    empty: optional_absent(),
-    cons: fn(found, candidate) {
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          if formal_production_matches_lhs_and_slot_count(
-            production: candidate,
-            lhs: lhs,
-            emitted_slot_count: emitted_slot_count
-          ) &&
-            formal_production_matches_emitted_child(
-              production: candidate,
-              productions: productions,
-              child: child
-            ) {
-            optional_present(value: candidate)
-          } else {
-            Absent
-          }
-      }
-    }
-  ) {
-    Present { value: production } => Holds { value: production }
-    Absent =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: child),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
-  }
+  formal_production_unique_lhs_exact_match(
+    productions: productions,
+    lhs: lhs,
+    child: child
+  )
 }
 
 
@@ -1345,15 +1369,57 @@ fn derive_grammar_relation_token_edges_recursive_step(
       match symbol {
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
-            Present { value: _ } =>
-              Holds {
-                value: DeriveGrammarRelationTokensProgress {
-                  edges: list_snoc_item(
-                    xs: edges,
-                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
-                  ),
-                  conj_index: conj_index + 1,
-                  conj_children: conj_children
+            Present { value: binding_symbol } =>
+              if formal_binding_is_free_name_slot(binding: binding_symbol) {
+                match list_nth(
+                  xs: conj_children,
+                  wanted: conj_index,
+                  absent: Diagnostic {
+                    reason: ^grammar_relation_emitted_conj_slot_missing,
+                    at: node_locus(node: emitted),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  }
+                ) {
+                  Holds { value: slot_child } =>
+                    match node_atom_identity_optional(node: slot_child) {
+                      Present { value: atom_id } =>
+                        Holds {
+                          value: DeriveGrammarRelationTokensProgress {
+                            edges: list_snoc_item(
+                              xs: edges,
+                              item: grammar_terminal_occurrence_to_token_edge(
+                                terminal: terminal,
+                                binding: optional_present(value: atom_id)
+                              )
+                            ),
+                            conj_index: conj_index + 1,
+                            conj_children: conj_children
+                          }
+                        }
+                      Absent =>
+                        Violates {
+                          diagnostic: Diagnostic {
+                            reason: ^grammar_relation_emitted_conj_slot_missing,
+                            at: node_locus(node: emitted),
+                            correction: Unavailable { reason: ExternalContractUnknown }
+                          }
+                        }
+                    }
+                  Violates { diagnostic: d } => Violates { diagnostic: d }
+                }
+              } else {
+                Holds {
+                  value: DeriveGrammarRelationTokensProgress {
+                    edges: list_snoc_item(
+                      xs: edges,
+                      item: grammar_terminal_occurrence_to_token_edge(
+                        terminal: terminal,
+                        binding: binding
+                      )
+                    ),
+                    conj_index: conj_index + 1,
+                    conj_children: conj_children
+                  }
                 }
               }
             Absent =>
@@ -1765,6 +1831,377 @@ fn lhs_exact_production_match_fold_step(
   }
 }
 
+fn emitted_production_match_fold_step(
+  acc: LhsExactProductionMatchFold,
+  productions: List<FormalProduction>,
+  child: Node,
+  candidate: FormalProduction
+) -> LhsExactProductionMatchFold {
+  if formal_production_matches_emitted_child(
+    production: candidate,
+    productions: productions,
+    child: child
+  ) {
+    match acc {
+      LhsExactProductionMatchNone =>
+        LhsExactProductionMatchOne { production: candidate }
+      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+      LhsExactProductionMatchMany => LhsExactProductionMatchMany
+    }
+  } else {
+    acc
+  }
+}
+
+fn formal_production_unique_emitted_match(
+  productions: List<FormalProduction>,
+  child: Node
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    match fold_list(
+      xs: productions,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        emitted_production_match_fold_step(
+          acc: acc,
+          productions: productions,
+          child: child,
+          candidate: candidate
+        )
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } =>
+        Holds { value: production }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: child),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+// 🟢 PR-1.5b free-name-slot inverse — rebuild emitted core nodes from a derived token spine
+// (bindings carry ident spellings via symbol interning; no fixture rows required).
+type RebuildRhsWalkState
+  = RebuildRhsWalkOk { children: List<Node>, token_index: Int }
+  | RebuildRhsWalkFail
+
+type RebuildEmittedResult
+  = RebuildEmittedOk { emitted: Node, token_index: Int }
+  | RebuildEmittedFail
+
+type RebuildProductionMatchFold
+  = RebuildProductionMatchNone
+  | RebuildProductionMatchOne { emitted: Node, token_index: Int }
+  | RebuildProductionMatchMany
+
+
+fn rebuild_emitted_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: children,
+      empty: Empty,
+      cons: fn(acc, child) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: child }
+        )
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// 🟡 gated — feature:concrete-syntax-fixed-token-match-inline — this is a named Bool classifier
+//   over the ConcreteSyntaxToken coproduct (FixedToken → class-equality, BoundToken → false)
+//   used at one reverse-parse call site (rebuild_emitted_rhs_walk_step), rather than the match
+//   being inlined there (§4/§6 predicate-dissolution: ops from inhabitance, not hand-rolled Bool
+//   predicates). dissolve-on: inline this match/fold at its call site (grammar.dag:~1977) so the
+//   coproduct discrimination lives in the walk, not a wrapper predicate.
+fn concrete_syntax_fixed_token_matches_terminal(
+  token: ConcreteSyntaxToken,
+  terminal: Symbol
+) -> Bool {
+  match token {
+    FixedToken { token_class: token_class } => token_class == terminal
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+
+fn rebuild_emitted_rhs_walk_step(
+  state: RebuildRhsWalkState,
+  productions: List<FormalProduction>,
+  tokens: List<ConcreteSyntaxToken>,
+  symbol: FormalGrammarSymbol
+) -> RebuildRhsWalkState {
+  match state {
+    RebuildRhsWalkFail => state
+    RebuildRhsWalkOk { children: children, token_index: token_index } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Absent =>
+              match list_nth(
+                xs: tokens,
+                wanted: token_index,
+                absent: Diagnostic {
+                  reason: ^grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(node: rebuild_emitted_conj_node(children: children)),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: token } =>
+                  if concrete_syntax_fixed_token_matches_terminal(
+                    token: token,
+                    terminal: terminal.identity
+                  ) {
+                    RebuildRhsWalkOk { children: children, token_index: token_index + 1 }
+                  } else {
+                    RebuildRhsWalkFail
+                  }
+                Violates { diagnostic: _ } => RebuildRhsWalkFail
+              }
+            Present { value: binding_symbol } =>
+              match list_nth(
+                xs: tokens,
+                wanted: token_index,
+                absent: Diagnostic {
+                  reason: ^grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(node: rebuild_emitted_conj_node(children: children)),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: token } =>
+                  match token {
+                    BoundToken { token_class: token_class, binding: binding } =>
+                      if token_class == terminal.identity &&
+                        (
+                          formal_binding_is_free_name_slot(binding: binding_symbol) ||
+                            binding_symbol == binding
+                        ) {
+                        RebuildRhsWalkOk {
+                          children: list_snoc_item(
+                            xs: children,
+                            item: rebuild_emitted_atom_node(identity: binding)
+                          ),
+                          token_index: token_index + 1
+                        }
+                      } else {
+                        RebuildRhsWalkFail
+                      }
+                    FixedToken { token_class: _ } => RebuildRhsWalkFail
+                  }
+                Violates { diagnostic: _ } => RebuildRhsWalkFail
+              }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match grammar_relation_emitted_rebuild_for_lhs(
+            productions: productions,
+            lhs: nonterminal.identity,
+            tokens: tokens,
+            token_index: token_index
+          ) {
+            Holds { value: RebuildEmittedOk { emitted: child, token_index: next_index } } =>
+              RebuildRhsWalkOk {
+                children: list_snoc_item(xs: children, item: child),
+                token_index: next_index
+              }
+            Violates { diagnostic: _ } => RebuildRhsWalkFail
+          }
+      }
+  }
+}
+
+fn rebuild_emitted_from_production(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  tokens: List<ConcreteSyntaxToken>,
+  token_index: Int
+) -> Witness<RebuildEmittedResult> {
+  match fold_list(
+    xs: production.rhs,
+    empty: RebuildRhsWalkOk { children: Empty, token_index: token_index },
+    cons: fn(state, symbol) {
+      rebuild_emitted_rhs_walk_step(
+        state: state,
+        productions: productions,
+        tokens: tokens,
+        symbol: symbol
+      )
+    }
+  ) {
+    RebuildRhsWalkOk { children: children, token_index: end_index } =>
+      Holds {
+        value: RebuildEmittedOk {
+          emitted: rebuild_emitted_conj_node(children: children),
+          token_index: end_index
+        }
+      }
+    RebuildRhsWalkFail =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+fn rebuild_production_match_fold_step(
+  acc: RebuildProductionMatchFold,
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  token_index: Int,
+  candidate: FormalProduction
+) -> RebuildProductionMatchFold {
+  if formal_production_lhs_matches(production: candidate, lhs: lhs) {
+    match rebuild_emitted_from_production(
+      production: candidate,
+      productions: productions,
+      tokens: tokens,
+      token_index: token_index
+    ) {
+      Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
+        match acc {
+          RebuildProductionMatchNone =>
+            RebuildProductionMatchOne { emitted: emitted, token_index: end_index }
+          RebuildProductionMatchOne { emitted: _, token_index: _ } => RebuildProductionMatchMany
+          RebuildProductionMatchMany => RebuildProductionMatchMany
+        }
+      Violates { diagnostic: _ } => acc
+    }
+  } else {
+    acc
+  }
+}
+
+fn grammar_relation_emitted_rebuild_for_lhs(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  token_index: Int
+) -> Witness<RebuildEmittedResult> {
+  match fold_list(
+    xs: productions,
+    empty: RebuildProductionMatchNone,
+    cons: fn(acc, candidate) {
+      rebuild_production_match_fold_step(
+        acc: acc,
+        productions: productions,
+        lhs: lhs,
+        tokens: tokens,
+        token_index: token_index,
+        candidate: candidate
+      )
+    }
+  ) {
+    RebuildProductionMatchNone =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+    RebuildProductionMatchMany =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_row_backward_selection_ambiguous,
+          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+    RebuildProductionMatchOne { emitted: emitted, token_index: end_index } =>
+      Holds {
+        value: RebuildEmittedOk {
+          emitted: emitted,
+          token_index: end_index
+        }
+      }
+  }
+}
+
+fn grammar_relation_emitted_rebuild_from_token_spine(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Witness<Node> {
+  let token_count = fold_list(
+    xs: tokens,
+    empty: 0,
+    cons: fn(acc, _) { acc + 1 }
+  )
+  match grammar_relation_emitted_rebuild_for_lhs(
+    productions: productions,
+    lhs: lhs,
+    tokens: tokens,
+    token_index: 0
+  ) {
+    Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
+      if end_index == token_count {
+        Holds { value: emitted }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_emitted_conj_slot_surplus,
+            at: node_locus(node: emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn grammar_relation_row_derived_from_productions(
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Outcome<Node> {
+  match formal_production_unique_emitted_match(productions: productions, child: emitted) {
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      ) {
+        Holds { value: row } => outcome_accepted(value: row)
+        Violates { diagnostic: d } => outcome_rejected(d)
+      }
+    Violates { diagnostic: d } => outcome_rejected(d)
+  }
+}
+
 fn formal_production_unique_lhs_exact_match(
   productions: List<FormalProduction>,
   lhs: Symbol,
@@ -1946,8 +2383,9 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
                 }
               )
             BackwardRowNone =>
-              outcome_rejected(
-                grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
+              grammar_relation_row_derived_from_productions(
+                productions: productions,
+                emitted: emitted
               )
           }
         _ =>
