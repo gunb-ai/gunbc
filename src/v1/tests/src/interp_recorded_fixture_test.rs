@@ -503,6 +503,271 @@ fn fixture_files(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+#[test]
+fn clock_now_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("clock-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/clock_freshness_witness.dag");
+    assert!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "Clock.Now record capture must pass (wet); stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+    assert!(
+        store_dir.join("Clock__Now").is_dir() || !fixture_files(&store_dir).is_empty(),
+        "record must write Clock.Now fixture files under {:?}",
+        store_dir
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic Clock.Now replay must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
+#[test]
+fn hermetic_clock_fixture_staleness_fails_closed() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("clock-stale");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/clock_freshness_witness.dag");
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(record.status.success(), "record must capture Clock.Now");
+
+    // Tamper: backdate recorded_at on Clock.Now fixtures to force freshness expiry.
+    for path in fixture_files(&store_dir) {
+        let bytes = fs::read(&path).expect("read fixture");
+        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
+        if let Some(obj) = fixture.as_object_mut() {
+            obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
+        }
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .expect("write");
+    }
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        !hermetic.status.success(),
+        "stale Clock.Now fixture must fail closed, not replay stale value"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("expired recorded fixture")
+            || combined.contains("refusing to replay stale value"),
+        "expected clock-path staleness diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
+fn env_get_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("env-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "shell.Env.Get record capture must pass (wet); stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic shell.Env.Get replay must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
+#[test]
+fn hermetic_env_fixture_staleness_fails_closed() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("env-stale");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(record.status.success(), "record must capture shell.Env.Get");
+
+    for path in fixture_files(&store_dir) {
+        let bytes = fs::read(&path).expect("read fixture");
+        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
+        if let Some(obj) = fixture.as_object_mut() {
+            obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
+        }
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .expect("write");
+    }
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        !hermetic.status.success(),
+        "stale shell.Env.Get fixture must fail closed"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("expired recorded fixture")
+            || combined.contains("refusing to replay stale value"),
+        "expected env-path staleness diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
+fn env_hermetic_without_fixture_store_fails_closed() {
+    let ws = workspace_root();
+    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--hermetic",
+    ]);
+    assert!(
+        !hermetic.status.success(),
+        "shell.Env.Get in Hermetic without fixture store must fail closed"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
+        "expected fail-closed diagnostic for env without fixtures, got:\n{combined}"
+    );
+}
+
 fn collect_json_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).expect("read fixture dir");
     for entry in entries {

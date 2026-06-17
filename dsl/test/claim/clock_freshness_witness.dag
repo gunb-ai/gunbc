@@ -1,0 +1,27 @@
+// dsl/test/claim/clock_freshness_witness.dag
+//
+// By-execution witnesses for Clock.Now routed through the RecordedFixture seam.
+// Hermetic replay (Phase 2):
+//   claim_batch --source-root . --source-root dsl \
+//     --entry dsl/test/claim/clock_freshness_witness.dag \
+//     --function clock_freshness_keystone_holds --record --fixture-store /tmp/clock-fixtures
+//   claim_batch ... --hermetic --fixture-store /tmp/clock-fixtures
+//
+// Discriminators:
+//   * wet Clock.Now returns a positive decimal epoch string;
+//   * hermetic replay returns the recorded value (not live clock drift);
+//   * backdated recorded_at on a Clock fixture fails closed on freshness.
+
+module test.claim.clock_freshness_witness
+
+import extdeps.clock
+
+func witness_clock_now_positive_epoch() -> Bool {
+  let r = Clock.Now()
+  // `date +%s` yields a non-empty decimal string; empty means clock transport failed.
+  return r.unix_secs != ""
+}
+
+fn clock_freshness_keystone_holds() -> Bool {
+  witness_clock_now_positive_epoch()
+}

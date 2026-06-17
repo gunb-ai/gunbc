@@ -1,0 +1,29 @@
+// dsl/test/claim/env_freshness_witness.dag
+//
+// By-execution witnesses for shell.Env.Get routed through the RecordedFixture seam.
+// Hermetic replay (Phase 2):
+//   claim_batch --source-root . --source-root dsl \
+//     --entry dsl/test/claim/env_freshness_witness.dag \
+//     --function env_freshness_keystone_holds --record --fixture-store /tmp/env-fixtures
+//   claim_batch ... --hermetic --fixture-store /tmp/env-fixtures
+//
+// Discriminators:
+//   * wet shell.Env.Get returns PATH (always set on POSIX hosts);
+//   * hermetic replay returns the recorded value (not live env drift);
+//   * backdated recorded_at on an Env fixture fails closed on freshness.
+
+module test.claim.env_freshness_witness
+
+import extdeps.shell
+import std.types { NonEmptyStr }
+
+data path_env_name: NonEmptyStr = "PATH"
+
+func witness_env_get_path() -> Bool {
+  let r = shell.Env.Get(name: path_env_name)
+  return r.value != null && (r.value != "")
+}
+
+fn env_freshness_keystone_holds() -> Bool {
+  witness_env_get_path()
+}

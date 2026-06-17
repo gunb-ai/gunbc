@@ -3257,8 +3257,8 @@ fn value_unix_secs(
     match val {
         Value::Record { fields, .. } => {
             let raw = ctx
-                .field(fields, "unix_secs")
-                .or_else(|| ctx.field(fields, "timestamp"))
+                .field(&fields, "unix_secs")
+                .or_else(|| ctx.field(&fields, "timestamp"))
                 .map(|v| format!("{v}"))
                 .ok_or(crate::recorded_fixture::FixtureError::ClockUnavailable)?;
             raw.parse::<u64>()
@@ -3293,7 +3293,7 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
     if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
         match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
-            Ok(Value::Record { fields, .. }) => ctx.field(fields, "value").and_then(|v| match v {
+            Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
                 Value::Str(s) if !s.is_empty() => Some(s.clone()),
                 _ => None,
             }),
