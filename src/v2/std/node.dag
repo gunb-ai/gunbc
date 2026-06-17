@@ -471,6 +471,11 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   }
 }
 // 🟡 gated — predicate-dissolution interim — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
+// 🟡 gated — predicate-dissolution interim — feature: node-behavior-match-arm-shape —
+// consumer: behavior_edges_conform, target_value_expr_match_gate (imported match_arm_children_conform_skip_first) —
+// bind: Lane 2a match expression (Conj arms with match_arm_pattern + match_arm_body) —
+// dissolve-on: Q-B1 named pattern edges for match arms (M0-B5);
+// forbidden: parallel match-arm shape predicates outside node.dag well_formed family.
 fn match_arm_node_conforms(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>

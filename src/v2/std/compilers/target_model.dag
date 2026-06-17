@@ -10053,15 +10053,6 @@ fn target_project_field_access(
   }
 }
 
-fn target_value_expr_match_arm_node_conforms(arm: Node) -> Bool {
-  match arm.kind {
-    TypeNode { connective: Conj } =>
-      name_occurrences(name: match_arm_pattern, children: arm.children) == 1
-        && name_occurrences(name: match_arm_body, children: arm.children) == 1
-    _ => false
-  }
-}
-
 // 🟡 gated — feature:value-expression-match-positional-m0 —
 // consumer:target_value_expr_project_body_subexpression —
 // bind: COMPREP wave-2 M0 match (ComputationNode Match + positional arms) —
