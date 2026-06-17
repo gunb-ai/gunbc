@@ -119,11 +119,8 @@ fn claim_batch_script(spec: CiFloorSpec) -> String {
 
 fn ci_floor_gates_invoke(spec: CiFloorSpec) -> String {
   concat(
-    concat(
-      concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
-      " --entry dsl/tools/ci_floor_gates.dag --function main"
-    ),
-    ""
+    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+    " --entry dsl/tools/ci_floor_gates.dag --function main"
   )
 }
 
