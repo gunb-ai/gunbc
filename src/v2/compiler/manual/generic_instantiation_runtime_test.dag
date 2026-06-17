@@ -5,8 +5,8 @@
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Absent, Present, map_get }
-import v2.std.diagnostic { Accepted, bind_outcome, outcome_accepted }
+import v2.std.collection { Present, map_get }
+import v2.std.diagnostic { Accepted }
 import v2.std.generic_instantiation {
   empty_generic_substitution,
   generic_substitution_bind_once,
@@ -18,8 +18,7 @@ import v2.std.node {
   Node,
   Symbol,
   SyntheticOccurrence,
-  TypeNode,
-  content_hash
+  TypeNode
 }
 
 type Rec { v: Int }
@@ -80,16 +79,14 @@ fn generic_substitution_bind_once_first_wins_holds() -> Bool {
     name: "T",
     concrete: n_bool
   )
-  bind_outcome(
-    o: map_get(subst2, "T"),
-    f: fn(entry) {
-      match entry {
-        Present { value: bound } =>
-          outcome_accepted(value: content_hash(node: bound) == content_hash(node: n_int))
-        Absent => outcome_accepted(value: false)
+  match map_get(subst2, "T") {
+    Accepted { value: Present { value: bound }, diagnostics: _ } =>
+      match bound.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^gi_bind_once_int_sym
+        _ => false
       }
-    }
-  )
+    _ => false
+  }
 }
 
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
