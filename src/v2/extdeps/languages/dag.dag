@@ -3887,6 +3887,30 @@ fn dag_type_decl_productions_only_translation_rules() -> Node {
   }
 }
 
+fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
+  // T-6 interim: layout baked into literal spellings (rust_wave1_lex_rules pattern) so
+  // serialize_concrete_syntax_tokens_to_source yields spaced type-decl surface text.
+  LexRuleSet {
+    rules: [
+      dag_whitespace_trivia_rule(),
+      dag_line_comment_trivia_rule(),
+      dag_block_comment_trivia_rule(),
+      dag_string_literal_lex_rule(),
+      dag_int_literal_lex_rule(),
+      dag_ident_lex_rule(),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
+      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: " { "),
+      dag_literal_lex_rule(token_class: ^dag_token_colon, text: ": "),
+      dag_literal_lex_rule(token_class: ^dag_token_comma, text: ", "),
+      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: " }")
+    ]
+  }
+}
+
+fn dag_type_decl_structural_lex() -> LexRules {
+  ModeledLexRules { root: dag_type_decl_structural_lex_rules() }
+}
+
 fn dag_type_decl_structural_target_model() -> TargetModel {
   TargetModel {
     bundle: Node {
@@ -3899,7 +3923,7 @@ fn dag_type_decl_structural_target_model() -> TargetModel {
       ],
       occurrence_id: SyntheticOccurrence
     },
-    lex: dag_wave1_lex(),
+    lex: dag_type_decl_structural_lex(),
     binding_spellings: empty_map(),
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
