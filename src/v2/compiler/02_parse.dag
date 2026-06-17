@@ -3,9 +3,9 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
-//         parse_expr Nonterminal arm uses memoized ParseTable (position × production) built by
-//         structurally bounded double fold — no measure: Nat / grammar_fuel scaffold.
-//         grammar_has_left_recursion validates left cycles pre-parse.
+//         parse_expr Nonterminal arm expands productions by direct recursive descent
+//         (grammar_has_left_recursion rejects left cycles pre-parse). build_parse_table
+//         remains for table-substrate claims; parse_production does not pre-fill it.
 
 
 module v2.compiler.parse
@@ -149,7 +149,7 @@ type GrammarExprCornerFold {
 // ParseExprWalk (1:1 GrammarExpr mirror) deleted; parse_expr_run_walk deleted. parse_expr now
 // uses fold_grammar_expr<fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult>: each
 // algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
-// correct token threading; Nonterminal delegates to parse_nonterminal_from_table (leaf).
+// correct token threading; Nonterminal delegates to parse_nonterminal_direct (leaf).
 
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
@@ -989,7 +989,7 @@ type ParseThunk {
 // where ParseThunk = { apply: fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult }.
 // fold_grammar_expr reduces children to ParseThunk (deferred combinators) before passing them to
 // each handler — no parsing runs during construction; only top thunk fires via .apply at the end.
-// Nonterminal arm: O(1) ParseTable lookup via parse_nonterminal_from_table (table-boundary leaf).
+// Nonterminal arm: direct production expansion (validated grammars are left-recursion free).
 // Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
   expr: GrammarExpr,

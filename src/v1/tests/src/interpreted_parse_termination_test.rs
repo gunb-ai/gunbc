@@ -1,4 +1,4 @@
-//! Regression: v2 `build_parse_table` / `parse` must terminate under the v2 interpreter.
+//! Regression: v2 `parse` / `parse_module` must terminate under the v2 interpreter.
 //!
 //! Bisect authority: `validate_ingest_staging_stage_bisect.dag` (tokenize ok; parse hung on
 //! interpreted `fold_list`/`fold_list_right` recursion before native fast paths).
