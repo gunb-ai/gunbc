@@ -385,7 +385,6 @@ fn max_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExpone
 }
 
 fn compose_child_cost(
-  parent: Node,
   mode: CostCompositionMode,
   acc: SymbolicCost,
   child: SymbolicCost
@@ -393,18 +392,15 @@ fn compose_child_cost(
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
     AlternativeCost => symbolic_max(a: acc, b: child)
+    // Per-iteration cost = body + one irreducible loop-control step (increment/
+    // compare/branch), run `acc`-many times. Applies to Loop behavior and Cardinality
+    // connective alike: symbolic_sequential(0, 1) = 1, and symbolic_product(linear, 1)
+    // = linear. Absorbing zero in symbolic_product stays untouched.
     IterativeCost =>
-      match parent.kind {
-        // Loop-only: per-iteration body + one irreducible control step, folded `acc`-many
-        // times. Cardinality connective keeps plain symbolic_product — its iteration
-        // count is the size variable itself, not a loop-bound measure edge.
-        ComputationNode { behavior: Loop } =>
-          symbolic_product(
-            a: acc,
-            b: symbolic_sequential(a: child, b: unit_cost())
-          )
-        _ => symbolic_product(a: acc, b: child)
-      }
+      symbolic_product(
+        a: acc,
+        b: symbolic_sequential(a: child, b: unit_cost())
+      )
   }
 }
 
@@ -416,12 +412,7 @@ fn cost_fold_step(
   if loop_edge_contributes_to_iteration_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
-      cost: compose_child_cost(
-        parent: acc.parent,
-        mode: acc.mode,
-        acc: acc.cost,
-        child: child.cost
-      ),
+      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
       parent: acc.parent
     }
   } else {
