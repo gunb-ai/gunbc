@@ -83,15 +83,15 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, discover_owned_data_decls, make_eval_context_with_fixture_store,
-    resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
+    build_multi_entry_index, check_floor_filename_hygiene, discover_floor_corpus_rows,
+    make_eval_context_with_fixture_store, resolve_entry_with_index, run_claim, ClaimOutcome,
+    DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -207,187 +207,11 @@ struct EntryGroup {
     functions: Vec<String>,
 }
 
-/// One discovered witness row (discovery mode). `label` is for diagnostics; the
-/// `entry`/`function` pair is what gets grouped into `EntryGroup`s and run.
-struct GateRow {
-    #[allow(dead_code)]
-    label: String,
-    entry: String,
-    function: String,
-}
-
-// Mirror of discover_owned_data's default exclude set: the manifest/law files that
-// import the ephemeral discovery output would otherwise re-enter discovery acyclically.
-// Plus the manual lane: `src/v2/test/manual/` claims carry their own
-// ExpectPass|ExpectFail expected-outcome (some are pinned-red to tracking anchors,
-// e.g. witness_sg2_arrow ExpectFail{#4801}). A universal-green floor must NOT run them
-// as must-pass — excluded until expected-outcome is modeled at the claim level.
-const DISCOVERY_EXCLUDES: &[&str] = &[
-    "impossible_bug",
-    "test/manual/",
-    "glob_discovery.dag",
-    "glob_discovery_law.dag",
-    "host_discovered_owned_data_manifest.dag",
-    "unified_test_claim_substrate_equivalence.dag",
-];
-
-/// Reflection roster: every discovered `unified_claim_*` BoolWitness decl across
-/// the scan dirs becomes a gate row (label = decl name minus the `unified_claim_`
-/// prefix, entry/function = the modeled witness). No hand-typed roster, no rows-fn.
-/// Fail-closed: `.dag` basenames under `--source-root` must not contain `__`
-/// (legacy flat-dir encoding; use subdirectories instead). Preserved from the
-/// retired `ci_claim_gate` (#5051) when discovery moved into this binary.
-fn check_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
-    let mut violations: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files(Path::new(root), &mut dag_files);
-        for path in dag_files {
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|name| name.contains("__"))
-            {
-                violations.push(path.to_string_lossy().into_owned());
-            }
-        }
-    }
-    if violations.is_empty() {
-        return Ok(());
-    }
-    violations.sort();
-    Err(format!(
-        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
-         offending file(s): {}",
-        violations.join(", ")
-    ))
-}
-
-fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<GateRow>, String> {
-    let excludes: Vec<String> = DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
-    let mut rows: Vec<GateRow> = Vec::new();
-    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
-    for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
-        for rec in discovery.records {
-            if let OwnedDataDeclInitializer::BoolWitnessClaim {
-                witness_entry,
-                witness_function,
-            } = rec.initializer
-            {
-                if witness_entry.is_empty() || witness_function.is_empty() {
-                    return Err(format!(
-                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
-                        rec.decl_name
-                    ));
-                }
-                if seen.insert((witness_entry.clone(), witness_function.clone())) {
-                    let label = rec
-                        .decl_name
-                        .strip_prefix("unified_claim_")
-                        .unwrap_or(&rec.decl_name)
-                        .to_string();
-                    rows.push(GateRow {
-                        label,
-                        entry: witness_entry,
-                        function: witness_function,
-                    });
-                }
-            }
-        }
-    }
-
-    // Single-representation `test fn NAME()` / `test data NAME` tests. The v2
-    // parser drops the contextual `test` keyword, so the gate detects the marker
-    // in source text (same posture as the `data unified_claim_` scan) and runs
-    // NAME. Dual-mode with the loop above so claims migrate off `unified_claim_*`
-    // one at a time.
-    //
-    // Convention, enforced fail-closed: a `test` declaration may live ONLY in
-    // `*_test.dag` files. The whole source root is scanned (so manual/ and
-    // implementation files are covered), and a `test` decl found anywhere else is
-    // a hard error — tests do not live in implementation files.
-    let mut test_fn_violations: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let content =
-                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            let names = scan_test_decl_names(&content);
-            if names.is_empty() {
-                continue;
-            }
-            if !entry.ends_with("_test.dag") {
-                test_fn_violations.push(entry);
-                continue;
-            }
-            for name in names {
-                if seen.insert((entry.clone(), name.clone())) {
-                    rows.push(GateRow {
-                        label: name.clone(),
-                        entry: entry.clone(),
-                        function: name,
-                    });
-                }
-            }
-        }
-    }
-    if !test_fn_violations.is_empty() {
-        test_fn_violations.sort();
-        return Err(format!(
-            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
-            test_fn_violations.join(", ")
-        ));
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    Ok(rows)
-}
-
-/// Recursively collect `.dag` files under `dir` (the `test`-decl scan walks the
-/// whole source root). Mirrors the discovery `.dag` walk.
-fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_dag_files(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            out.push(path);
-        }
-    }
-}
-
-/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
-/// declaration in source text.
-fn scan_test_decl_names(content: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        let rest = trimmed
-            .strip_prefix("test fn ")
-            .or_else(|| trimmed.strip_prefix("test data "));
-        if let Some(rest) = rest {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                names.push(name);
-            }
-        }
-    }
-    names
-}
+// The discovery ROSTER (exclude set, `unified_claim_*`/`test fn`/`test data`
+// reflection, filename hygiene, `*_test.dag`-only convention) is the single
+// authority in `cli_run` (`discover_floor_corpus_rows` /
+// `check_floor_filename_hygiene`), shared with the scheduler's `DiscoveryBatch`
+// node — see those functions. This bin keeps only its timing/stats run loop.
 
 /// Parsed CLI config. Roster is sourced one of two ways: an explicit
 /// `--entry`/`--function` list (`entry_groups`), or `--roster-from-discovery`
@@ -669,7 +493,7 @@ fn run_witnesses(
 
 /// Group discovered rows into per-entry `EntryGroup`s, preserving the discovery
 /// sort order (rows are sorted by (entry, function) in `discover_roster`).
-fn group_discovered_rows(rows: Vec<GateRow>) -> Vec<EntryGroup> {
+fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
     let mut groups: Vec<EntryGroup> = Vec::new();
     for row in rows {
         match groups.last_mut() {
@@ -704,11 +528,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
         // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
         // preserved from the retired ci_claim_gate).
-        if let Err(e) = check_filename_hygiene(&source_roots) {
+        if let Err(e) = check_floor_filename_hygiene(&source_roots) {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let mut rows = match discover_roster(&source_roots, &disc.scan_dirs) {
+        let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("claim_batch: discovery roster failed: {e}");
@@ -722,7 +546,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         for group in &parsed.entry_groups {
             for function in &group.functions {
                 if seen.insert((group.entry.clone(), function.clone())) {
-                    rows.push(GateRow {
+                    rows.push(DiscoveryRow {
                         label: function.clone(),
                         entry: group.entry.clone(),
                         function: function.clone(),

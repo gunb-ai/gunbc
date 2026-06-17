@@ -1,0 +1,41 @@
+// tools/floor_effect_gate_witness.dag — Bool wrappers for the effectful CI floor
+// gates, so the dependency-ordered scheduler (claim_executor) can run each gate
+// as a plan node alongside the pure Bool witnesses and the discovery corpus.
+//
+// REUSE, not re-coin (DESIGN §2): each wrapper just runs the SAME effectful gate
+// `func` already composed in `tools.ci_floor_gates` and maps its ProcessExit to a
+// Bool. The gates themselves (rust monolith fmt/clippy, emit-host MVP smokes,
+// layering-imports host scan, dsl whole-tree compile-clean) are unchanged.
+//
+// These are `func` (effectful) — claim_executor runs them in Wet mode, so the
+// host transports actually fire; `exit_ok` collapses success/failure to the Bool
+// the scheduler's per-node verdict needs. The `dsl_compile_clean` SCAFFOLD note
+// from `ci_floor_gates` still applies (its gate is `--target rust`-pending).
+
+module tools.floor_effect_gate_witness
+
+import std.process { ProcessExit, ExitSuccess }
+import tools.rust_gates_ci { run_rust_monolith_gate }
+import tools.emit_host_gate { run_emit_host_ci_gate }
+import tools.layering_imports_gate { run_layering_imports_ci_gate }
+import tools.dsl_compile_clean_gate { run_gate }
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+func rust_monolith_gate_passes() -> Bool {
+  exit_ok(e: run_rust_monolith_gate())
+}
+
+func emit_host_gate_passes() -> Bool {
+  exit_ok(e: run_emit_host_ci_gate())
+}
+
+func layering_imports_gate_passes() -> Bool {
+  exit_ok(e: run_layering_imports_ci_gate())
+}
+
+func dsl_compile_clean_gate_passes() -> Bool {
+  exit_ok(e: run_gate())
+}

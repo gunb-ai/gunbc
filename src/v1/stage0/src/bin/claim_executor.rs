@@ -35,15 +35,28 @@ use std::process::ExitCode;
 use std::thread;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_value, ClaimOutcome,
+    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus, run_value,
+    ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
-/// One runnable claim, projected from a `ClaimRef` record in the plan value.
+/// One runnable plan node, projected from the plan value. A `SingleClaim` is one
+/// `(entry, function)` Bool witness (the demo suite + the floor's per-gate
+/// nodes); a `DiscoveryBatch` is the whole `--roster-from-discovery` corpus as a
+/// single node — it REUSES `cli_run::run_discovery_corpus` (the shared roster
+/// authority), it does NOT re-coin the ~199-row roster as explicit plan nodes
+/// (that would duplicate the discovery scan — DESIGN §3 — and cost a cold
+/// resolve per row).
+///
+/// 🟡 SCAFFOLD — feature:floor-discovery-batch-node — owner:merry-owl —
+/// dissolve-on: the "actually correct" floor model lands (per-job typed verdicts
+/// reified into .dag / affected-set→scheduler-frontier fusion). Until then this
+/// coproduct is the pragmatic interim that lets the WHOLE floor (gates + corpus)
+/// run dependency-ordered through one host. See merry-owl's lane.
 #[derive(Clone)]
-struct ClaimRef {
-    entry: String,
-    function: String,
+enum Runnable {
+    SingleClaim { entry: String, function: String },
+    DiscoveryBatch { source_roots: Vec<String>, scan_dirs: Vec<String> },
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -96,40 +109,97 @@ fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'
     }
 }
 
-fn claim_ref_from_value(value: &Value, ctx: &InterpContext) -> Result<ClaimRef, String> {
-    let fields = match value {
-        Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => fields,
-        other => {
-            return Err(format!(
-                "expected a ClaimRef record, got {}",
-                ctx.format_value(other)
-            ))
+/// Read a `List<String>` (FreeMonoid Cons/Empty) into a `Vec<String>`.
+fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for elem in free_monoid_elems(value, ctx)? {
+        match elem {
+            Value::Str(s) => out.push(s.clone()),
+            other => {
+                return Err(format!(
+                    "expected a List<String> element, got {}",
+                    other.type_label_public()
+                ))
+            }
         }
-    };
-    let str_field = |name: &str| -> Result<String, String> {
-        match ctx.field(fields, name) {
-            Some(Value::Str(s)) => Ok(s.clone()),
-            Some(other) => Err(format!(
-                "ClaimRef.{} is {}, not String",
-                name,
-                ctx.format_value(other)
-            )),
-            None => Err(format!("ClaimRef missing field `{}`", name)),
-        }
-    };
-    Ok(ClaimRef {
-        entry: str_field("entry")?,
-        function: str_field("function")?,
-    })
+    }
+    Ok(out)
 }
 
-/// Parse the plan value `List<List<ClaimRef>>` into ordered batches of claims.
-fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<ClaimRef>>, String> {
+/// Read a required String record/variant field.
+fn str_field(
+    fields: &std::collections::HashMap<v1_compiler::v1_interpreter::Symbol, Value>,
+    name: &str,
+    owner: &str,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match ctx.field(fields, name) {
+        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(other) => Err(format!(
+            "{}.{} is {}, not String",
+            owner,
+            name,
+            ctx.format_value(other)
+        )),
+        None => Err(format!("{} missing field `{}`", owner, name)),
+    }
+}
+
+/// Project one plan element into a `Runnable`. Accepts (fail-closed on anything
+/// else):
+///   - a bare `ClaimRef { entry, function }` record (back-compat: the demo suite
+///     and any SingleClaim authored as a record) → `SingleClaim`;
+///   - a `RunnableSingleClaim { entry, function }` variant → `SingleClaim`;
+///   - a `RunnableDiscoveryBatch { source_roots, scan_dirs }` variant → the
+///     discovery-corpus node.
+fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, String> {
+    match value {
+        Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => {
+            Ok(Runnable::SingleClaim {
+                entry: str_field(fields, "entry", "ClaimRef", ctx)?,
+                function: str_field(fields, "function", "ClaimRef", ctx)?,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => Ok(Runnable::SingleClaim {
+            entry: str_field(fields, "entry", "RunnableSingleClaim", ctx)?,
+            function: str_field(fields, "function", "RunnableSingleClaim", ctx)?,
+        }),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunnableDiscoveryBatch") => {
+            let source_roots = match ctx.field(fields, "source_roots") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => return Err("RunnableDiscoveryBatch missing field `source_roots`".to_string()),
+            };
+            let scan_dirs = match ctx.field(fields, "scan_dirs") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
+            };
+            Ok(Runnable::DiscoveryBatch {
+                source_roots,
+                scan_dirs,
+            })
+        }
+        other => Err(format!(
+            "expected a ClaimRef record or Runnable variant, got {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+/// Parse the plan value `List<List<Runnable>>` into ordered batches.
+fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnable>>, String> {
     let mut batches = Vec::new();
     for batch_val in free_monoid_elems(plan, ctx)? {
         let mut batch = Vec::new();
-        for claim_val in free_monoid_elems(batch_val, ctx)? {
-            batch.push(claim_ref_from_value(claim_val, ctx)?);
+        for elem in free_monoid_elems(batch_val, ctx)? {
+            batch.push(runnable_from_value(elem, ctx)?);
         }
         batches.push(batch);
     }
@@ -145,63 +215,102 @@ struct ClaimResult {
     detail: String,
 }
 
-fn run_one_claim(source_roots: Vec<String>, claim: ClaimRef) -> ClaimResult {
+fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResult {
+    match runnable {
+        Runnable::SingleClaim { entry, function } => run_single_claim(&source_roots, entry, function),
+        Runnable::DiscoveryBatch {
+            source_roots: roots,
+            scan_dirs,
+        } => run_discovery_batch_node(roots, scan_dirs),
+    }
+}
+
+fn run_single_claim(source_roots: &[String], entry: String, function: String) -> ClaimResult {
     // Fail-closed sentinel: the plan projects an empty-`entry` ClaimRef for any
     // unmapped suite node or non-complete executor plan (see batch_runner.dag).
     // It carries no resolvable witness, so it is a hard error — never a vacuous
     // pass.
-    if claim.entry.is_empty() {
+    if entry.is_empty() {
         return ClaimResult {
-            function: claim.function,
+            function,
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
         };
     }
-    let (graph, source_indices) = match resolve_entry_graph(&source_roots, &claim.entry) {
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, &entry) {
         Ok(pair) => pair,
         Err(msg) => {
             return ClaimResult {
-                function: claim.function,
+                function,
                 ok: false,
-                detail: format!("resolve failed for {}: {}", claim.entry, msg),
+                detail: format!("resolve failed for {}: {}", entry, msg),
             }
         }
     };
     // Context scoped to this claim's graph: its `data` cache drops with it.
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-    match run_claim(&ctx, &claim.function) {
+    match run_claim(&ctx, &function) {
         ClaimOutcome::Pass => ClaimResult {
-            function: claim.function,
+            function,
             ok: true,
             detail: String::new(),
         },
         ClaimOutcome::Fail => ClaimResult {
-            function: claim.function,
+            function,
             ok: false,
             detail: "returned Bool(false)".to_string(),
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
-            function: claim.function,
+            function,
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
-            function: claim.function,
+            function,
             ok: false,
             detail: format!("runtime error: {}", message),
         },
     }
 }
 
+/// Run the whole discovery corpus as one plan node, reusing the shared roster +
+/// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
+/// resolve failure, or any failing witness fails the node.
+fn run_discovery_batch_node(source_roots: Vec<String>, scan_dirs: Vec<String>) -> ClaimResult {
+    let label = format!("discovery-corpus[{}]", scan_dirs.join(","));
+    match run_discovery_corpus(&source_roots, &scan_dirs, ExecutionMode::Wet) {
+        Ok(summary) if summary.failures.is_empty() => ClaimResult {
+            function: format!("{label} ({} witnesses)", summary.total),
+            ok: true,
+            detail: String::new(),
+        },
+        Ok(summary) => ClaimResult {
+            function: label,
+            ok: false,
+            detail: format!(
+                "{} of {} discovery witness(es) failed: {}",
+                summary.failures.len(),
+                summary.total,
+                summary.failures.join("; ")
+            ),
+        },
+        Err(msg) => ClaimResult {
+            function: label,
+            ok: false,
+            detail: format!("discovery corpus failed: {msg}"),
+        },
+    }
+}
+
 /// Evaluate the executor-decided plan into ordered batches. The `.dag` is the
-/// batching authority: this reads the `List<List<ClaimRef>>` the plan function
+/// batching authority: this reads the `List<List<Runnable>>` the plan function
 /// returns and parses it — it never groups or orders anything itself.
 fn eval_plan(
     source_roots: &[String],
     plan_entry: &str,
     plan_function: &str,
-) -> Result<Vec<Vec<ClaimRef>>, String> {
+) -> Result<Vec<Vec<Runnable>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
@@ -231,22 +340,22 @@ struct WalkOutcome {
 /// batch boundary is a barrier: batch N+1 starts only after every claim in batch N
 /// has reported. A failed batch halts the walk before its dependents. The batch
 /// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
-fn run_walk(source_roots: &[String], batches: &[Vec<ClaimRef>]) -> WalkOutcome {
+fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         eprintln!(
-            "claim_executor: batch {} — {} claim(s)",
+            "claim_executor: batch {} — {} node(s)",
             bi + 1,
             batch.len()
         );
         let handles: Vec<_> = batch
             .iter()
-            .map(|claim| {
+            .map(|runnable| {
                 let roots = source_roots.to_vec();
-                let claim = claim.clone();
-                thread::spawn(move || run_one_claim(roots, claim))
+                let runnable = runnable.clone();
+                thread::spawn(move || run_one_runnable(roots, runnable))
             })
             .collect();
         for handle in handles {
@@ -383,10 +492,17 @@ fn run_perturb_check(
         );
         return Err(ExitCode::from(2));
     }
-    let gating = match batches[0].first() {
-        Some(c) if !c.entry.is_empty() => c.clone(),
+    // The gating node must be a SingleClaim with a plantable witness body; a
+    // DiscoveryBatch in batch 1 has no single function to perturb (the floor plan
+    // places compile-clean — a SingleClaim — at batch 1 precisely so this holds).
+    let (gating_entry, gating_function) = match batches[0].first() {
+        Some(Runnable::SingleClaim { entry, function }) if !entry.is_empty() => {
+            (entry.clone(), function.clone())
+        }
         _ => {
-            eprintln!("claim_executor: --perturb-check: batch 1 has no runnable gating claim");
+            eprintln!(
+                "claim_executor: --perturb-check: batch 1 has no plantable SingleClaim gating node"
+            );
             return Err(ExitCode::from(2));
         }
     };
@@ -401,31 +517,49 @@ fn run_perturb_check(
     }
 
     // Plant the gating (batch-1) witness body -> false in the temp tree.
-    let gating_path = remap_entry_for_temp(primary, &temp_src, &gating.entry);
-    if let Err(e) = perturb_function_to_false(&gating_path, &gating.function) {
+    let gating_path = remap_entry_for_temp(primary, &temp_src, &gating_entry);
+    if let Err(e) = perturb_function_to_false(&gating_path, &gating_function) {
         let _ = fs::remove_dir_all(&tmp);
         eprintln!("claim_executor: --perturb-check: plant gating->false failed: {e}");
         return Err(ExitCode::from(2));
     }
 
-    // Remap every claim's entry onto the temp tree (pure path rewrite; batch
+    // Remap every node's entry onto the temp tree (pure path rewrite; batch
     // membership and order are unchanged — that is the .dag plan's), then re-walk.
-    // Only the gating witness body differs from the green run.
+    // Only the gating witness body differs from the green run. The walk halts at
+    // batch 1 (planted false), so batch-2 DiscoveryBatch nodes never execute, but
+    // we remap their source_roots too so the perturb tree is self-consistent.
     let temp_root = temp_src.to_string_lossy().into_owned();
-    let remapped: Vec<Vec<ClaimRef>> = batches
+    let remap_root = |root: &str| -> String {
+        if root == primary.as_str() {
+            temp_root.clone()
+        } else {
+            root.to_string()
+        }
+    };
+    let remapped: Vec<Vec<Runnable>> = batches
         .iter()
         .map(|batch| {
             batch
                 .iter()
-                .map(|c| ClaimRef {
-                    entry: if c.entry.is_empty() {
-                        c.entry.clone()
-                    } else {
-                        remap_entry_for_temp(primary, &temp_src, &c.entry)
-                            .to_string_lossy()
-                            .into_owned()
+                .map(|r| match r {
+                    Runnable::SingleClaim { entry, function } => Runnable::SingleClaim {
+                        entry: if entry.is_empty() {
+                            entry.clone()
+                        } else {
+                            remap_entry_for_temp(primary, &temp_src, entry)
+                                .to_string_lossy()
+                                .into_owned()
+                        },
+                        function: function.clone(),
                     },
-                    function: c.function.clone(),
+                    Runnable::DiscoveryBatch {
+                        source_roots: roots,
+                        scan_dirs,
+                    } => Runnable::DiscoveryBatch {
+                        source_roots: roots.iter().map(|r| remap_root(r)).collect(),
+                        scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
+                    },
                 })
                 .collect()
         })
@@ -433,7 +567,7 @@ fn run_perturb_check(
 
     eprintln!(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
-        gating.function
+        gating_function
     );
     let outcome = run_walk(&[temp_root], &remapped);
     let _ = fs::remove_dir_all(&tmp);
