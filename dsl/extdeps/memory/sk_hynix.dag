@@ -34,9 +34,10 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   ecc: true,
   buffering: Registered,
   chip_width: X4,
-  // 🟡 CONFIRM-LIVE(srv1/srv2): rank is NOT a part-number field — derived from the SK
-  // Hynix datasheet ordering table (16GB x4 = 1R). Confirm on the live hosts via:
-  //   sudo dmidecode --type 17 | grep -E 'Part Number:|Rank:'   (expect Rank: 1)
-  // Do NOT infer rank from the "...R4..." digit (that is device width x4, not rank=4).
+  // rank is NOT a part-number field — derived from the SK Hynix datasheet ordering
+  // table (16GB x4 = 1R) and CONFIRMED on live hardware 2026-06-17:
+  //   sudo dmidecode --type 17 | grep -E 'Part Number:|Rank:'   → every DIMM Rank: 1
+  // on both srv1 (altrad8ud-1l2t-1) and srv2 (alstrad8d-1l2t-2), 8 sticks each.
+  // (Do NOT infer rank from the "...R4..." digit — that is device width x4, not rank=4.)
   rank_count: SingleRank,
 }
