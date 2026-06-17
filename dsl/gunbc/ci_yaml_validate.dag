@@ -1,7 +1,8 @@
 // gunbc/ci_yaml_validate.dag — host YAML parse check for generated ci.yml bytes.
 //
 // DESIGN §5: drift equality alone is insufficient; the committed file must parse as YAML.
-// Tries python3 PyYAML first, then actionlint on PATH (whichever succeeds).
+// Tries python3 PyYAML first, then actionlint on PATH, then the hand-written `yaml_check`
+// seed bin (SCAFFOLD — see `src/v1/stage0/src/bin/yaml_check.rs` dissolution trigger).
 
 module gunbc.ci_yaml_validate
 
