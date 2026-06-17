@@ -282,8 +282,8 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     const FILES: &[&str] = &[
         "dsl/extdeps/github/pulls.dag",
         "dsl/extdeps/github/gists.dag",
-        "dsl/extdeps/llm/anthropic.dag",
-        "dsl/extdeps/llm/openai.dag",
+        "dsl/extdeps/llm/anthropic_rest.dag",
+        "dsl/extdeps/llm/openai_rest.dag",
         "dsl/extdeps/cloud/gcp/iam.dag",
         "dsl/extdeps/cloud/gcp/secret_manager.dag",
         "dsl/extdeps/cloud/gcp/sts.dag",
