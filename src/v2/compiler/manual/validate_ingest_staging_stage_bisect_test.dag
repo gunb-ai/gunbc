@@ -1,5 +1,5 @@
 // Scope: bisect validate_ingest_staging hang — stop after resolve / infer / lens.
-// Status: diagnostic only for node://adhoc-99eb67ab-480.
+// Status: diagnostic + §5 witnesses (`*_test.dag` — claim_batch discovery requires the suffix).
 
 module v2.test.manual.validate_ingest_staging_stage_bisect
 
