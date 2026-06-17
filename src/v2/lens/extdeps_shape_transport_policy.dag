@@ -1,0 +1,311 @@
+// src/v2/lens/extdeps_shape_transport_policy.dag
+// Scope: extdeps shape/transport/policy guard — DESIGN.md §3 extdeps corollary (#5059).
+// Flags two tells only:
+//   (1) POLICY LEAK — argv literal that should be a parameter (consumer intent, not
+//       faithful upstream surface like git's `diff` / `--name-only`).
+//   (2) TRANSPORT-FUSION FORK — same logical endpoint modeled once per transport.
+// Status: 🟡 M1 — violation semantics + lens-unit synthetic facts; corpus RED witnesses
+//   read live `dsl/extdeps/**` via filesystem_read. Dissolve-on: Node-tree argv projection.
+// Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
+
+module v2.lens.extdeps_shape_transport_policy
+
+import v2.std.algebra {
+  fold_list,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// Closed transport vocabulary (extdeps/transports/{shell,rest}.dag — no stringly fork).
+type ExtdepsTransportKind
+  = Shell
+  | Rest
+
+type ExtdepsShapeTransportPolicyViolation
+  = PolicyLiteralInArgv {
+      path: String
+      service: String
+      operation: String
+      argv_token: String
+    }
+  | TransportFusionFork {
+      path: String
+      service_a: String
+      service_b: String
+      endpoint_key: String
+    }
+
+data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
+
+// Fact row: synthetic (lens-unit) or derived from a live read (corpus).
+type ExtdepsTransportArgvFact {
+  path: String
+  service: String
+  operation: String
+  transport_kind: ExtdepsTransportKind
+  argv_index: Int
+  argv_token: String
+}
+
+type ExtdepsTransportFusionFact {
+  path: String
+  endpoint_key: String
+  service_a: String
+  service_b: String
+}
+
+data empty_extdeps_transport_argv_facts: List<ExtdepsTransportArgvFact> = []
+data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+// filesystem_read bridge result (dissolve-on: std.filesystem read-result type).
+type FilesystemReadResult { content: String }
+
+fn extdeps_argv_token_is_parameterized_placeholder(token: String) -> Bool {
+  string_contains(token, "{") && string_contains(token, "}")
+}
+
+// Consumer-policy literals in argv — not faithful upstream/git surface primitives.
+fn extdeps_argv_token_is_consumer_policy_literal(token: String) -> Bool {
+  if extdeps_argv_token_is_parameterized_placeholder(token: token) {
+    false
+  } else if token == "diff" || token == "--name-only" || token == "git" {
+    false
+  } else {
+    token == "--all-targets"
+      || token == "--workspace"
+      || token == "--no-deps"
+      || token == "-D"
+      || token == "warnings"
+      || string_contains(token, "origin/")
+      || string_contains(token, "...")
+  }
+}
+
+fn extdeps_live_file_contains_consumer_policy_literal(path: String, token: String) -> Bool {
+  let source = filesystem_read(path: path)
+  string_contains(source.content, token)
+    && extdeps_argv_token_is_consumer_policy_literal(token: token)
+}
+
+fn extdeps_live_file_shows_transport_fusion_fork(path: String) -> Bool {
+  let source = filesystem_read(path: path)
+  string_contains(source.content, "service oauth2.Google")
+    && string_contains(source.content, "service shell.OAuth2")
+    && string_contains(source.content, "refresh_token")
+}
+
+fn argv_fact_matches_path(fact: ExtdepsTransportArgvFact, path: String) -> Bool {
+  fact.path == path
+}
+
+fn argv_fact_matches_operation(
+  fact: ExtdepsTransportArgvFact,
+  path: String,
+  service: String,
+  operation: String
+) -> Bool {
+  fact.path == path && fact.service == service && fact.operation == operation
+}
+
+fn fusion_fact_matches_path(fact: ExtdepsTransportFusionFact, path: String) -> Bool {
+  fact.path == path
+}
+
+fn scan_argv_facts_for_violations(
+  facts: List<ExtdepsTransportArgvFact>
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_shape_transport_policy_violations,
+    cons: fn(acc, fact) {
+      if extdeps_argv_token_is_consumer_policy_literal(token: fact.argv_token) {
+        list_snoc_item(
+          xs: acc,
+          item: PolicyLiteralInArgv {
+            path: fact.path,
+            service: fact.service,
+            operation: fact.operation,
+            argv_token: fact.argv_token
+          }
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn scan_fusion_facts_for_violations(
+  facts: List<ExtdepsTransportFusionFact>
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_shape_transport_policy_violations,
+    cons: fn(acc, fact) {
+      list_snoc_item(
+        xs: acc,
+        item: TransportFusionFork {
+          path: fact.path,
+          service_a: fact.service_a,
+          service_b: fact.service_b,
+          endpoint_key: fact.endpoint_key
+        }
+      )
+    }
+  )
+}
+
+fn merge_violation_lists(
+  a: List<ExtdepsShapeTransportPolicyViolation>,
+  b: List<ExtdepsShapeTransportPolicyViolation>
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  fold_list(
+    xs: b,
+    empty: a,
+    cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) }
+  )
+}
+
+fn scan_facts_for_violations(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>
+) -> List<ExtdepsShapeTransportPolicyViolation> {
+  merge_violation_lists(
+    a: scan_argv_facts_for_violations(facts: argv_facts),
+    b: scan_fusion_facts_for_violations(facts: fusion_facts)
+  )
+}
+
+fn extdeps_shape_transport_policy_violation_count(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>
+) -> Int {
+  length(
+    xs: scan_facts_for_violations(
+      argv_facts: argv_facts,
+      fusion_facts: fusion_facts
+    )
+  )
+}
+
+fn extdeps_shape_transport_policy_clean_holds(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>
+) -> Bool {
+  extdeps_shape_transport_policy_violation_count(
+    argv_facts: argv_facts,
+    fusion_facts: fusion_facts
+  ) == 0
+}
+
+fn filter_argv_facts_for_operation(
+  facts: List<ExtdepsTransportArgvFact>,
+  path: String,
+  service: String,
+  operation: String
+) -> List<ExtdepsTransportArgvFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_transport_argv_facts,
+    cons: fn(acc, fact) {
+      if argv_fact_matches_operation(
+        fact: fact,
+        path: path,
+        service: service,
+        operation: operation
+      ) {
+        list_snoc_item(xs: acc, item: fact)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn filter_argv_facts_for_path(
+  facts: List<ExtdepsTransportArgvFact>,
+  path: String
+) -> List<ExtdepsTransportArgvFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_transport_argv_facts,
+    cons: fn(acc, fact) {
+      if argv_fact_matches_path(fact: fact, path: path) {
+        list_snoc_item(xs: acc, item: fact)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn filter_fusion_facts_for_path(
+  facts: List<ExtdepsTransportFusionFact>,
+  path: String
+) -> List<ExtdepsTransportFusionFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_transport_fusion_facts,
+    cons: fn(acc, fact) {
+      if fusion_fact_matches_path(fact: fact, path: path) {
+        list_snoc_item(xs: acc, item: fact)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn extdeps_shape_transport_policy_violation_count_for_operation(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>,
+  path: String,
+  service: String,
+  operation: String
+) -> Int {
+  extdeps_shape_transport_policy_violation_count(
+    argv_facts: filter_argv_facts_for_operation(
+      facts: argv_facts,
+      path: path,
+      service: service,
+      operation: operation
+    ),
+    fusion_facts: []
+  )
+}
+
+fn extdeps_shape_transport_policy_violation_count_for_path(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  fusion_facts: List<ExtdepsTransportFusionFact>,
+  path: String
+) -> Int {
+  extdeps_shape_transport_policy_violation_count(
+    argv_facts: argv_facts,
+    fusion_facts: filter_fusion_facts_for_path(facts: fusion_facts, path: path)
+  )
+}
+
+fn extdeps_shape_transport_policy_policy_leak_count_for_path(
+  argv_facts: List<ExtdepsTransportArgvFact>,
+  path: String
+) -> Int {
+  length(
+    xs: scan_argv_facts_for_violations(
+      facts: filter_argv_facts_for_path(facts: argv_facts, path: path)
+    )
+  )
+}
+
+fn extdeps_shape_transport_policy_fusion_count_for_path(
+  fusion_facts: List<ExtdepsTransportFusionFact>,
+  path: String
+) -> Int {
+  length(
+    xs: scan_fusion_facts_for_violations(
+      facts: filter_fusion_facts_for_path(facts: fusion_facts, path: path)
+    )
+  )
+}
