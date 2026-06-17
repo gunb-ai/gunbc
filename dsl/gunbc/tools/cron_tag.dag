@@ -9,6 +9,7 @@ module gunbc.tools.cron_tag
 import extdeps.cron
 
 fn cron_tag_marker(tag: String) -> String {
+  let bogus: Int = "this is not an int"
   "# tag:{tag}"
 }
 
