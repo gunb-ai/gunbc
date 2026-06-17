@@ -128,13 +128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ci_claim_gate"
-version = "0.1.0"
-dependencies = [
- "v1-compiler",
-]
-
-[[package]]
 name = "ci_timings_collector"
 version = "0.1.0"
 dependencies = [
@@ -188,10 +181,6 @@ name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
-
-[[package]]
-name = "compile_host_runner"
-version = "0.1.0"
 
 [[package]]
 name = "crc32fast"

@@ -1,4 +1,4 @@
-# The whole CI floor is one `.dag` binary: ci-claim-gate discovers the
+# The whole CI floor is one `.dag` binary: claim_batch discovers the
 # single-representation `test fn`/`test data` corpus under src/v2/test and evaluates
 # every claim in-interpreter — no shell gate, no hand roster, no `.dag` shell-out.
 # Branch protection should require job id `ci`.
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           # 0 (not 1): full history so `origin/main...HEAD` merge-base resolves for the
-          # Rust-gate affected-set below. ci-claim-gate fail-closes (runs the gates) if
+          # Rust-gate affected-set below. claim_batch fail-closes (runs the gates) if
           # the base is unavailable, so safety holds regardless. Revert to 1 if clone slows.
           fetch-depth: 0
       - name: Setup Rust
@@ -59,10 +59,10 @@ jobs:
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       # CI floor — one step, three `.dag` evaluations:
-      #   (1) ci-claim-gate: the always-on src/v2 witness corpus. Discovery is a build-time
+      #   (1) claim_batch: the always-on src/v2 witness corpus (the compiler-seed
+      #       `claim_batch` bin, --roster-from-discovery). Discovery is a build-time
       #       lens over parsed source (NOT runtime reflection), so it is a Rust host today;
-      #       this is the last bespoke Rust gate binary and dissolves when witness discovery
-      #       moves to gunbc.
+      #       it dissolves when witness discovery moves to gunbc.
       #   (2) gunbc: the rust-monolith SELECTOR witnesses (tools.rust_stage0_gates) — keeps the
       #       selector's edge cases (suffix-not-substring, dag-only, fail-closed) gated.
       #   (3) gunbc: the rust-monolith GATE (tools.rust_gates_ci) — git diff -> selector ->
@@ -73,6 +73,6 @@ jobs:
       - name: CI floor (.dag witness corpus + Rust gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+          cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main

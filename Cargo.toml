@@ -10,7 +10,6 @@ members = [
     "src/v1/tests",
     "tools/ci_affected_components",
     "tools/ci_timings_collector",
-    "tools/ci_claim_gate",
     "tools/layering_imports_scan",
     "tools/emit_host_runner",
 ]
