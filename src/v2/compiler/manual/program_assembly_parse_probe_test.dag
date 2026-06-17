@@ -1,0 +1,28 @@
+module v2.test.manual.program_assembly_parse_probe
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data pa_probe_file: Symbol = pa_probe_file
+data pa_probe_source: String = "module pa_alpha_seg\nfn fna(x:Int, y:Int) -> Int { x + y }"
+
+test fn program_assembly_parse_probe_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_probe_source, file: pa_probe_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
