@@ -1,0 +1,7 @@
+module v2.test.fixture.pa_ingest_subject
+
+import v2.test.fixture.pa_ingest_peer
+
+fn pa_subject_stub() -> Int {
+  1
+}

@@ -1,0 +1,5 @@
+module v2.test.fixture.pa_ingest_peer
+
+fn pa_peer_stub() -> Int {
+  1
+}

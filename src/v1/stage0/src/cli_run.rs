@@ -1724,7 +1724,11 @@ pub fn verify_bool_witness_transport_projection_complete(
 }
 
 fn dag_string_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
@@ -1914,14 +1918,14 @@ fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
 }
 
 fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
-    format!(
-        "{}_cu",
-        source_root_ingest_artifact_id_for_path(path)
-            .trim_start_matches('^')
-    )
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("host_sr");
+    source_root_ingest_symbol_from_stem(stem)
 }
 
-fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
+pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
         material.push_str(&rec.file_path);
@@ -1943,55 +1947,60 @@ fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
         .any(|sub| path.contains(sub) || path.ends_with(sub))
 }
 
-/// Walk `source_roots` for `.dag` files under `scan_dir`, read source text, fail-closed on
-/// missing module headers or duplicate module paths.
+/// Walk `scan_dir` for `.dag` files, read source text, fail-closed on missing module
+/// headers or duplicate module paths. `source_roots` must exist (compile overlay roots).
 pub fn discover_source_root_reads(
     source_roots: &[String],
     scan_dir: &str,
     exclude_subpaths: &[String],
 ) -> Result<Vec<SourceRootReadRecord>, String> {
-    let mut records: Vec<SourceRootReadRecord> = Vec::new();
-    let mut seen_modules: HashMap<String, String> = HashMap::new();
-
     for root in source_roots {
-        let base = Path::new(root).join(scan_dir);
-        if !base.exists() {
+        let root_path = Path::new(root);
+        if !root_path.exists() {
             return Err(format!(
-                "discover_source_root_ingest: scan dir does not exist: {}",
-                base.display()
+                "discover_source_root_ingest: source root does not exist: {}",
+                root
             ));
         }
-        let mut dag_files = Vec::new();
-        collect_dag_files(&base, &mut dag_files);
-        for path in dag_files {
-            let rel_path = path
-                .strip_prefix(root)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
-            let rel_forward = rel_path.replace('\\', "/");
-            if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
-                continue;
-            }
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
-            let module_path = extract_module_path(&content).ok_or_else(|| {
-                format!(
-                    "discover_source_root_ingest: no module declaration in {}",
-                    rel_forward
-                )
-            })?;
-            if let Some(prior) = seen_modules.insert(module_path.clone(), rel_forward.clone()) {
-                return Err(format!(
-                    "discover_source_root_ingest: duplicate module path '{}' in {} and {}",
-                    module_path, prior, rel_forward
-                ));
-            }
-            records.push(SourceRootReadRecord {
-                file_path: rel_forward,
-                module_path,
-                source: content,
-            });
+    }
+
+    let scan_path = Path::new(scan_dir);
+    if !scan_path.is_dir() {
+        return Err(format!(
+            "discover_source_root_ingest: scan dir does not exist: {}",
+            scan_dir
+        ));
+    }
+
+    let mut records: Vec<SourceRootReadRecord> = Vec::new();
+    let mut seen_modules: HashMap<String, String> = HashMap::new();
+    let mut dag_files = Vec::new();
+    collect_dag_files(scan_path, &mut dag_files);
+
+    for path in dag_files {
+        let rel_forward = path.to_string_lossy().replace('\\', "/");
+        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
+            continue;
         }
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
+        let module_path = extract_module_path(&content).ok_or_else(|| {
+            format!(
+                "discover_source_root_ingest: no module declaration in {}",
+                rel_forward
+            )
+        })?;
+        if let Some(prior) = seen_modules.insert(module_path.clone(), rel_forward.clone()) {
+            return Err(format!(
+                "discover_source_root_ingest: duplicate module path '{}' in {} and {}",
+                module_path, prior, rel_forward
+            ));
+        }
+        records.push(SourceRootReadRecord {
+            file_path: rel_forward,
+            module_path,
+            source: content,
+        });
     }
 
     records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
@@ -2002,34 +2011,20 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     format!(
-        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: ^{compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
         dag_string_escape(&rec.source),
         dag_string_escape(&rec.file_path),
     )
 }
 
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
-    if records.is_empty() {
-        return "Empty".to_string();
-    }
-    let mut out = String::new();
-    for (idx, rec) in records.iter().enumerate() {
-        if idx == 0 {
-            out.push_str("Cons {\n  head: ");
-            out.push_str(&emit_source_root_read_witness(rec));
-            out.push_str(",\n  tail: ");
-        } else if idx == records.len() - 1 {
-            out.push_str("Cons {\n    head: ");
-            out.push_str(&emit_source_root_read_witness(rec));
-            out.push_str(",\n    tail: Empty\n  }");
-        } else {
-            out.push_str("Cons {\n    head: ");
-            out.push_str(&emit_source_root_read_witness(rec));
-            out.push_str(",\n    tail: ");
-        }
-    }
-    for _ in 0..records.len().saturating_sub(1) {
-        out.push_str("\n  }");
+    let mut witness_nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_root_read_witness)
+        .collect();
+    let mut out = String::from("Empty");
+    while let Some(head) = witness_nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
     }
     out
 }

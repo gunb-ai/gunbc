@@ -1,0 +1,20 @@
+// tools/source_root_ingest_gate.dag — Lane 3a real SourceRootIngest producer gate.
+//
+// Run in CI:
+//   cargo run -p v1-compiler --release --bin gunbc -- run \
+//     --source-root dsl --entry dsl/tools/source_root_ingest_gate.dag --function main
+
+module tools.source_root_ingest_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.source_root_ingest_transport { run_real_ingest_gate }
+
+func main() -> ProcessExit {
+  if run_real_ingest_gate() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "source root ingest gate failed: real multi-file assemble_program_from_ingest receipts"
+    )
+  }
+}

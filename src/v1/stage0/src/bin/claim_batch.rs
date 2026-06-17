@@ -228,6 +228,7 @@ const DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery.dag",
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
+    "host_source_root_ingest_manifest.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
