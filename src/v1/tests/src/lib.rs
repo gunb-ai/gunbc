@@ -30,6 +30,8 @@ mod diagnostics;
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
+mod extdeps_shape_transport_policy_lens_test;
+#[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
@@ -92,5 +94,4 @@ mod value_carrier_swap_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]
-mod extdeps_shape_transport_policy_lens_test;
 mod witness_option_bridge_test;

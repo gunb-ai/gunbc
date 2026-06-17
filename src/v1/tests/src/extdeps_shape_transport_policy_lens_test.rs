@@ -43,7 +43,11 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
     let lens_content = std::fs::read_to_string(workspace_root().join(lens_entry))
         .unwrap_or_else(|e| panic!("read {lens_entry}: {e}"));
     assert_resolved_no_hard_errors(&compile_to_resolved(std::rc::Rc::new(
-        resolve_imports_transitively_with_source_roots(lens_entry, &lens_content, &v2_source_roots()),
+        resolve_imports_transitively_with_source_roots(
+            lens_entry,
+            &lens_content,
+            &v2_source_roots(),
+        ),
     )));
 
     let policy_leak_entry =
