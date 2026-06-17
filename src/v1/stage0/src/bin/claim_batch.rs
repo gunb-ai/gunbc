@@ -388,10 +388,10 @@ struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
-    /// Execution mode for witness eval. Phase 1: default **Wet** (live dispatch,
-    /// CI unchanged). `--hermetic` selects modeled `mock_response`; `--wet`
-    /// is explicit Wet (becomes the Phase 2 opt-in when default flips Hermetic).
-    wet: bool,
+    /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
+    /// `--hermetic` selects modeled `mock_response`; `--wet` is explicit Wet
+    /// (Phase 2 opt-in when default flips Hermetic).
+    execution_mode: ExecutionMode,
 }
 
 /// Discovery-mode config (set when `--roster-from-discovery` is given).
