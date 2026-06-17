@@ -84,7 +84,8 @@ pub fn record_import_merge(consumer: &str, import_path: &str, elapsed: Duration)
     }
     let key = format!("{consumer} <- {import_path}");
     IMPORT_MERGE.with(|m| {
-        let entry = m.borrow_mut().entry(key).or_default();
+        let mut binding = m.borrow_mut();
+        let entry = binding.entry(key).or_default();
         entry.calls += 1;
         entry.total += elapsed;
         if elapsed > entry.max {
