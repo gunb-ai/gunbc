@@ -1,0 +1,33 @@
+// extdeps/environment/environment.dag -- Process environment variable reads.
+//
+// Spec: POSIX.1 printenv utility — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/printenv.html
+//
+// Host-effect peer of extdeps/filesystem/filesystem_io.dag: a read-only service
+// whose operations the v1 interpreter dispatches live via the `shell` transport.
+// `Environment.Read(name:)` returns the variable value or an absent result when
+// unset — never raw std::env::var on the hermetic path.
+//
+// 🟡 dissolved — feature:environment-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
+// --fixture-store (recorded wet via --record); forbidden: reintroducing mock_response
+// constants for Hermetic dispatch on this shape.
+
+module extdeps.environment
+
+import std.types { NonEmptyStr }
+
+service Environment {
+  operation Read {
+    input { name: NonEmptyStr }
+    output {
+      value: String? from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["printenv", "{name}"] }
+    exit {
+      0 => Unit
+      1 => Unit "Variable not set"
+    }
+  }
+}

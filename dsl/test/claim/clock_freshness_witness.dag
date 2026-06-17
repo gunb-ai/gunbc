@@ -8,7 +8,7 @@
 //   claim_batch ... --hermetic --fixture-store /tmp/clock-fixtures
 //
 // Discriminators:
-//   * wet Clock.Now returns a positive decimal epoch string;
+//   * wet Clock.Now returns a non-empty ISO Timestamp;
 //   * hermetic replay returns the recorded value (not live clock drift);
 //   * backdated recorded_at on a Clock fixture fails closed on freshness.
 
@@ -18,8 +18,7 @@ import extdeps.clock
 
 func witness_clock_now_positive_epoch() -> Bool {
   let r = Clock.Now()
-  // `date +%s` yields a non-empty decimal string; empty means clock transport failed.
-  return r.unix_secs != ""
+  return r.timestamp != ""
 }
 
 fn clock_freshness_keystone_holds() -> Bool {

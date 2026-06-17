@@ -4,9 +4,9 @@
 //
 // Host-effect peer of extdeps/filesystem/filesystem_io.dag: a read-only service
 // whose operations the v1 interpreter dispatches live via the `shell` transport.
-// `Clock.Now()` returns the current Unix epoch seconds as a decimal string from
-// `date +%s`. Fixture infrastructure (RecordedFixture recorded_at / freshness)
-// routes through this service — never raw SystemTime.
+// `Clock.Now()` returns the current instant as an ISO 8601 Timestamp (`date -u`).
+// Fixture infrastructure (RecordedFixture recorded_at / freshness) uses the same
+// wet shell transport — never raw SystemTime.
 //
 // 🟡 dissolved — feature:clock-mock-response — scaffold:hand-authored mock_response —
 // dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
@@ -15,12 +15,14 @@
 
 module extdeps.clock
 
+import std.types { Timestamp }
+
 service Clock {
   operation Now {
     input {}
-    output { unix_secs: String from "stdout" }
+    output { timestamp: Timestamp from "stdout" }
     readonly
-    transport shell { argv: ["date", "+%s"] }
+    transport shell { argv: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"] }
     exit {
       0 => Unit
       nonzero => String "date command failed"
