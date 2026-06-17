@@ -316,6 +316,9 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
+            if DISCOVERY_EXCLUDES.iter().any(|sub| entry.contains(sub)) {
+                continue;
+            }
             let content =
                 fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
