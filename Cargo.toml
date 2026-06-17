@@ -8,7 +8,6 @@ members = [
     "src/v1/stage0_emit_core",
     # END generated stage0 crate members
     "src/v1/tests",
-    "tools/layering_imports_scan",
 ]
 
 [workspace.metadata]
