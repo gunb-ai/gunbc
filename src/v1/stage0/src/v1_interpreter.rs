@@ -3243,27 +3243,77 @@ fn eval_service_call(
 
     // Bind input params to arg values
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    let inputs_hash =
+        crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
 
-    // Hermetic: return modeled mock response instead of live dispatch.
+    // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
-        eprintln!("[hermetic] {}.{}", service_name, op_name);
+        if let Some(store) = &ctx.fixture_store {
+            eprintln!(
+                "[hermetic:fixture] {}.{} inputs_hash={}",
+                service_name, op_name, inputs_hash
+            );
+            let fixture = store.lookup(&key, &inputs_hash).map_err(|e| {
+                InterpError::TypeError {
+                    msg: e.to_string(),
+                }
+            })?;
+            return Ok(crate::recorded_fixture::value_from_fixture_json(
+                &fixture.response,
+                ctx,
+            ));
+        }
+        eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
 
+    let result = dispatch_service_wet(
+        service_node,
+        op_node,
+        transport,
+        &param_env,
+        ctx,
+    )?;
+
+    if ctx.execution_mode.is_record() {
+        let store = ctx.fixture_store.as_ref().ok_or_else(|| InterpError::TypeError {
+            msg: "--record requires --fixture-store".to_string(),
+        })?;
+        store
+            .record(&key, &inputs_hash, &result, ctx)
+            .map_err(|e| InterpError::TypeError {
+                msg: e.to_string(),
+            })?;
+        eprintln!(
+            "[record] {}.{} inputs_hash={}",
+            service_name, op_name, inputs_hash
+        );
+    }
+
+    Ok(result)
+}
+
+fn dispatch_service_wet(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     // Shell transport dispatch
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, &param_env, ctx)?;
+        let result = dispatch_shell(transport, param_env, ctx)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
     // File transport dispatch (filesystem read/write at the configured path)
     if is_file_transport(transport.clone(), ctx.si()) {
-        let result = dispatch_file(op_node, transport, &param_env, ctx)?;
+        let result = dispatch_file(op_node, transport, param_env, ctx)?;
         return map_file_outputs(&result, op_node, ctx);
     }
 
     // REST transport dispatch (any non-shell transport with service config endpoint)
-    return dispatch_rest(service_node, op_node, transport, &param_env, ctx);
+    dispatch_rest(service_node, op_node, transport, param_env, ctx)
 }
 
 /// Build an environment with service operation params bound to arg values.
