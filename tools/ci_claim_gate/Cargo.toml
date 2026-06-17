@@ -7,8 +7,7 @@ publish = false
 
 # Uniform CI claim-gate host (Option B: embeds v2 interpreter to evaluate a `.dag`
 # rows-tsv function, then runs claim_batch green + optional perturb). Dissolves the
-# duplicated awk/grep roster projection in v2-*-gate.sh scripts. Kept separate from
-# ci_affected_components so the fast affected detector does not pull v1-compiler.
+# duplicated awk/grep roster projection in v2-*-gate.sh scripts.
 
 [[bin]]
 name = "ci-claim-gate"
