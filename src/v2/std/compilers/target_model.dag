@@ -435,18 +435,16 @@ fn target_binding_spelling_lookup(
   match map_get(target.binding_spellings, binding) {
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-      Absent =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: pending,
-            rejected: diagnostics_singleton(
-              d: target_binding_spelling_not_found_diagnostic(binding: binding)
-            )
-          )
-        }
+      Absent => symbol_interned_spelling(binding: binding)
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
+}
+
+// Case (a): parse preserves surface name in atom identity; Symbol values are their interned
+// source spelling (name_interning_covers_all_domains — no per-instance Map<Symbol,String>).
+fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
+  outcome_accepted(value: binding)
 }
 
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
