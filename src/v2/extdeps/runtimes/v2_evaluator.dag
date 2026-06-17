@@ -43,6 +43,7 @@ import v2.std.runtime {
   InterpretationAlgebra,
   InterpretationStructureWitness,
   LoopInterpreter,
+  MatchInterpreter,
   Raise,
   ResourceEffectBoundary,
   Return,
@@ -51,6 +52,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter,
   ValueRepresentationModel,
+  runtime_reject_match_arm,
   runtime_value_resolved_type
 }
 import v2.std.witness { Violates, Witness }
@@ -260,6 +262,9 @@ fn v2_evaluator_interpretation_wave1() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: v2_eval_wave1_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
