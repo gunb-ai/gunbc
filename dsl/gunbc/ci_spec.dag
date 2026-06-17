@@ -27,11 +27,20 @@ type CiSpec {
 }
 
 // Single authority for CI witness layer roots (§3 — replaces the former triple-fork across
-// ci.yml / the transport scripts / a hand-listed witness_entries). Discovery walks these roots
-// WHOLE (no --scan-dir narrowing): `claim_batch --roster-from-discovery` finds every
-// unified_claim_* / *_test.dag witness in the closure, so adding a witness needs no edit here —
-// that is the anti-rot point (reference-by-path dissolved to discovery-by-predicate).
+// ci.yml / the transport scripts / a hand-listed witness_entries).
 data witness_layer_roots: List<String> = ["src/v2", "dsl"]
+
+// Discovery scan dirs: `claim_batch --roster-from-discovery` requires at least one --scan-dir
+// and reflects every `data unified_claim_*` / `*_test.dag` witness it finds under them into the
+// roster. This DISSOLVES the former hand-listed witness_entries (reference-by-path →
+// discovery-by-predicate, §2/§3): a new witness dropped into one of these dirs is picked up with
+// no edit here — that is the anti-rot point. These two dirs are exactly where the dissolved
+// witnesses live (7 in dsl/test/claim + 1 in src/v2/test/claim/layering_imports), so coverage
+// equals the prior explicit-entry floor with no regression.
+data witness_discovery_scan_dirs: List<String> = [
+  "dsl/test/claim",
+  "src/v2/test/claim/layering_imports"
+]
 
 // 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
 // dissolve-on-arrival: generic Symbol→inhabitant replaces this exhaustive match roster.
@@ -84,10 +93,17 @@ fn witness_layer_source_shell_flags(roots: List<String>) -> String {
   witness_layer_source_flags(roots: roots)
 }
 
+fn witness_layer_scan_flags() -> String {
+  fold(witness_discovery_scan_dirs, init: "", f: (acc, d) => concat(acc, concat(" --scan-dir ", d)))
+}
+
 fn claim_batch_script(spec: CiSpec) -> String {
   concat(
     concat(
-      concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
+      concat(
+        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
+        witness_layer_scan_flags()
+      ),
       " --roster-from-discovery"
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")

@@ -13,9 +13,9 @@ import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate,
-  gunbc_ci_spec, gunbc_ci_gates, witness_layer_roots,
+  gunbc_ci_spec, gunbc_ci_gates, witness_layer_roots, witness_discovery_scan_dirs,
   claim_batch_script, gunbc_ci_run_script, git_fetch_script, ci_gates_invoke,
-  witness_layer_source_flags
+  witness_layer_source_flags, witness_layer_scan_flags
 }
 
 // §5 anti-rot guard for the gunbc_ci_gates SCAFFOLD hand-list: reflect ^Gate's arms and
@@ -66,7 +66,21 @@ fn witness_layers_fold_into_claim_batch() -> Bool {
   let script = claim_batch_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: " --source-root src/v2") &&
     string_contains(s: script, pattern: " --source-root dsl") &&
-    string_contains(s: script, pattern: " --roster-from-discovery")
+    string_contains(s: script, pattern: " --roster-from-discovery") &&
+    string_contains(s: script, pattern: " --scan-dir dsl/test/claim") &&
+    string_contains(s: script, pattern: " --scan-dir src/v2/test/claim/layering_imports")
+}
+
+// Discovery requires at least one --scan-dir; these two dirs are the dissolved witnesses' homes
+// (§5: a discriminating check that the spec actually emits them, not just declares the data).
+fn witness_discovery_scan_dirs_emit_scan_flags() -> Bool {
+  string_contains(
+    s: witness_layer_scan_flags(),
+    pattern: " --scan-dir dsl/test/claim"
+  ) && string_contains(
+    s: witness_layer_scan_flags(),
+    pattern: " --scan-dir src/v2/test/claim/layering_imports"
+  ) && (length(xs: witness_discovery_scan_dirs) == 2)
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
