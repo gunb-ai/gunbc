@@ -90,23 +90,19 @@ for git's diff *semantics*; libgit2 and the compare API are the other handlers);
 fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has
 leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`,
 `--all-targets`); the tell that (b) has fused is the same operation forked once per transport
-<<<<<<< HEAD
-(GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. This is not yet
-lens-enforced — until it is, it is §3 diligence. This holds at *any* interface↔realization seam, not
-only service ops: the cited data behind an agnostic std surface de-fuses exactly as a transport does, and
-its directional reading is the same — the *dispatch* that selects a realization is itself realization,
-so it sits peripheral (`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std
-projection that *matched* over its realizations would have to name them, inverting the import arrow
-above). What migrates outward is each realization's grounded specifics — cited rows, *or* a per-OS
-taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays central. A
-std type that privileged one realization's taxonomy (POSIX `st_mode` over the `Ntfs`/`Apfs` that
-`FileSystemSemantics` already enumerates) is itself that inversion.
-=======
 (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers.
 Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact
 rows; corpus RED witnesses execute against live `dsl/extdeps/**` via `filesystem_read`
-(dissolve-on: Node-tree argv projection supersedes text scan).
->>>>>>> origin/main
+(dissolve-on: Node-tree argv projection supersedes text scan). This holds at *any*
+interface↔realization seam, not only service ops: the cited data behind an agnostic std
+surface de-fuses exactly as a transport does, and its directional reading is the same — the
+*dispatch* that selects a realization is itself realization, so it sits peripheral
+(`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std projection that
+*matched* over its realizations would have to name them, inverting the import arrow above).
+What migrates outward is each realization's grounded specifics — cited rows, *or* a per-OS
+taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays
+central. A std type that privileged one realization's taxonomy (POSIX `st_mode` over the
+`Ntfs`/`Apfs` that `FileSystemSemantics` already enumerates) is itself that inversion.
 
 - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model. Likewise `std/os.dag` projects per-vendor rows with no `match` ("projection only"), while the cited rows and the product→vendor dispatch (`cited_operating_system_surface`) live in `extdeps/os/{ubuntu,windows,macos,os}.dag` ("dispatch lives in extdeps/, not std/", promoted from that hub header).
 
