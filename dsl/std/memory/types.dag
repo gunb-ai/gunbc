@@ -23,16 +23,20 @@ type DimmBuffering = Unbuffered | Registered | LoadReduced
 // order). One JEDEC part is ONE catalog row regardless of how many marketplace
 // listings sell it: the row decomposes the part number into grounded axes. The two
 // numeric organization axes carry their MAGNITUDE (not an opaque enum token) so
-// derivations compute on them directly — chips_per_rank = 72 / chip_width bits,
-// capacity = die_density × chips_per_rank × rank_count.
+// derivations compute on them directly. Two DISTINCT per-rank device counts (conflating them
+// is the §2 state-space trap): PHYSICAL dram_chips_per_rank = 72 / chip_width bits (incl ECC —
+// the power divisor) vs DATA dram_data_chips_per_rank = 64 / chip_width bits (excl ECC — the
+// capacity/die-density divisor, since marketed capacity_bytes does not count ECC silicon):
+// capacity = die_density × dram_data_chips_per_rank × rank_count.
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
   // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
   // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
-  // a +/- claim — then capacity = die_density × (72 / bit_width_count(chip_width)) ×
-  // rank_count and memory.dag's reader calls it. A PN-certain stored 16GB beats an
-  // inferred-die-density derivation today (fail-closed, §5).
+  // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×
+  // rank_count (DATA chips only — marketed capacity excludes ECC silicon; see
+  // dram_data_chips_per_rank) and memory.dag's reader calls it. A PN-certain stored 16GB beats
+  // an inferred-die-density derivation today (fail-closed, §5).
   capacity_bytes: ByteSize
   data_rate_mts: Int
   ecc: Bool
@@ -53,15 +57,30 @@ type DramModuleCatalogRow {
   rank_count: Int
 }
 
-// chips_per_rank — the DRAM devices in one rank: a 72-bit ECC word spread across
-// (72 / device-width) devices. The single authority for this derivation (the comment on
-// capacity_bytes and downstream power/realizability derivations all key on it).
+// dram_chips_per_rank — the PHYSICAL DRAM devices in one rank: a 72-bit ECC word spread
+// across (72 / device-width) devices, INCLUDING the ECC device. This is the POWER divisor —
+// an ECC chip draws power, so memory_power / devices_per_stick key on it. It is NOT the
+// capacity divisor (see dram_data_chips_per_rank below — capacity excludes ECC silicon).
+// 🟡 all current corpus parts are ECC, so 72 is exact; generalize to (ecc ? 72 : 64)/width if
+// a non-ECC module ever enters the catalog (a non-ECC stick's physical count is also 64/width).
 fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
   72 / bit_width_count(b: module.chip_width)
 }
 
+// dram_data_chips_per_rank — the DATA DRAM devices in one rank: a 64-bit DATA word spread
+// across (64 / device-width) devices, EXCLUDING ECC. This is the CAPACITY / die-density
+// divisor: capacity_bytes is the MARKETED data capacity (a 16GB part is sold as 16 GiB of
+// usable memory; its ECC chips are not counted), so the per-die density implied by that
+// marketed capacity divides by data devices only. Splitting this from dram_chips_per_rank
+// avoids the §2 state-space trap of one name meaning two distinct device counts: dividing the
+// marketed capacity by 72/width would compute a non-existent die density for EVERY real part
+// (a 16GB 1Rx4 → 7.11 Gibit, a die that does not exist), defeating the §5 realizability guard.
+fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
+  64 / bit_width_count(b: module.chip_width)
+}
+
 // REALIZABILITY (the inverse of the DERIVE-TRIGGER(P-CF-DIMM-CAPACITY) relationship above,
-// capacity = die_density × chips_per_rank × rank_count). A stored capacity_bytes only
+// capacity = die_density × dram_data_chips_per_rank × rank_count). A stored capacity_bytes only
 // describes a part that can PHYSICALLY exist: the per-die density it implies must not exceed
 // the technology's monolithic ceiling. e.g. a 32GB 1Rx8 DDR4 RDIMM would need 32Gbit dies
 // (256Gbit ÷ 8 devices) but DDR4 tops out at 16Gbit monolithic — there is no such part, so a
@@ -73,7 +92,7 @@ fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
 data max_dram_die_density_bits: Int = 17179869184
 
 fn dram_module_required_die_density_bits(module: DramModuleCatalogRow) -> Int {
-  byte_size_count(b: module.capacity_bytes) * 8 / (dram_chips_per_rank(module: module) * module.rank_count)
+  byte_size_count(b: module.capacity_bytes) * 8 / (dram_data_chips_per_rank(module: module) * module.rank_count)
 }
 
 // A module is realizable iff its implied per-die density fits the monolithic ceiling. Used by

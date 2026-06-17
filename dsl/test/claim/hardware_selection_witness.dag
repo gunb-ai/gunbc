@@ -23,7 +23,7 @@ import std.logic { Bool }
 import std.types { Int, List }
 import std.measure { byte_size, bit_width, watt, watt_count, milliwatt, money_micros, hardware_thread_count, hertz }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable }
+import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density_bits }
 import std.pareto { verdict_dominates, verdict_is_incomparable }
 import product.hardware_selection {
   Platform,
@@ -79,6 +79,21 @@ data mod_2rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   buffering: Registered,
   chip_width: bit_width(count: 8),
   rank_count: 2
+}
+
+// A REAL 16GB 1Rx4 RDIMM (SK Hynix HMA82GR7AFR4N-VK, DDR4-2666) — used to PIN the die-density
+// divisor: built from 8 Gibit dies across 16 data chips (64/4) × 1 rank. The guard must
+// compute that real 8 Gibit exactly (RED if it divided by 72/width = 18 ECC-inclusive chips,
+// which yields a non-existent 7.11 Gibit die).
+data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7AFR4N-VK",
+  manufacturer: SkHynix,
+  capacity_bytes: stick_16g,
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 1
 }
 
 // A physically IMPOSSIBLE part used only to prove the realizability guard fails closed: 32GB
@@ -210,6 +225,16 @@ fn realizability_rejects_impossible_sku() -> Bool {
     && config_is_realizable(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
 }
 
+// DISCRIMINATING (§5 teeth): a REAL 16GB 1Rx4 RDIMM is built from 8 Gibit dies — 16 data chips
+// (64/4) × 1 rank, marketed capacity / data chips. The guard must compute that REAL die density
+// EXACTLY: 8589934592 bits = 8 Gibit. This goes RED under a 72/width (ECC-inclusive) divisor
+// (137438953472/18 = 7.11 Gibit, a die that does not exist) and GREEN under the correct 64/width
+// data-chip divisor — so it PINS the divisor, not merely that the threshold rejects an
+// impossible part (both 64 and 72 reject the 32GB fake, so that test alone cannot tell them apart).
+fn real_part_computes_real_die_density() -> Bool {
+  dram_module_required_die_density_bits(module: mod_1rx4_16g) == 8589934592
+}
+
 // Derived decision ratios are COMPUTED, not dead spec (§5): cost/GiB is a positive,
 // non-degenerate number, and 1Rx8 A is more bandwidth-per-watt efficient than the
 // downclocked, hotter 2Rx8 B — the lower-power leg of the incomparable trade-off, read as a ratio.
@@ -225,5 +250,6 @@ fn hardware_selection_holds() -> Bool {
     && higher_throughput_dominates()
     && front_keeps_tradeoffs_strips_dominated()
     && realizability_rejects_impossible_sku()
+    && real_part_computes_real_die_density()
     && derived_ratios_are_computed()
 }
