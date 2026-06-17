@@ -1,0 +1,54 @@
+module v2.test.lens_synthesis.scratch_probe
+
+import v2.lens.synthesis { DecisionTree, InformationTheoretic, synthesis_lens, synthesis_lens_diagnostics }
+import v2.lens.complexity { ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
+import v2.std.algebra { is_empty, non_empty }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.witness { Holds, Violates }
+import v2.test.complexity_gate.comprep_wave1_add_subject_producer { comprep_source_bridged_add_arrow_with_body }
+import v2.test.complexity_gate.comprep_wave1_bind_subject_producer { comprep_source_bridged_bind_arrow_with_body }
+import v2.test.complexity_gate.comprep_wave1_branch_subject_producer { comprep_source_bridged_pick_if_arrow_with_body }
+import v2.test.complexity_gate.comprep_wave1_loop_subject_producer { comprep_source_bridged_loop_arrow_with_body }
+
+// Returns a marker symbol describing the complexity class of the arrow's body.
+fn body_class(arrow_outcome: Outcome<Node>) -> Symbol {
+  match arrow_outcome {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match complexity_lens(n: body) {
+            Holds { value: b } =>
+              match b {
+                ConstantComplexity => probe_constant
+                SizedComplexity { class: _, variables: _ } => probe_sized
+                UnknownComplexity { diagnostic: _ } => probe_unknown
+              }
+            Violates { diagnostic: _ } => probe_violates
+          }
+        Rejected { diagnostics: _ } => probe_no_body
+      }
+    Rejected { diagnostics: _ } => probe_no_arrow
+  }
+}
+
+data probe_constant: Symbol = probe_constant
+data probe_sized: Symbol = probe_sized
+data probe_unknown: Symbol = probe_unknown
+data probe_violates: Symbol = probe_violates
+data probe_no_body: Symbol = probe_no_body
+data probe_no_arrow: Symbol = probe_no_arrow
+
+fn add_class() -> Symbol { body_class(arrow_outcome: comprep_source_bridged_add_arrow_with_body()) }
+fn bind_class() -> Symbol { body_class(arrow_outcome: comprep_source_bridged_bind_arrow_with_body()) }
+fn branch_class() -> Symbol { body_class(arrow_outcome: comprep_source_bridged_pick_if_arrow_with_body()) }
+fn loop_class() -> Symbol { body_class(arrow_outcome: comprep_source_bridged_loop_arrow_with_body()) }
+
+// Bool probes (claim-run prints true/false). Distinguish each class.
+fn add_is_constant() -> Bool { add_class() == probe_constant }
+fn bind_is_constant() -> Bool { bind_class() == probe_constant }
+fn branch_is_constant() -> Bool { branch_class() == probe_constant }
+fn loop_is_constant() -> Bool { loop_class() == probe_constant }
+fn loop_is_sized() -> Bool { loop_class() == probe_sized }
