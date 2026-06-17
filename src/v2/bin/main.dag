@@ -1,24 +1,11 @@
 // src/v2/bin/main.dag
-// Scope: v2 bin entry — T-15 authority for the 1-line main.rs include! trampoline (STRUCTURE closed-system inv.2, TASKS T-15, design-pure-bootstrap-zero:210) plus B1 digest operand placeholders.
-// Status: scaffold — trampoline one-liner is authored here (single authority); digest stubs are B1 operand placeholders; host harness `t_15_self_host_fixed_point` + `claim_t15_self_host_fixed_point.dag` wire stage1==stage2 intent until merkle digests land.
+// Scope: v2 bin entry — sole authority for the 1-line main.rs include! trampoline
+//   (DESIGN.md §7 self-hosting; closed-system invariant).
+// Status: scaffold — the trampoline one-liner is the only fact here. Self-host fixed-point
+//   modeling (emitted-stage operands, the merkle-digest relation) lives in v2.compiler.self_host
+//   (single authority); this file no longer carries digest operand placeholders.
 
 module v2.bin.main
 
-import v2.std.node { Node, TypeNode, Conj, Disj, SyntheticOccurrence }
-
 
 data main_rs_trampoline_authority: String = "include!(\"v2_main_generated.rs\");"
-
-
-data stub_stage1_emitted_rust_digest_placeholder: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
-
-data stub_stage2_emitted_rust_digest_placeholder: Node = Node {
-  kind: TypeNode { connective: Disj },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
