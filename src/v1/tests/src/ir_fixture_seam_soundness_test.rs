@@ -1,7 +1,8 @@
 //! P5-SPIKE: serialized ResolvedGraph fixture seam soundness (§5 fail-closed).
 //!
 //! (b) Round-trip: compile -> cache payload serde -> load -> emit == direct emit.
-//! (c) Born-mark trap: fixture with stripped intern_table fails the loader guard loudly.
+//! (c) Born-mark trap: empty-table AND wrong-but-present intern_table mutations
+//!     both fail the loader guard loudly by execution.
 
 use std::rc::Rc;
 
@@ -94,6 +95,63 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
     }
 }
 
+/// Simulate the dangerous trap: intern_table is populated, but one binding id resolves to a
+/// different present name than `binding.name` (remap in-place, not strip).
+fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedResolvedGraph {
+    let graph = cached.graph;
+    let modules = Rc::new(
+        graph
+            .modules
+            .iter()
+            .map(|m| {
+                let mut typed = (**m).clone();
+                let mut type_env = (*typed.type_env).clone();
+                let mut table = (*type_env.intern_table).clone();
+                let victim = type_env.bindings.iter().find_map(|(id, binding)| {
+                    if binding.name.is_empty() {
+                        None
+                    } else {
+                        Some((*id, binding.name.clone()))
+                    }
+                });
+                if let Some((id, expected_name)) = victim {
+                    let wrong_name = if expected_name == "Box" {
+                        "Int".to_string()
+                    } else {
+                        "Box".to_string()
+                    };
+                    let mut strings = (*table.strings).clone();
+                    if (id as usize) < strings.len() {
+                        strings[id as usize] = wrong_name;
+                    }
+                    table.strings = Rc::new(strings);
+                }
+                type_env.intern_table = Rc::new(table);
+                typed.type_env = Rc::new(type_env);
+                Rc::new(typed)
+            })
+            .collect::<Vec<_>>(),
+    );
+    CachedResolvedGraph {
+        graph: Rc::new(ResolvedGraph {
+            modules,
+            item_registry: graph.item_registry.clone(),
+            diagnostics: graph.diagnostics.clone(),
+            emit_graph_info: graph.emit_graph_info.clone(),
+        }),
+        source_indices: cached.source_indices,
+    }
+}
+
+fn assert_born_mark_guard_rejects(cached: CachedResolvedGraph, case: &str) {
+    let guard_err = validate_fixture_intern_table_for_test(&cached)
+        .expect_err(&format!("{case} must fail born-mark guard"));
+    assert!(
+        guard_err.contains("intern-table born-mark mismatch"),
+        "{case}: expected loud born-mark diagnostic, got: {guard_err}"
+    );
+}
+
 #[test]
 fn ir_fixture_round_trip_emit_is_bit_identical_to_direct() {
     let direct = resolved_from_source();
@@ -138,11 +196,20 @@ fn ir_fixture_wrong_intern_table_born_marks_fail_loader_guard() {
             .expect("serialize fixture");
     let cached = deserialize_fixture_payload_for_test(&payload).expect("deserialize fixture");
     let poisoned = strip_intern_table_from_fixture(cached);
+    assert_born_mark_guard_rejects(poisoned, "empty intern_table");
+}
 
-    let guard_err = validate_fixture_intern_table_for_test(&poisoned)
-        .expect_err("stripped intern_table must fail born-mark guard");
-    assert!(
-        guard_err.contains("intern-table born-mark mismatch"),
-        "expected loud born-mark diagnostic, got: {guard_err}"
+#[test]
+fn ir_fixture_wrong_but_present_intern_table_born_marks_fail_loader_guard() {
+    let direct = resolved_from_source();
+    let graph = direct.graph.clone().expect("typed graph");
+    let payload =
+        serialize_fixture_payload_for_test(graph.as_ref(), direct.source_indices.as_ref())
+            .expect("serialize fixture");
+    let cached = deserialize_fixture_payload_for_test(&payload).expect("deserialize fixture");
+    let poisoned = remap_binding_intern_name_mismatch(cached);
+    assert_born_mark_guard_rejects(
+        poisoned,
+        "wrong-but-present intern_table string at binding id",
     );
 }
