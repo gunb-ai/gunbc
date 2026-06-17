@@ -24,7 +24,13 @@ jobs:
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+          sccache --stop-server >/dev/null 2>&1 || true
+          sccache --start-server >/dev/null 2>&1 || { echo "::error::sccache server failed to start (SCCACHE_DIR=$SCCACHE_DIR)"; exit 1; }
+          sccache --show-stats >/dev/null 2>&1 || { echo "::error::sccache unreachable after start"; exit 1; }
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -46,11 +52,15 @@ jobs:
             ${{ runner.temp }}/cargo/registry/index/
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
+            ${{ runner.temp }}/sccache/
             target/
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: gunbc ci (.dag witnesses + gates)
         run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cargo build -p v1-compiler --release --features text_lookup_work_counter --bins
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p v1-compiler --release --bin gunbc -- ci
+          "$ROOT/target/release/claim_batch" --source-root src/v2 --source-root dsl --roster-from-discovery --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses --entry dsl/test/claim/dsl_compile_clean_witness.dag --function dsl_compile_clean_witnesses --entry dsl/test/claim/ci_spec_witness.dag --function ci_spec_witnesses --entry dsl/test/claim/ci_yaml_serializer_witness.dag --function ci_yaml_serializer_keystone_holds --entry dsl/test/claim/pareto_dominance_witness.dag --function pareto_dominance_holds --entry dsl/test/claim/hardware_selection_witness.dag --function hardware_selection_holds --notice-title "v2 claim corpus"
+          "$ROOT/target/release/gunbc" run --source-root src/v2 --source-root dsl --entry dsl/tools/ci_gates.dag --function main

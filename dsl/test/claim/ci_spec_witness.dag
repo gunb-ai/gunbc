@@ -6,8 +6,9 @@ module test.claim.ci_spec_witness
 
 import gunbc.ci_spec {
   CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase,
-  gunbc_ci_spec,
-  claim_batch_script, gunbc_ci_run_script, git_fetch_script, ci_gates_invoke
+  gunbc_ci_spec, ci_release_features,
+  claim_batch_script, gunbc_ci_run_script, git_fetch_script, ci_gates_invoke,
+  ci_release_build_script, gunbc_ci_workflow_run
 }
 
 data spec_alternate_root: CiSpec = {
@@ -75,11 +76,42 @@ fn witness_run_script_composes_from_spec() -> Bool {
     string_contains(s: script, pattern: ci_gates_invoke(spec: gunbc_ci_spec))
 }
 
+fn witness_release_build_unifies_features() -> Bool {
+  string_contains(
+    s: ci_release_build_script(),
+    pattern: concat("--features ", ci_release_features)
+  )
+}
+
+fn witness_claim_batch_uses_release_binary() -> Bool {
+  string_contains(
+    s: claim_batch_script(spec: gunbc_ci_spec),
+    pattern: "$ROOT/target/release/claim_batch"
+  ) &&
+    !string_contains(s: claim_batch_script(spec: gunbc_ci_spec), pattern: "cargo run")
+}
+
+fn witness_ci_gates_use_release_binary() -> Bool {
+  string_contains(
+    s: ci_gates_invoke(spec: gunbc_ci_spec),
+    pattern: "$ROOT/target/release/gunbc"
+  ) &&
+    !string_contains(s: ci_gates_invoke(spec: gunbc_ci_spec), pattern: "cargo run")
+}
+
+fn witness_workflow_run_is_collapsed_script() -> Bool {
+  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_run_script(spec: gunbc_ci_spec)
+}
+
 fn ci_spec_witnesses() -> Bool {
   witness_roots_fold_into_claim_batch() &&
     witness_edit_witness_root_changes_claim_batch() &&
     witness_scan_subtree_emits_scan_dir() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
-    witness_run_script_composes_from_spec()
+    witness_run_script_composes_from_spec() &&
+    witness_release_build_unifies_features() &&
+    witness_claim_batch_uses_release_binary() &&
+    witness_ci_gates_use_release_binary() &&
+    witness_workflow_run_is_collapsed_script()
 }
