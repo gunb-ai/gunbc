@@ -38,7 +38,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
+import v2.std.node { Node }
 
 data bisect_empty_source: Source = "module stage0.bisect.empty\n"
 data bisect_add_module_source: Source = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
@@ -202,29 +202,6 @@ fn bisect_normalize_terminates() -> Bool {
   }
 }
 
-fn bisect_tree_contains_atom_identity(root: Node, wanted: Symbol) -> Bool {
-  match root.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == wanted {
-        true
-      } else {
-        false
-      }
-    _ =>
-      fold(
-        root.children,
-        init: false,
-        f: fn(found, edge) {
-          if found {
-            true
-          } else {
-            bisect_tree_contains_atom_identity(root: edge.target, wanted: wanted)
-          }
-        }
-      )
-  }
-}
-
 fn bisect_wave1_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
@@ -265,57 +242,6 @@ fn bisect_wave1_parse_module_add_resolve_accepts() -> Bool {
   }
 }
 
-fn bisect_wave1_parse_module_add_param_x_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(
-    text: bisect_add_module_source,
-    file: compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: resolved, diagnostics: _ } =>
-                  bisect_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_x)
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn bisect_wave1_parse_module_add_bindings() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(
-    text: bisect_add_module_source,
-    file: compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: resolved, diagnostics: _ } =>
-                  bisect_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_x)
-                    && bisect_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_y)
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn bisect_wave1_parse_module_truncated_rejects() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
@@ -332,11 +258,13 @@ fn bisect_wave1_parse_module_truncated_rejects() -> Bool {
   }
 }
 
-// §5 discriminating witness: wave-1 parse_module on fn-add module preserves bindings; truncated RED rejects.
+// §5 discriminating witness: wave-1 parse_module on fn-add module accepts + resolves; truncated RED rejects.
+// Binding-fidelity discrimination (param_x/param_y not collapsed): parse_binding_fidelity_test.dag.
 test fn witness_bisect_wave1_parse_module_add_correctness_holds() -> Bool {
-  bisect_wave1_parse_module_add_bindings()
+  bisect_wave1_parse_module_add_parse_accepts()
+    && bisect_wave1_parse_module_add_resolve_accepts()
     && bisect_wave1_parse_module_truncated_rejects()
-    && ((bisect_wave1_parse_module_add_bindings() == false) == false)
+    && ((bisect_wave1_parse_module_add_parse_accepts() == false) == false)
 }
 
 fn bisect_through_resolve() -> Outcome<Node> {
