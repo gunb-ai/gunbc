@@ -1,0 +1,23 @@
+// Scope: corpus regression GUARD — Node-tree projection over live gcp.dag Login op.
+// Main de-fused update_adc (empty input {}); asserts no dead params remain.
+// Detection teeth proven by lens_unit dead_param_gcp_login synthetic witness.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.gcp_login_dead_param
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_file_dead_param_count_for_operation
+}
+import v2.std.logic { Bool }
+
+data gcp_login_path: String = "dsl/extdeps/cloud/gcp/gcp.dag"
+data gcp_login_service: String = "gcloud.Auth"
+data gcp_login_operation: String = "Login"
+
+test fn corpus_gcp_login_dead_param_defused_holds() -> Bool {
+  extdeps_live_file_dead_param_count_for_operation(
+    path: gcp_login_path,
+    service: gcp_login_service,
+    operation: gcp_login_operation
+  ) == 0
+}

@@ -1,33 +1,34 @@
-// Status: EXECUTED Bool witness — grammar-inverse realized for a type-decl Conj node.
+// Status: EXECUTED Bool witness — grammar-inverse free-name-slot emit for structural type decls.
 //
-// Proves parse(emit(n)) ≡ n by execution for ONE shape: the `.dag` record type declaration
-// `type Task { id: TaskId, title: String, status: TaskStatus }`, whose emitted core node is a
-// Conj (name-binding atom + nested field-decl-block nonterminal) — distinct from the flat
-// `fn add` keystone already covered by emit_ingest_grammar_relation_round_trip_test.
-//
-// This is NOT a new unparser. Emission and ingestion are the two directions of ONE authority:
-// a grammar-relation row carries both grammar_relation_field_emitted (the core node) and
-// grammar_relation_field_tokens (its concrete token spine). emit(n) = the backward selector
-// v2.compiler.translate.grammar_relation_row_for_emitted (structural reverse-parse fold over
-// grammar_relation_field_production — NOT exact fixture lookup on grammar_relation_field_emitted;
-// read the row's tokens). parse(spine) = the forward selector v2.compiler.ingest.grammar_relation_row_forward_selection
-// (key the row's token-spine CLASSES against the frontier, return the row's emitted). The
-// round trip emit ∘ parse is therefore the bijectivity of the two selectors over the SAME row,
-// not a second structural walker.
+// Keystone: ingest fold (emit_row_tokens -> forward) + driver loop (emit TEXT -> tokenize -> forward).
+// Secondary: fixed golden literals. Spacing via dag.dag lex literals.
 
 module v2.test.manual.emit_ingest_type_decl_round_trip
 
-import v2.compiler.ingest { grammar_relation_row_forward_selection }
-import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.dag {
-  dag_wave2a_field_decl_block_emitted,
-  dag_wave2a_task_type_decl_emitted,
-  dag_wave2a_type_decl_record_emitted,
-  dag_wave2a_type_decl_translation_rules_witness
+import v2.compiler.ingest {
+  grammar_relation_row_forward_selection,
+  grammar_relation_row_forward_token_selection
 }
-import v2.std.algebra { Empty, list_append }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root,
+  serialize_concrete_syntax_tokens_to_source
+}
+import v2.extdeps.languages.dag {
+  dag_inhabitant_atom,
+  dag_type_decl_productions_only_translation_rules,
+  dag_type_decl_structural_formal_productions,
+  dag_type_decl_structural_target_model
+}
+import v2.std.algebra { Empty, fold_list, list_append }
 import v2.std.collection { List }
+import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel,
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node
 }
@@ -38,29 +39,139 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
+import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node {
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
 import v2.std.node_query { find_named_child }
-import v2.std.witness { Holds, Violates }
 
-// A perturbed name binding declared by no row — drives the fail-closed control.
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
+data type_decl_round_trip_source_file: Symbol = ^type_decl_round_trip_source_file
 
-// n: the type-decl Conj node under test (`.dag` `type Task { ... }`).
-fn type_decl_emitted() -> Node {
-  dag_wave2a_task_type_decl_emitted()
+data type_decl_point_source_text: String = "type Point { x: Int, y: Int }"
+data type_decl_pixel_source_text: String = "type Pixel { px: Int, py: Int }"
+
+fn type_decl_rules() -> Node {
+  dag_type_decl_productions_only_translation_rules()
 }
 
-// Same field block as n, but a foreign name binding — node-distinct from every declared row's emitted.
-fn type_decl_foreign_emitted() -> Node {
-  dag_wave2a_type_decl_record_emitted(
-    name_binding: ^type_decl_round_trip_foreign_binding,
-    field_block: dag_wave2a_field_decl_block_emitted()
+fn type_decl_target() -> TargetModel {
+  dag_type_decl_structural_target_model()
+}
+
+fn type_decl_interned_symbol(spelling: String) -> Symbol {
+  spelling
+}
+
+fn type_decl_qualified_name_emitted(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: name) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_type_expr_emitted(type_name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: type_decl_qualified_name_emitted(name: type_name)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_field_list_suffix_empty() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_two_field_list_emitted(
+  f1: Symbol,
+  t1: Symbol,
+  f2: Symbol,
+  t2: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: f1) },
+      Edge { label: Positional, target: type_decl_type_expr_emitted(type_name: t1) },
+      Edge { label: Positional, target: dag_inhabitant_atom(id: f2) },
+      Edge { label: Positional, target: type_decl_type_expr_emitted(type_name: t2) },
+      Edge { label: Positional, target: type_decl_field_list_suffix_empty() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_field_block_emitted(fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: fields }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_record_emitted(name: Symbol, fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: name) },
+      Edge { label: Positional, target: type_decl_field_block_emitted(fields: fields) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_point_emitted() -> Node {
+  type_decl_record_emitted(
+    name: type_decl_interned_symbol(spelling: "Point"),
+    fields: type_decl_two_field_list_emitted(
+      f1: type_decl_interned_symbol(spelling: "x"),
+      t1: type_decl_interned_symbol(spelling: "Int"),
+      f2: type_decl_interned_symbol(spelling: "y"),
+      t2: type_decl_interned_symbol(spelling: "Int")
+    )
   )
 }
 
-// Project a grammar-relation row's token spine to ordered token CLASSES (bindings dropped) —
-// exactly the frontier the forward selector keys on (mirrors v2.compiler.ingest row_token_spine_classes).
+fn type_decl_pixel_emitted() -> Node {
+  type_decl_record_emitted(
+    name: type_decl_interned_symbol(spelling: "Pixel"),
+    fields: type_decl_two_field_list_emitted(
+      f1: type_decl_interned_symbol(spelling: "px"),
+      t1: type_decl_interned_symbol(spelling: "Int"),
+      f2: type_decl_interned_symbol(spelling: "py"),
+      t2: type_decl_interned_symbol(spelling: "Int")
+    )
+  )
+}
+
+fn type_decl_foreign_emitted() -> Node {
+  type_decl_record_emitted(
+    name: ^type_decl_round_trip_foreign_binding,
+    fields: type_decl_two_field_list_emitted(f1: ^x, t1: ^Int, f2: ^y, t2: ^Int)
+  )
+}
+
 fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
@@ -68,10 +179,10 @@ fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
         f: fn(tokens) {
-          let classes = fold(
-            tokens,
-            init: Empty,
-            f: fn(acc, t) {
+          let classes = fold_list(
+            xs: tokens,
+            empty: Empty,
+            cons: fn(acc, t) {
               list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
             }
           )
@@ -82,73 +193,266 @@ fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   )
 }
 
-// emit(n): backward-select the row whose production structurally matches n (reverse parse fold),
-// then read its token-spine frontier.
-fn type_decl_emit_frontier(rules: Node, emitted: Node) -> Outcome<List<Symbol>> {
+fn type_decl_emit_source_text(emitted: Node) -> Outcome<String> {
+  let rules = type_decl_rules()
+  let target = type_decl_target()
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn type_decl_lexer_token_to_concrete(token: Token) -> ConcreteSyntaxToken {
+  if token.class == ^dag_token_ident {
+    BoundToken { token_class: ^dag_token_ident, binding: token.lexeme }
+  } else {
+    FixedToken { token_class: token.class }
+  }
+}
+
+fn type_decl_lexer_tokens_to_concrete_syntax(tokens: List<Token>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, t) {
+      list_append(
+        left: acc,
+        right: [type_decl_lexer_token_to_concrete(token: t)]
+      )
+    }
+  )
+}
+
+fn type_decl_tokenize_source_text(source: String) -> Outcome<List<Token>> {
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: type_decl_round_trip_source_file,
+      rules: type_decl_target().lex
+    ),
+    f: fn(stream) {
+      outcome_accepted(value: stream.tokens)
+    }
+  )
+}
+
+fn type_decl_emit_row_tokens(emitted: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          concrete_syntax_token_list_from_node(list_node: tokens_root)
+        }
+      )
+    }
+  )
+}
+
+fn type_decl_emit_row_forward_identity_holds(emitted: Node) -> Bool {
+  match type_decl_emit_row_tokens(emitted: emitted) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match grammar_relation_row_forward_token_selection(
+        tokens: tokens,
+        rules: type_decl_rules(),
+        start_lhs: ^dag_production_type_decl
+      ) {
+        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_reparse_emitted_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: type_decl_tokenize_source_text(source: source),
+    f: fn(tokens) {
+      grammar_relation_row_forward_token_selection(
+        tokens: type_decl_lexer_tokens_to_concrete_syntax(tokens: tokens),
+        rules: type_decl_rules(),
+        start_lhs: ^dag_production_type_decl
+      )
+    }
+  )
+}
+
+fn type_decl_emit_frontier(emitted: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
     f: fn(row) { type_decl_row_token_spine_classes(row: row) }
   )
 }
 
-// parse(emit(n)) ≡ n: emit n to its token frontier, then forward-select recovers exactly n.
-fn type_decl_emit_then_parse_identity_holds() -> Bool {
-  match dag_wave2a_type_decl_translation_rules_witness() {
-    Holds { value: rules } =>
-      match type_decl_emit_frontier(rules: rules, emitted: type_decl_emitted()) {
-        Accepted { value: frontier, diagnostics: _ } =>
-          match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-            Accepted { value: recovered, diagnostics: _ } =>
-              recovered == type_decl_emitted()
+// Driver write-back loop: node -> TEXT -> tokenize -> tokens -> node == n.
+fn type_decl_parse_from_emitted_source_holds(emitted: Node) -> Bool {
+  match type_decl_emit_source_text(emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } =>
+      match type_decl_reparse_emitted_from_source(source: source) {
+        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_derived_row_preserves_emitted_holds(emitted: Node) -> Bool {
+  match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
+    Accepted { value: row, diagnostics: _ } =>
+      match find_named_child(root: row, name: ^grammar_relation_field_emitted) {
+        Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_emit_derive_idempotent_holds(emitted: Node) -> Bool {
+  match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
+    Accepted { value: row1, diagnostics: _ } =>
+      match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
+        Accepted { value: row2, diagnostics: _ } => row1 == row2
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_row_with_foreign_emitted_fixture(canonical_row: Node, foreign: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(root: canonical_row, name: ^grammar_relation_field_production),
+    f: fn(production) {
+      bind_outcome(
+        o: find_named_child(root: canonical_row, name: ^grammar_relation_field_tokens),
+        f: fn(tokens) {
+          outcome_accepted(
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: ^grammar_relation_field_production },
+                  target: production
+                },
+                Edge {
+                  label: Named { name: ^grammar_relation_field_emitted },
+                  target: foreign
+                },
+                Edge {
+                  label: Named { name: ^grammar_relation_field_tokens },
+                  target: tokens
+                }
+              ],
+              occurrence_id: SyntheticOccurrence
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn type_decl_translation_rules_with_row(row: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_relation_rules_formal_productions },
+        target: formal_productions_catalog_to_node(
+          productions: dag_type_decl_structural_formal_productions()
+        )
+      },
+      Edge {
+        label: Named { name: ^type_decl_round_trip_foreign_binding },
+        target: row
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Discriminating control: foreign emitted fixture on a row; structural reverse-parse must still match n.
+fn type_decl_emit_structural_not_fixture_lookup_holds() -> Bool {
+  match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: type_decl_point_emitted()) {
+    Accepted { value: canonical_row, diagnostics: _ } =>
+      match type_decl_row_with_foreign_emitted_fixture(
+        canonical_row: canonical_row,
+        foreign: type_decl_foreign_emitted()
+      ) {
+        Accepted { value: perturbed_row, diagnostics: _ } =>
+          match grammar_relation_row_for_emitted(
+            rules: type_decl_translation_rules_with_row(row: perturbed_row),
+            emitted: type_decl_point_emitted()
+          ) {
+            Accepted { value: selected, diagnostics: _ } => selected == perturbed_row
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
-    Violates { diagnostic: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
-// ingest(parse(n)) ≡ row: forward-select n's frontier, backward-select its emitted recovers the
-// same row's emitted — the reverse-direction half of selector bijectivity.
-fn type_decl_parse_then_emit_identity_holds() -> Bool {
-  match dag_wave2a_type_decl_translation_rules_witness() {
-    Holds { value: rules } =>
-      match type_decl_emit_frontier(rules: rules, emitted: type_decl_emitted()) {
-        Accepted { value: frontier, diagnostics: _ } =>
-          match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-            Accepted { value: recovered, diagnostics: _ } =>
-              match grammar_relation_row_for_emitted(rules: rules, emitted: recovered) {
-                Accepted { value: row, diagnostics: _ } =>
-                  match type_decl_row_token_spine_classes(row: row) {
-                    Accepted { value: refrontier, diagnostics: _ } =>
-                      frontier == refrontier
-                    Rejected { diagnostics: _ } => false
-                  }
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Violates { diagnostic: _ } => false
-  }
-}
-
-// Fail-closed control: a type-decl node with a foreign name binding is declared by no row, so the
-// backward selector (emit) must Reject — never fabricate a plausible row. Goes RED if emit fails open.
-fn type_decl_emit_rejects_foreign_emitted_holds() -> Bool {
-  match dag_wave2a_type_decl_translation_rules_witness() {
-    Holds { value: rules } =>
-      match grammar_relation_row_for_emitted(rules: rules, emitted: type_decl_foreign_emitted()) {
+// Invertibility guard: Point and Pixel share the same token-class frontier — class forward must fail-closed.
+fn type_decl_forward_class_spine_ambiguous_rejects_holds() -> Bool {
+  match type_decl_emit_frontier(emitted: type_decl_point_emitted()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(frontier: frontier, rules: type_decl_rules()) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
       }
-    Violates { diagnostic: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Secondary readability oracle — fixed golden literal, not rebuilt from emit output.
+fn type_decl_emit_source_text_matches_golden_holds(emitted: Node, golden: String) -> Bool {
+  match type_decl_emit_source_text(emitted: emitted) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Keystone (3/3): distinct free names -> distinct re-parsable surface text.
+fn type_decl_point_pixel_emit_distinct_holds() -> Bool {
+  match type_decl_emit_source_text(emitted: type_decl_point_emitted()) {
+    Accepted { value: point_text, diagnostics: _ } =>
+      match type_decl_emit_source_text(emitted: type_decl_pixel_emitted()) {
+        Accepted { value: pixel_text, diagnostics: _ } => point_text != pixel_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
-  type_decl_emit_then_parse_identity_holds()
-    && type_decl_parse_then_emit_identity_holds()
-    && type_decl_emit_rejects_foreign_emitted_holds()
+  type_decl_emit_row_forward_identity_holds(emitted: type_decl_point_emitted())
+    && type_decl_emit_row_forward_identity_holds(emitted: type_decl_pixel_emitted())
+    && type_decl_parse_from_emitted_source_holds(emitted: type_decl_point_emitted())
+    && type_decl_parse_from_emitted_source_holds(emitted: type_decl_pixel_emitted())
+    && type_decl_emit_source_text_matches_golden_holds(
+      emitted: type_decl_point_emitted(),
+      golden: type_decl_point_source_text
+    )
+    && type_decl_emit_source_text_matches_golden_holds(
+      emitted: type_decl_pixel_emitted(),
+      golden: type_decl_pixel_source_text
+    )
+    && type_decl_point_pixel_emit_distinct_holds()
+    && type_decl_derived_row_preserves_emitted_holds(emitted: type_decl_point_emitted())
+    && type_decl_emit_derive_idempotent_holds(emitted: type_decl_point_emitted())
+    && type_decl_emit_structural_not_fixture_lookup_holds()
+    && type_decl_forward_class_spine_ambiguous_rejects_holds()
 }
