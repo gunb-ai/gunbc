@@ -83,8 +83,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, discover_owned_data_decls, make_eval_context, resolve_entry_with_index,
-    run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context,
+    resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
 };
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::InterpContext;
