@@ -1,0 +1,18 @@
+// src/v2/workflow/lens_synthesis_family_eval_test.dag
+//
+// Compiler-wide synthesis-lens ADVISORY gate (discovered + run by the CI floor
+// `claim_batch` discovery — `test data` in a `*_test.dag`). The gate logic and the
+// real subject corpus live in the correctly-layered synthesis-gate modules
+// (v2.test.synthesis_gate.*, physically under src/v2/compiler/synthesis_gate/) — the
+// LENS (v2.lens.synthesis) stays a pure Node→List<Report> reader and never knows about
+// a corpus. This witness just runs the fail-closed family gate (empty roster → RED;
+// every real body must acquire; the synthetic firing control keeps it non-vacuous).
+
+module v2.test.workflow.lens_synthesis_family_eval
+
+import v2.std.logic { Bool }
+import v2.test.synthesis_gate.optimality_gap_completeness {
+  synthesis_optimality_family_gate
+}
+
+test data witness_lens_synthesis_family_gate_closed: Bool = synthesis_optimality_family_gate()

@@ -58,7 +58,7 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      # CI floor — one step, eight `.dag` evaluations + dsl whole-tree compile-clean:
+      # CI floor — one step, nine `.dag` evaluations + dsl whole-tree compile-clean:
       #   (1) claim_batch: the always-on src/v2 witness corpus (the compiler-seed
       #       `claim_batch` bin, --roster-from-discovery). Discovery is a build-time
       #       lens over parsed source (NOT runtime reflection), so it is a Rust host today;
@@ -79,11 +79,12 @@ jobs:
       #   (8) gunbc: filesystem entry-kind witness (test.claim.filesystem_entry_kind_witness) —
       #       by-execution proof that the cited posix/ntfs reductions map to the agnostic
       #       std.filesystem.types.EntryKind (socket/junction → Other, not nicknamed Symlink).
-      #   (9) gunbc: dsl compile-clean GATE (tools.dsl_compile_clean_gate) — whole-tree
+      #   (9) gunbc: std.measure Power/Watt consuming-fold witness (computes a wattage total).
+      #   (10) gunbc: dsl compile-clean GATE (tools.dsl_compile_clean_gate) — whole-tree
       #       `gunbc compile --source-root dsl` over all modules. SCAFFOLD: uses --target rust
       #       pending v1.compiler.dag_collect identity-key fix; flip to --target dag when that
       #       backend bug lands (parse→resolve→typecheck front-end is identical).
-      #   (10) gunbc: dsl compile-clean WITNESSES (test.claim.dsl_compile_clean_witness) —
+      #   (11) gunbc: dsl compile-clean WITNESSES (test.claim.dsl_compile_clean_witness) —
       #       by-execution +/-: GREEN clean-tree compile, RED planted optional-skew perturb.
       # The git fetch makes `origin/main...HEAD` resolvable.
       - name: CI floor (.dag witness corpus + gates via gunbc)
@@ -97,5 +98,6 @@ jobs:
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root src/v2 --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/layering_imports_gate.dag --function main
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses --claim-run
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/dsl_compile_clean_gate.dag --function main
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/dsl_compile_clean_witness.dag --function dsl_compile_clean_witnesses --claim-run
