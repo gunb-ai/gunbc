@@ -4,8 +4,8 @@
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
 //         parse_expr Nonterminal arm expands productions by direct recursive descent
-//         (grammar_has_left_recursion rejects left cycles pre-parse). build_parse_table
-//         remains for table-substrate claims; parse_production does not pre-fill it.
+//         (grammar_has_left_recursion rejects left cycles pre-parse). CYK table pre-fill
+//         removed (#5084); ParseTable carrier inhabitation tracked as follow-on work item.
 
 
 module v2.compiler.parse
@@ -160,12 +160,6 @@ type ParsePositionKey {
 // Memoized (position, production) → parse_expr result for production.expression at that offset.
 type ParseTable = Map<ParsePositionKey, ParseExprResult>
 
-type TokensAtPositionAcc {
-  skipped: Int
-  target: Int
-  current: List<Token>
-}
-
 
 
 
@@ -261,31 +255,6 @@ fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<Parse
 
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
   map_insert(m: table, key: key, value: value)
-}
-
-fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
-  length(xs: all_tokens) - length(xs: tokens)
-}
-
-fn tokens_at_position(all_tokens: List<Token>, position: Int) -> List<Token> {
-  fold_list(
-    xs: all_tokens,
-    empty: TokensAtPositionAcc { skipped: 0, target: position, current: all_tokens },
-    cons: fn(acc, _) {
-      match acc.skipped < acc.target {
-        true =>
-          match list_tail(xs: acc.current) {
-            TailFound { tail: t } => TokensAtPositionAcc {
-              skipped: acc.skipped + 1,
-              target: acc.target,
-              current: t
-            }
-            TailAbsent => acc
-          }
-        false => acc
-      }
-    }
-  ).current
 }
 
 // Positions 0..N inclusive for a token stream of length N (N+1 suffixes).
@@ -509,48 +478,6 @@ fn parse_nonterminal_direct(
 }
 
 
-fn parse_nonterminal_from_table(
-  table: ParseTable,
-  all_tokens: List<Token>,
-  tokens: List<Token>,
-  root: GrammarRoot,
-  prod_name: Symbol,
-  prov: ParseProvenanceState
-) -> ParseExprResult {
-  match grammar_lookup_production(root: root, name: prod_name) {
-    Violates { diagnostic: d } =>
-      ParseExprRejected { diagnostics: [d] }
-    Holds { value: production } =>
-      let key = ParsePositionKey {
-        position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
-        production: prod_name
-      }
-      match parse_table_lookup(table: table, key: key) {
-        Holds { value: inner } =>
-          match inner {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
-              let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
-              let stamped = parse_wrap_production_captured(
-                production: production,
-                captured: captured,
-                prov: merged_prov
-              )
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: stamped.node,
-                diagnostics: diags,
-                prov: stamped.prov
-              }
-          }
-        Violates { diagnostic: d } =>
-          ParseExprRejected { diagnostics: [d] }
-      }
-  }
-}
-
-
 // --- Left-recursion detection ---
 
 // set_symbol_insert: functional set extension — new set tests item first, then delegates.
@@ -580,98 +507,6 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> B
       repeat: fn(_) { true }
     }
   )
-}
-
-
-type GrammarExprAdmitsFold {
-  admits: Bool
-  nullable: Bool
-}
-
-fn expr_admits_nullable_fold(
-  expr: GrammarExpr,
-  token_class: Symbol,
-  nullable_set: Set<Symbol>,
-  root: GrammarRoot
-) -> GrammarExprAdmitsFold {
-  fold_grammar_expr(
-    expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(tc, _) {
-        GrammarExprAdmitsFold { admits: tc == token_class, nullable: false }
-      },
-      nonterminal: fn(name) {
-        match grammar_lookup_production(root: root, name: name) {
-          Violates { diagnostic: _ } =>
-            GrammarExprAdmitsFold { admits: false, nullable: false }
-          Holds { value: prod } =>
-            expr_admits_nullable_fold(
-              expr: prod.expression,
-              token_class: token_class,
-              nullable_set: nullable_set,
-              root: root
-            )
-        }
-      },
-      sequence: fn(left_fold, right_fold) {
-        GrammarExprAdmitsFold {
-          admits: left_fold.admits || (left_fold.nullable && right_fold.admits),
-          nullable: left_fold.nullable && right_fold.nullable
-        }
-      },
-      choice: fn(left_fold, right_fold) {
-        GrammarExprAdmitsFold {
-          admits: left_fold.admits || right_fold.admits,
-          nullable: left_fold.nullable || right_fold.nullable
-        }
-      },
-      optional: fn(element_fold) {
-        GrammarExprAdmitsFold { admits: element_fold.admits, nullable: true }
-      },
-      repeat: fn(element_fold) {
-        GrammarExprAdmitsFold { admits: element_fold.admits, nullable: true }
-      }
-    }
-  )
-}
-
-fn expr_admits_first_token(
-  expr: GrammarExpr,
-  token_class: Symbol,
-  nullable_set: Set<Symbol>,
-  root: GrammarRoot
-) -> Bool {
-  expr_admits_nullable_fold(
-    expr: expr,
-    token_class: token_class,
-    nullable_set: nullable_set,
-    root: root
-  ).admits
-}
-
-
-fn production_may_apply_at(
-  production: GrammarProduction,
-  position: Int,
-  all_tokens: List<Token>,
-  nullable_set: Set<Symbol>,
-  root: GrammarRoot
-) -> Bool {
-  if expr_is_nullable_given_set(expr: production.expression, nullable_set: nullable_set) {
-    true
-  } else {
-    let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
-    match parse_token_first(tokens: suffix) {
-      Absent => false
-      Present { value: tok } =>
-        expr_admits_first_token(
-          expr: production.expression,
-          token_class: tok.class,
-          nullable_set: nullable_set,
-          root: root
-        )
-    }
-  }
 }
 
 
