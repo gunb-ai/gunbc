@@ -97,6 +97,36 @@ fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<
   build_adjacency_views(names: names, graph: graph).reverse
 }
 
+// ===================================================================
+// Affected-set lens (DESIGN.md §6): reverse-reachability over the
+// dependency graph. If node `n` changes, every node that transitively
+// depends on it is affected — its content-hash invalidates, so it must
+// be re-realized (recompiled / re-tested). This is the substrate form
+// of the retired affected-set CI-timings crate (#5056): a pure lens
+// folded over the SAME edge fact, not a parallel host computation.
+// Edge convention matches GraphEdge: caller DEPENDS ON callee, so a
+// node's dependents are its reverse-adjacency neighbors.
+// ===================================================================
+
+// Direct (1-hop) dependents of `n`: the nodes that depend on / import it.
+fn dependents(names: List<String>, graph: CallGraph, n: String) -> List<String> {
+  match map_get(reverse_adjacency(names: names, graph: graph), n) {
+    Present { value: ns } => ns
+    Absent => []
+  }
+}
+
+// The affected set of `n`: `n` plus every node transitively depending on
+// it (reverse-reachability). Reuses the visited-set-bounded DFS, so net
+// concepts do not grow (§2). Includes `n` itself (it changed).
+fn affected_set(names: List<String>, graph: CallGraph, n: String) -> List<String> {
+  dfs_collect_component(
+    node: n,
+    adjacency: reverse_adjacency(names: names, graph: graph),
+    acc: SccComponentAcc { visited: empty_set(), members: [] }
+  ).members
+}
+
 // Kosaraju pass 1: DFS on forward graph to compute finish order.
 // REVIEW #8: Uses recursion bounded by visited set (|V| - |visited| decreases
 // each step). Termination is structural but not expressible as a fold over a
