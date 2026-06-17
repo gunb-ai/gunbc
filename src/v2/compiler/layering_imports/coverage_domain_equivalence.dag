@@ -49,7 +49,7 @@ data perturb_row_std_prefix: LayeringImportsScannerPerturbReceiptRow = LayeringI
   label: "src/v2/std × v2.compiler.* prefix",
   layer_root: layer_root_src_v2_std,
   forbidden_form: form_v2_compiler_prefix,
-  scanner_entry: "src/v2/compiler/layering_imports__scanner__std_v4_prefix.dag",
+  scanner_entry: "src/v2/compiler/layering_imports/scanner/std_v4_prefix.dag",
   scanner_function: "scanner_std_v4_prefix_detects_holds"
 }
 
@@ -57,7 +57,7 @@ data perturb_row_extdeps_prefix: LayeringImportsScannerPerturbReceiptRow = Layer
   label: "src/v2/extdeps × v2.compiler.* prefix",
   layer_root: layer_root_src_v2_extdeps,
   forbidden_form: form_v2_compiler_prefix,
-  scanner_entry: "src/v2/compiler/layering_imports__scanner__extdeps_v4_prefix.dag",
+  scanner_entry: "src/v2/compiler/layering_imports/scanner/extdeps_v4_prefix.dag",
   scanner_function: "scanner_extdeps_v4_prefix_detects_holds"
 }
 
@@ -65,7 +65,7 @@ data perturb_row_dsl_extdeps_exact: LayeringImportsScannerPerturbReceiptRow = La
   label: "dsl/extdeps × v2.compiler exact",
   layer_root: layer_root_dsl_extdeps,
   forbidden_form: form_v2_compiler_exact,
-  scanner_entry: "src/v2/compiler/layering_imports__scanner__dsl_extdeps_v4_exact.dag",
+  scanner_entry: "src/v2/compiler/layering_imports/scanner/dsl_extdeps_v4_exact.dag",
   scanner_function: "scanner_dsl_extdeps_v4_exact_detects_holds"
 }
 
@@ -73,7 +73,7 @@ data perturb_row_parse_level_pre_resolve: LayeringImportsScannerPerturbReceiptRo
   label: "src/v2/std parse-level pre-resolve text scan",
   layer_root: layer_root_src_v2_std,
   forbidden_form: form_v2_compiler_prefix,
-  scanner_entry: "src/v2/compiler/layering_imports__scanner__parse_level_pre_resolve.dag",
+  scanner_entry: "src/v2/compiler/layering_imports/scanner/parse_level_pre_resolve.dag",
   scanner_function: "scanner_parse_level_pre_resolve_detects_holds"
 }
 

@@ -28,7 +28,7 @@ import v2.test.workflow.host_discovered_owned_data_manifest {
   host_owned_data_discovery_receipt
 }
 // Sample-marker transport authority only — full discovered-set C9 equality is host-gated.
-data substrate_equivalence_sample_bool_witness_entry: String = "src/v2/test/claim/lens_affected_set/edit_locus_resolver.dag"
+data substrate_equivalence_sample_bool_witness_entry: String = "src/v2/lens/affected_set/edit_locus_resolver_test.dag"
 
 
 fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {

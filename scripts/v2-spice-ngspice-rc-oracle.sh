@@ -47,7 +47,7 @@ else
   exit 77
 fi
 
-claim_entry="$root/src/v2/test/claim/formats/spice_rc_ngspice_oracle.dag"
+claim_entry="$root/src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag"
 
 # Step 1: emit correctness — exit code is the sole authority.
 # --claim-run exits 0 when the witness Bool is true, 1 when false.

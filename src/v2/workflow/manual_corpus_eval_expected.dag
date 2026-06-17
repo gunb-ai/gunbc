@@ -74,32 +74,32 @@ type CorpusEvalHostRunSpec {
 data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
   CorpusEvalHostRunSpec {
     claim_id: claim_eval_mvp2_test_claim_route,
-    entry_relpath: "src/v2/test/claim/manual/eval_runtime_mvp.dag",
+    entry_relpath: "src/v2/compiler/manual/eval_runtime_mvp.dag",
     run_fn: ^run_eval_mvp2_test_claim_route_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_idempotency_write_effect_run_test_claim_receipt,
-    entry_relpath: "src/v2/test/claim/lens_idempotency/write_effect.dag",
+    entry_relpath: "src/v2/lens/idempotency/write_effect.dag",
     run_fn: ^run_idempotency_write_effect_receipt_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
-    entry_relpath: "src/v2/test/claim/lens_parallelism/data_dependency.dag",
+    entry_relpath: "src/v2/lens/parallelism/data_dependency.dag",
     run_fn: ^run_parallelism_data_dependency_receipt_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_lens_effect_depends_on_runtime_verdict,
-    entry_relpath: "src/v2/test/claim/lens_effect/effect_depends_on.dag",
+    entry_relpath: "src/v2/lens/effect/effect_depends_on.dag",
     run_fn: ^run_lens_effect_depends_on_runtime_verdict_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_rust_language_model_emit_mechanical_reverification,
-    entry_relpath: "src/v2/test/claim/manual/dissolution_subsumption_reverification.dag",
+    entry_relpath: "src/v2/compiler/manual/dissolution_subsumption_reverification.dag",
     run_fn: ^run_rust_language_model_emit_mechanical_reverification_claim_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
-    entry_relpath: "src/v2/test/claim/manual/dissolution_subsumption_reverification.dag",
+    entry_relpath: "src/v2/compiler/manual/dissolution_subsumption_reverification.dag",
     run_fn: ^run_rust_language_model_emit_subsumption_reverifies_sym
   }
 ]
