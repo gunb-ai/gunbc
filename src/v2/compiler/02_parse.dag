@@ -1018,13 +1018,70 @@ type ParseTableBuildAcc {
   prov: ParseProvenanceState
 }
 
+type ParseTablePassAcc {
+  table: ParseTable
+  prov: ParseProvenanceState
+  changed: Bool
+}
+
+fn parse_token_stream_equal(left: List<Token>, right: List<Token>) -> Bool {
+  match parse_token_first(tokens: left) {
+    Absent =>
+      match parse_token_first(tokens: right) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: left_tok } =>
+      match parse_token_first(tokens: right) {
+        Absent => false
+        Present { value: right_tok } =>
+          if left_tok.class == right_tok.class
+            && left_tok.start == right_tok.start
+            && left_tok.end == right_tok.end
+          {
+            match list_tail(xs: left) {
+              TailFound { tail: left_rest } =>
+                match list_tail(xs: right) {
+                  TailFound { tail: right_rest } =>
+                    parse_token_stream_equal(left: left_rest, right: right_rest)
+                  TailAbsent => false
+                }
+              TailAbsent =>
+                match list_tail(xs: right) {
+                  TailFound { tail: _ } => false
+                  TailAbsent => true
+                }
+            }
+          } else {
+            false
+          }
+      }
+  }
+}
+
+fn parse_expr_result_cell_equal(left: ParseExprResult, right: ParseExprResult) -> Bool {
+  match left {
+    ParseExprRejected { diagnostics: _ } =>
+      match right {
+        ParseExprRejected { diagnostics: _ } => true
+        ParseExprAccepted { diagnostics: _, remaining: _, captured: _, prov: _ } => false
+      }
+    ParseExprAccepted { remaining: left_remaining, diagnostics: _, captured: _, prov: _ } =>
+      match right {
+        ParseExprRejected { diagnostics: _ } => false
+        ParseExprAccepted { remaining: right_remaining, diagnostics: _, captured: _, prov: _ } =>
+          parse_token_stream_equal(left: left_remaining, right: right_remaining)
+      }
+  }
+}
+
 fn parse_table_fill_production_step(
-  acc: ParseTableBuildAcc,
+  acc: ParseTablePassAcc,
   production: GrammarProduction,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTableBuildAcc {
+) -> ParseTablePassAcc {
   let key = ParsePositionKey { position: position, production: production.name }
   let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
   let result = parse_expr(
@@ -1039,20 +1096,38 @@ fn parse_table_fill_production_step(
     ParseExprAccepted { prov: p, diagnostics: _, remaining: _, captured: _ } => p
     ParseExprRejected { diagnostics: _ } => acc.prov
   }
-  ParseTableBuildAcc {
-    table: parse_table_insert(table: acc.table, key: key, value: result),
-    prov: next_prov
+  match parse_table_lookup(table: acc.table, key: key) {
+    Holds { value: existing } =>
+      if parse_expr_result_cell_equal(left: existing, right: result) {
+        ParseTablePassAcc {
+          table: acc.table,
+          prov: next_prov,
+          changed: acc.changed
+        }
+      } else {
+        ParseTablePassAcc {
+          table: parse_table_insert(table: acc.table, key: key, value: result),
+          prov: next_prov,
+          changed: true
+        }
+      }
+    Violates { diagnostic: _ } =>
+      ParseTablePassAcc {
+        table: parse_table_insert(table: acc.table, key: key, value: result),
+        prov: next_prov,
+        changed: true
+      }
   }
 }
 
 
 // One pass: update every production entry at a fixed position.
 fn parse_table_fill_position_pass(
-  acc: ParseTableBuildAcc,
+  acc: ParseTablePassAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTableBuildAcc {
+) -> ParseTablePassAcc {
   fold_list(
     xs: root.productions,
     empty: acc,
@@ -1068,26 +1143,60 @@ fn parse_table_fill_position_pass(
   )
 }
 
+fn parse_table_pass_acc_to_build(acc: ParseTablePassAcc) -> ParseTableBuildAcc {
+  ParseTableBuildAcc { table: acc.table, prov: acc.prov }
+}
 
-// |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
+fn parse_table_build_acc_to_pass(acc: ParseTableBuildAcc) -> ParseTablePassAcc {
+  ParseTablePassAcc { table: acc.table, prov: acc.prov, changed: false }
+}
+
+// Fixpoint at one position — at most |productions| passes; stop early when a pass is stable.
+fn parse_table_fill_position_loop(
+  acc: ParseTablePassAcc,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  passes_remaining: Int
+) -> ParseTablePassAcc {
+  match passes_remaining {
+    0 => acc
+    _ =>
+      let after = parse_table_fill_position_pass(
+        acc: acc,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+      match after.changed {
+        true =>
+          parse_table_fill_position_loop(
+            acc: after,
+            position: position,
+            all_tokens: all_tokens,
+            root: root,
+            passes_remaining: passes_remaining - 1
+          )
+        false => after
+      }
+  }
+}
+
 fn parse_table_fill_position(
   acc: ParseTableBuildAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
 ) -> ParseTableBuildAcc {
-  fold_list(
-    xs: root.productions,
-    empty: acc,
-    cons: fn(acc2, _) {
-      parse_table_fill_position_pass(
-        acc: acc2,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
+  let prod_count = length(xs: root.productions)
+  let finished = parse_table_fill_position_loop(
+    acc: parse_table_build_acc_to_pass(acc: acc),
+    position: position,
+    all_tokens: all_tokens,
+    root: root,
+    passes_remaining: prod_count
   )
+  parse_table_pass_acc_to_build(acc: finished)
 }
 
 
@@ -1096,8 +1205,8 @@ fn parse_table_empty() -> ParseTable {
 }
 
 
-// Outer fold over positions high→low; inner fold over productions × passes at each position.
-// Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
+// Outer fold over positions high→low; inner fixpoint per position (≤ |productions| passes).
+// Termination: (N+1) positions × ≤K passes × K productions — structurally bounded, no fuel.
 fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTableBuildAcc {
   fold_list_right(
     xs: token_position_indices(tokens: all_tokens),
