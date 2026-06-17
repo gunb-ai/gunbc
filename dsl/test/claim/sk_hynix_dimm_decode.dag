@@ -1,0 +1,25 @@
+// Witness for the std.memory DIMM decode (gunbc rank/width decomposition).
+// Proves BY EXECUTION that the single SK Hynix catalog row carries the axes the part
+// number HMA82GR7AFR4N-VK authoritatively encodes — x4 device width, Registered
+// (RDIMM), single rank, DDR4-2666, ECC — rather than the old anemic rank_label string.
+// The RED control asserts the common "...R4..." misread (rank=4 / x8 width) and must
+// return false, so a wrong decode goes red (DESIGN.md §5: green-by-execution + a
+// discriminating input, not a typecheck-only claim).
+module test.claim.sk_hynix_dimm_decode
+
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+
+// GREEN — every decoded axis matches the part-number decode.
+fn sk_hynix_hma82gr7afr4n_vk_decode_holds() -> Bool {
+  (hma82gr7afr4n_vk_catalog.chip_width == X4)
+    && (hma82gr7afr4n_vk_catalog.buffering == Registered)
+    && (hma82gr7afr4n_vk_catalog.rank_count == SingleRank)
+    && (hma82gr7afr4n_vk_catalog.data_rate_mts == 2666)
+    && hma82gr7afr4n_vk_catalog.ecc
+}
+
+// RED control — the "...R4..." digit is device WIDTH x4, NOT rank=4 / x8. Asserting x8
+// on this row must be false; if a future edit re-anemizes the decode this flips.
+fn sk_hynix_dimm_wrong_width_is_red() -> Bool {
+  hma82gr7afr4n_vk_catalog.chip_width == X8
+}
