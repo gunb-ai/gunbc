@@ -1,4 +1,4 @@
-// Status: modeled claim + fixture pair; host runner scripts/v2-leaf-model-rust-r3-external-verify.sh.
+// Status: modeled claim + fixture pair.
 
 module v2.test.language_model.rust_r3_external
 

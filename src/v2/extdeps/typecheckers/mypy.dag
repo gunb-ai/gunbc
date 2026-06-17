@@ -4,7 +4,6 @@
 //   TargetStaticAnalysisVerdict (v2.std.leaf_model_verification).
 // Status: PY-L1-STATIC-STRUCTURAL companion profile for release-minimum pyright/mypy checks.
 // Anchor: https://mypy.readthedocs.io/en/stable/command_line.html
-// Host runner: scripts/v2-leaf-model-python-l1-mypy-static-verify.sh
 
 module v2.extdeps.typecheckers.mypy
 

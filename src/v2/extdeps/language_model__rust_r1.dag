@@ -1,4 +1,4 @@
-// Status: modeled claim + fixture pair; host runner scripts/v2-leaf-model-rust-r1-verify.sh exercises rustc.
+// Status: modeled claim + fixture pair, exercising rustc.
 
 module v2.test.language_model.rust_r1
 

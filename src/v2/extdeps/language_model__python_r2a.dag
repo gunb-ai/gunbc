@@ -1,4 +1,4 @@
-// Status: modeled claim + fixture pair; host runner scripts/v2-leaf-model-python-r2a-verify.sh exercises python3.
+// Status: modeled claim + fixture pair, exercising python3.
 
 module v2.test.language_model.python_r2a
 

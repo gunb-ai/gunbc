@@ -1,4 +1,4 @@
-// Status: modeled claim + fixture rows for live sub-claims 1–2; host runner scripts/v2-leaf-model-rust-r2b-verify.sh.
+// Status: modeled claim + fixture rows for live sub-claims 1–2.
 
 module v2.test.language_model.rust_r2b
 
