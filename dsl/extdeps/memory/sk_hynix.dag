@@ -14,29 +14,29 @@ module extdeps.memory.sk_hynix
 import std.measure { ByteSize, byte_size }
 import std.memory.types { DramModuleCatalogRow }
 
-// 16 GiB per stick (1×16GB).
+// 16 GiB per stick (1×16GB, 2Gx72). The "PC4-21300" / "PC4-2666V" JEDEC class is
+// data_rate_mts (2666) × 8 bytes rounded to the label — derivable, so not stored.
 data stick_capacity_bytes: ByteSize = byte_size(17179869184)
 
-// Marketplace listing: "SK Hynix 16GB PC4-21300 (1x16GB) DDR4 Server RAM".
-data hma82gr7afr4n_vk_server_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+// HMA82GR7AFR4N-VK, decoded position-by-position from the SK Hynix DDR4 module part
+// number — so each axis is a grounded fact, not a marketplace listing label:
+//   [H] SK Hynix · [R] 288-pin Registered DIMM (RDIMM) · [7] x72 data width (ECC) ·
+//   [4] x4 device organization · [-VK] DDR4-2666 19-19-19 (PC4-21300).
+// The two prior rows ("...server_catalog" / "...ecc_reg_single_rank_catalog") were ONE
+// JEDEC part under two marketplace listings — collapsed to this single grounded row.
+// Anchor: SK Hynix DDR4 module decoder DDR4MODULE_20170623.fm (MODULE TYPE / DATA
+//   WIDTH / ORGANIZATION / SPEED fields); rank per datasheet Rev.1.7 ordering table.
+data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: SkHynix,
   capacity_bytes: stick_capacity_bytes,
-  ddr4_pc4_class: "PC4-21300",
   data_rate_mts: 2666,
   ecc: true,
-  registered: true,
-  rank_label: "server",
-}
-
-// Marketplace listing: "SK hynix 16GB PC4-21300 DDR4-2666MHz ECC REG Single Rank".
-data hma82gr7afr4n_vk_ecc_reg_single_rank_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
-  part_number: "HMA82GR7AFR4N-VK",
-  manufacturer: SkHynix,
-  capacity_bytes: stick_capacity_bytes,
-  ddr4_pc4_class: "PC4-21300",
-  data_rate_mts: 2666,
-  ecc: true,
-  registered: true,
-  rank_label: "ecc_reg_single_rank",
+  buffering: Registered,
+  chip_width: X4,
+  // 🟡 CONFIRM-LIVE(srv1/srv2): rank is NOT a part-number field — derived from the SK
+  // Hynix datasheet ordering table (16GB x4 = 1R). Confirm on the live hosts via:
+  //   sudo dmidecode --type 17 | grep -E 'Part Number:|Rank:'   (expect Rank: 1)
+  // Do NOT infer rank from the "...R4..." digit (that is device width x4, not rank=4).
+  rank_count: SingleRank,
 }

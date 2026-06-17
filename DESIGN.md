@@ -62,7 +62,7 @@ along exactly two directions — not separate "DRY rules," but one move seen two
   atomic. The move is `decompress → map → reduce`: reveal the structure the source names, **map** each
   part onto the concept that already exists (DFS the concept DAG first), **reduce** duplicates. A
   `String` leaf hiding named parts is anemic modeling.
-  - *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }` (the number is a grounded `Int`); `Cost = Time|Space|Energy` → a record (every cost has all three); still-anemic today: `DramModuleCatalogRow.{ddr4_pc4_class, rank_label}` are bare `NonEmptyStr`.
+  - *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }` (the number is a grounded `Int`) and `"HMA82GR7AFR4N-VK"` → `DramModuleCatalogRow { chip_width: X4, rank_count: SingleRank, buffering: Registered }` (each axis a grounded enum decoded from the part number, not a marketplace-listing string); `Cost = Time|Space|Energy` → a record (every cost has all three); still-anemic today: `product.compute_fabric`'s `StorageDevice` has no PCIe-gen/lane-count axis (storage's rank/width), and `GpuFacts.vendor` is a bare `NonEmptyStr` where `CpuVendor` is a closed enum.
 
 The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow
 by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is
