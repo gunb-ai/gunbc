@@ -183,16 +183,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "filesystem_read".to_string(),
             type_variable_node("filesystem_read_result".to_string()),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_dead_param_count_for_operation".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_dead_param_count_for_path".to_string(),
-            int_type(),
-        );
         m.clone()
     }
 }
