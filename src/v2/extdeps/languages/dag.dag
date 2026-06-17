@@ -46,6 +46,7 @@ import v2.std.grammar {
   VoidGrammar,
   grammar_carries_symbol,
   formal_production_to_node,
+  formal_productions_catalog_to_node,
   grammar_production_to_node,
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
@@ -3699,6 +3700,12 @@ fn dag_wave2a_type_decl_translation_rules_witness() -> Witness<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
+            dag_named_edge(
+              name: ^grammar_relation_rules_formal_productions,
+              target: formal_productions_catalog_to_node(
+                productions: dag_wave2a_type_decl_formal_productions()
+              )
+            ),
             dag_named_edge(name: ^dag_relation_rule_wave2a_type_decl_task, target: row)
           ],
           occurrence_id: SyntheticOccurrence

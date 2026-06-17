@@ -44,7 +44,7 @@ data row_corpus_cargo_build: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsSha
 data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
   label: "extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
-  function: "corpus_gcp_oauth_fusion_fork_is_red_holds"
+  function: "corpus_gcp_oauth_defused_holds"
 }
 
 data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPolicyClaimRunRow> = [

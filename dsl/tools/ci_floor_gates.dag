@@ -1,0 +1,38 @@
+// tools/ci_floor_gates.dag — composed effectful CI floor gates (one resolve, one process).
+//
+// Sequences the three ProcessExit gates previously invoked as separate `gunbc run`
+// lines in `.github/workflows/ci.yml`: rust-monolith fmt/clippy, emit-host MVP smokes,
+// and layering-imports host scan + perturb receipts. Bool witnesses stay in
+// `claim_batch --roster-from-discovery` (same process, shared module index).
+//
+// Run in CI:
+//   cargo run -p v1-compiler --release --bin gunbc -- run \
+//     --source-root dsl --source-root src/v2 \
+//     --entry dsl/tools/ci_floor_gates.dag --function main
+//
+// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7).
+
+module tools.ci_floor_gates
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.rust_gates_ci { run_rust_monolith_gate }
+import tools.emit_host_gate { run_emit_host_ci_gate }
+import tools.layering_imports_gate { run_layering_imports_ci_gate }
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+// Run all three gates (no short-circuit — surface every transport failure in one pass).
+func main() -> ProcessExit {
+  rust = run_rust_monolith_gate()
+  emit_host = run_emit_host_ci_gate()
+  layering = run_layering_imports_ci_gate()
+  return if exit_ok(rust) && exit_ok(emit_host) && exit_ok(layering) {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "ci floor gates failed: rust_monolith and/or emit_host and/or layering_imports"
+    )
+  }
+}
