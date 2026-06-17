@@ -1,0 +1,162 @@
+// test/claim/hardware_selection_witness.dag — by-execution witness for the hardware
+// decision-space model (product/hardware_selection.dag).
+//
+// Proves by RUNNING (DESIGN §5): the platform downclock model computes the right effective
+// rate, the integration projects a config to its four axes, the PSU sizing computes wall
+// draw, and the ONE dominance kernel strips a Pareto-DOMINATED config while keeping an
+// incomparable trade-off on the front. Discriminating headline: the 2DPC dual-rank
+// downclock (the cross-variable effect) makes the dual-rank config BOTH lower-bandwidth and
+// higher-power than single-rank at equal capacity/cost — so single-rank DOMINATES it.
+//
+// Generic example SKUs (NOT the operator's fleet — lane scope): an 8-channel Altra-class
+// platform, 32GB RDIMMs in 1Rx8 vs 2Rx8, a ~166W-draw CPU, an 80+ Gold PSU.
+
+module test.claim.hardware_selection
+
+import std.logic { Bool }
+import std.types { Int, List }
+import std.measure { byte_size, bit_width, watt, watt_count, hardware_thread_count, hertz }
+import std.cpu.types { CpuModelCatalogRow, CpuSocket }
+import std.memory.types { DramModuleCatalogRow }
+import std.pareto { verdict_dominates }
+import product.hardware_selection {
+  Platform,
+  MemoryConfig,
+  CpuCandidate,
+  Motherboard,
+  PsuModel,
+  SystemConfig,
+  HardwareAxes,
+  effective_data_rate_mts,
+  config_axes,
+  wall_draw_watts,
+  psu_is_adequate,
+  dominates,
+  axes_on_front
+}
+
+// --- Platform: 8-channel, 2 DIMMs/channel, DDR4-3200 ceiling -------------
+data altra8: Platform = Platform {
+  label: "altra-8ch-ddr4-3200",
+  memory_channels: 8,
+  slots_per_channel: 2,
+  max_data_rate_mts: 3200
+}
+
+// --- DRAM modules: 32GB RDIMM, 1Rx8 vs 2Rx8 (generic) --------------------
+data stick_32g: ByteSize = byte_size(count: 34359738368)
+
+data mod_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "GENERIC-32G-1RX8-3200",
+  manufacturer: SkHynix,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 8),
+  rank_count: 1
+}
+
+data mod_2rx8: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "GENERIC-32G-2RX8-3200",
+  manufacturer: SkHynix,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 8),
+  rank_count: 2
+}
+
+// 🟡 calibration inputs (placeholders the operator's live data confirms): 400 mW/device,
+// €120/stick (used-market) = 120_000_000 micro-EUR.
+data mem_1rx8_2dpc: MemoryConfig = MemoryConfig {
+  module: mod_1rx8, dimms_per_channel: 2, milliwatts_per_chip: 400, price_micros_per_stick: 120000000
+}
+data mem_2rx8_2dpc: MemoryConfig = MemoryConfig {
+  module: mod_2rx8, dimms_per_channel: 2, milliwatts_per_chip: 400, price_micros_per_stick: 120000000
+}
+data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
+  module: mod_1rx8, dimms_per_channel: 1, milliwatts_per_chip: 400, price_micros_per_stick: 120000000
+}
+
+// --- CPU: generic Altra-class, 166W measured draw (NOT its TDP) ----------
+data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "GENERIC-ARM-64C",
+  oem_listing_id: none,
+  vendor: Ampere,
+  architecture: Aarch64,
+  cores: 64,
+  threads: hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  tdp_watts: 250
+}
+
+data cpu1: CpuCandidate = CpuCandidate {
+  catalog: cpu_catalog, typical_draw: watt(count: 166), price_micros: 400000000
+}
+
+data board1: Motherboard = Motherboard {
+  label: "GENERIC-8CH-BOARD",
+  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  memory_channels: 8,
+  max_dimms_per_channel: 2,
+  idle_draw: watt(count: 30),
+  price_micros: 300000000
+}
+
+data psu_gold_550: PsuModel = PsuModel {
+  label: "GENERIC-550W-GOLD",
+  max_output: watt(count: 550),
+  efficiency: Gold,
+  price_micros: 90000000
+}
+
+// --- Full configs --------------------------------------------------------
+fn sys(mem: MemoryConfig) -> SystemConfig {
+  SystemConfig { platform: altra8, cpu: cpu1, memory: mem, board: board1, psu: psu_gold_550 }
+}
+
+data cfg_a_axes: HardwareAxes = config_axes(cfg: sys(mem: mem_1rx8_2dpc))  // 512GB, full speed
+data cfg_b_axes: HardwareAxes = config_axes(cfg: sys(mem: mem_2rx8_2dpc))  // 512GB, downclocked + 2x power
+data cfg_c_axes: HardwareAxes = config_axes(cfg: sys(mem: mem_1rx8_1dpc))  // 256GB, half sticks
+
+// === Witnesses ===========================================================
+
+// Downclock model: at 2DPC, dual-rank derates to 2933 while single-rank holds 3200.
+fn downclock_is_rank_dependent() -> Bool {
+  effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 1) == 3200
+    && effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 2) == 2933
+    && effective_data_rate_mts(platform: altra8, dimms_per_channel: 1, rank_count: 2) == 3200
+}
+
+// PSU sizing: DC load = 166 (cpu) + 57 (16 sticks × 9 devices × 400mW) + 30 (board) = 253 W;
+// the 550W Gold PSU is adequate; wall draw = 253 × 100 / 87 = 290 W (integer division).
+fn psu_sizing_is_computed() -> Bool {
+  psu_is_adequate(cfg: sys(mem: mem_1rx8_2dpc))
+    && watt_count(w: wall_draw_watts(cfg: sys(mem: mem_1rx8_2dpc))) == 290
+}
+
+// DISCRIMINATING headline: at 2DPC the dual-rank downclock makes config B both
+// lower-bandwidth (2933 vs 3200) AND higher-power (96W vs 48W DRAM) than A at equal
+// capacity/cost — so A strictly DOMINATES B. The whole point of the cross-variable model.
+fn single_rank_dominates_dual_at_2dpc() -> Bool {
+  verdict_dominates(v: dominates(a: cfg_a_axes, b: cfg_b_axes))
+}
+
+// Pareto front over {A, B, C}: the dominated B is stripped; A (more capacity) and C
+// (cheaper/cooler, half capacity) are an incomparable trade-off and both survive.
+fn front_keeps_tradeoffs_strips_dominated() -> Bool {
+  let pool = [cfg_a_axes, cfg_b_axes, cfg_c_axes]
+  axes_on_front(candidate: cfg_a_axes, pool: pool)
+    && axes_on_front(candidate: cfg_c_axes, pool: pool)
+    && !axes_on_front(candidate: cfg_b_axes, pool: pool)
+}
+
+fn hardware_selection_holds() -> Bool {
+  downclock_is_rank_dependent()
+    && psu_sizing_is_computed()
+    && single_rank_dominates_dual_at_2dpc()
+    && front_keeps_tradeoffs_strips_dominated()
+}
