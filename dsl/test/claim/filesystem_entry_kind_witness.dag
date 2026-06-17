@@ -13,6 +13,7 @@
 
 module test.claim.filesystem_entry_kind_witness
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import std.filesystem.types { EntryKind }
 import extdeps.filesystem.posix { posix_entry_kind, S_IFREG, S_IFLNK, S_IFSOCK }
 import extdeps.filesystem.ntfs { ntfs_entry_kind, NormalFile, SymlinkReparse, MountPointReparse }
@@ -61,4 +62,11 @@ fn filesystem_entry_kind_witnesses() -> Bool {
   w_ntfs_junction_is_other() &&
   w_ntfs_symlink_is_symlink() &&
   w_ntfs_normal_is_regular()
+}
+
+data unified_claim_filesystem_entry_kind: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/filesystem_entry_kind_witness.dag",
+    function: filesystem_entry_kind_witnesses
+  }
 }

@@ -7,6 +7,7 @@
 
 module test.claim.dsl_compile_clean_witness
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import tools.dsl_compile_clean_transport {
   run_clean_tree_compile,
   run_perturb_optional_skew_red_receipt
@@ -22,4 +23,11 @@ fn witness_perturb_optional_skew_goes_red() -> Bool {
 
 fn dsl_compile_clean_witnesses() -> Bool {
   witness_clean_tree_compile_holds() && witness_perturb_optional_skew_goes_red()
+}
+
+data unified_claim_dsl_compile_clean: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/dsl_compile_clean_witness.dag",
+    function: dsl_compile_clean_witnesses
+  }
 }

@@ -9,6 +9,7 @@
 
 module test.claim.power_watt
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import std.logic { Bool }
 import std.types { Int, List }
 import std.measure { Watt, watt, watt_count }
@@ -48,4 +49,11 @@ fn power_watt_witnesses() -> Bool {
   watt_roundtrips()
     && empty_budget_is_zero_watts()
     && total_power_is_computed_sum()
+}
+
+data unified_claim_power_watt: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/power_watt_witness.dag",
+    function: power_watt_witnesses
+  }
 }

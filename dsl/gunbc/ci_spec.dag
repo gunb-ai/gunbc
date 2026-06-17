@@ -1,16 +1,13 @@
-// gunbc/ci_spec.dag — CI intent as data (witness roots, gates, diff policy).
+// gunbc/ci_spec.dag — CI intent as data (layer roots, gates, diff policy).
 
 module gunbc.ci_spec
 
-type WitnessRoot {
-  root: String
-  scan_subtrees: List<String>
-}
-
-type WitnessEntry {
-  entry: String
-  function: String
-}
+import v2.std.algebra { bag_eq, Empty, list_snoc_item, length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Behavior, Symbol }
+import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 
 type Gate
   = RustMonolithGate
@@ -28,41 +25,59 @@ type DiffPolicy {
 }
 
 type CiSpec {
-  witness_roots: List<WitnessRoot>
-  witness_entries: List<WitnessEntry>
   gates: List<Gate>
   diff_policy: DiffPolicy
   notice_title: String
 }
 
+// Single authority for CI witness layer roots (§3 — replaces triple-fork in ci.yml / transport scripts).
+data witness_layer_roots: List<String> = ["src/v2", "dsl"]
+
+data reflect_gate_type: Symbol = ^Gate
+
+// 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
+// dissolve-on-arrival: generic Symbol→inhabitant replaces exhaustive match roster;
+// until then the roster is witness-checked against coproduct reflection on ^Gate.
+data gunbc_ci_gates: List<Gate> = [
+  RustMonolithGate,
+  EmitHostGate,
+  LayeringImportsGate,
+  DslCompileCleanGate,
+  CiYamlGate
+]
+
 data gunbc_ci_spec: CiSpec = {
-  witness_roots: [
-    { root: "src/v2", scan_subtrees: [] },
-    { root: "dsl", scan_subtrees: [] }
-  ],
-  witness_entries: [
-    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
-    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
-    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
-    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
-    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
-    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
-    { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" }
-  ],
-  gates: [
-    RustMonolithGate,
-    EmitHostGate,
-    LayeringImportsGate,
-    DslCompileCleanGate,
-    CiYamlGate
-  ],
+  gates: gunbc_ci_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
     mode: DiffMergeBase
   },
   notice_title: "v2 claim corpus"
+}
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
+  fold(inhabitants, init: Empty, f: fn(acc, v) {
+    list_snoc_item(xs: acc, item: discriminant(v: v))
+  })
+}
+
+fn gate_roster_matches_coproduct_arms() -> Bool {
+  let arm_keys = coproduct_arm_keys(type_name: reflect_gate_type)
+  match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      (length(xs: gunbc_ci_gates) == length(xs: arm_keys)) &&
+        bag_eq(
+          xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
+          ys: arm_keys,
+          eq: symbol_eq
+        )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn join_slash(parts: List<String>) -> String {
@@ -79,39 +94,29 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
   )
 }
 
-fn witness_root_source_flag(wr: WitnessRoot) -> String {
-  concat(" --source-root ", wr.root)
+fn witness_layer_source_flags(roots: List<String>) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
 }
 
-fn witness_root_scan_flags(wr: WitnessRoot) -> String {
-  fold(wr.scan_subtrees, init: "", f: (acc, sub) => {
-    let dir = if starts_with(s: sub, prefix: wr.root) {
-      sub
-    } else {
-      concat(concat(wr.root, "/"), sub)
-    }
-    concat(acc, concat(" --scan-dir ", dir))
-  })
+fn witness_layer_scan_flags(roots: List<String>) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --scan-dir ", r)))
 }
 
-fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
-  fold(roots, init: "", f: (acc, wr) =>
-    concat(concat(acc, witness_root_source_flag(wr: wr)), witness_root_scan_flags(wr: wr))
-  )
-}
-
-fn witness_entry_flags(row: WitnessEntry) -> String {
-  concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
+fn witness_layer_source_shell_flags(roots: List<String>) -> String {
+  witness_layer_source_flags(roots: roots)
 }
 
 fn claim_batch_script(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
+        concat(
+          concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
+          witness_layer_scan_flags(roots: witness_layer_roots)
+        ),
         " --roster-from-discovery"
       ),
-      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+      ""
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")
   )
@@ -119,7 +124,7 @@ fn claim_batch_script(spec: CiSpec) -> String {
 
 fn ci_gates_invoke(spec: CiSpec) -> String {
   concat(
-    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_layer_source_flags(roots: witness_layer_roots)),
     " --entry dsl/tools/ci_gates.dag --function main"
   )
 }

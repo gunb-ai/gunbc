@@ -4,6 +4,7 @@
 
 module test.claim.ci_yaml_serializer_witness
 
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import extdeps.formats.yaml {
   YamlValue, YamlKeyValue, YamlString, YamlInt, YamlMapping, YamlSequence,
   serialize_yaml, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
@@ -171,4 +172,11 @@ fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_multiline_without_block_scalar_is_invalid() &&
     witness_cache_path_not_flat_multiline_sibling() &&
     witness_restore_keys_content_deeper_than_key()
+}
+
+data unified_claim_ci_yaml_serializer: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/ci_yaml_serializer_witness.dag",
+    function: ci_yaml_serializer_keystone_holds
+  }
 }

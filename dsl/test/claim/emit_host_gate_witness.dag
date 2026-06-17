@@ -56,3 +56,10 @@ fn emit_host_gate_witnesses() -> Bool {
   w_mvp2_byte_count_is_five() &&
   w_ts_byte_count_is_four()
 }
+
+data unified_claim_emit_host_gate: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "dsl/test/claim/emit_host_gate_witness.dag",
+    function: emit_host_gate_witnesses
+  }
+}

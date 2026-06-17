@@ -14,6 +14,7 @@ import v2.std.algebra { any, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 // Domain (post-v3-removal): 3 enumerated layer roots × 2 forbidden forms (v2.compiler exact +
 // prefix), leading-import, *.dag only.
@@ -113,4 +114,11 @@ fn coverage_domain_equivalence_argument_holds() -> Bool {
     && length(xs: layer_roots) == 3
     && length(xs: forbidden_forms) == 2
     && length(xs: layering_imports_scanner_perturb_receipt_rows) == 4
+}
+
+data unified_claim_layering_coverage_domain_equivalence: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag",
+    function: coverage_domain_equivalence_argument_holds
+  }
 }
