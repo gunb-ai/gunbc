@@ -1,0 +1,105 @@
+// extdeps/llm/anthropic_rest.dag — `llm.Anthropic` realization handlers (REST + Claude CLI).
+//
+// Protocol types and wire contracts live in `anthropic.dag` (`module extdeps.llm.anthropic`).
+// One dependency interface (`llm.Anthropic`), multiple transports (DESIGN.md §3) — not a
+// forked `llm.Claude` service in `cli.dag`.
+
+module extdeps.llm.anthropic_rest
+
+import extdeps.llm.anthropic {
+  AnthropicChatMessage,
+  AnthropicMessages200Body,
+  AnthropicStopReason,
+  current_api_version
+}
+import extdeps.llm.anthropic_errors { AnthropicErrorShape }
+import std.credentials { EnvVar }
+
+service llm.Anthropic {
+  config {
+    endpoint: "https://api.anthropic.com"
+    auth: Header("x-api-key")
+    auth_input: api_key
+    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
+    // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
+    rate_limit: { requests: 1000, per: minute, scope: messages }
+    // Retry on overload and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 529] }
+  }
+
+  operation Messages {
+    input {
+      api_key: Secret
+      model: String
+      messages: List<AnthropicChatMessage>
+      max_tokens: Int = 4096
+      temperature: Float?
+      system: String?
+    }
+    output {
+      content: String from "content/0/text"
+      model: String from "model"
+      stop_reason: AnthropicStopReason from "stop_reason"
+      input_tokens: Int from "usage/input_tokens"
+      output_tokens: Int from "usage/output_tokens"
+    }
+    transport rest {
+      method: POST,
+      path: "/v1/messages",
+      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
+      headers: { "anthropic-version": current_api_version.version }
+    }
+    response {
+      200 => AnthropicMessages200Body
+      400 => AnthropicErrorShape
+      401 => AnthropicErrorShape
+      403 => AnthropicErrorShape
+      404 => AnthropicErrorShape
+      429 => AnthropicErrorShape
+      529 => AnthropicErrorShape
+      5xx => AnthropicErrorShape
+    }
+    mock_response {
+      200 => { id: "msg_mock123", type: "message", role: "assistant", content: [{ type: "text", text: "Mock response from Claude" }], model: "claude-sonnet-4-6-20250929", stop_reason: "end_turn", usage: { input_tokens: 25, output_tokens: 10 } } "Successful completion",
+      400 => { type: "error", error: { type: "invalid_request_error", message: "messages: field required" } } "Invalid request body",
+      401 => { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } "Invalid API key",
+      429 => { type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } } "Rate limited",
+      529 => { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } "Server overloaded"
+    }
+  }
+
+  // Claude Code CLI — shell realization of the same Anthropic dependency.
+  // Spec: https://docs.anthropic.com/en/docs/claude-code
+  // Auth: ANTHROPIC_API_KEY (CLI reads env; not wired through service config).
+  operation CliPrompt {
+    input {
+      prompt: String
+      model: String = "opus"
+      effort: String = "max"
+      output_format: String = "text"
+      permission_mode: String = "plan"
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", "-p",
+        "--output-format", "{output_format}",
+        "--permission-mode", "{permission_mode}",
+        "--model", "{model}",
+        "--effort", "{effort}",
+        "{prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "Code review complete.\n\nPR-COMMENT: Clean changes, no issues found.", stderr: "" } "Successful CLI prompt"
+    }
+  }
+}
