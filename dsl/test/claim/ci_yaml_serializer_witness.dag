@@ -157,9 +157,9 @@ fn witness_restore_keys_content_deeper_than_key() -> Bool {
   )
 }
 
-fn witness_sccache_inherits_runner_uds() -> Bool {
+fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "SCCACHE_SERVER_UDS") &&
+  string_contains(s: yaml, pattern: "if [ -n \"$SCCACHE_SERVER_UDS\" ]") &&
     string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
     string_contains(s: yaml, pattern: "CARGO_INCREMENTAL=0") &&
     !string_contains(s: yaml, pattern: "sccache --stop-server") &&
@@ -180,5 +180,5 @@ fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_multiline_without_block_scalar_is_invalid() &&
     witness_cache_path_not_flat_multiline_sibling() &&
     witness_restore_keys_content_deeper_than_key() &&
-    witness_sccache_inherits_runner_uds()
+    witness_sccache_wired_when_fleet_daemon_up()
 }
