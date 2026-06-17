@@ -13,22 +13,20 @@ import v2.compiler.discovery_enumeration {
   OwnedNodeCorpusInit,
   OwnedOtherInit,
   ResolvedDeclRef,
-  unified_claim_arm_bool_witness_claim,
   unified_claim_arm_bool_witness_claim_module,
-  unified_claim_arm_node_corpus,
   unified_claim_arm_node_corpus_module
 }
 
 
 fn resolved_decl_is_bool_witness_claim_arm(d: ResolvedDeclRef) -> Bool {
   (d.module == unified_claim_arm_bool_witness_claim_module)
-    && (d.name == unified_claim_arm_bool_witness_claim)
+    && (d.name == ^unified_claim_arm_bool_witness_claim)
 }
 
 
 fn resolved_decl_is_node_corpus_arm(d: ResolvedDeclRef) -> Bool {
   (d.module == unified_claim_arm_node_corpus_module)
-    && (d.name == unified_claim_arm_node_corpus)
+    && (d.name == ^unified_claim_arm_node_corpus)
 }
 
 

@@ -30,11 +30,6 @@ import v2.std.find_witness {
   UniqueOnly,
   UserSelected,
   find_witness,
-  find_witness_reason_ambiguous_candidate,
-  find_witness_reason_no_candidate,
-  find_witness_reason_not_realized,
-  preservation_rule_constraint_satisfaction,
-  preservation_rule_exact_structural_equality_zip_fold,
   verify_witness
 }
 import v2.std.node {
@@ -77,13 +72,13 @@ fn identity_closedness() -> StructuralPropertyWitness {
 fn exact_identity_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: identity_source_node(),
-    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
 fn constraint_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: identity_source_node(),
-    preservation_rule: preservation_rule_constraint_satisfaction
+    preservation_rule: ^preservation_rule_constraint_satisfaction
   }
 }
 fn unknown_rule_predicate() -> PreservationPredicate {
@@ -112,7 +107,7 @@ fn candidate_set_identity_duplicate() -> CandidateSet {
 }
 fn valid_identity_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: preservation_rule_exact_structural_equality_zip_fold,
+    property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: identity_source_node()
   }
 }
@@ -124,26 +119,26 @@ fn mismatched_property_witness() -> StructuralPropertyWitness {
 }
 fn mismatched_evidence_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: preservation_rule_exact_structural_equality_zip_fold,
+    property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: identity_other_node()
   }
 }
 fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_no_candidate
+    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
 fn rejected_for_ambiguous_candidate(o: Outcome<FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_ambiguous_candidate
+    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
   }
 }
 fn rejected_for_not_realized(o: Outcome<FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_not_realized
+    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
   }
 }
 fn quality_is_identity(q: CoercionQuality) -> Bool {

@@ -9,7 +9,6 @@ import v2.compiler.ingest {
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
@@ -28,7 +27,6 @@ import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
-  grammar_relation_field_tokens
 }
 import v2.std.diagnostic {
   Accepted,
@@ -48,13 +46,12 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data emit_ingest_round_trip_source_file: Symbol = emit_ingest_round_trip_source_file
 
 // Project a grammar-relation row's token-spine to ordered token CLASSES (bindings dropped),
 // mirroring v2.compiler.ingest row_token_spine_classes — the frontier forward selection keys on.
 fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
@@ -173,7 +170,7 @@ fn emit_ingest_parse_root() -> GrammarRoot {
 
 fn emit_ingest_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   let root = emit_ingest_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
         tokens: tokens,
@@ -189,7 +186,7 @@ fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
   bind_outcome(
     o: tokenize(
       text: dag_mvp1_source_text,
-      file: emit_ingest_round_trip_source_file,
+      file: ^emit_ingest_round_trip_source_file,
       rules: lm.lex
     ),
     f: fn(stream) {

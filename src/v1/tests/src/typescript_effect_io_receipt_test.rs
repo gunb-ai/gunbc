@@ -22,7 +22,7 @@
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_interpreter::{self, InterpContext, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -115,7 +115,7 @@ fn emitted_source(function: &str) -> String {
         "expected clean resolved graph for {WITNESS_ENTRY}, got diagnostics {blocking:?}"
     );
     let graph = resolved.graph.as_ref().expect("resolved graph");
-    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), false);
+    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let value = v1_interpreter::run_in_context(&ctx, function, true)
         .unwrap_or_else(|e| panic!("run {function}: {e:?}"));
     decode_freemonoid_string(&value, &ctx)

@@ -14,8 +14,6 @@ import v2.std.integer_value_set {
 }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
 import v2.std.node_query { find_named_child }
-data refinement_widening_field_source_value_set: Symbol = refinement_widening_field_source_value_set
-data refinement_widening_field_candidate_value_set: Symbol = refinement_widening_field_candidate_value_set
 fn refinement_widening_predicate_algebra(
   source: Node,
   candidate: Node,
@@ -53,11 +51,11 @@ fn refinement_widening_predicate_algebra_for_value_sets(
         target: source
       },
       Edge {
-        label: Named { name: refinement_widening_field_source_value_set },
+        label: Named { name: ^refinement_widening_field_source_value_set },
         target: source_value_set
       },
       Edge {
-        label: Named { name: refinement_widening_field_candidate_value_set },
+        label: Named { name: ^refinement_widening_field_candidate_value_set },
         target: candidate_value_set
       }
     ],
@@ -66,9 +64,9 @@ fn refinement_widening_predicate_algebra_for_value_sets(
 }
 
 fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
-  match find_named_child(root: algebra, name: refinement_widening_field_source_value_set) {
+  match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
     Accepted { value: source_value_set, diagnostics: None } =>
-      match find_named_child(root: algebra, name: refinement_widening_field_candidate_value_set) {
+      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
         Accepted { value: candidate_value_set, diagnostics: None } =>
           integer_value_set_strictly_contains(container: candidate_value_set, contained: source_value_set)
         Rejected { diagnostics: _ } => false
@@ -78,9 +76,9 @@ fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
 }
 
 fn refinement_widening_is_strict_coarsening(algebra: Node) -> Bool {
-  match find_named_child(root: algebra, name: refinement_widening_field_source_value_set) {
+  match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
     Accepted { value: source_value_set, diagnostics: None } =>
-      match find_named_child(root: algebra, name: refinement_widening_field_candidate_value_set) {
+      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
         Accepted { value: candidate_value_set, diagnostics: None } =>
           integer_value_set_strictly_contains(container: source_value_set, contained: candidate_value_set)
         Rejected { diagnostics: _ } => false

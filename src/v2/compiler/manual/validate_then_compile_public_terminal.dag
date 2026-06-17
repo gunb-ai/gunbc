@@ -13,12 +13,11 @@ import v2.compiler.compile {
   TranslateResult,
   TranslateTo,
   Validated,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic,
   validate_then_compile
 }
 import v2.compiler.infer { InferredTree }
-import v2.std.compilers.target_model { TargetModel}
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 import v2.std.diagnostic {
@@ -108,7 +107,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
-      r.head.reason != compile_lens_gate_rejected
+      r.head.reason != ^compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
       _ => false
@@ -122,7 +121,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
-      r.head.reason == compile_lens_gate_rejected
+      r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

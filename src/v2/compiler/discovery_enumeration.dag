@@ -48,8 +48,6 @@ type ResolvedDeclRef {
 // Closed unified-claim arm authority pins — filters compare host facts to these symbols.
 data unified_claim_arm_bool_witness_claim_module: String = "v2.std.verification"
 data unified_claim_arm_node_corpus_module: String = "v2.std.verification"
-data unified_claim_arm_bool_witness_claim: Symbol = unified_claim_arm_bool_witness_claim
-data unified_claim_arm_node_corpus: Symbol = unified_claim_arm_node_corpus
 
 
 // 🟢 coproduct dissolution — Consolidation #4553 host/modeled boundary; dedicated arms

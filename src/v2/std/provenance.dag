@@ -56,11 +56,10 @@ fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> 
   }
 }
 
-data span_index_occurrence_absent: Symbol = span_index_occurrence_absent
 
 fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: span_index_occurrence_absent,
+    reason: ^span_index_occurrence_absent,
     at: port_locus(port: ^span_index_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -109,11 +108,10 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   }
 }
 
-data span_index_origin_chain_exhausted: Symbol = span_index_origin_chain_exhausted
 
 fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: span_index_origin_chain_exhausted,
+    reason: ^span_index_origin_chain_exhausted,
     at: port_locus(port: ^span_index_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

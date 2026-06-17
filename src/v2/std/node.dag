@@ -146,9 +146,7 @@ type NodeShape {
   children: List<EdgeShape>
 }
 // 🟡 gated — substrate-shape bridge — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
-data loop_bound_edge: Symbol = ^loop_bound_edge
 // 🟢 TERMINAL — DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
-data arrow_body_edge: Symbol = ^arrow_body_edge
 
 fn node_with_occurrence_id(
   kind: NodeKind,
@@ -472,21 +470,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
-data canonical_tag_atom: Symbol = ^canonical_tag_atom
-data canonical_tag_conj: Symbol = ^canonical_tag_conj
-data canonical_tag_disj: Symbol = ^canonical_tag_disj
-data canonical_tag_arrow: Symbol = ^canonical_tag_arrow
-data canonical_tag_cardinality: Symbol = ^canonical_tag_cardinality
-data canonical_tag_instantiation: Symbol = ^canonical_tag_instantiation
-data canonical_tag_value: Symbol = ^canonical_tag_value
-data canonical_tag_transform: Symbol = ^canonical_tag_transform
-data canonical_tag_branch: Symbol = ^canonical_tag_branch
-data canonical_tag_loop: Symbol = ^canonical_tag_loop
-data canonical_tag_bind: Symbol = ^canonical_tag_bind
-data canonical_tag_type_node: Symbol = ^canonical_tag_type_node
-data canonical_tag_computation_node: Symbol = ^canonical_tag_computation_node
-data canonical_tag_named_edge: Symbol = ^canonical_tag_named_edge
-data canonical_tag_positional_edge: Symbol = ^canonical_tag_positional_edge
 
 
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
@@ -674,24 +657,6 @@ data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
 // Interim magnitude ceiling: post-ceiling residual 256^(9+k) needs shift k (claim band through k=28 / offset 256^37).
 // Full P2 on unbounded Int offsets requires dissolve-on bounded ByteOffset carrier (coproduct marks above).
 data byte_offset_residual_quotient_magnitude_max_shift: Int = 28
-data canonical_tag_scalar_int_zero: Symbol = ^canonical_tag_scalar_int_zero
-data canonical_tag_scalar_int_one: Symbol = ^canonical_tag_scalar_int_one
-data canonical_tag_scalar_int_neg: Symbol = ^canonical_tag_scalar_int_neg
-data canonical_tag_scalar_int_pos: Symbol = ^canonical_tag_scalar_int_pos
-data canonical_tag_scalar_int_succ: Symbol = ^canonical_tag_scalar_int_succ
-data canonical_tag_byte_offset_zero: Symbol = ^canonical_tag_byte_offset_zero
-data canonical_tag_byte_offset_byte: Symbol = ^canonical_tag_byte_offset_byte
-data canonical_tag_byte_offset_neg: Symbol = ^canonical_tag_byte_offset_neg
-data canonical_tag_byte_limb_out_of_range: Symbol = ^canonical_tag_byte_limb_out_of_range
-data canonical_tag_byte_offset_out_of_ceiling: Symbol = ^canonical_tag_byte_offset_out_of_ceiling
-data canonical_tag_byte_offset_overflow_peel_exhausted: Symbol = ^canonical_tag_byte_offset_overflow_peel_exhausted
-data canonical_tag_byte_offset_overflow_residual_unrepresentable: Symbol = ^canonical_tag_byte_offset_overflow_residual_unrepresentable
-data canonical_tag_byte_offset_overflow_residual_discarded_high_zero: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero
-data canonical_tag_byte_offset_overflow_residual_discarded_high_band: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_band
-data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated
-data canonical_tag_byte_offset_residual_quotient_limb_pair: Symbol = ^canonical_tag_byte_offset_residual_quotient_limb_pair
-data canonical_tag_byte_offset_residual_quotient_magnitude: Symbol = ^canonical_tag_byte_offset_residual_quotient_magnitude
-data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = ^canonical_tag_byte_offset_cache_digest_ineligible
 data byte_offset_cache_digest_max_limbs: Int = 9
 // Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
 // Four limbs cover the 256^4 remainder at the first over-ceiling offset (256^9) without peel exhaustion recursion.
@@ -1265,20 +1230,6 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
 
 
 // SG-7: structural Node projection for CI / T-22 cache-hash consumers — single authority (no ci.dag parallel tree).
-data canonical_tag_byte_offset_cache_key_eligible: Symbol = ^canonical_tag_byte_offset_cache_key_eligible
-data canonical_tag_byte_offset_cache_key_ineligible: Symbol = ^canonical_tag_byte_offset_cache_key_ineligible
-data byte_offset_proj_key_eligible_edge: Symbol = ^byte_offset_proj_key_eligible_edge
-data byte_offset_proj_key_ineligible_edge: Symbol = ^byte_offset_proj_key_ineligible_edge
-data byte_offset_proj_authority_edge: Symbol = ^byte_offset_proj_authority_edge
-data byte_offset_proj_boundary_edge: Symbol = ^byte_offset_proj_boundary_edge
-data byte_offset_proj_within_ceiling_edge: Symbol = ^byte_offset_proj_within_ceiling_edge
-data byte_offset_proj_over_ceiling_edge: Symbol = ^byte_offset_proj_over_ceiling_edge
-data byte_offset_proj_ineligible_authority_edge: Symbol = ^byte_offset_proj_ineligible_authority_edge
-data byte_offset_proj_out_of_ceiling_edge: Symbol = ^byte_offset_proj_out_of_ceiling_edge
-data byte_offset_proj_byte_limb_edge: Symbol = ^byte_offset_proj_byte_limb_edge
-data byte_offset_proj_neg_edge: Symbol = ^byte_offset_proj_neg_edge
-data byte_offset_proj_succ_edge: Symbol = ^byte_offset_proj_succ_edge
-data byte_offset_proj_pred_edge: Symbol = ^byte_offset_proj_pred_edge
 
 
 fn node_offset_atom(sym: Symbol) -> Node {

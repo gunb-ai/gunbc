@@ -31,22 +31,19 @@ type ClaimRef {
 
 data bre_suite_entry: String = "src/v2/workflow/affected_set_ci_runner_test.dag"
 
-data bre_core_symbol: Symbol = bre_core_symbol
-data bre_a_symbol: Symbol = bre_a_symbol
-data bre_b_symbol: Symbol = bre_b_symbol
 
 data bre_core_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: bre_core_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^bre_core_symbol } },
   children: []
 }
 
 data bre_a_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: bre_a_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^bre_a_symbol } },
   children: []
 }
 
 data bre_b_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: bre_b_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^bre_b_symbol } },
   children: []
 }
 

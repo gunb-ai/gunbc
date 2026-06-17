@@ -25,7 +25,6 @@ import v2.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
-  preservation_rule_constraint_satisfaction
 }
 import v2.std.constraint_satisfaction_predicate {
   constraint_satisfaction_preservation_holds
@@ -89,7 +88,7 @@ fn constraint_satisfaction_preservation_predicate(
 ) -> PreservationPredicate {
   PreservationPredicate {
     algebra: predicate.algebra,
-    preservation_rule: preservation_rule_constraint_satisfaction
+    preservation_rule: ^preservation_rule_constraint_satisfaction
   }
 }
 fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropertyWitness {

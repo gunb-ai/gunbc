@@ -17,8 +17,7 @@ import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
 
 
-data tdt_witness_fn_node_symbol: Symbol = tdt_witness_fn_node_symbol
-data tdt_witness_fn_node: Node = claim_atom_node(s: tdt_witness_fn_node_symbol)
+data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 
 
 // treating this as a permanent variant-discriminant authority.

@@ -17,7 +17,6 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.find_witness { preservation_rule_constraint_satisfaction }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -172,7 +171,7 @@ fn branch_infer_constraint_satisfaction_grounding_rejected() -> CanonicalGroundi
     node: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_node),
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: preservation_rule_constraint_satisfaction,
+        property: ^preservation_rule_constraint_satisfaction,
         evidence: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_evidence)
       },
       closedness: StructuralPropertyWitness {

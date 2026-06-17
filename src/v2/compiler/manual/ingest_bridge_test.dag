@@ -15,7 +15,6 @@ import v2.compiler.ingest {
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
-  parse_stage_locus_port
 }
 import v2.std.grammar {
   GrammarProduction,
@@ -38,14 +37,8 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
-  TargetModel,
-  grammar_relation_field_emitted,
-  grammar_relation_field_tokens,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_fidelity_quotient,
-  target_model_edge_selection_policy,
-  target_model_edge_serialize_source,
-  target_model_edge_translation_rules}
+  TargetModel
+}
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -70,18 +63,12 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-data ingest_fixture_file: Symbol = ^ingest_fixture_file
-data ingest_fixture_tok: Symbol = ^ingest_fixture_tok
-data ingest_fixture_other_tok: Symbol = ^ingest_fixture_other_tok
-data ingest_fixture_start: Symbol = ^ingest_fixture_start
-data ingest_fixture_rule: Symbol = ^ingest_fixture_rule
-data ingest_fixture_rule_alt: Symbol = ^ingest_fixture_rule_alt
 
 fn ingest_fixture_token() -> Token {
   Token {
-    class: ingest_fixture_tok,
+    class: ^ingest_fixture_tok,
     lexeme: Empty,
-    file: ingest_fixture_file,
+    file: ^ingest_fixture_file,
     start: 0,
     end: 1
   }
@@ -91,11 +78,11 @@ fn ingest_fixture_token() -> Token {
 // stamp is not trusted) — it is the parse FRONTIER that selects the row.
 fn ingest_fixture_root() -> GrammarRoot {
   GrammarRoot {
-    start: ingest_fixture_start,
+    start: ^ingest_fixture_start,
     productions: Cons {
       head: GrammarProduction {
-        name: ingest_fixture_start,
-        expression: Terminal { token_class: ingest_fixture_tok, binding: Absent },
+        name: ^ingest_fixture_start,
+        expression: Terminal { token_class: ^ingest_fixture_tok, binding: Absent },
         emitted: dag_mvp1_fixture_emitted_add_fn
       },
       tail: Empty
@@ -106,14 +93,14 @@ fn ingest_fixture_root() -> GrammarRoot {
 
 // Parse one `ingest_fixture_tok` token through the local grammar, returning the parse tree.
 fn ingest_parse() -> Outcome<Node> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
         tokens: Cons { head: ingest_fixture_token(), tail: Empty },
         validated: validated,
-        production_name: ingest_fixture_start
+        production_name: ^ingest_fixture_start
       ) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
@@ -133,9 +120,9 @@ fn ingest_fixture_row_node(emitted: Node, spine_class: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: grammar_relation_field_emitted }, target: emitted },
+      Edge { label: Named { name: ^grammar_relation_field_emitted }, target: emitted },
       Edge {
-        label: Named { name: grammar_relation_field_tokens },
+        label: Named { name: ^grammar_relation_field_tokens },
         target: grammar_relation_tokens_node(
           tokens: Cons { head: spine_class, tail: Empty },
           token_to_node: grammar_concrete_fixed_token_node
@@ -150,11 +137,11 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: target_model_edge_selection_policy }, target: dag_mvp1_selection_policy_node() },
-      Edge { label: Named { name: target_model_edge_declared_inhabitants }, target: dag_mvp1_declared_inhabitants_root() },
-      Edge { label: Named { name: target_model_edge_translation_rules }, target: rules },
-      Edge { label: Named { name: target_model_edge_serialize_source }, target: dag_mvp1_serialize_source_node() },
-      Edge { label: Named { name: target_model_edge_fidelity_quotient }, target: dag_mvp1_fidelity_quotient_node() }
+      Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_mvp1_selection_policy_node() },
+      Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_mvp1_declared_inhabitants_root() },
+      Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
+      Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_mvp1_serialize_source_node() },
+      Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_mvp1_fidelity_quotient_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -175,7 +162,7 @@ fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -187,8 +174,8 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
-      Edge { label: Named { name: ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
+      Edge { label: Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -202,7 +189,7 @@ fn ingest_recovers_emitted_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == dag_mvp1_fixture_emitted_add_fn
@@ -218,7 +205,7 @@ fn ingest_bridge_to_canonical_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: core, diagnostics: _ } =>
           core == dag_mvp1_fixture_emitted_add_fn
@@ -236,7 +223,7 @@ fn ingest_fails_closed_off_frontier_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_other_tok)
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
@@ -251,7 +238,7 @@ fn ingest_fails_closed_ambiguous_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model_ambiguous(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+        source_model: ingest_fixture_model_ambiguous(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
@@ -273,7 +260,7 @@ fn ingest_unstamped_node() -> Node {
 fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   match parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
-    source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok)
+    source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -291,7 +278,7 @@ fn ingest_cross_language_compile_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ingest_fixture_tok),
+        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
         target_model: dag_mvp1_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>

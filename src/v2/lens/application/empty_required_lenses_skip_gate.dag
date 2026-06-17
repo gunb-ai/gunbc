@@ -7,10 +7,9 @@ import v2.compiler.compile {
   TranslateResult,
   TranslateTo,
   Validated,
-  compile_lens_gate_rejected,
   validate_then_compile
 }
-import v2.std.compilers.target_model { TargetModel}
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -62,7 +61,7 @@ fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
     mode: TranslateTo { target: empty_lenses_target_model_stub }
   ) {
     Rejected { diagnostics: r } =>
-      !non_empty_diagnostics_contain_reason(d: r, reason: compile_lens_gate_rejected)
+      !non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
     Accepted { value: v, diagnostics: _ } =>
       match v.value {
         TranslateResult { source: _ } => true

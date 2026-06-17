@@ -29,15 +29,7 @@ import v2.std.text { String }
 type ByteString = List<Byte>
 
 
-data host_tool_npx: Symbol = host_tool_npx
-data host_tool_node: Symbol = host_tool_node
-data host_tool_tsc: Symbol = host_tool_tsc
-data host_tool_cargo: Symbol = host_tool_cargo
-data host_tool_python3: Symbol = host_tool_python3
-data host_tool_go: Symbol = host_tool_go
 
-data emit_host_runtime_row_unconfigured_reason: Symbol = emit_host_runtime_row_unconfigured_reason
-data emit_host_runtime_row_parse_byte_width_mismatch: Symbol = emit_host_runtime_row_parse_byte_width_mismatch
 
 type RelPath = String
 
@@ -88,16 +80,16 @@ data target_emit_host_runtime_row_unconfigured: TargetEmitHostRuntimeRow = HostR
 
 fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_runtime_row_unconfigured_reason,
-    at: port_locus(port: emit_host_runtime_row_unconfigured_reason),
+    reason: ^emit_host_runtime_row_unconfigured_reason,
+    at: port_locus(port: ^emit_host_runtime_row_unconfigured_reason),
     correction: None
   }
 }
 
 fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_runtime_row_parse_byte_width_mismatch,
-    at: port_locus(port: emit_host_runtime_row_parse_byte_width_mismatch),
+    reason: ^emit_host_runtime_row_parse_byte_width_mismatch,
+    at: port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch),
     correction: None
   }
 }

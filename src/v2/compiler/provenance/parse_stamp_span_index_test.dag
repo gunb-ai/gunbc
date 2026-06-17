@@ -6,8 +6,6 @@ module v2.test.provenance.parse_stamp_span_index
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
-  parse_stage_locus_port,
-  parse_stage_producer
 }
 import v2.std.algebra { Cons, Empty, length }
 import v2.std.collection { List, list_nth }
@@ -58,14 +56,10 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates }
 
-data parse_stamp_file: Symbol = ^parse_stamp_file
-data parse_stamp_tok: Symbol = ^parse_stamp_tok
-data parse_stamp_start: Symbol = ^parse_stamp_start
-data parse_stamp_list_absent: Symbol = parse_stamp_list_absent
 
 fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: parse_stamp_list_absent,
+    reason: ^parse_stamp_list_absent,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: [],
@@ -77,9 +71,9 @@ fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
 
 fn parse_stamp_token(start: Int, end: Int) -> Token {
   Token {
-    class: parse_stamp_tok,
+    class: ^parse_stamp_tok,
     lexeme: Empty,
-    file: parse_stamp_file,
+    file: ^parse_stamp_file,
     start: start,
     end: end
   }
@@ -87,12 +81,12 @@ fn parse_stamp_token(start: Int, end: Int) -> Token {
 
 fn parse_stamp_terminal_root() -> GrammarRoot {
   GrammarRoot {
-    start: parse_stamp_start,
+    start: ^parse_stamp_start,
     productions: Cons {
       head: GrammarProduction {
-        name: parse_stamp_start,
-        expression: Terminal { token_class: parse_stamp_tok, binding: Absent },
-        emitted: grammar_atom(identity: parse_stamp_start)
+        name: ^parse_stamp_start,
+        expression: Terminal { token_class: ^parse_stamp_tok, binding: Absent },
+        emitted: grammar_atom(identity: ^parse_stamp_start)
       },
       tail: Empty
     },
@@ -102,15 +96,15 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
 
 fn parse_stamp_sequence_root() -> GrammarRoot {
   GrammarRoot {
-    start: parse_stamp_start,
+    start: ^parse_stamp_start,
     productions: Cons {
       head: GrammarProduction {
-        name: parse_stamp_start,
+        name: ^parse_stamp_start,
         expression: Sequence {
-          left: Terminal { token_class: parse_stamp_tok, binding: Absent },
-          right: Terminal { token_class: parse_stamp_tok, binding: Absent }
+          left: Terminal { token_class: ^parse_stamp_tok, binding: Absent },
+          right: Terminal { token_class: ^parse_stamp_tok, binding: Absent }
         },
-        emitted: grammar_atom(identity: parse_stamp_start)
+        emitted: grammar_atom(identity: ^parse_stamp_start)
       },
       tail: Empty
     },
@@ -130,7 +124,7 @@ fn parse_stamp_from_source_extent_holds(
         FromSource { locus: got_locus } =>
           match got_locus {
             Textual { file: f, extent: ext } =>
-              (f == parse_stamp_file)
+              (f == ^parse_stamp_file)
                 && match ext {
                   ByteRange { start: s, end: e } => (s == start) && (e == end)
                   WholeFile => false
@@ -154,7 +148,7 @@ fn parse_stamp_derived_by_pair_holds(
     Holds { value: got } =>
       match got {
         DerivedBy { producer: p, from: child_ids } =>
-          (p == parse_stage_producer)
+          (p == ^parse_stage_producer)
             && (length(xs: child_ids) == 2)
             && match list_nth(
               xs: child_ids,
@@ -182,7 +176,7 @@ fn parse_stamp_derived_by_pair_holds(
 }
 
 fn parse_stamp_terminal_from_source_holds() -> Bool {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: parse_stamp_terminal_root(), at: at) {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
@@ -192,7 +186,7 @@ fn parse_stamp_terminal_from_source_holds() -> Bool {
           tail: Empty
         },
         validated: validated,
-        production_name: parse_stamp_start
+        production_name: ^parse_stamp_start
       ) {
         Accepted { value: artifact, diagnostics: _ } =>
           match find_named_child(
@@ -218,7 +212,7 @@ fn parse_stamp_terminal_from_source_holds() -> Bool {
 }
 
 fn parse_stamp_sequence_derived_by_holds() -> Bool {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: parse_stamp_sequence_root(), at: at) {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
@@ -228,7 +222,7 @@ fn parse_stamp_sequence_derived_by_holds() -> Bool {
           tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: Empty }
         },
         validated: validated,
-        production_name: parse_stamp_start
+        production_name: ^parse_stamp_start
       ) {
         Accepted { value: artifact, diagnostics: _ } =>
           match find_named_child(

@@ -18,10 +18,6 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
   find_witness_derives,
-  find_witness_reason_ambiguous_candidate,
-  preservation_rule_constraint_satisfaction,
-  preservation_rule_exact_structural_equality_zip_fold,
-  preservation_rule_refinement_widening
 }
 import v2.std.integer {
   int16_interval_spec,
@@ -45,11 +41,6 @@ import v2.std.integer_value_set {
   integer_unbounded_value_set_node,
   integer_value_set_contains,
   integer_value_set_strictly_contains,
-  integer_value_set_field_extra,
-  integer_value_set_field_interval,
-  integer_value_set_field_kind,
-  integer_value_set_kind_interval,
-  integer_value_set_kind_unbounded
 }
 import v2.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
 import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -98,9 +89,9 @@ fn control_stub_project_to_core_returns_false(source: Node, target: Node) -> Boo
 }
 
 fn control_old_rules_faithful_for_siblings() -> Bool {
-  let exact = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
-  let widening = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_refinement_widening)
-  let constraint = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
+  let exact = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+  let widening = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+  let constraint = control_rule_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
   exact || widening || constraint
 }
 
@@ -139,7 +130,7 @@ data witness_project_to_core_derives_preserves_ambiguity: Bool = match find_witn
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: _, diagnostics: _ } => false
-  Rejected { diagnostics: r } => r.head.reason == find_witness_reason_ambiguous_candidate
+  Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
 }
 
 fn surface_only_node(surface: Symbol) -> Node {
@@ -315,13 +306,13 @@ fn i32_value_set_interval_first() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: integer_value_set_field_interval },
+        label: Named { name: ^integer_value_set_field_interval },
         target: integer_interval_spec_node(spec: int32_interval_spec())
       },
       Edge {
-        label: Named { name: integer_value_set_field_kind },
+        label: Named { name: ^integer_value_set_field_kind },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: integer_value_set_kind_interval } },
+          kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
           children: []
         }
       }
@@ -419,7 +410,6 @@ data witness_refinement_widening_refuses_semantically_equal_value_sets: Bool = !
   )
 )
 
-data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
 
 data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = match integer_interval_bound_compare(
     left: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),

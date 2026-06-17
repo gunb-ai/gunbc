@@ -48,7 +48,11 @@ fn assert_witness_terminates(function: &str, budget: Duration) {
     let resolved = compile_to_resolved(Rc::new(bisect_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(graph, resolved.source_indices.clone(), false);
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
     let start = Instant::now();
     match v1_interpreter::run_in_context(&ctx, function, false) {
         Ok(Value::Bool(true)) => {}

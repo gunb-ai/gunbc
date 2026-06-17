@@ -26,8 +26,6 @@ import v2.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  impossible_bug_reason_target_transport_drift,
-  impossible_bug_reason_transport_drift,
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
@@ -82,7 +80,7 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_target_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: impossible_bug_reason_target_transport_drift,
+        reason: ^impossible_bug_reason_target_transport_drift,
         at: node_locus(node: falsification_target_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }
@@ -97,7 +95,7 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_wire_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: impossible_bug_reason_transport_drift,
+        reason: ^impossible_bug_reason_transport_drift,
         at: node_locus(node: falsification_wire_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }

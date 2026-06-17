@@ -36,7 +36,6 @@ import v2.std.compilers.target_model {
   TargetAtomRealization,
   ValueSymbolIdentityPassthrough,
   source_atom_symbol,
-  symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_type_spelling,
   target_atom_value_expression,
@@ -98,20 +97,8 @@ import v2.std.leaf_model_verification {
   LeafModelPythonStaticHappyCase,
   LeafModelPythonStaticFalsificationCase,
   LeafModelPythonStaticFixturePair,
-  target_diagnostic_e0308_type_mismatch,
-  target_diagnostic_e0423_expected_value_found_type,
-  target_diagnostic_e0599_method_not_found,
-  target_diagnostic_python_name_error_undefined_name,
-  target_diagnostic_python_attribute_error_method_not_found,
-  target_diagnostic_python_type_error_init_arity_mismatch,
   TargetTypeScriptCompileAccepted,
   TargetTypeScriptCompileRejected,
-  target_diagnostic_ts2339_property_does_not_exist,
-  target_diagnostic_ts7009_new_expression_not_constructable,
-  target_diagnostic_go_undefined_type,
-  target_diagnostic_go_undefined_method,
-  target_diagnostic_go_invalid_conversion_arity,
-  target_diagnostic_go_runtime_panic
 }
 import v2.std.node { Node, Symbol, SyntheticOccurrence }
 import v2.std.text { String }
@@ -146,7 +133,7 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
     falsification: LeafModelFalsificationCase {
       fixture: rust_r1_falsification_fixture(),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_e0308_type_mismatch
+        diagnostic_code: ^target_diagnostic_e0308_type_mismatch
       }
     }
   }
@@ -180,7 +167,7 @@ fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r1_falsification_fixture(),
       expected_verdict: TargetPythonExecRejected {
-        diagnostic_code: target_diagnostic_python_name_error_undefined_name
+        diagnostic_code: ^target_diagnostic_python_name_error_undefined_name
       }
     }
   }
@@ -213,7 +200,7 @@ fn python_r2a_fixture_pair() -> LeafModelPythonFixturePair {
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r2a_falsification_fixture(),
       expected_verdict: TargetPythonExecRejected {
-        diagnostic_code: target_diagnostic_python_attribute_error_method_not_found
+        diagnostic_code: ^target_diagnostic_python_attribute_error_method_not_found
       }
     }
   }
@@ -363,7 +350,7 @@ fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r3_external_falsification_fixture(),
       expected_verdict: TargetPythonExecRejected {
-        diagnostic_code: target_diagnostic_python_type_error_init_arity_mismatch
+        diagnostic_code: ^target_diagnostic_python_type_error_init_arity_mismatch
       }
     }
   }
@@ -396,7 +383,7 @@ fn typescript_r2a_fixture_pair() -> LeafModelTypeScriptFixturePair {
     falsification: LeafModelTypeScriptFalsificationCase {
       fixture: typescript_r2a_falsification_fixture(),
       expected_verdict: TargetTypeScriptCompileRejected {
-        diagnostic_code: target_diagnostic_ts2339_property_does_not_exist
+        diagnostic_code: ^target_diagnostic_ts2339_property_does_not_exist
       }
     }
   }
@@ -459,7 +446,7 @@ fn typescript_r3_external_fixture_pair() -> LeafModelTypeScriptFixturePair {
     falsification: LeafModelTypeScriptFalsificationCase {
       fixture: typescript_r3_external_falsification_fixture(),
       expected_verdict: TargetTypeScriptCompileRejected {
-        diagnostic_code: target_diagnostic_ts7009_new_expression_not_constructable
+        diagnostic_code: ^target_diagnostic_ts7009_new_expression_not_constructable
       }
     }
   }
@@ -498,7 +485,7 @@ fn rust_r2a_fixture_pair() -> LeafModelFixturePair {
     falsification: LeafModelFalsificationCase {
       fixture: rust_r2a_falsification_fixture(),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_e0599_method_not_found
+        diagnostic_code: ^target_diagnostic_e0599_method_not_found
       }
     }
   }
@@ -583,7 +570,7 @@ fn rust_r3_external_fixture_pair() -> LeafModelFixturePair {
     falsification: LeafModelFalsificationCase {
       fixture: rust_r3_external_falsification_fixture(),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_e0423_expected_value_found_type
+        diagnostic_code: ^target_diagnostic_e0423_expected_value_found_type
       }
     }
   }
@@ -600,7 +587,7 @@ data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization
   type_form: rust_target_atom_type_form(spelling: ^rust_r3_internal_mutated_type_spelling),
   value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
   constructor_form: optional_absent(),
-  display_name: symbol_kernel_type_atom
+  display_name: ^symbol_kernel_type_atom
 }
 
 fn rust_r3_internal_value_emit_kind_label(row: TargetAtomRealization) -> Symbol {
@@ -672,7 +659,7 @@ fn go_r1_fixture_pair() -> LeafModelGoCompileFixturePair {
     falsification: LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r1_falsification_fixture_source),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_go_undefined_type
+        diagnostic_code: ^target_diagnostic_go_undefined_type
       }
     }
   }
@@ -698,7 +685,7 @@ fn go_r2a_fixture_pair() -> LeafModelGoCompileFixturePair {
     falsification: LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r2a_falsification_fixture_source),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_go_undefined_method
+        diagnostic_code: ^target_diagnostic_go_undefined_method
       }
     }
   }
@@ -724,7 +711,7 @@ fn go_r2b_fixture_pair() -> LeafModelGoRuntimeFixturePair {
     falsification: LeafModelGoRuntimeFalsificationCase {
       fixture: go_run_fixture(source: go_r2b_falsification_fixture_source),
       expected_verdict: TargetRuntimeExerciseRejected {
-        diagnostic_code: target_diagnostic_go_runtime_panic
+        diagnostic_code: ^target_diagnostic_go_runtime_panic
       }
     }
   }
@@ -748,7 +735,7 @@ fn go_r3_external_fixture_pair() -> LeafModelGoCompileFixturePair {
     falsification: LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r3_external_falsification_fixture_source),
       expected_verdict: TargetCompileRejected {
-        diagnostic_code: target_diagnostic_go_invalid_conversion_arity
+        diagnostic_code: ^target_diagnostic_go_invalid_conversion_arity
       }
     }
   }

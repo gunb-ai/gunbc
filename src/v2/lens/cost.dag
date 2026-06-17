@@ -60,7 +60,6 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  loop_bound_edge,
   loop_edge_contributes_to_iteration_fold,
   Named,
   Node,

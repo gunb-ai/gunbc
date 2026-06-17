@@ -737,8 +737,9 @@ fn resolved_graph_from_sources(
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    execution_mode: v1_interpreter::ExecutionMode,
 ) -> v1_interpreter::InterpContext {
-    v1_interpreter::InterpContext::new(graph, source_indices, false)
+    v1_interpreter::InterpContext::new(graph, source_indices, execution_mode)
 }
 
 /// Run one Bool witness function against an already-resolved graph, classifying
@@ -862,7 +863,13 @@ pub fn handle_run_with_options(
     // Run the interpreter — keep one context alive for symbol resolution while
     // printing and classifying the return value (ctrl#1533 phase 3).
     eprintln!("running {}()...", function);
-    let ctx = v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), dry_run);
+    let execution_mode = if dry_run {
+        v1_interpreter::ExecutionMode::Hermetic
+    } else {
+        v1_interpreter::ExecutionMode::Wet
+    };
+    let ctx =
+        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
         match v1_interpreter::run_in_context(&ctx, &function, !claim_run) {
             Ok(val) => {

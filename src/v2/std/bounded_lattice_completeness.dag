@@ -14,15 +14,7 @@ import v2.std.algebra {
   MissingLatticeField,
   MissingMeet,
   NotBoundedLatticeInstance,
-  algebra_edge,
   any,
-  boolean_algebra_field_bounded_lattice,
-  bounded_lattice_field_bottom,
-  bounded_lattice_field_lattice,
-  bounded_lattice_field_top,
-  inhabitant_edge,
-  lattice_field_join,
-  lattice_field_meet,
   fold_list_right,
   list_snoc_item
 }
@@ -76,11 +68,11 @@ fn bl_named_child_lookup(root: Node, name: Symbol) -> BlNamedChildLookup {
 }
 
 fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
-  match bl_named_child_lookup(root: lattice, name: lattice_field_meet) {
+  match bl_named_child_lookup(root: lattice, name: ^lattice_field_meet) {
     BlNamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
     BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
     BlNamedChildFound { target: _ } =>
-      match bl_named_child_lookup(root: lattice, name: lattice_field_join) {
+      match bl_named_child_lookup(root: lattice, name: ^lattice_field_join) {
         BlNamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
         BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
         BlNamedChildFound { target: _ } => BoundedLatticeComplete
@@ -89,11 +81,11 @@ fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeIn
 }
 
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
-  match bl_named_child_lookup(root: instance, name: bounded_lattice_field_top) {
+  match bl_named_child_lookup(root: instance, name: ^bounded_lattice_field_top) {
     BlNamedChildFound { target: _ } =>
-      match bl_named_child_lookup(root: instance, name: bounded_lattice_field_bottom) {
+      match bl_named_child_lookup(root: instance, name: ^bounded_lattice_field_bottom) {
         BlNamedChildFound { target: _ } =>
-          match bl_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
+          match bl_named_child_lookup(root: instance, name: ^bounded_lattice_field_lattice) {
             BlNamedChildFound { target: lattice } =>
               bounded_lattice_lattice_field_completeness(lattice: lattice)
             BlNamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
@@ -108,7 +100,6 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
 }
 
 // SG-6 infer gate — consumer-site rejection + fold_node gather of partial instances.
-data infer_bounded_lattice_consumer_partial: Symbol = infer_bounded_lattice_consumer_partial
 
 fn infer_bounded_lattice_partial_instance_diagnostic(
   at: Locus,
@@ -126,7 +117,7 @@ fn infer_bounded_lattice_consumer_partial_diagnostic(
   instance: Node,
 ) -> Diagnostic {
   Diagnostic {
-    reason: infer_bounded_lattice_consumer_partial,
+    reason: ^infer_bounded_lattice_consumer_partial,
     at: node_locus(node: consumer),
     correction: Suggested { node: instance }
   }
@@ -165,11 +156,11 @@ fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>)
   if any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
       Named { name: sym } =>
-        sym == algebra_edge
-          || sym == inhabitant_edge
-          || sym == lattice_field_meet
-          || sym == lattice_field_join
-          || sym == boolean_algebra_field_bounded_lattice
+        sym == ^algebra_edge
+          || sym == ^inhabitant_edge
+          || sym == ^lattice_field_meet
+          || sym == ^lattice_field_join
+          || sym == ^boolean_algebra_field_bounded_lattice
       Positional => false
     }
   } else {

@@ -52,7 +52,7 @@
 //!   claim_batch --source-root <dir> [--source-root <dir> ...] \
 //!               --roster-from-discovery \
 //!               --scan-dir <dir> [--scan-dir <dir> ...] \
-//!               [--notice-title <title>]
+//!               [--notice-title <title>] [--wet] [--hermetic]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
 //! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage
@@ -87,7 +87,7 @@ use v1_compiler::cli_run::{
     resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
 };
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
-use v1_compiler::v1_interpreter::InterpContext;
+use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
 
 /// What `resolve_entry_with_index` hands back: the resolved import-closure graph
@@ -388,6 +388,10 @@ struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
+    /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
+    /// `--hermetic` selects modeled `mock_response`; `--wet` is explicit Wet
+    /// (Phase 2 opt-in when default flips Hermetic).
+    execution_mode: ExecutionMode,
 }
 
 /// Discovery-mode config (set when `--roster-from-discovery` is given).
@@ -402,6 +406,9 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut roster_from_discovery = false;
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "v2 CI claim gate".to_string();
+    // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
+    // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
+    let mut execution_mode = ExecutionMode::Wet;
 
     let mut i = 1;
     while i < args.len() {
@@ -457,6 +464,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             // Accepted for call-site parity with `gunbc run`; this bin is always
             // claim-run (Bool witnesses).
             "--claim-run" => {}
+            "--wet" => execution_mode = ExecutionMode::Wet,
+            "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -488,6 +497,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         source_roots,
         entry_groups,
         discovery,
+        execution_mode,
     })
 }
 
@@ -614,11 +624,12 @@ fn print_eval_profile(function: &str) {
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
+    execution_mode: ExecutionMode,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
-    let ctx = make_eval_context(&graph, source_indices);
+    let ctx = make_eval_context(&graph, source_indices, execution_mode);
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
     }
@@ -645,6 +656,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
     let source_roots = parsed.source_roots;
+    let execution_mode = parsed.execution_mode;
 
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
@@ -716,7 +728,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        let ctx = make_eval_context(&graph, source_indices);
+        let ctx = make_eval_context(&graph, source_indices, execution_mode);
         for function in &group.functions {
             run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
         }
@@ -731,7 +743,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(&index, group, &mut any_failed, &mut timings)?;
+            run_witnesses(&index, group, execution_mode, &mut any_failed, &mut timings)?;
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);

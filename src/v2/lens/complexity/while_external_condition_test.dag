@@ -7,7 +7,6 @@ import v2.lens.complexity {
   unknown_complexity_with_diagnostic
 }
 import v2.lens.cost { SymbolicCost, UnknownCost, cost_lens }
-import v2.std.cardinality { cardinality_loop_bound_undeclared }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -49,7 +48,7 @@ data while_external_condition_input: Node = Node {
 }
 
 data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {
-  reason: cardinality_loop_bound_undeclared,
+  reason: ^cardinality_loop_bound_undeclared,
   at: node_locus(node: while_external_condition_input),
   correction: Unavailable { reason: ExternalContractUnknown }
 }
