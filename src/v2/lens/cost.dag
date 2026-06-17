@@ -392,14 +392,13 @@ fn compose_child_cost(
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
     AlternativeCost => symbolic_max(a: acc, b: child)
-    // Per-iteration cost = body + one irreducible loop-control step (increment/
-    // compare/branch), run `acc`-many times. Applies to Loop behavior and Cardinality
-    // connective alike: symbolic_sequential(0, 1) = 1, and symbolic_product(linear, 1)
-    // = linear. Absorbing zero in symbolic_product stays untouched.
+    // Per-iteration factor = max(body, one control step). symbolic_max floors ONLY
+    // zero: max(0,1)=1 (empty body -> O(n)); max(1,1)=1 and max(linear,1)=linear leave
+    // unit/linear bodies unchanged vs plain symbolic_product. Absorbing zero untouched.
     IterativeCost =>
       symbolic_product(
         a: acc,
-        b: symbolic_sequential(a: child, b: unit_cost())
+        b: symbolic_max(a: child, b: unit_cost())
       )
   }
 }

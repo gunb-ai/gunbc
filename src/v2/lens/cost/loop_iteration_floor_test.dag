@@ -5,11 +5,9 @@
 //   (1) bug-fix: cost_lens(zero-body loop) projects LinearCost in the bound measure, NOT
 //       ConstantCost — the loop's iteration count survives a zero-cost body.
 //   (2) control: symbolic_product's absorbing zero is PRESERVED — symbolic_product(linear, 0) == 0.
-// (2) is what distinguishes the right fix (an additive per-iteration floor at the loop layer)
-// from the wrong one (making 0 the multiplicative identity inside symbolic_product): BOTH make
-// (1) green, but the identity hack makes (2) RED. So this witness goes RED on the pre-fix model
-// (empty loop projected ConstantCost) AND on the identity-hack model (control fails), and GREEN
-// only when the floor lives in the loop fold and symbolic_product keeps absorbing zero.
+// (2) is what distinguishes the right fix (symbolic_max(child, unit) floor at the
+// IterativeCost layer) from the wrong one (making 0 the multiplicative identity
+// inside symbolic_product): BOTH make (1) green, but the identity hack makes (2) RED.
 
 module v2.test.lens_cost.loop_iteration_floor
 

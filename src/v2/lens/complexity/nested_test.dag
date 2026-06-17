@@ -10,12 +10,11 @@ import v2.lens.complexity {
 }
 import v2.lens.cost {
   LinearCost,
+  PolynomialDegree,
   ProductCost,
   SizeVariable,
-  SumCost,
   SymbolicCost,
-  cost_lens,
-  unit_cost
+  cost_lens
 }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.diagnostic {
@@ -76,16 +75,11 @@ data nested_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data nested_inner_folded_cost: SymbolicCost = ProductCost {
-  lhs: LinearCost { variable: SizeVariable { source: nested_inner } },
-  rhs: SumCost { lhs: unit_cost(), rhs: unit_cost() }
-}
-
 data nested_claim: LensComplexityClaim = LensComplexityClaim {
   input: nested_input,
   expected_cost: ProductCost {
     lhs: LinearCost { variable: SizeVariable { source: nested_input } },
-    rhs: SumCost { lhs: nested_inner_folded_cost, rhs: unit_cost() }
+    rhs: LinearCost { variable: SizeVariable { source: nested_inner } }
   },
   expected_complexity: multidimensional_polynomial_complexity(
     variables: composite_complexity_variables(
