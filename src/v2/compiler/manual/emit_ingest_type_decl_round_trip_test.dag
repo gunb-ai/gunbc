@@ -1,9 +1,9 @@
 // Status: EXECUTED Bool witness — grammar-inverse realized for a type-decl Conj node.
 //
-// Proves parse(emit(n)) ≡ n by execution for ONE shape: the typescript `type Task = { ... }`
-// type-alias declaration, whose emitted core node is a Conj (name-binding atom + nested
-// record-type nonterminal) — distinct from the flat `fn add` keystone already covered by
-// emit_ingest_grammar_relation_round_trip_test.
+// Proves parse(emit(n)) ≡ n by execution for ONE shape: the `.dag` record type declaration
+// `type Task { id: TaskId, title: String, status: TaskStatus }`, whose emitted core node is a
+// Conj (name-binding atom + nested field-decl-block nonterminal) — distinct from the flat
+// `fn add` keystone already covered by emit_ingest_grammar_relation_round_trip_test.
 //
 // This is NOT a new unparser. Emission and ingestion are the two directions of ONE authority:
 // a grammar-relation row carries both grammar_relation_field_emitted (the core node) and
@@ -18,11 +18,11 @@ module v2.test.manual.emit_ingest_type_decl_round_trip
 
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.typescript {
-  ts_mvp1_translation_rules_witness,
-  ts_wave2a_task_type_alias_emitted,
-  ts_wave2a_type_alias_decl_emitted,
-  ts_wave2a_type_annotation_task_record_emitted
+import v2.extdeps.languages.dag {
+  dag_wave2a_field_decl_block_emitted,
+  dag_wave2a_task_type_decl_emitted,
+  dag_wave2a_type_decl_record_emitted,
+  dag_wave2a_type_decl_translation_rules_witness
 }
 import v2.std.algebra { Empty, list_append }
 import v2.std.collection { List }
@@ -45,16 +45,16 @@ import v2.std.witness { Holds, Violates }
 // A perturbed name binding declared by no row — drives the fail-closed control.
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 
-// n: the type-decl Conj node under test (typescript `type Task = { ... }`).
+// n: the type-decl Conj node under test (`.dag` `type Task { ... }`).
 fn type_decl_emitted() -> Node {
-  ts_wave2a_task_type_alias_emitted()
+  dag_wave2a_task_type_decl_emitted()
 }
 
-// Same name as n, but a foreign binding atom — node-distinct from every declared row's emitted.
+// Same field block as n, but a foreign name binding — node-distinct from every declared row's emitted.
 fn type_decl_foreign_emitted() -> Node {
-  ts_wave2a_type_alias_decl_emitted(
+  dag_wave2a_type_decl_record_emitted(
     name_binding: ^type_decl_round_trip_foreign_binding,
-    type_child: ts_wave2a_type_annotation_task_record_emitted()
+    field_block: dag_wave2a_field_decl_block_emitted()
   )
 }
 
@@ -91,7 +91,7 @@ fn type_decl_emit_frontier(rules: Node, emitted: Node) -> Outcome<List<Symbol>> 
 
 // parse(emit(n)) ≡ n: emit n to its token frontier, then forward-select recovers exactly n.
 fn type_decl_emit_then_parse_identity_holds() -> Bool {
-  match ts_mvp1_translation_rules_witness() {
+  match dag_wave2a_type_decl_translation_rules_witness() {
     Holds { value: rules } =>
       match type_decl_emit_frontier(rules: rules, emitted: type_decl_emitted()) {
         Accepted { value: frontier, diagnostics: _ } =>
@@ -109,7 +109,7 @@ fn type_decl_emit_then_parse_identity_holds() -> Bool {
 // ingest(parse(n)) ≡ row: forward-select n's frontier, backward-select its emitted recovers the
 // same row's emitted — the reverse-direction half of selector bijectivity.
 fn type_decl_parse_then_emit_identity_holds() -> Bool {
-  match ts_mvp1_translation_rules_witness() {
+  match dag_wave2a_type_decl_translation_rules_witness() {
     Holds { value: rules } =>
       match type_decl_emit_frontier(rules: rules, emitted: type_decl_emitted()) {
         Accepted { value: frontier, diagnostics: _ } =>
@@ -135,7 +135,7 @@ fn type_decl_parse_then_emit_identity_holds() -> Bool {
 // Fail-closed control: a type-decl node with a foreign name binding is declared by no row, so the
 // backward selector (emit) must Reject — never fabricate a plausible row. Goes RED if emit fails open.
 fn type_decl_emit_rejects_foreign_emitted_holds() -> Bool {
-  match ts_mvp1_translation_rules_witness() {
+  match dag_wave2a_type_decl_translation_rules_witness() {
     Holds { value: rules } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: type_decl_foreign_emitted()) {
         Accepted { value: _, diagnostics: _ } => false
@@ -150,4 +150,3 @@ test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
     && type_decl_parse_then_emit_identity_holds()
     && type_decl_emit_rejects_foreign_emitted_holds()
 }
-
