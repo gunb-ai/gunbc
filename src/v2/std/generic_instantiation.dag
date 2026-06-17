@@ -9,6 +9,7 @@ module v2.std.generic_instantiation
 
 import v2.std.collection {
   Absent,
+  Map,
   Present,
   empty_map,
   map_get,
@@ -17,6 +18,7 @@ import v2.std.collection {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
   Unavailable,
@@ -24,7 +26,8 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.std.node { Node, content_hash }
+import v2.std.node { Node, Symbol, content_hash }
+import v2.std.text { String }
 
 // Substitution map: generic name → concrete type node at a call site.
 type GenericSubstitution = Map<String, Node>
