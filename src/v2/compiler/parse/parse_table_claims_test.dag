@@ -101,15 +101,15 @@ fn nullable_set_singleton(name: Symbol) -> Set<Symbol> {
 test fn parse_table_nullable_morphism_holds() -> Bool {
   let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
   (expr_is_nullable_given_set(
-    expr: Terminal { token_class: ^parse_table_nullable_tok },
+    expr: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
     nullable_set: ns
   ) == false)
     && (expr_is_nullable_given_set(
-      expr: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+      expr: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } },
       nullable_set: ns
     ) == true)
     && (expr_is_nullable_given_set(
-      expr: Repeat { element: Terminal { token_class: ^parse_table_nullable_tok } },
+      expr: Repeat { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } },
       nullable_set: ns
     ) == true)
     && (expr_is_nullable_given_set(
@@ -122,28 +122,28 @@ test fn parse_table_nullable_morphism_holds() -> Bool {
     ) == false)
     && (expr_is_nullable_given_set(
       expr: Sequence {
-        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } },
         right: Nonterminal { production: ^parse_table_nullable_probe_nt }
       },
       nullable_set: ns
     ) == true)
     && (expr_is_nullable_given_set(
       expr: Sequence {
-        left: Terminal { token_class: ^parse_table_nullable_tok },
-        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } }
+        left: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } }
       },
       nullable_set: ns
     ) == false)
     && (expr_is_nullable_given_set(
       expr: Choice {
-        left: Terminal { token_class: ^parse_table_nullable_tok },
-        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } }
+        left: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } }
       },
       nullable_set: ns
     ) == true)
     && (expr_is_nullable_given_set(
       expr: Choice {
-        left: Terminal { token_class: ^parse_table_nullable_tok },
+        left: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
         right: Nonterminal { production: ^parse_table_nullable_other_nt }
       },
       nullable_set: ns
@@ -163,10 +163,10 @@ fn parse_table_projection_grammar() -> ParseGrammar {
         head: GrammarProduction {
           name: ^pt_proj_start,
           expression: Sequence {
-            left: Terminal { token_class: ^pt_proj_tok_a },
+            left: Terminal { token_class: ^pt_proj_tok_a, binding: Absent },
             right: Choice {
               left: Nonterminal { production: ^pt_proj_nt_b },
-              right: Optional { element: Repeat { element: Terminal { token_class: ^pt_proj_tok_c } } }
+              right: Optional { element: Repeat { element: Terminal { token_class: ^pt_proj_tok_c, binding: Absent } } }
             }
           },
           emitted: grammar_atom(identity: ^pt_proj_start)
@@ -199,7 +199,7 @@ data parse_table_defined_root: GrammarRoot = GrammarRoot {
   productions: Cons {
     head: GrammarProduction {
       name: ^pt_undef_defined,
-      expression: Terminal { token_class: ^pt_undef_tok },
+      expression: Terminal { token_class: ^pt_undef_tok, binding: Absent },
       emitted: grammar_atom(identity: ^pt_undef_defined)
     },
     tail: Empty
@@ -220,7 +220,7 @@ data parse_table_defined_root: GrammarRoot = GrammarRoot {
 test fn parse_table_left_corner_morphism_holds() -> Bool {
   let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
   (length(xs: expr_direct_left_corner_list(
-    expr: Terminal { token_class: ^parse_table_nullable_tok },
+    expr: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
     nullable_set: ns
   )) == 0)
     && (length(xs: expr_direct_left_corner_list(
@@ -229,14 +229,14 @@ test fn parse_table_left_corner_morphism_holds() -> Bool {
     )) == 1)
     && (length(xs: expr_direct_left_corner_list(
       expr: Sequence {
-        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent } },
         right: Nonterminal { production: ^parse_table_nullable_probe_nt }
       },
       nullable_set: ns
     )) == 1)
     && (length(xs: expr_direct_left_corner_list(
       expr: Sequence {
-        left: Terminal { token_class: ^parse_table_nullable_tok },
+        left: Terminal { token_class: ^parse_table_nullable_tok, binding: Absent },
         right: Nonterminal { production: ^parse_table_nullable_probe_nt }
       },
       nullable_set: ns
@@ -269,7 +269,7 @@ test fn parse_table_left_corner_morphism_holds() -> Bool {
 test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
   let root = parse_table_defined_root
   (expr_has_undefined_nonterminal(
-    expr: Terminal { token_class: ^pt_undef_tok },
+    expr: Terminal { token_class: ^pt_undef_tok, binding: Absent },
     root: root
   ) == false)
     && (expr_has_undefined_nonterminal(
@@ -282,21 +282,21 @@ test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
     ) == true)
     && (expr_has_undefined_nonterminal(
       expr: Sequence {
-        left: Terminal { token_class: ^pt_undef_tok },
+        left: Terminal { token_class: ^pt_undef_tok, binding: Absent },
         right: Nonterminal { production: ^pt_undef_missing }
       },
       root: root
     ) == true)
     && (expr_has_undefined_nonterminal(
       expr: Sequence {
-        left: Terminal { token_class: ^pt_undef_tok },
+        left: Terminal { token_class: ^pt_undef_tok, binding: Absent },
         right: Nonterminal { production: ^pt_undef_defined }
       },
       root: root
     ) == false)
     && (expr_has_undefined_nonterminal(
       expr: Choice {
-        left: Terminal { token_class: ^pt_undef_tok },
+        left: Terminal { token_class: ^pt_undef_tok, binding: Absent },
         right: Nonterminal { production: ^pt_undef_missing }
       },
       root: root
@@ -336,7 +336,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
   let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
   let r1 = match parse_expr(
-    expr: Terminal { token_class: ^pt_parse_expr_tok_a },
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent },
     tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
   ) {
     ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
@@ -344,7 +344,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     ParseExprRejected { diagnostics: _ } => false
   }
   let r2 = match parse_expr(
-    expr: Terminal { token_class: ^pt_parse_expr_tok_a },
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
@@ -352,8 +352,8 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   }
   let r3 = match parse_expr(
     expr: Sequence {
-      left: Terminal { token_class: ^pt_parse_expr_tok_a },
-      right: Terminal { token_class: ^pt_parse_expr_tok_b }
+      left: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, binding: Absent }
     },
     tokens: toks_ab, all_tokens: toks_ab, root: root, table: table, prov: prov
   ) {
@@ -363,8 +363,8 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   }
   let r4 = match parse_expr(
     expr: Choice {
-      left: Terminal { token_class: ^pt_parse_expr_tok_a },
-      right: Terminal { token_class: ^pt_parse_expr_tok_b }
+      left: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, binding: Absent }
     },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
@@ -373,7 +373,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     ParseExprRejected { diagnostics: _ } => false
   }
   let r5 = match parse_expr(
-    expr: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a } },
+    expr: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent } },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
     ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
@@ -381,7 +381,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     ParseExprRejected { diagnostics: _ } => false
   }
   let r6 = match parse_expr(
-    expr: Repeat { element: Terminal { token_class: ^pt_parse_expr_tok_a } },
+    expr: Repeat { element: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent } },
     tokens: toks_aab, all_tokens: toks_aab, root: root, table: table, prov: prov
   ) {
     ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
@@ -389,7 +389,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     ParseExprRejected { diagnostics: _ } => false
   }
   let r7 = match parse_expr(
-    expr: Repeat { element: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a } } },
+    expr: Repeat { element: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, binding: Absent } } },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
     ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>

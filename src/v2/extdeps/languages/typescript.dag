@@ -762,7 +762,7 @@ fn ts_mvp1_serialize_source_node() -> Node {
 }
 
 fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
@@ -2719,7 +2719,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
 fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_number,
-    expression: Terminal { token_class: ^ts_token_ty_number },
+    expression: Terminal { token_class: ^ts_token_ty_number, binding: Absent },
     emitted: ts_grammar_atom(id: ^ts_surface_type_number)
   }
 }
@@ -2727,7 +2727,7 @@ fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
 fn ts_grammar_production_wave2a_type_string() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_string,
-    expression: Terminal { token_class: ^ts_token_ty_string },
+    expression: Terminal { token_class: ^ts_token_ty_string, binding: Absent },
     emitted: ts_grammar_atom(id: ^ts_surface_type_string)
   }
 }
@@ -2735,7 +2735,7 @@ fn ts_grammar_production_wave2a_type_string() -> GrammarProduction {
 fn ts_grammar_production_wave2a_type_boolean() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_boolean,
-    expression: Terminal { token_class: ^ts_token_ty_boolean },
+    expression: Terminal { token_class: ^ts_token_ty_boolean, binding: Absent },
     emitted: ts_grammar_atom(id: ^ts_surface_type_boolean)
   }
 }
@@ -2743,7 +2743,7 @@ fn ts_grammar_production_wave2a_type_boolean() -> GrammarProduction {
 fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_void,
-    expression: Terminal { token_class: ^ts_token_ty_void },
+    expression: Terminal { token_class: ^ts_token_ty_void, binding: Absent },
     emitted: ts_grammar_atom(id: ^ts_surface_type_void)
   }
 }
@@ -2751,7 +2751,7 @@ fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
 fn ts_grammar_production_wave2a_type_name() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_name,
-    expression: Terminal { token_class: ^ts_token_ident },
+    expression: Terminal { token_class: ^ts_token_ident, binding: Absent },
     emitted: ts_grammar_atom(id: ^ts_surface_type_name)
   }
 }
@@ -2760,9 +2760,9 @@ fn ts_grammar_production_wave2a_record_field() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_record_field,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_ident },
+      left: Terminal { token_class: ^ts_token_ident, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_colon },
+        left: Terminal { token_class: ^ts_token_colon, binding: Absent },
         right: Nonterminal { production: ^ts_production_wave2a_type_annotation }
       }
     },
@@ -2777,7 +2777,7 @@ fn ts_grammar_production_wave2a_record_fields() -> GrammarProduction {
       left: Nonterminal { production: ^ts_production_wave2a_record_field },
       right: Repeat {
         element: Sequence {
-          left: Terminal { token_class: ^ts_token_comma },
+          left: Terminal { token_class: ^ts_token_comma, binding: Absent },
           right: Nonterminal { production: ^ts_production_wave2a_record_field }
         }
       }
@@ -2790,10 +2790,10 @@ fn ts_grammar_production_wave2a_record_type() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_record_type,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_lbrace },
+      left: Terminal { token_class: ^ts_token_lbrace, binding: Absent },
       right: Sequence {
         left: Nonterminal { production: ^ts_production_wave2a_record_fields },
-        right: Terminal { token_class: ^ts_token_rbrace }
+        right: Terminal { token_class: ^ts_token_rbrace, binding: Absent }
       }
     },
     emitted: ts_grammar_atom(id: ^ts_surface_record_type)
@@ -2837,16 +2837,16 @@ fn ts_grammar_production_wave2a_union_type() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_union_type,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_string_lit },
+      left: Terminal { token_class: ^ts_token_string_lit, binding: Absent },
       right: Sequence {
         left: Sequence {
-          left: Terminal { token_class: ^ts_token_pipe },
-          right: Terminal { token_class: ^ts_token_string_lit }
+          left: Terminal { token_class: ^ts_token_pipe, binding: Absent },
+          right: Terminal { token_class: ^ts_token_string_lit, binding: Absent }
         },
         right: Repeat {
           element: Sequence {
-            left: Terminal { token_class: ^ts_token_pipe },
-            right: Terminal { token_class: ^ts_token_string_lit }
+            left: Terminal { token_class: ^ts_token_pipe, binding: Absent },
+            right: Terminal { token_class: ^ts_token_string_lit, binding: Absent }
           }
         }
       }
@@ -2859,14 +2859,14 @@ fn ts_grammar_production_wave2a_type_alias_decl() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_type_alias_decl,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_kw_type },
+      left: Terminal { token_class: ^ts_token_kw_type, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_ident },
+        left: Terminal { token_class: ^ts_token_ident, binding: Absent },
         right: Sequence {
-          left: Terminal { token_class: ^ts_token_eq },
+          left: Terminal { token_class: ^ts_token_eq, binding: Absent },
           right: Sequence {
             left: Nonterminal { production: ^ts_production_wave2a_type_annotation },
-            right: Terminal { token_class: ^ts_token_semicolon }
+            right: Terminal { token_class: ^ts_token_semicolon, binding: Absent }
           }
         }
       }
@@ -2879,18 +2879,18 @@ fn ts_grammar_production_wave2a_let_decl() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_let_decl,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_kw_let },
+      left: Terminal { token_class: ^ts_token_kw_let, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_ident },
+        left: Terminal { token_class: ^ts_token_ident, binding: Absent },
         right: Sequence {
-          left: Terminal { token_class: ^ts_token_colon },
+          left: Terminal { token_class: ^ts_token_colon, binding: Absent },
           right: Sequence {
             left: Nonterminal { production: ^ts_production_wave2a_type_annotation },
             right: Sequence {
-              left: Terminal { token_class: ^ts_token_eq },
+              left: Terminal { token_class: ^ts_token_eq, binding: Absent },
               right: Sequence {
-                left: Terminal { token_class: ^ts_token_ident },
-                right: Terminal { token_class: ^ts_token_semicolon }
+                left: Terminal { token_class: ^ts_token_ident, binding: Absent },
+                right: Terminal { token_class: ^ts_token_semicolon, binding: Absent }
               }
             }
           }
@@ -2905,18 +2905,18 @@ fn ts_grammar_production_wave2a_const_decl() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_wave2a_const_decl,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_kw_const },
+      left: Terminal { token_class: ^ts_token_kw_const, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_ident },
+        left: Terminal { token_class: ^ts_token_ident, binding: Absent },
         right: Sequence {
-          left: Terminal { token_class: ^ts_token_colon },
+          left: Terminal { token_class: ^ts_token_colon, binding: Absent },
           right: Sequence {
             left: Nonterminal { production: ^ts_production_wave2a_type_annotation },
             right: Sequence {
-              left: Terminal { token_class: ^ts_token_eq },
+              left: Terminal { token_class: ^ts_token_eq, binding: Absent },
               right: Sequence {
-                left: Terminal { token_class: ^ts_token_ident },
-                right: Terminal { token_class: ^ts_token_semicolon }
+                left: Terminal { token_class: ^ts_token_ident, binding: Absent },
+                right: Terminal { token_class: ^ts_token_semicolon, binding: Absent }
               }
             }
           }
@@ -2952,8 +2952,8 @@ fn ts_grammar_production_pr3_primary_type() -> GrammarProduction {
 
 fn ts_pr3_bracket_pair() -> GrammarExpr {
   Sequence {
-    left: Terminal { token_class: ^ts_token_lbracket },
-    right: Terminal { token_class: ^ts_token_rbracket }
+    left: Terminal { token_class: ^ts_token_lbracket, binding: Absent },
+    right: Terminal { token_class: ^ts_token_rbracket, binding: Absent }
   }
 }
 
@@ -2983,9 +2983,9 @@ fn ts_grammar_production_pr3_typed_param() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_pr3_typed_param,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_ident },
+      left: Terminal { token_class: ^ts_token_ident, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_colon },
+        left: Terminal { token_class: ^ts_token_colon, binding: Absent },
         right: Nonterminal { production: ^ts_production_wave2a_type_annotation }
       }
     },
@@ -3000,7 +3000,7 @@ fn ts_grammar_production_pr3_typed_params() -> GrammarProduction {
       left: Sequence {
         left: Nonterminal { production: ^ts_production_pr3_typed_param },
         right: Sequence {
-          left: Terminal { token_class: ^ts_token_comma },
+          left: Terminal { token_class: ^ts_token_comma, binding: Absent },
           right: Nonterminal { production: ^ts_production_pr3_typed_params }
         }
       },
@@ -3014,28 +3014,28 @@ fn ts_grammar_production_pr3_typed_fn_decl() -> GrammarProduction {
   GrammarProduction {
     name: ^ts_production_pr3_typed_fn_decl,
     expression: Sequence {
-      left: Terminal { token_class: ^ts_token_kw_function },
+      left: Terminal { token_class: ^ts_token_kw_function, binding: Absent },
       right: Sequence {
-        left: Terminal { token_class: ^ts_token_ident },
+        left: Terminal { token_class: ^ts_token_ident, binding: Absent },
         right: Sequence {
-          left: Terminal { token_class: ^ts_token_lparen },
+          left: Terminal { token_class: ^ts_token_lparen, binding: Absent },
           right: Sequence {
             left: Nonterminal { production: ^ts_production_pr3_typed_params_opt },
             right: Sequence {
-              left: Terminal { token_class: ^ts_token_rparen },
+              left: Terminal { token_class: ^ts_token_rparen, binding: Absent },
               right: Sequence {
-                left: Terminal { token_class: ^ts_token_colon },
+                left: Terminal { token_class: ^ts_token_colon, binding: Absent },
                 right: Sequence {
                   left: Nonterminal { production: ^ts_production_wave2a_type_annotation },
                   right: Sequence {
-                    left: Terminal { token_class: ^ts_token_lbrace },
+                    left: Terminal { token_class: ^ts_token_lbrace, binding: Absent },
                     right: Sequence {
-                      left: Terminal { token_class: ^ts_token_kw_return },
+                      left: Terminal { token_class: ^ts_token_kw_return, binding: Absent },
                       right: Sequence {
-                        left: Terminal { token_class: ^ts_token_ident },
+                        left: Terminal { token_class: ^ts_token_ident, binding: Absent },
                         right: Sequence {
-                          left: Terminal { token_class: ^ts_token_semicolon },
-                          right: Terminal { token_class: ^ts_token_rbrace }
+                          left: Terminal { token_class: ^ts_token_semicolon, binding: Absent },
+                          right: Terminal { token_class: ^ts_token_rbrace, binding: Absent }
                         }
                       }
                     }

@@ -18,7 +18,15 @@
 module v2.compiler.ingest
 
 import v2.std.algebra { Empty, list_append, zip_eq }
-import v2.std.collection { List }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  empty_map,
+  map_get,
+  map_insert
+}
 import v2.std.grammar {
   ParseTree,
   grammar_relation_field_emitted,
@@ -28,6 +36,9 @@ import v2.std.grammar {
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   TargetModel,
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
   target_model_edge_translation_rules
@@ -41,7 +52,7 @@ import v2.compiler.translate {
   target_bundle_child
 }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.std.node { Edge, Named, Node, Positional, Symbol }
+import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Conj }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -80,10 +91,80 @@ data parse_tree_to_emitted_node_ambiguous_row: Symbol = ^parse_tree_to_emitted_n
 // matches against a row's production. GENERIC — structural recursion, no per-language /
 // per-production arm: it skips the static `grammar_production_identity_node_projection` template
 // edge (not a source token) and recurses into every other child, collecting Atom token classes
-// left-to-right.
-fn operational_parse_tree_project_to_formal_captures(captured: Node) -> List<Symbol> {
+// left-to-right. When 02_parse stamps a BoundToken binding as the Atom identity (per-identifier
+// fidelity), the frontier class is recovered from the translation-rule rows' token spines — the same
+// projection `row_token_spine_classes` uses via `concrete_syntax_token_class` (bindings dropped).
+fn parse_atom_frontier_class(atom_identity: Symbol, binding_to_class: Map<Symbol, Symbol>) -> Symbol {
+  match map_get(binding_to_class, atom_identity) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: token_class } => token_class
+        Absent => atom_identity
+      }
+    Rejected { diagnostics: _ } => atom_identity
+  }
+}
+
+fn binding_class_map_merge_tokens(
+  acc: Map<Symbol, Symbol>,
+  tokens: List<ConcreteSyntaxToken>
+) -> Map<Symbol, Symbol> {
+  fold(
+    tokens,
+    init: acc,
+    f: fn(a, t) {
+      match t {
+        BoundToken { token_class: c, binding: b } => map_insert(m: a, key: b, value: c)
+        FixedToken { token_class: _ } => a
+      }
+    }
+  )
+}
+
+fn binding_class_map_merge_row(acc: Map<Symbol, Symbol>, row: Node) -> Map<Symbol, Symbol> {
+  match row_token_spine_tokens(row: row) {
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: tokens, diagnostics: _ } =>
+      binding_class_map_merge_tokens(acc: acc, tokens: tokens)
+  }
+}
+
+fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbol> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: empty_map(),
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            Positional => acc
+          }
+        }
+      )
+    _ => empty_map()
+  }
+}
+
+fn row_token_spine_tokens(row: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      concrete_syntax_token_list_from_node(list_node: tokens_root)
+    }
+  )
+}
+
+fn operational_parse_tree_project_to_formal_captures(
+  captured: Node,
+  binding_to_class: Map<Symbol, Symbol>
+) -> List<Symbol> {
   match node_atom_identity_optional(node: captured) {
-    Present { value: id } => list_append(left: Empty, right: [id])
+    Present { value: id } =>
+      list_append(
+        left: Empty,
+        right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
+      )
     Absent =>
       fold(
         captured.children,
@@ -96,13 +177,19 @@ fn operational_parse_tree_project_to_formal_captures(captured: Node) -> List<Sym
               } else {
                 list_append(
                   left: acc,
-                  right: operational_parse_tree_project_to_formal_captures(captured: edge.target)
+                  right: operational_parse_tree_project_to_formal_captures(
+                    captured: edge.target,
+                    binding_to_class: binding_to_class
+                  )
                 )
               }
             Positional =>
               list_append(
                 left: acc,
-                right: operational_parse_tree_project_to_formal_captures(captured: edge.target)
+                right: operational_parse_tree_project_to_formal_captures(
+                  captured: edge.target,
+                  binding_to_class: binding_to_class
+                )
               )
           }
         }
@@ -227,10 +314,14 @@ fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -
 // add case has no nested-production children, so the matched row's emitted IS the composition. Per
 // the signed design, build-from-captures applies only where the source carries the slot tokens.
 fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
-  let frontier = operational_parse_tree_project_to_formal_captures(captured: parse_tree)
   bind_outcome(
     o: target_bundle_child(target: source_model, edge_name: target_model_edge_translation_rules),
     f: fn(rules) {
+      let binding_to_class = grammar_relation_binding_to_token_class_map(rules: rules)
+      let frontier = operational_parse_tree_project_to_formal_captures(
+        captured: parse_tree,
+        binding_to_class: binding_to_class
+      )
       grammar_relation_row_forward_selection(frontier: frontier, rules: rules)
     }
   )

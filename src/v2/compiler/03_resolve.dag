@@ -11,6 +11,7 @@ import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols,
+  dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
 import v2.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
@@ -45,6 +46,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Named,
   Node,
   NodeFold,
   OccurrenceId,
@@ -169,7 +171,10 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
       if count(n.children) >= 1 {
         match first(n.children) {
           Present { value: e0 } =>
-            harvest_conj_named_bindings(root: e0.target, acc: acc)
+            harvest_direct_atom_binding(
+              root: e0.target,
+              acc: harvest_conj_named_bindings(root: e0.target, acc: acc)
+            )
           Absent => acc
         }
       } else {
@@ -199,7 +204,10 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 
 fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
   Namespace {
-    bindings: add_module_named_exports(root: tree, acc: empty_map()),
+    bindings: harvest_direct_atom_binding(
+      root: tree,
+      acc: add_module_named_exports(root: tree, acc: empty_map())
+    ),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
   }
 }
@@ -453,23 +461,81 @@ fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
 }
 
 
+fn node_is_module_root_conj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        n.children,
+        init: false,
+        f: fn(found, e) {
+          if found {
+            true
+          } else {
+            match e.label {
+              Named { name: sym } => sym == ^dag_surface_module_header
+              Positional => false
+            }
+          }
+        }
+      )
+    _ => false
+  }
+}
+
+
+fn resolve_child_edge(
+  e: Edge,
+  scope: Scope,
+  lm: DagLanguageModel,
+  preserve_module_metadata: Bool
+) -> Outcome<Edge> {
+  match e.label {
+    Named { name: sym } =>
+      if preserve_module_metadata && dag_surface_module_header_metadata_edge(name: sym) {
+        Accepted { value: e, diagnostics: None }
+      } else {
+        match resolve_node(n: e.target, scope: scope, lm: lm) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: resolved_target, diagnostics: d } =>
+            Accepted {
+              value: Edge { label: e.label, target: resolved_target },
+              diagnostics: d
+            }
+        }
+      }
+    Positional =>
+      match resolve_node(n: e.target, scope: scope, lm: lm) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_target, diagnostics: d } =>
+          Accepted {
+            value: Edge { label: e.label, target: resolved_target },
+            diagnostics: d
+          }
+      }
+  }
+}
+
+
 fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+  let preserve_module_metadata = node_is_module_root_conj(n: n)
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         Rejected { diagnostics: r }
       Accepted { value: done, diagnostics: ad } =>
-        match resolve_node(n: e.target, scope: scope, lm: lm) {
+        match resolve_child_edge(
+          e: e,
+          scope: scope,
+          lm: lm,
+          preserve_module_metadata: preserve_module_metadata
+        ) {
           Rejected { diagnostics: r } =>
             Rejected {
               diagnostics: rejected_with_pending(pending: ad, rejected: r)
             }
-          Accepted { value: resolved_target, diagnostics: ed } =>
+          Accepted { value: resolved_edge, diagnostics: ed } =>
             Accepted {
-              value: list_snoc_item(xs: done, item: Edge {
-                label: e.label,
-                target: resolved_target
-              }),
+              value: list_snoc_item(xs: done, item: resolved_edge),
               diagnostics: diagnostics_merge(outer: ad, inner: ed)
             }
         }
