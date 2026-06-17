@@ -743,36 +743,3 @@ fn serialize_diff_as_source_patch(
     }
   )
 }
-
-// Serializer determinism + parse/print for IR-node emission (routes through canonical_dag_source_emission_law_from_parts).
-fn canonical_dag_source_emission_law_from_emitted(
-  emitted: Node,
-  canonical_source_target: TargetModel
-) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
-  bind_outcome(
-    o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
-    f: fn(canonical_source_first) {
-      bind_outcome(
-        o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
-        f: fn(canonical_source_second) {
-          bind_outcome(
-            o: parse_dag_source_ast(source: canonical_source_first),
-            f: fn(original_ast) {
-              bind_outcome(
-                o: parse_dag_source_ast(source: canonical_source_first),
-                f: fn(reparsed_ast) {
-                  canonical_dag_source_emission_law_from_parts(
-                    original_ast: original_ast,
-                    canonical_source_first: canonical_source_first,
-                    canonical_source_second: canonical_source_second,
-                    reparsed_ast: reparsed_ast
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
