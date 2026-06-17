@@ -49,11 +49,11 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
     resolve_entry_with_index, run_claim, ClaimOutcome,
 };
-use v1_compiler::v1_interpreter::ExecutionMode;
 use v1_compiler::resolved_graph_cache::{
     build_valid_artifact_bytes, lookup, subject_digest_for_closure, write_raw_artifact_for_test,
     CacheLookupResult, CacheRejectReason,
 };
+use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()

@@ -70,7 +70,8 @@ fn cost_projection_float_witness_evaluates_true() {
         blocking_diagnostics(resolved.as_ref())
     );
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     match v1_interpreter::run_in_context(&ctx, "cost_projection_float_witness", false) {
         Ok(Value::Bool(true)) => {}
         other => panic!("expected Bool(true) Float-in-v2 witness, got {other:?}"),

@@ -868,7 +868,8 @@ pub fn handle_run_with_options(
     } else {
         v1_interpreter::ExecutionMode::Wet
     };
-    let ctx = v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
+    let ctx =
+        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
         match v1_interpreter::run_in_context(&ctx, &function, !claim_run) {
             Ok(val) => {

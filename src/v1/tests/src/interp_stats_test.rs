@@ -52,7 +52,8 @@ fn build() -> Int {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     match v1_interpreter::run_in_context(&ctx, "build", false) {
         Ok(Value::Int(4)) => {}
@@ -77,7 +78,8 @@ fn build() -> Int {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     match v1_interpreter::run_in_context(&ctx, "build", false) {
         Ok(Value::Int(5)) => {}
@@ -103,7 +105,8 @@ fn build() -> Int {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     match v1_interpreter::run_in_context(&ctx, "build", false) {
         Ok(Value::Int(4)) => {}
@@ -128,7 +131,8 @@ fn read_xs() -> List<Int> { xs }
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     let first = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("first run");
     let second = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("second run");
@@ -192,7 +196,8 @@ fn build() -> Int {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     match v1_interpreter::run_in_context(&ctx, "build", false) {
         Ok(Value::Int(4)) => {}
