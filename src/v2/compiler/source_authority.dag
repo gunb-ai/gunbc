@@ -716,42 +716,27 @@ fn source_authority_round_trip(
   )
 }
 
-// Canonical .dag emission for an already-resolved IR node via the row's grammar-inverse serializer.
-// `canonical_source_target` must be the .dag TargetModel row — not an arbitrary target relabel.
-fn canonical_dag_source_from_emitted(
-  emitted: Node,
+// apply_diff ∘ grammar-inverse serialize — before/after DagSource patch carrier for patch-in-error.
+// Calls target_serialize_source_from_model directly (no hollow TargetSource→DagSource relabel wrapper).
+fn serialize_diff_as_source_patch(
+  root: Node,
+  diff: Diff,
   canonical_source_target: TargetModel
-) -> Outcome<DagSource> {
+) -> Outcome<DagSourcePatch> {
   bind_outcome(
-    o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
-    f: fn(canonical_source) {
-      outcome_accepted(value: canonical_source)
-    }
-  )
-}
-
-// Serializer determinism for IR-node emission (routes through deterministic_dag_source_serializer_witness).
-fn canonical_dag_source_serializer_determinism_from_emitted(
-  emitted: Node,
-  canonical_source_target: TargetModel
-) -> Outcome<Witness<DeterministicDagSourceSerializerLaw>> {
-  bind_outcome(
-    o: canonical_dag_source_from_emitted(
-      emitted: emitted,
-      canonical_source_target: canonical_source_target
-    ),
-    f: fn(canonical_source_first) {
+    o: target_serialize_source_from_model(target: canonical_source_target, emitted: root),
+    f: fn(before) {
       bind_outcome(
-        o: canonical_dag_source_from_emitted(
-          emitted: emitted,
-          canonical_source_target: canonical_source_target
-        ),
-        f: fn(canonical_source_second) {
-          outcome_accepted(
-            value: deterministic_dag_source_serializer_witness(
-              first: canonical_source_first,
-              second: canonical_source_second
-            )
+        o: apply_diff(root: root, d: diff),
+        f: fn(patched) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: patched
+            ),
+            f: fn(after) {
+              outcome_accepted(value: DagSourcePatch { before: before, after: after })
+            }
           )
         }
       )
@@ -759,28 +744,31 @@ fn canonical_dag_source_serializer_determinism_from_emitted(
   )
 }
 
-// apply_diff ∘ canonical emit — before/after DagSource patch carrier for patch-in-error.
-fn dag_source_patch_from_applied_diff(
-  root: Node,
-  diff: Diff,
+// Serializer determinism + parse/print for IR-node emission (routes through canonical_dag_source_emission_law_from_parts).
+fn canonical_dag_source_emission_law_from_emitted(
+  emitted: Node,
   canonical_source_target: TargetModel
-) -> Outcome<DagSourcePatch> {
+) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
-    o: canonical_dag_source_from_emitted(
-      emitted: root,
-      canonical_source_target: canonical_source_target
-    ),
-    f: fn(before) {
+    o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
+    f: fn(canonical_source_first) {
       bind_outcome(
-        o: apply_diff(root: root, d: diff),
-        f: fn(patched) {
+        o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
+        f: fn(canonical_source_second) {
           bind_outcome(
-            o: canonical_dag_source_from_emitted(
-              emitted: patched,
-              canonical_source_target: canonical_source_target
-            ),
-            f: fn(after) {
-              outcome_accepted(value: DagSourcePatch { before: before, after: after })
+            o: parse_dag_source_ast(source: canonical_source_first),
+            f: fn(original_ast) {
+              bind_outcome(
+                o: parse_dag_source_ast(source: canonical_source_first),
+                f: fn(reparsed_ast) {
+                  canonical_dag_source_emission_law_from_parts(
+                    original_ast: original_ast,
+                    canonical_source_first: canonical_source_first,
+                    canonical_source_second: canonical_source_second,
+                    reparsed_ast: reparsed_ast
+                  )
+                }
+              )
             }
           )
         }
