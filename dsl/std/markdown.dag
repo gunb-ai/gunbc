@@ -18,8 +18,6 @@ import std.markup {
   AttributeContext,
   UrlContext,
   serialize_fragment,
-}
-import std.html_markup {
   RejectedUrlScheme,
   SafeHref,
   RejectedHref,

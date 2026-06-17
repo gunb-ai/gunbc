@@ -106,7 +106,7 @@ data regions: List<GcpRegion> = [
 
 service gcloud.Auth {
   operation Login {
-    input { update_adc: Bool = true }
+    input {}
     output { ok: Bool from "exit_success" }
     transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
     exit {
