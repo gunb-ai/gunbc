@@ -1,18 +1,13 @@
-// extdeps/llm/anthropic.dag -- "What is the Anthropic API?"
+// extdeps/llm/anthropic.dag — Anthropic Messages API protocol (types + wire contracts).
 //
-// Anthropic-specific message format: content blocks, tool use,
-// extended thinking, system prompts, API versioning.
-//
-// Complements extdeps/llm/pricing.dag (model specs and pricing)
-// and extdeps/llm/core.dag (universal protocol types).
+// Handlers (REST + Claude CLI): `anthropic_rest.dag` (`module extdeps.llm.anthropic_rest`).
+// Cross-provider facts: `llm.dag` (`module extdeps.llm.llm`).
+// Error envelope: `anthropic_errors.dag`.
 //
 module extdeps.llm.anthropic
 
 import extdeps.llm.llm { llm_snake_wire_contract }
-import extdeps.llm.anthropic_errors { AnthropicErrorShape }
-import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
-import std.types { HttpMethod }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
 data wire_contract: VariantEncoding = llm_snake_wire_contract
@@ -352,59 +347,3 @@ data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<Str
 data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessages200ContentBlock|residue:messages_200_content_block_internally_tagged_object_unproved|trigger:generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
 ]
-
-// -- Service: REST transport wiring ------------------------------
-
-service llm.Anthropic {
-  config {
-    endpoint: "https://api.anthropic.com"
-    auth: Header("x-api-key")
-    auth_input: api_key
-    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
-    // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
-    rate_limit: { requests: 1000, per: minute, scope: messages }
-    // Retry on overload and server errors with exponential backoff
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 529] }
-  }
-
-  operation Messages {
-    input {
-      api_key: Secret
-      model: String
-      messages: List<AnthropicChatMessage>
-      max_tokens: Int = 4096
-      temperature: Float?
-      system: String?
-    }
-    output {
-      content: String from "content/0/text"
-      model: String from "model"
-      stop_reason: AnthropicStopReason from "stop_reason"
-      input_tokens: Int from "usage/input_tokens"
-      output_tokens: Int from "usage/output_tokens"
-    }
-    transport rest {
-      method: POST,
-      path: "/v1/messages",
-      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
-      headers: { "anthropic-version": current_api_version.version }
-    }
-    response {
-      200 => AnthropicMessages200Body
-      400 => AnthropicErrorShape
-      401 => AnthropicErrorShape
-      403 => AnthropicErrorShape
-      404 => AnthropicErrorShape
-      429 => AnthropicErrorShape
-      529 => AnthropicErrorShape
-      5xx => AnthropicErrorShape
-    }
-    mock_response {
-      200 => { id: "msg_mock123", type: "message", role: "assistant", content: [{ type: "text", text: "Mock response from Claude" }], model: "claude-sonnet-4-6-20250929", stop_reason: "end_turn", usage: { input_tokens: 25, output_tokens: 10 } } "Successful completion",
-      400 => { type: "error", error: { type: "invalid_request_error", message: "messages: field required" } } "Invalid request body",
-      401 => { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } "Invalid API key",
-      429 => { type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } } "Rate limited",
-      529 => { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } "Server overloaded"
-    }
-  }
-}

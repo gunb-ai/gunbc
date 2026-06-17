@@ -169,4 +169,4 @@ still a violation) · internal review finds missing tests, external review finds
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
 - one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)
-- CI floor is one binary: `cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test` — also enforces v2 `.dag` filename hygiene (no `__` in basenames; use subdirectories)
+- CI floor (all `v1-compiler` seed bins, no shell gate): `cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test` discovers + evaluates the witness corpus and enforces v2 `.dag` filename hygiene (no `__` in basenames; use subdirectories); the Rust fmt/clippy gate runs via `gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main`
