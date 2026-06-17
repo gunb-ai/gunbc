@@ -1,0 +1,105 @@
+// src/v2/lens/mock_totality.dag
+// Scope: TOTALITY lens — a published mock corpus vs. a consumer that must handle EVERY member.
+// Anchor: DESIGN.md §4 (pure reader, stores nothing) / §5 (fail-closed) / §6 (gate, not illusion).
+//
+// The operator's layering contract has three parts: a layer PUBLISHES a mock corpus as a
+// closed structural fact (`v2.extdeps.filesystem.mock_corpus`), an adjacent layer's CONSUMER
+// materializes ANY published case impl-blind, and THIS lens enforces the consumer is TOTAL —
+// it fail-closes (§5) the moment a published member is left unhandled.
+//
+// Why a lens and not the compiler: a `match` over a closed coproduct is already totality-checked
+// by the substrate, but the published corpus is DECLARED DATA (a `data List`), not a type — the
+// compiler cannot see that a corpus row has no handler. A consumer matches on an open key (the
+// operation `Symbol`) with a fail-closed `_` arm; this lens is what makes "you added a published
+// case but not its handler" a LOUD error instead of a silent fall-through.
+//
+// §3 reuse, not fork: the missing-member set is computed by `missing_coverage` / `Coverage<C>`
+// from `v2.lens.coverage` — the SAME expected-vs-actual machinery that already underlies the
+// (zero-consumer) `coverage_lens`. This lens is its first CI-GATING consumer (see the
+// discriminating RED-on-omission witness under src/v2/test/lens_mock_totality/), dissolving the
+// §6 "machinery exists but nothing gates on it" illusion for that machinery rather than minting
+// a third missing-set implementation beside it.
+
+module v2.lens.mock_totality
+
+import v2.lens.coverage { Coverage, missing_coverage }
+import v2.std.collection { List }
+import v2.std.algebra { filter, is_empty }
+import v2.std.diagnostic {
+  Accepted,
+  Correction,
+  Diagnostic,
+  Locus,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton,
+  outcome_accepted
+}
+import v2.std.node { Symbol }
+
+// A consumer materializes a published case impl-blind: `Accepted` when it handles the case,
+// `Rejected` (fail-closed) when it does not. The lens never inspects the materialized value —
+// it reads only whether the consumer accepted the case — so a layer may produce ANY result type.
+// `mock_unhandled_rejection` is the canonical fail-closed arm a consumer returns for a case it
+// does not publish a handler for.
+fn mock_unhandled_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^mock_totality_unhandled_member,
+    at: Textual { file: ^mock_totality_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn mock_unhandled_rejection<M>() -> Outcome<M> {
+  Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+}
+
+// The actual handled set: the published members the consumer materialized (returned Accepted for).
+// Pure reader — runs the consumer over each member and keeps the ones it accepted, stores nothing.
+fn handled_mock_cases<C, M>(
+  published: List<C>,
+  materialize: fn(C) -> Outcome<M>
+) -> List<C> {
+  filter(
+    xs: published,
+    predicate: fn(case) {
+      match materialize(case: case) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    }
+  )
+}
+
+// The lens reading: every published member the consumer FAILED to handle (expected − handled).
+fn mock_totality_missing<C, M>(
+  published: List<C>,
+  materialize: fn(C) -> Outcome<M>,
+  eq: fn(C, C) -> Bool
+) -> List<Coverage<C>> {
+  missing_coverage(
+    expected: published,
+    actual: handled_mock_cases(published: published, materialize: materialize),
+    eq: eq
+  )
+}
+
+// The TOTALITY lens. Accepts (returns the published corpus) iff the consumer is total over it;
+// fail-closes (§5) with a located diagnostic the moment a published member is unhandled.
+fn mock_totality_lens<C, M>(
+  published: List<C>,
+  materialize: fn(C) -> Outcome<M>,
+  eq: fn(C, C) -> Bool
+) -> Outcome<List<C>> {
+  if is_empty(
+    xs: mock_totality_missing(published: published, materialize: materialize, eq: eq)
+  ) {
+    outcome_accepted(value: published)
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+  }
+}
