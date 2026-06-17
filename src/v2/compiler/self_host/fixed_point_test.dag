@@ -1,6 +1,6 @@
 // src/v2/compiler/self_host/fixed_point_test.dag
 // Scope: the ONLY live-executed self-host coverage. Discovered + run by the live CI gate
-//   (.github/workflows/ci.yml:59: ci_claim_gate --source-root src/v2 --scan-dir src/v2/test).
+//   (.github/workflows/ci.yml:79: claim_batch --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test).
 //   IMPORTANT: `test fn` discovery scans the WHOLE --source-root (src/v2) recursively — NOT just
 //   --scan-dir (that flag governs only the separate `unified_claim_*` data scan). So this file is
 //   discovered at its compiler/self_host/ path, not because it lives under src/v2/test. The gate

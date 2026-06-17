@@ -526,6 +526,15 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  // Lane 2c — value-level function application `callee(arg, ...)` (positional). The head of a
+  // Transform body that does NOT canonicalize to an operator is a callee reference (eval treats a
+  // Transform with a non-operator Atom/Arrow head as a call, 05_eval eval_node_is_callee_reference);
+  // args are arbitrary value-expressions, so a closure argument recurses through the same projector.
+  | TargetValueExprCallableApply
+  // Lane 2c — anonymous function value `fn(params) { body }`. Appears as an argument to a callable
+  // apply (the fold-family `cons`/`f`/`step` closures); the body recurses through the value-expr
+  // projector with the closure's own param domain as scope (nested-closure scoping).
+  | TargetValueExprClosure
   | TargetValueExprConditional
   | TargetValueExprBindLet
   | TargetValueExprLoop
@@ -627,6 +636,20 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
+// Lane 2c — per-language anonymous-function spelling. `fn ( p, ... ) { body }` for .dag; a target
+// whose closures read `(p, ...) => body` supplies the same single-token framing fields with its own
+// token classes. param_ident_token spells each param binding (via binding_spellings, like a
+// binding-ref). Single-token fields keep the wire bundle flat (no token-list round-trip).
+type TargetClosureShape {
+  fn_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+  body_open: Symbol
+  body_close: Symbol
+  param_ident_token: Symbol
+}
+
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
@@ -647,6 +670,7 @@ type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
+  closure_form: TargetClosureShape
   effect_apply_form: TargetEffectApplyShape
   conditional_form: TargetConditionalShape
   let_form: TargetBindLetShape
@@ -670,6 +694,14 @@ data target_model_edge_operator_realizations: Symbol = target_model_edge_operato
 data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
 data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
 data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
+data target_value_expr_field_closure: Symbol = target_value_expr_field_closure
+data target_value_expr_field_callee: Symbol = target_value_expr_field_callee
+data target_value_expr_field_callable_arg: Symbol = target_value_expr_field_callable_arg
+data target_value_expr_field_closure_param: Symbol = target_value_expr_field_closure_param
+data target_value_expr_field_closure_body: Symbol = target_value_expr_field_closure_body
+data target_value_expr_field_fn_token: Symbol = target_value_expr_field_fn_token
+data target_value_expr_field_body_open: Symbol = target_value_expr_field_body_open
+data target_value_expr_field_body_close: Symbol = target_value_expr_field_body_close
 data target_value_expr_field_effect_apply: Symbol = target_value_expr_field_effect_apply
 data target_value_expr_effect_callee_row_edge: Symbol = target_value_expr_effect_callee_row_edge
 data target_value_expr_field_effect_callee: Symbol = target_value_expr_field_effect_callee
@@ -1285,6 +1317,71 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   )
 }
 
+// Lane 2c — decode the closure spelling shape (fn / param framing / body framing).
+fn decode_closure_shape_bundle(bundle: Node) -> Outcome<TargetClosureShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_fn_token),
+    f: fn(fn_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: target_value_expr_field_close
+                ),
+                f: fn(close) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: target_value_expr_field_body_open
+                    ),
+                    f: fn(body_open) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(
+                          bundle: bundle,
+                          field: target_value_expr_field_body_close
+                        ),
+                        f: fn(body_close) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(
+                              bundle: bundle,
+                              field: target_value_expr_field_ident_token
+                            ),
+                            f: fn(param_ident_token) {
+                              outcome_accepted(
+                                TargetClosureShape {
+                                  fn_token: fn_token,
+                                  open: open,
+                                  separator: separator,
+                                  close: close,
+                                  body_open: body_open,
+                                  body_close: body_close,
+                                  param_ident_token: param_ident_token
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 // Serialize one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
 fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
   target_model_type_conj_node(
@@ -1424,6 +1521,15 @@ fn decode_value_expression_projection_bundle(
                               bind_outcome(
                                 o: projection_bundle_child(
                                   bundle: bundle,
+                                  name: target_value_expr_field_closure
+                                ),
+                                f: fn(closure_bundle) {
+                              bind_outcome(
+                                o: decode_closure_shape_bundle(bundle: closure_bundle),
+                                f: fn(closure_form) {
+                              bind_outcome(
+                                o: projection_bundle_child(
+                                  bundle: bundle,
                                   name: target_value_expr_field_effect_apply
                                 ),
                                 f: fn(effect_bundle) {
@@ -1468,6 +1574,7 @@ fn decode_value_expression_projection_bundle(
                                                                   binding_ref_form: binding_ref_form,
                                                                   primitive_apply_form: primitive_apply_form,
                                                                   callable_apply_form: callable_apply_form,
+                                                                  closure_form: closure_form,
                                                                   effect_apply_form: effect_apply_form,
                                                                   conditional_form: conditional_form,
                                                                   let_form: let_form,
@@ -1488,6 +1595,10 @@ fn decode_value_expression_projection_bundle(
                                       )
                                     }
                                   )
+                                }
+                              )
+                            }
+                          )
                                 }
                               )
                             }
@@ -3022,6 +3133,94 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
   }
 }
 
+// Lane 2c — callable-apply wire: a `callee` atom edge followed by one `callable_arg` edge per
+// positional argument (order preserved; args extracted by an order-preserving fold, never by
+// content_hash reorder). Mirrors primitive_apply's operand-edge layout but the head is a callee
+// binding rather than a canonical-operation row.
+fn target_value_expr_callable_arg_edges(
+  args: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: args,
+    empty: Empty,
+    snoc: fn(acc, arg) {
+      Cons {
+        head: target_model_named_edge(
+          name: target_value_expr_field_callable_arg,
+          target: target_value_expression_node(expr: arg)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expression_callable_apply(
+  callee: Symbol,
+  args: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprCallableApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_callable_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: target_value_expr_field_callee,
+            target: target_model_type_atom_node(identity: callee)
+          )
+        ],
+        right: target_value_expr_callable_arg_edges(args: args)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+// Lane 2c — closure wire: one `closure_param` atom edge per param (order preserved) followed by a
+// single `closure_body` edge carrying the body value-expression.
+fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, param) {
+      Cons {
+        head: target_model_named_edge(
+          name: target_value_expr_field_closure_param,
+          target: target_model_type_atom_node(identity: param)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expression_closure(
+  params: List<Symbol>,
+  body: TargetValueExpression
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprClosure,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_closure_atom }
+      },
+      children: list_append(
+        left: target_value_expr_closure_param_edges(params: params),
+        right: [
+          target_model_named_edge(
+            name: target_value_expr_field_closure_body,
+            target: body.node
+          )
+        ]
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
 data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
 data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
 data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
@@ -3491,6 +3690,20 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_callable_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprCallableApply,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_closure_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprClosure,
+            node: wire
+          }
+        )
       } else {
         outcome_rejected(
           target_value_expression_emit_unsupported_kind_diagnostic(
@@ -3904,6 +4117,311 @@ fn target_value_expression_conditional_to_concrete_tokens(
   )
 }
 
+// ── Lane 2c: callable-apply + closure extraction and emission ──────────────────
+
+fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_callee {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: callee } => outcome_accepted(callee)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_callable_apply_args_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExpression>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: args, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_callable_arg {
+                bind_outcome(
+                  o: target_value_expression_reify_from_wire(wire: edge.target),
+                  f: fn(arg) {
+                    outcome_accepted(list_snoc_item(xs: args, item: arg))
+                  }
+                )
+              } else if n == target_value_expr_field_callee {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+
+// Recursively tokenize a list of value-expressions, interspersing one `separator` FixedToken
+// between adjacent members (no leading/trailing separator). Fail-closed on any member.
+fn target_value_expr_tokenize_intersperse(
+  exprs: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node,
+  separator: Symbol
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold(
+    exprs,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: toks, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: e,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(et) {
+              match toks {
+                Empty => outcome_accepted(et)
+                _ =>
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: toks,
+                        right: Cons {
+                          head: FixedToken { token_class: separator },
+                          tail: Empty
+                        }
+                      ),
+                      right: et
+                    )
+                  )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expression_callable_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
+    f: fn(callee) {
+      bind_outcome(
+        o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
+        f: fn(args) {
+          bind_outcome(
+            o: target_value_expr_tokenize_intersperse(
+              exprs: args,
+              projection: projection,
+              catalog: catalog,
+              separator: projection.callable_apply_form.separator
+            ),
+            f: fn(arg_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: Cons {
+                      head: BoundToken {
+                        token_class: projection.callable_apply_form.callee_ident_token,
+                        binding: callee
+                      },
+                      tail: Cons {
+                        head: FixedToken {
+                          token_class: projection.callable_apply_form.open
+                        },
+                        tail: Empty
+                      }
+                    },
+                    right: arg_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.callable_apply_form.close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: ps, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_closure_param {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    outcome_accepted(list_snoc_item(xs: ps, item: id))
+                  _ =>
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              } else if n == target_value_expr_field_closure_body {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+
+fn target_value_expr_closure_body_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: target_value_expr_field_closure_body
+  )
+}
+
+fn target_value_expr_closure_param_tokens(
+  params: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, p) {
+      let token = BoundToken { token_class: ident_token, binding: p }
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
+}
+
+fn target_value_expression_closure_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_closure_params_from_wire(wire: expr.node),
+    f: fn(params) {
+      bind_outcome(
+        o: target_value_expr_closure_body_from_wire(wire: expr.node),
+        f: fn(body) {
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: body,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(body_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: list_append(
+                      left: Cons {
+                        head: FixedToken {
+                          token_class: projection.closure_form.fn_token
+                        },
+                        tail: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.open
+                          },
+                          tail: Empty
+                        }
+                      },
+                      right: list_append(
+                        left: target_value_expr_closure_param_tokens(
+                          params: params,
+                          ident_token: projection.closure_form.param_ident_token,
+                          separator: projection.closure_form.separator
+                        ),
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.close
+                          },
+                          tail: Cons {
+                            head: FixedToken {
+                              token_class: projection.closure_form.body_open
+                            },
+                            tail: Empty
+                          }
+                        }
+                      )
+                    ),
+                    right: body_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.closure_form.body_close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 // Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
@@ -3926,6 +4444,18 @@ fn target_value_expression_to_concrete_tokens(
       target_value_expression_effect_apply_to_concrete_tokens(
         expr: expr,
         projection: projection
+      )
+    TargetValueExprCallableApply =>
+      target_value_expression_callable_apply_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprClosure =>
+      target_value_expression_closure_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
       )
     TargetValueExprSymbolIdentity =>
       target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
@@ -4175,6 +4705,55 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               name: target_value_expr_field_separator,
               target: target_model_type_atom_node(
                 identity: projection.callable_apply_form.separator
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_closure,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_fn_token,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.fn_token
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_open,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_separator,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.separator
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_close,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_body_open,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.body_open
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_body_close,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.body_close
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_ident_token,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.param_ident_token
               )
             )
           ]
@@ -8077,6 +8656,94 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   }
 }
 
+// Lane 2c — project one call argument. A bare Atom argument is a binding reference (scope-checked
+// against the enclosing arrow's params, like a primitive operand); any other shape (a nested call
+// Transform, an inline closure Arrow, a branch, …) recurses through the subexpression projector.
+fn target_project_callable_arg_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  arg: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match arg.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      bind_outcome(
+        o: target_value_expr_arrow_body_scope_binding(
+          arrow: arrow,
+          body: body,
+          binding: id,
+          target: target
+        ),
+        f: fn(scoped) {
+          outcome_accepted(target_value_expression_binding_ref(binding: scoped))
+        }
+      )
+    _ =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: arg,
+        target: target,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+// Lane 2c — project a call Transform (`callee(arg, ...)`) to a callable-apply value-expression. The
+// caller (translate) routes here when the Transform head atom does NOT canonicalize to an operator;
+// the head is then the callee binding and the remaining positional children are the arguments.
+fn target_project_transform_callable_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_surface_op_atom(node: body),
+    f: fn(callee) {
+      match list_tail(xs: node_positional_child_targets(node: body)) {
+        TailAbsent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        TailFound { tail: arg_children } =>
+          bind_outcome(
+            o: fold_list(
+              xs: arg_children,
+              empty: Accepted { value: Empty, diagnostics: None },
+              cons: fn(acc, arg) {
+                match acc {
+                  Rejected { diagnostics: _ } => acc
+                  Accepted { value: args, diagnostics: _ } =>
+                    bind_outcome(
+                      o: target_project_callable_arg_in_arrow_scope(
+                        arrow: arrow,
+                        body: body,
+                        arg: arg,
+                        target: target,
+                        handle_transform: handle_transform
+                      ),
+                      f: fn(a) {
+                        outcome_accepted(list_snoc_item(xs: args, item: a))
+                      }
+                    )
+                }
+              }
+            ),
+            f: fn(args) {
+              outcome_accepted(
+                target_value_expression_callable_apply(callee: callee, args: args)
+              )
+            }
+          )
+      }
+    }
+  )
+}
+
 fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -8373,6 +9040,16 @@ fn target_value_expr_project_body_subexpression(
         target: target,
         handle_transform: handle_transform
       )
+    // Lane 2c — a `TypeNode { connective: Arrow }` appearing as an operand is an inline closure
+    // (`fn(params) { body }`). Project its own param domain + body, with the closure itself as the
+    // new scope arrow so the body's binding refs resolve against the closure params (nested-closure
+    // scoping). Captures of the enclosing scope are a follow-up (only closure-local params today).
+    TypeNode { connective: Arrow } =>
+      target_project_closure_in_arrow_scope(
+        closure: node,
+        target: target,
+        handle_transform: handle_transform
+      )
     TypeNode { connective: Atom { identity: _ } } =>
       target_value_expr_project_atom_literal(node: node)
     _ =>
@@ -8383,6 +9060,38 @@ fn target_value_expr_project_body_subexpression(
         )
       )
   }
+}
+
+// Lane 2c — project an inline closure node to a closure value-expression. The body recurses through
+// the same subexpression projector with `closure` as the scope arrow, so an operator/call inside the
+// closure resolves its binding refs against the closure's own params.
+fn target_project_closure_in_arrow_scope(
+  closure: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: closure),
+    f: fn(params) {
+      match find_arrow_body_child(root: closure) {
+        Accepted { value: body, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expr_project_body_subexpression(
+              arrow: closure,
+              node: body,
+              target: target,
+              handle_transform: handle_transform
+            ),
+            f: fn(body_expr) {
+              outcome_accepted(
+                target_value_expression_closure(params: params, body: body_expr)
+              )
+            }
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
 }
 
 fn target_value_expression_projection_from_target(

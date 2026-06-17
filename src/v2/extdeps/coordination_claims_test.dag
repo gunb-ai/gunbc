@@ -1,7 +1,7 @@
 // Scope: v2.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
 // The executable receipt is the in-file claim witness, run in-process by the
-// ci_claim_gate binary (the witnesses ARE the coverage).
+// claim_batch binary (the witnesses ARE the coverage).
 // Importing v2.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 

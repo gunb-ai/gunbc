@@ -135,7 +135,7 @@ fn bre_claim_batches() -> List<List<ClaimRef>> {
   }
 }
 
-// ── batching-AUTHORITY witnesses (MODEL semantics; host: ci-claim-gate, uniform perturb) ──
+// ── batching-AUTHORITY witnesses (MODEL semantics; host: claim_batch, uniform perturb) ──
 // The `.dag` IS the batching authority: `parallel_executor_plan_from_dependencies` (in
 // `v2.workflow.executor`) decides grouping/ordering, and claim_executor merely runs the plan
 // it returns (no Rust mirror — claim_executor.rs only parses List<List<ClaimRef>>). So "the
@@ -143,7 +143,7 @@ fn bre_claim_batches() -> List<List<ClaimRef>> {
 // witness with no host re-resolve: empty deps collapse the suite to one batch, the suite's
 // real deps yield two, an empty suite yields none. These replace the former inline-python
 // "empty the dep list and re-run the host" perturb in scripts/v2-batch-executor-gate.sh —
-// absorbing a model property into Rust would undermodel the dogfood. ci-claim-gate's uniform
+// absorbing a model property into Rust would undermodel the dogfood. claim_batch's uniform
 // witness-body->`false` perturb keeps each one red-under-mutation (a hardcoded `true` fails).
 fn bre_empty_deps_yields_one_batch() -> Bool {
   match parallel_executor_plan_from_dependencies(
@@ -194,8 +194,8 @@ fn bre_degenerate_empty_plan() -> List<List<ClaimRef>> {
   []
 }
 
-// ── ci-claim-gate roster transport for the authority witnesses ──
-// One TSV line per row, `label\tentry\tfunction`, consumed by `ci-claim-gate` exactly as the
+// ── claim_batch roster transport for the authority witnesses ──
+// One TSV line per row, `label\tentry\tfunction`, consumed by `claim_batch` exactly as the
 // probe-selector keystone gate does. Authority lives here in the `.dag`, not in shell.
 type BatchExecutorAuthorityRow {
   label: String

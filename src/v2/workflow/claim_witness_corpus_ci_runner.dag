@@ -465,7 +465,7 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
 // (Self-host rows removed — they were NOT live coverage: their `entry:` paths
 //  `src/v2/test/claim/self_host/...` do not exist, so nothing executed them. The real self-host
 //  coverage is now the live-executed `test fn` decls in src/v2/compiler/self_host/fixed_point_test.dag,
-//  discovered by the canonical ci_claim_gate source-root scan. The remaining rows here are out of
+//  discovered by the canonical claim_batch source-root scan. The remaining rows here are out of
 //  scope for that change and untouched.)
 
 data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
