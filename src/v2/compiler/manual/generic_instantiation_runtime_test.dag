@@ -5,10 +5,8 @@
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Absent, Optional, Present, map_get }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { map_contains_key }
 import v2.std.generic_instantiation {
-  GenericSubstitution,
   empty_generic_substitution,
   generic_substitution_bind_once,
   param_is_self_named_generic_decl
@@ -66,20 +64,6 @@ fn gi_type_atom_node(sym: Symbol) -> Node {
   )
 }
 
-fn gi_optional_node_present(opt: Optional<Node>) -> Bool {
-  match opt {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn gi_subst_has_key(subst: GenericSubstitution, key: String) -> Bool {
-  match map_get(subst, key) {
-    Accepted { value: opt, diagnostics: _ } => gi_optional_node_present(opt: opt)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn generic_substitution_bind_once_first_wins_holds() -> Bool {
   let n_int = gi_type_atom_node(sym: ^gi_bind_once_int_sym)
   let n_bool = gi_type_atom_node(sym: ^gi_bind_once_bool_sym)
@@ -98,11 +82,11 @@ fn generic_substitution_bind_once_first_wins_holds() -> Bool {
     name: "T",
     concrete: n_bool
   )
-  gi_subst_has_key(subst: subst1, key: "T")
-    && gi_subst_has_key(subst: subst2, key: "T")
-    && gi_subst_has_key(subst: bool_only, key: "T")
-    && gi_subst_has_key(
-      subst: generic_substitution_bind_once(
+  map_contains_key(m: subst1, key: "T")
+    && map_contains_key(m: subst2, key: "T")
+    && map_contains_key(m: bool_only, key: "T")
+    && map_contains_key(
+      m: generic_substitution_bind_once(
         subst: subst2,
         name: "U",
         concrete: n_bool
@@ -131,6 +115,6 @@ test fn generic_instantiation_substrate_self_named_generic_decl() -> Bool {
   )
 }
 
-test fn generic_instantiation_substrate_bind_once_first_wins_holds() -> Bool {
+test fn generic_substitution_bind_once_first_wins_holds() -> Bool {
   generic_substitution_bind_once_first_wins_holds()
 }

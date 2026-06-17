@@ -118,6 +118,12 @@ fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
       }
   }
 }
+// 🟡 gated — bootstrap-limitation interim — feature:B-MAP-CONTAINS-KEY-1 — host bridge via
+// raw_map_lookup; dissolve-on: substrate-native key probe without Optional<V> unpack;
+// forbidden: per-site map_get Present-branch key-presence tests when V is Node.
+fn map_contains_key<K, V>(m: Map<K, V>, key: K) -> Bool {
+  map_contains_key(m: m, key: key)
+}
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(
     xs: xs,

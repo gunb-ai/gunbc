@@ -8,14 +8,10 @@
 module v2.std.generic_instantiation
 
 import v2.std.collection {
-  Absent,
-  Map,
-  Present,
   empty_map,
-  map_get,
+  map_contains_key,
   map_insert
 }
-import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node }
 
 // Substitution map: generic name → concrete type node at a call site.
@@ -31,10 +27,9 @@ fn generic_substitution_bind_once(
   name: String,
   concrete: Node,
 ) -> GenericSubstitution {
-  match map_get(subst, name) {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => subst
-    Accepted { value: Absent, diagnostics: _ } => map_insert(subst, name, concrete)
-    Rejected { diagnostics: _ } => subst
+  match map_contains_key(m: subst, key: name) {
+    true => subst
+    false => map_insert(subst, name, concrete)
   }
 }
 
