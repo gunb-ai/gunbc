@@ -9150,7 +9150,11 @@ fn openai_chat_completion_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/openai_rest.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/openai_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
@@ -9360,7 +9364,11 @@ fn openai_responses_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/openai_rest.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/openai_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
@@ -9644,7 +9652,11 @@ fn anthropic_messages_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/anthropic_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read anthropic_rest.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/anthropic_rest.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_anthropic_rest.rs");
 
