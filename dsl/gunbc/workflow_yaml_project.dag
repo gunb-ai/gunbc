@@ -1,0 +1,348 @@
+// gunbc/workflow_yaml_project.dag — structural inverse: Workflow → YamlValue.
+//
+// `emit_yaml = serialize_yaml ∘ project_workflow_to_yaml` (DESIGN §4 one grammar,
+// both directions). Key renames mirror GitHub Actions YAML surface syntax.
+
+module gunbc.workflow_yaml_project
+
+import extdeps.formats.yaml {
+  YamlValue, YamlKeyValue,
+  yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
+  empty_yaml_values
+}
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep, ActionRef,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
+  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
+  WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
+  ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
+  CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
+  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
+  RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner, RunnerLabel,
+  UbuntuLatest, ShellType, Bash
+}
+
+fn permission_level_yaml(level: PermissionLevel) -> YamlValue {
+  match level {
+    PermRead => yaml_string(s: "read")
+    PermWrite => yaml_string(s: "write")
+    PermNone => yaml_string(s: "none")
+  }
+}
+
+fn optional_permission_key(key: String, level: PermissionLevel?) -> List<YamlKeyValue> {
+  match level {
+    Absent => []
+    Present { value: l } => [kv(key: key, value: permission_level_yaml(level: l))]
+  }
+}
+
+fn workflow_permissions_yaml(perms: WorkflowPermissions) -> YamlValue {
+  yaml_mapping(entries: concat(
+    optional_permission_key(key: "contents", level: perms.contents),
+    concat(
+      optional_permission_key(key: "pull-requests", level: perms.pull_requests),
+      concat(
+        optional_permission_key(key: "issues", level: perms.issues),
+        optional_permission_key(key: "actions", level: perms.actions)
+      )
+    )
+  ))
+}
+
+fn pr_activity_string(a: PullRequestActivity) -> String {
+  match a {
+    Opened => "opened"
+    Synchronize => "synchronize"
+    Reopened => "reopened"
+    ReadyForReview => "ready_for_review"
+    Closed => "closed"
+  }
+}
+
+fn string_list_flow(items: List<String>) -> YamlValue {
+  yaml_sequence(elements: fold(items, init: empty_yaml_values, f: (acc, s) => concat(acc, [yaml_string(s: s)])))
+}
+
+fn pr_activities_flow(types: List<PullRequestActivity>) -> YamlValue {
+  yaml_sequence(elements: fold(types, init: empty_yaml_values, f: (acc, t) => concat(acc, [yaml_string(s: pr_activity_string(a: t))])))
+}
+
+fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValue {
+  let entries = if paths.length() == 0 {
+    [kv(key: "branches", value: string_list_flow(items: branches))]
+  } else {
+    concat(
+      [kv(key: "branches", value: string_list_flow(items: branches))],
+      [kv(key: "paths", value: string_list_flow(items: paths))]
+    )
+  }
+  kv(key: "push", value: yaml_mapping(entries: entries))
+}
+
+fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
+  match trigger {
+    WorkflowDispatch { inputs: _ } =>
+      kv(key: "workflow_dispatch", value: YamlNull)
+    Push { branches: bs, paths: ps } =>
+      push_trigger_yaml(branches: bs, paths: ps)
+    PullRequest { branches: bs, types: ts } =>
+      kv(key: "pull_request", value: yaml_mapping(entries: [
+        kv(key: "branches", value: string_list_flow(items: bs)),
+        kv(key: "types", value: pr_activities_flow(types: ts))
+      ]))
+    Schedule { cron: _ } =>
+      kv(key: "schedule", value: YamlNull)
+    WorkflowCall { inputs: _ } =>
+      kv(key: "workflow_call", value: YamlNull)
+  }
+}
+
+fn workflow_triggers_yaml(triggers: List<WorkflowTrigger>) -> YamlValue {
+  yaml_mapping(entries: fold(triggers, init: [], f: (acc, t) => concat(acc, [workflow_trigger_entry(trigger: t)])))
+}
+
+fn cancel_in_progress_yaml(spec: CancelInProgressSpec) -> YamlValue {
+  match spec {
+    CancelInProgressBool { value: b } => yaml_bool(b: b)
+    CancelInProgressExpression { expression: e } => yaml_string(s: e)
+  }
+}
+
+fn cancel_in_progress_when_queue_max_yaml(spec: CancelInProgressWhenQueueMax) -> YamlValue {
+  match spec {
+    QueueMaxCancelInProgressFalse => yaml_bool(b: false)
+    QueueMaxCancelInProgressExpression { expression: e } => yaml_string(s: e)
+  }
+}
+
+fn concurrency_mapping_queue_max(group: String, cip: CancelInProgressWhenQueueMax?) -> YamlValue {
+  let base = [kv(key: "group", value: yaml_string(s: group))]
+  let with_cancel = match cip {
+    Absent => base
+    Present { value: c } => concat(base, [kv(key: "cancel-in-progress", value: cancel_in_progress_when_queue_max_yaml(spec: c))])
+  }
+  yaml_mapping(entries: with_cancel)
+}
+
+fn concurrency_mapping_with_cancel(group: String, cip: CancelInProgressSpec?) -> YamlValue {
+  let base = [kv(key: "group", value: yaml_string(s: group))]
+  let with_cancel = match cip {
+    Absent => base
+    Present { value: c } => concat(base, [kv(key: "cancel-in-progress", value: cancel_in_progress_yaml(spec: c))])
+  }
+  yaml_mapping(entries: with_cancel)
+}
+
+fn concurrency_yaml(spec: ConcurrencySpec) -> YamlValue {
+  match spec {
+    ConcurrencyScalar { group: g } => yaml_string(s: g)
+    ConcurrencyMappingQueueMax { group: g, cancel_in_progress: cip } =>
+      concurrency_mapping_queue_max(group: g, cip: cip)
+    ConcurrencyMappingQueueNotMax { group: g, cancel_in_progress: cip, explicit_single: _ } =>
+      concurrency_mapping_with_cancel(group: g, cip: cip)
+  }
+}
+
+fn runner_label_string(label: RunnerLabel) -> String {
+  match label {
+    UbuntuLatest => "ubuntu-latest"
+    Ubuntu2404 => "ubuntu-24.04"
+    Ubuntu2204 => "ubuntu-22.04"
+    MacosLatest => "macos-latest"
+    Macos14 => "macos-14"
+    WindowsLatest => "windows-latest"
+  }
+}
+
+fn runner_yaml(spec: RunnerSpec) -> YamlValue {
+  match spec {
+    HostedRunner { label: l } => yaml_string(s: runner_label_string(label: l))
+    SelfHosted { labels: ls } => string_list_flow(items: ls)
+    RunsOnExpression { expression: e } => yaml_string(s: e)
+  }
+}
+
+fn action_ref_uses(ref: ActionRef) -> String {
+  concat(concat(concat(concat(ref.owner, "/"), ref.repo), "@"), ref.ref)
+}
+
+fn yaml_key_values(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+  match entries {
+    Absent => []
+    Present { value: es } => es
+  }
+}
+
+fn optional_kv_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+  match entries {
+    Absent => []
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
+  }
+}
+
+fn optional_env_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+  match entries {
+    Absent => []
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+  }
+}
+
+fn optional_string_kv(key: String, value: String?) -> List<YamlKeyValue> {
+  match value {
+    Absent => []
+    Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
+  }
+}
+
+fn optional_int_kv(key: String, value: Int?) -> List<YamlKeyValue> {
+  match value {
+    Absent => []
+    Present { value: n } => [kv(key: key, value: yaml_int(n: n))]
+  }
+}
+
+fn optional_bool_kv(key: String, value: Bool?) -> List<YamlKeyValue> {
+  match value {
+    Absent => []
+    Present { value: b } => if b { [kv(key: key, value: yaml_bool(b: true))] } else { [] }
+  }
+}
+
+fn shell_type_string(shell: ShellType) -> String {
+  match shell {
+    Bash => "bash"
+    Sh => "sh"
+    Pwsh => "pwsh"
+    Python => "python"
+    Cmd => "cmd"
+  }
+}
+
+fn optional_shell_kv(shell: ShellType?) -> List<YamlKeyValue> {
+  match shell {
+    Absent => []
+    Present { value: s } => [kv(key: "shell", value: yaml_string(s: shell_type_string(shell: s)))]
+  }
+}
+
+fn run_step_yaml(n: String?, i: String?, r: String, sh: ShellType?, e: List<YamlKeyValue>?, wd: String?, ic: String?, coe: Bool?, tm: Int?) -> YamlValue {
+  yaml_mapping(entries: concat(
+    optional_string_kv(key: "name", value: n),
+    concat(
+      optional_string_kv(key: "id", value: i),
+      concat(
+        [kv(key: "run", value: yaml_string(s: r))],
+        concat(
+          optional_shell_kv(shell: sh),
+          concat(
+            optional_env_mapping(entries: e),
+            concat(
+              optional_string_kv(key: "working-directory", value: wd),
+              concat(
+                optional_string_kv(key: "if", value: ic),
+                concat(
+                  optional_bool_kv(key: "continue-on-error", value: coe),
+                  optional_int_kv(key: "timeout-minutes", value: tm)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  ))
+}
+
+fn uses_step_yaml(n: String?, i: String?, u: ActionRef, w: List<YamlKeyValue>?, e: List<YamlKeyValue>?, ic: String?, coe: Bool?, tm: Int?) -> YamlValue {
+  yaml_mapping(entries: concat(
+    optional_string_kv(key: "name", value: n),
+    concat(
+      optional_string_kv(key: "id", value: i),
+      concat(
+        [kv(key: "uses", value: yaml_string(s: action_ref_uses(ref: u)))],
+        concat(
+          optional_kv_mapping(entries: w),
+          concat(
+            optional_env_mapping(entries: e),
+            concat(
+              optional_string_kv(key: "if", value: ic),
+              concat(
+                optional_bool_kv(key: "continue-on-error", value: coe),
+                optional_int_kv(key: "timeout-minutes", value: tm)
+              )
+            )
+          )
+        )
+      )
+    )
+  ))
+}
+
+fn step_yaml(step: Step) -> YamlValue {
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      run_step_yaml(n: n, i: i, r: r, sh: sh, e: e, wd: wd, ic: ic, coe: coe, tm: tm)
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      uses_step_yaml(n: n, i: i, u: u, w: w, e: e, ic: ic, coe: coe, tm: tm)
+  }
+}
+
+fn steps_yaml(steps: List<Step>) -> YamlValue {
+  yaml_sequence(elements: fold(steps, init: empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
+}
+
+fn job_yaml(job: Job) -> YamlValue {
+  yaml_mapping(entries: concat(
+    [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
+    concat(
+      optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
+      concat(
+        [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+        concat(
+          optional_env_mapping(entries: job.env),
+          concat(
+            optional_string_kv(key: "if", value: job.if_condition),
+            optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+          )
+        )
+      )
+    )
+  ))
+}
+
+fn jobs_yaml(jobs: List<Job>) -> YamlValue {
+  yaml_mapping(entries: fold(jobs, init: [], f: (acc, j) => concat(acc, [kv(key: j.id, value: job_yaml(job: j))])))
+}
+
+fn optional_env_top(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+  match entries {
+    Absent => []
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+  }
+}
+
+fn project_workflow_to_yaml(workflow: Workflow) -> YamlValue {
+  yaml_mapping(entries: concat(
+    [kv(key: "name", value: yaml_string(s: workflow.name))],
+    concat(
+      [kv(key: "on", value: workflow_triggers_yaml(triggers: workflow.on))],
+      concat(
+        match workflow.permissions {
+          Absent => []
+          Present { value: p } => [kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
+        },
+        concat(
+          match workflow.concurrency {
+            Absent => []
+            Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
+          },
+          concat(
+            optional_env_top(entries: workflow.env),
+            [kv(key: "jobs", value: jobs_yaml(jobs: workflow.jobs))]
+          )
+        )
+      )
+    )
+  ))
+}

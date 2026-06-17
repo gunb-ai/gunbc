@@ -1,0 +1,31 @@
+// dsl/test/claim/ci_yaml_parse_witness.dag
+//
+// By-execution YAML parse witness for generated ci.yml (DESIGN §5 — not typecheck illusion).
+//
+// Run (host effect — returns ProcessExit, not Bool):
+//   PATH must include actionlint or python3-yaml; gate uses the same check.
+//   gunbc run --source-root dsl --entry dsl/test/claim/ci_yaml_parse_witness.dag \
+//     --function ci_yaml_parse_witness
+
+module test.claim.ci_yaml_parse_witness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+
+data ci_yml_path: String = ".github/workflows/ci.yml"
+data expected_parse_scratch: String = "/tmp/gunbc_ci_yml_expected_parse.yml"
+
+func ci_yaml_parse_witness() -> ProcessExit {
+  let committed = Filesystem.Read(path: ci_yml_path)
+  let drift_ok = committed.success && !ci_yml_drifted(committed: committed.content)
+  let committed_parse = ci_yml_parses(path: ci_yml_path)
+  let w = Filesystem.Write(path: expected_parse_scratch, content: expected_ci_yml())
+  let expected_parse = w.success && ci_yml_parses(path: expected_parse_scratch)
+  return if drift_ok && committed_parse && expected_parse {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "ci.yml drift and/or YAML parse check failed")
+  }
+}
