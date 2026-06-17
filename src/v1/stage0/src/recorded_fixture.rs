@@ -37,7 +37,10 @@ pub struct RecordedFixture {
 
 #[derive(Debug)]
 pub enum FixtureError {
-    Missing { operation: String, input_hash: String },
+    Missing {
+        operation: String,
+        input_hash: String,
+    },
     Stale {
         operation: String,
         stored_hash: String,
@@ -54,9 +57,17 @@ pub enum FixtureError {
         operation: String,
         input_hash: String,
     },
-    Io { path: PathBuf, source: std::io::Error },
-    Json { path: PathBuf, source: serde_json::Error },
-    InvalidDigest { digest: String },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Json {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
+    InvalidDigest {
+        digest: String,
+    },
 }
 
 impl fmt::Display for FixtureError {
@@ -145,7 +156,11 @@ impl RecordedFixtureStore {
         })
     }
 
-    fn assert_fresh(fixture: &RecordedFixture, operation: &str, input_hash: &str) -> Result<(), FixtureError> {
+    fn assert_fresh(
+        fixture: &RecordedFixture,
+        operation: &str,
+        input_hash: &str,
+    ) -> Result<(), FixtureError> {
         let now = unix_now_secs();
         let age = now.saturating_sub(fixture.recorded_at);
         if age > FIXTURE_FRESHNESS_SECS {
@@ -227,10 +242,7 @@ impl RecordedFixtureStore {
             path: path.clone(),
             source: e,
         })?;
-        fs::write(&path, bytes).map_err(|e| FixtureError::Io {
-            path,
-            source: e,
-        })
+        fs::write(&path, bytes).map_err(|e| FixtureError::Io { path, source: e })
     }
 }
 
@@ -332,10 +344,7 @@ pub fn value_from_fixture_json(json: &serde_json::Value, ctx: &InterpContext) ->
     let Some(obj) = json.as_object() else {
         return Value::Null;
     };
-    let tag = obj
-        .get("__tag")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Null");
+    let tag = obj.get("__tag").and_then(|v| v.as_str()).unwrap_or("Null");
     match tag {
         "Unit" => Value::Unit,
         "Bool" => Value::Bool(obj.get("value").and_then(|v| v.as_bool()).unwrap_or(false)),

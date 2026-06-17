@@ -71,7 +71,11 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     let store_dir = fixture_store_dir("fs-write-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
     let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    assert!(entry.is_file(), "witness dag must exist at {}", entry.display());
+    assert!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
 
     // Wet capture: record live Filesystem.Read/Write responses.
     let record = run_claim_batch(&[
@@ -145,12 +149,15 @@ fn hermetic_fixture_staleness_fails_closed() {
     // Tamper: backdate recorded_at to force freshness-window expiry on replay.
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
-        let mut fixture: serde_json::Value =
-            serde_json::from_slice(&bytes).expect("parse fixture");
+        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
         if let Some(obj) = fixture.as_object_mut() {
             obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
         }
-        fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize")).expect("write");
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .expect("write");
     }
 
     let hermetic = run_claim_batch(&[
@@ -177,7 +184,8 @@ fn hermetic_fixture_staleness_fails_closed() {
         String::from_utf8_lossy(&hermetic.stderr)
     );
     assert!(
-        combined.contains("expired recorded fixture") || combined.contains("refusing to replay stale value"),
+        combined.contains("expired recorded fixture")
+            || combined.contains("refusing to replay stale value"),
         "expected staleness diagnostic, got:\n{combined}"
     );
 }

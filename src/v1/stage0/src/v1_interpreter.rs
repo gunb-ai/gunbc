@@ -3253,11 +3253,9 @@ fn eval_service_call(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
                 service_name, op_name, inputs_hash
             );
-            let fixture = store.lookup(&key, &inputs_hash).map_err(|e| {
-                InterpError::TypeError {
-                    msg: e.to_string(),
-                }
-            })?;
+            let fixture = store
+                .lookup(&key, &inputs_hash)
+                .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
             return Ok(crate::recorded_fixture::value_from_fixture_json(
                 &fixture.response,
                 ctx,
@@ -3267,23 +3265,18 @@ fn eval_service_call(
         return eval_mock_response(op_node, ctx);
     }
 
-    let result = dispatch_service_wet(
-        service_node,
-        op_node,
-        transport,
-        &param_env,
-        ctx,
-    )?;
+    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)?;
 
     if ctx.execution_mode.is_record() {
-        let store = ctx.fixture_store.as_ref().ok_or_else(|| InterpError::TypeError {
-            msg: "--record requires --fixture-store".to_string(),
-        })?;
+        let store = ctx
+            .fixture_store
+            .as_ref()
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "--record requires --fixture-store".to_string(),
+            })?;
         store
             .record(&key, &inputs_hash, &result, ctx)
-            .map_err(|e| InterpError::TypeError {
-                msg: e.to_string(),
-            })?;
+            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
         eprintln!(
             "[record] {}.{} inputs_hash={}",
             service_name, op_name, inputs_hash
