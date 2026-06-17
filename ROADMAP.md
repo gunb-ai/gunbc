@@ -36,8 +36,9 @@ the marks on the substrate (§3 single-authority). Keep entries terse; link the 
   inhabitant #1. CI verdict memo (P2 above) is a consumer.
 - **§3 extdeps/std de-conflation** — split interface-shape / transport / policy across the verified
   backlog (react_markup XSS fork, transport-fused service ops, nickname enums); one follow-up program.
-- **CI floor as one `.dag` binary** — `ci.yml` generated from `CiFloorSpec` (#5104); finish the
-  glob-discovery corpus cutover so a `dsl/` file outside the 4 hardcoded closures cannot stay green-while-broken.
+- **CI floor as one `.dag` binary** — generate `ci.yml` from a `.dag` model instead of hand-editing it
+  (#5104 was a partial step; `dsl/extdeps/github/ci.dag` still records `ci.yml` as hand-edited), and finish
+  the glob-discovery corpus cutover so a `dsl/` file outside the hardcoded closures cannot stay green-while-broken.
 - **Axioms in `.dag` + a syllogism lens** — model DESIGN §1 (A1–A3) and have a lens enforce every claim
   as a consequence-chain back to an axiom (no orphan, no cycle). (DESIGN open thread.)
 
@@ -64,4 +65,4 @@ the marks on the substrate (§3 single-authority). Keep entries terse; link the 
 - #5098 grammar-inverse emit generalized to a structural reverse-parse fold.
 - #5089 dsl whole-tree compile-clean CI gate.
 - #5090 RecordedFixture hermetic record/replay seam.
-- #5101 / #5104 CI floor consolidated to one composed `.dag` run, `ci.yml` generated from `CiFloorSpec`.
+- #5101 CI floor consolidated into one composed `.dag` run (`ci_floor_gates.dag`).
