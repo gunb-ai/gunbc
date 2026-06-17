@@ -25,37 +25,33 @@ data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
     path: clean_git_diff_path,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: "shell",
+    transport_kind: Shell,
     argv_index: 0,
-    argv_token: "git",
-    is_consumer_policy_literal: false
+    argv_token: "git"
   },
   ExtdepsTransportArgvFact {
     path: clean_git_diff_path,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: "shell",
+    transport_kind: Shell,
     argv_index: 1,
-    argv_token: "diff",
-    is_consumer_policy_literal: false
+    argv_token: "diff"
   },
   ExtdepsTransportArgvFact {
     path: clean_git_diff_path,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: "shell",
+    transport_kind: Shell,
     argv_index: 2,
-    argv_token: "base-slot",
-    is_consumer_policy_literal: false
+    argv_token: "base-slot"
   },
   ExtdepsTransportArgvFact {
     path: clean_git_diff_path,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: "shell",
+    transport_kind: Shell,
     argv_index: 3,
-    argv_token: "head-slot",
-    is_consumer_policy_literal: false
+    argv_token: "head-slot"
   }
 ]
 

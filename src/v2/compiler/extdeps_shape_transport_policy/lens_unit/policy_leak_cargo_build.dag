@@ -21,10 +21,9 @@ data policy_leak_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
     path: "dsl/extdeps/rust/cargo_build.dag",
     service: "cargo.Build",
     operation: "Build",
-    transport_kind: "shell",
+    transport_kind: Shell,
     argv_index: 2,
-    argv_token: "--all-targets",
-    is_consumer_policy_literal: true
+    argv_token: "--all-targets"
   }
 ]
 

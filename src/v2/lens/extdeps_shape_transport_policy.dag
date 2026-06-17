@@ -4,7 +4,8 @@
 //   (1) POLICY LEAK — argv literal that should be a parameter (consumer intent, not
 //       faithful upstream surface like git's `diff` / `--name-only`).
 //   (2) TRANSPORT-FUSION FORK — same logical endpoint modeled once per transport.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+// Status: 🟡 M1 — violation semantics + lens-unit synthetic facts; corpus RED witnesses
+//   read live `dsl/extdeps/**` via filesystem_read. Dissolve-on: Node-tree argv projection.
 // Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
 
 module v2.lens.extdeps_shape_transport_policy
@@ -17,6 +18,11 @@ import v2.std.algebra {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+// Closed transport vocabulary (extdeps/transports/{shell,rest}.dag — no stringly fork).
+type ExtdepsTransportKind
+  = Shell
+  | Rest
 
 type ExtdepsShapeTransportPolicyViolation
   = PolicyLiteralInArgv {
@@ -34,18 +40,16 @@ type ExtdepsShapeTransportPolicyViolation
 
 data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
 
-// Witness / corpus snapshot: one row per shell argv token with consumer-policy classification.
+// Fact row: synthetic (lens-unit) or derived from a live read (corpus).
 type ExtdepsTransportArgvFact {
   path: String
   service: String
   operation: String
-  transport_kind: String
+  transport_kind: ExtdepsTransportKind
   argv_index: Int
   argv_token: String
-  is_consumer_policy_literal: Bool
 }
 
-// Witness / corpus snapshot: one row per detected same-endpoint multi-transport fork.
 type ExtdepsTransportFusionFact {
   path: String
   endpoint_key: String
@@ -55,6 +59,43 @@ type ExtdepsTransportFusionFact {
 
 data empty_extdeps_transport_argv_facts: List<ExtdepsTransportArgvFact> = []
 data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+// filesystem_read bridge result (dissolve-on: std.filesystem read-result type).
+type FilesystemReadResult { content: String }
+
+fn extdeps_argv_token_is_parameterized_placeholder(token: String) -> Bool {
+  string_contains(token, "{") && string_contains(token, "}")
+}
+
+// Consumer-policy literals in argv — not faithful upstream/git surface primitives.
+fn extdeps_argv_token_is_consumer_policy_literal(token: String) -> Bool {
+  if extdeps_argv_token_is_parameterized_placeholder(token: token) {
+    false
+  } else if token == "diff" || token == "--name-only" || token == "git" {
+    false
+  } else {
+    token == "--all-targets"
+      || token == "--workspace"
+      || token == "--no-deps"
+      || token == "-D"
+      || token == "warnings"
+      || string_contains(token, "origin/")
+      || string_contains(token, "...")
+  }
+}
+
+fn extdeps_live_file_contains_consumer_policy_literal(path: String, token: String) -> Bool {
+  let source = filesystem_read(path: path)
+  string_contains(source.content, token)
+    && extdeps_argv_token_is_consumer_policy_literal(token: token)
+}
+
+fn extdeps_live_file_shows_transport_fusion_fork(path: String) -> Bool {
+  let source = filesystem_read(path: path)
+  string_contains(source.content, "service oauth2.Google")
+    && string_contains(source.content, "service shell.OAuth2")
+    && string_contains(source.content, "refresh_token")
+}
 
 fn argv_fact_matches_path(fact: ExtdepsTransportArgvFact, path: String) -> Bool {
   fact.path == path
@@ -80,7 +121,7 @@ fn scan_argv_facts_for_violations(
     xs: facts,
     empty: empty_extdeps_shape_transport_policy_violations,
     cons: fn(acc, fact) {
-      if fact.is_consumer_policy_literal {
+      if extdeps_argv_token_is_consumer_policy_literal(token: fact.argv_token) {
         list_snoc_item(
           xs: acc,
           item: PolicyLiteralInArgv {

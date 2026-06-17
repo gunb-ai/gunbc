@@ -90,8 +90,10 @@ for git's diff *semantics*; libgit2 and the compare API are the other handlers);
 fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has
 leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`,
 `--all-targets`); the tell that (b) has fused is the same operation forked once per transport
-(GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. Enforced by
-`v2.lens.extdeps_shape_transport_policy` with +/- corpus witnesses.
+(GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers.
+Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact
+rows; corpus RED witnesses execute against live `dsl/extdeps/**` via `filesystem_read`
+(dissolve-on: Node-tree argv projection supersedes text scan).
 
 - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model.
 

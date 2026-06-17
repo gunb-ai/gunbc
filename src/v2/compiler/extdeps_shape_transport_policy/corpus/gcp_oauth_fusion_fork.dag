@@ -1,13 +1,11 @@
-// Scope: corpus RED witness — pinned scan snapshot of OAuth2 transport-fusion fork in gcp.dag.
+// Scope: corpus RED witness — reads live dsl/extdeps/cloud/gcp/gcp.dag via filesystem_read.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.corpus.gcp_oauth_fusion_fork
 
 import v2.lens.extdeps_shape_transport_policy {
-  ExtdepsTransportFusionFact,
-  extdeps_shape_transport_policy_fusion_count_for_path
+  extdeps_live_file_shows_transport_fusion_fork
 }
-import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.verification {
   BoolWitness,
@@ -17,20 +15,8 @@ import v2.std.verification {
 
 data gcp_core_path: String = "dsl/extdeps/cloud/gcp/gcp.dag"
 
-data corpus_gcp_oauth_fusion_facts: List<ExtdepsTransportFusionFact> = [
-  ExtdepsTransportFusionFact {
-    path: gcp_core_path,
-    endpoint_key: "oauth2:refresh",
-    service_a: "oauth2.Google",
-    service_b: "shell.OAuth2"
-  }
-]
-
 fn corpus_gcp_oauth_fusion_fork_is_red_holds() -> Bool {
-  extdeps_shape_transport_policy_fusion_count_for_path(
-    fusion_facts: corpus_gcp_oauth_fusion_facts,
-    path: gcp_core_path
-  ) == 1
+  extdeps_live_file_shows_transport_fusion_fork(path: gcp_core_path)
 }
 
 data unified_claim_corpus_gcp_oauth_fusion_fork: UnifiedTestClaim = BoolWitnessClaim {
