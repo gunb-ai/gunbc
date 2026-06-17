@@ -1,8 +1,8 @@
 // src/v2/std/generic_instantiation.dag
 // Scope: value-level generic instantiation substrate — Lane 2b / R2 §4a.
-// Status: 🟡 scaffold — GenericSubstitution + bind-once + self-named generic-decl
-// predicate only. NOT migrated yet: v1/04_infer.dag remains authority for
-// is_type_variable_name and ArgGenericFoldState (infer-local fold carrier).
+// Status: 🟡 scaffold — GenericSubstitution + bind-once only. NOT migrated yet:
+// v1/04_infer.dag remains authority for is_type_variable_name, ArgGenericFoldState,
+// and self-named generic-decl discrimination (infer-local).
 // Dissolve-on: v2.compiler.04_infer imports this module and drops parallel carriers.
 
 module v2.std.generic_instantiation
@@ -25,8 +25,6 @@ fn empty_generic_substitution() -> GenericSubstitution {
 }
 
 // Fail-closed: bind a generic name once (first wins); never silently overwrite.
-// Rebind path uses map_get Absent branch only; Present branch avoids Node payload
-// destructure (runtime Witness<Node> wildcard limitation — follow-on with 04_infer wire).
 fn generic_substitution_bind_once(
   subst: GenericSubstitution,
   name: String,
@@ -37,16 +35,4 @@ fn generic_substitution_bind_once(
     Accepted { value: Present { value: _ }, diagnostics: _ } => subst
     Rejected { diagnostics: _ } => subst
   }
-}
-
-// Generic DECLARATION param is self-named: value-name equals type-name (`T: T`).
-// Distinguishes type params from value params whose type happens to be generic (`x: T`).
-// 🟡 gated — predicate-dissolution interim — feature: generic-decl-self-named-param
-// — dissolve-on: v2.compiler.04_infer imports; forbidden: parallel infer-local copy.
-fn param_is_self_named_generic_decl(
-  param_name: String,
-  type_name: String,
-  type_is_bare_leaf: Bool,
-) -> Bool {
-  type_is_bare_leaf && param_name != "" && param_name == type_name
 }
