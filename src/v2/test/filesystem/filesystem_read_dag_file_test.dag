@@ -1,0 +1,33 @@
+// src/v2/test/filesystem/filesystem_read_dag_file_test.dag
+// Scope: Prove filesystem_read is runnable on the v2 interpreter by reading a real .dag file
+//   and asserting on its content. Entry point for concept-index READ infrastructure.
+// Status: Wave-1 consumer — filesystem_read bridged via v1 interpreter eval_builtin;
+//   v2 evaluator call_primitive extension is wave-2 (blocked on bytes↔String bridge).
+
+module v2.test.filesystem.filesystem_read_dag_file
+
+import v2.std.logic { Bool }
+
+// Local declaration: FilesystemReadResult mirrors v1_rt.rs pub struct FilesystemReadResult.
+// Dissolve-on-arrival: migrate to std.resources or std.filesystem when those gain a
+// runtime-facing read-result type (feature:filesystem-read-result-dag-type).
+type FilesystemReadResult { content: String }
+
+// filesystem_read is a v1 bridge primitive (dsl/std/primitives.dag filesystem_read_contract).
+// The v1 interpreter eval_builtin dispatches it to v1_rt::filesystem_read, returning
+// FilesystemReadResult { content: <file text> }. No import required; primitive bridge is
+// transparent to the DAG module system (same as concat, string_contains, etc.).
+
+// Read dsl/std/filesystem.dag and assert it contains its own module declaration.
+// Discriminating: if filesystem_read returned empty or wrong content this would go red.
+test fn filesystem_read_dag_module_decl_holds() -> Bool {
+  let result = filesystem_read(path: "dsl/std/filesystem.dag")
+  string_contains(result.content, "module std.filesystem")
+}
+
+// Read dsl/std/primitives.dag and assert it contains the filesystem_read contract name.
+// Exercises a different file; cross-checks that read returns actual file content, not a stub.
+test fn filesystem_read_primitives_contract_holds() -> Bool {
+  let result = filesystem_read(path: "dsl/std/primitives.dag")
+  string_contains(result.content, "filesystem_read")
+}

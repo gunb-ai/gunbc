@@ -107,6 +107,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "v1_interpreter.rs",
         "cli_run.rs",
         "rest_transport_facts.rs",
+        "wire_value_serialize.rs",
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "v1_compiler_dag_collect.rs",
@@ -169,6 +170,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=v1_interpreter.rs")
         .arg("--exclude=cli_run.rs")
         .arg("--exclude=rest_transport_facts.rs")
+        .arg("--exclude=wire_value_serialize.rs")
         .arg("--exclude=coproduct_reflection.rs")
         .arg(dir_a)
         .arg(dir_b)

@@ -362,6 +362,17 @@ data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = 
   expected: ExpectPass
 }
 
+// Live filesystem WRITE effect (extdeps/filesystem/filesystem_io.dag, dispatched
+// by dispatch_file in v1_interpreter.rs) — the host-effect peer of the shell/REST
+// transports. EFFECTFUL: write payload -> read it back -> bytes match; receipt
+// reports exact byte count; absent-path read fails closed. dsl/-rooted, shard b.
+data corpus_ci_gate_row_filesystem_write_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "live filesystem write effect keystone",
+  entry: "dsl/test/claim/filesystem_write_witness.dag",
+  function: "filesystem_write_keystone_holds",
+  expected: ExpectPass
+}
+
 // gunbhub R1 browse-page structural compose + serialize receipt.
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
@@ -528,6 +539,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_html_markup_xss_keystone,
   corpus_ci_gate_row_react_markup_keystone,
   corpus_ci_gate_row_markdown_markup_xss_keystone,
+  corpus_ci_gate_row_filesystem_write_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
