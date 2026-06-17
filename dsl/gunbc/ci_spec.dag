@@ -69,6 +69,36 @@ data gunbc_ci_spec: CiSpec = {
   notice_title: "v2 claim corpus"
 }
 
+// Unify v1-compiler feature set across CI cargo invocations. v1-compiler-tests enables
+// text_lookup_work_counter; building gunbc/claim_batch without it forces a second full
+// v1-compiler compile when rust gates run clippy --all-targets (~49% CI wall-time prong).
+data ci_release_features: String = "text_lookup_work_counter"
+
+fn ci_repo_root_shell() -> String {
+  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+}
+
+fn ci_release_build_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      concat(
+        "cargo build -p v1-compiler --release --features ",
+        ci_release_features
+      ),
+      " --bins"
+    )
+  )
+}
+
+fn claim_batch_bin_shell() -> String {
+  "\"$ROOT/target/release/claim_batch\""
+}
+
+fn gunbc_bin_shell() -> String {
+  "\"$ROOT/target/release/gunbc\""
+}
+
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
@@ -112,18 +142,18 @@ fn claim_batch_script(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
-        " --roster-from-discovery"
+        concat(concat(claim_batch_bin_shell(), witness_roots_flags(roots: spec.witness_roots)), " --roster-from-discovery"),
+        fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
       ),
-      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+      concat(concat(" --notice-title \"", spec.notice_title), "\"")
     ),
-    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+    ""
   )
 }
 
 fn ci_gates_invoke(spec: CiSpec) -> String {
   concat(
-    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+    concat(concat(gunbc_bin_shell(), " run"), witness_roots_flags(roots: spec.witness_roots)),
     " --entry dsl/tools/ci_gates.dag --function main"
   )
 }
@@ -131,7 +161,10 @@ fn ci_gates_invoke(spec: CiSpec) -> String {
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
     concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(
+        concat(ci_release_build_script(), "\n"),
+        concat(git_fetch_script(policy: spec.diff_policy), "\n")
+      ),
       concat(claim_batch_script(spec: spec), "\n")
     ),
     ci_gates_invoke(spec: spec)
@@ -139,8 +172,5 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-    "cargo run -p v1-compiler --release --bin gunbc -- ci"
-  )
+  gunbc_ci_run_script(spec: spec)
 }
