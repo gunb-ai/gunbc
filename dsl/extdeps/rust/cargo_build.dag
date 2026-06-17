@@ -52,6 +52,20 @@ service cargo.Build {
     }
   }
 
+  operation Fmt {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "fmt", "--all", "--check"] }
+    exit {
+      0 => Unit
+      1 => String "Formatting check failed"
+    }
+  }
+
   operation Doc {
     input {}
     output {
