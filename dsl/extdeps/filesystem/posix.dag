@@ -1,0 +1,39 @@
+// extdeps/filesystem/posix.dag — POSIX file-type taxonomy, cited.
+//
+// Upstream: IEEE Std 1003.1-2017 (POSIX.1-2017), <sys/stat.h>, the S_IFMT
+//   field-of-st_mode file-type encoding.
+//   https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html
+//
+// The cited NATIVE taxonomy for the Posix arm of std.os.types.FileSystemSemantics,
+// plus its reduction into the OS-agnostic std.filesystem.EntryKind. Real names
+// kept (the S_IF* macros, masked from st_mode by S_IFMT). This is the P2 split:
+// the data + mapping live in extdeps; only the agnostic shape lives in std.
+
+module extdeps.filesystem.posix
+
+import std.filesystem { EntryKind }
+
+// The seven S_IFMT file types (sys/stat.h). Real spec names.
+type PosixFileType
+  = S_IFREG                        // regular file
+  | S_IFDIR                        // directory
+  | S_IFLNK                        // symbolic link
+  | S_IFIFO                        // FIFO / named pipe
+  | S_IFSOCK                       // socket
+  | S_IFCHR                        // character device
+  | S_IFBLK                        // block device
+
+// Reduce the POSIX native type into the agnostic EntryKind. POSIX is the
+// richest arm: it is the only realization with first-class fifo/socket/device
+// FILE entries, all of which fold to `Other` (exists, but not regular/dir/link).
+fn posix_entry_kind(t: PosixFileType) -> EntryKind {
+  match t {
+    S_IFREG  => RegularFile
+    S_IFDIR  => Directory
+    S_IFLNK  => Symlink
+    S_IFIFO  => Other
+    S_IFSOCK => Other
+    S_IFCHR  => Other
+    S_IFBLK  => Other
+  }
+}
