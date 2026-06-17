@@ -1,0 +1,34 @@
+// Temporary debug witnesses — delete before merge if not needed.
+
+module v2.test.lens_application.serialize_debug
+
+import v2.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_loop_arrow_with_body_fixture,
+  dag_mvp1_loop_source_text,
+  dag_mvp1_source_text,
+  dag_mvp1_target_model
+}
+import v2.lens.application_serializer { serialize_dag_source }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn serialize_add_emitted_matches_authority() -> Bool {
+  match serialize_dag_source(
+    emitted: dag_mvp1_fixture_emitted_add_fn,
+    target: dag_mvp1_target_model()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == dag_mvp1_source_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn serialize_loop_arrow_matches_authority() -> Bool {
+  match serialize_dag_source(
+    emitted: dag_mvp1_loop_arrow_with_body_fixture,
+    target: dag_mvp1_target_model()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == dag_mvp1_loop_source_text
+    Rejected { diagnostics: _ } => false
+  }
+}
