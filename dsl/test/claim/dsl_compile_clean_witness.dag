@@ -3,8 +3,9 @@
 // The gate itself is by-execution in CI: `gunbc compile --source-root dsl` over the full
 // dsl/ tree (index + resolve + typecheck + emit). This witness pins the contract:
 //   GREEN — clean tree: gunbc compile exits 0 with zero hard diagnostics.
-//   RED    — perturb: add `dsl/test/claim/probe_dsl_compile_clean_falsifier.dag` (invalid
-//            optional spelling) and gunbc compile must exit non-zero.
+//   RED    — perturb: add a scratch .dag under dsl/ with legacy Some/None on builtin T?
+//            (e.g. `match x { Some { value: v } => v, None => none }` on String?) and
+//            gunbc compile must exit non-zero. Do not commit the perturb file.
 //
 // Run: gunbc run --source-root dsl --entry <this> --function dsl_compile_clean_witnesses --claim-run
 
