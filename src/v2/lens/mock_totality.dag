@@ -24,9 +24,8 @@ module v2.lens.mock_totality
 
 import v2.lens.coverage { Coverage, missing_coverage }
 import v2.std.collection { List }
-import v2.std.algebra { filter, is_empty }
+import v2.std.algebra { is_empty }
 import v2.std.diagnostic {
-  Accepted,
   Correction,
   Diagnostic,
   Locus,
@@ -41,11 +40,12 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Symbol }
 
-// A consumer materializes a published case impl-blind: `Accepted` when it handles the case,
-// `Rejected` (fail-closed) when it does not. The lens never inspects the materialized value —
-// it reads only whether the consumer accepted the case — so a layer may produce ANY result type.
-// `mock_unhandled_rejection` is the canonical fail-closed arm a consumer returns for a case it
-// does not publish a handler for.
+// A consumer materializes a published case impl-blind: it `Accepted` the cases it handles and
+// fail-closes (`Rejected`) on a case it has no handler for. `mock_unhandled_rejection` is the
+// canonical fail-closed arm a consumer returns for such a case (§5). The consumer is run by the
+// gate WITNESS (where the per-case verdict collapses to a `Bool` predicate) — the lens itself
+// stays a pure list reader, because v2 does not yet admit a higher-order `fn(C) -> Outcome<M>`
+// parameter (see the `Outcome<R>` algebra-fn deferral noted in v2.std.node).
 fn mock_unhandled_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^mock_totality_unhandled_member,
@@ -58,46 +58,27 @@ fn mock_unhandled_rejection<M>() -> Outcome<M> {
   Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
 }
 
-// The actual handled set: the published members the consumer materialized (returned Accepted for).
-// Pure reader — runs the consumer over each member and keeps the ones it accepted, stores nothing.
-fn handled_mock_cases<C, M>(
+// The lens reading: every published member the consumer FAILED to materialize (expected − handled),
+// computed by the SAME missing-set machinery (`missing_coverage` / `Coverage<C>`) that underlies
+// `coverage_lens` — reused, not forked (§3). `handled` is the subset of `published` the consumer
+// accepted; the witness produces it by running the consumer over the corpus.
+fn mock_totality_missing<C>(
   published: List<C>,
-  materialize: fn(C) -> Outcome<M>
-) -> List<C> {
-  filter(
-    xs: published,
-    predicate: fn(case) {
-      match materialize(case: case) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    }
-  )
-}
-
-// The lens reading: every published member the consumer FAILED to handle (expected − handled).
-fn mock_totality_missing<C, M>(
-  published: List<C>,
-  materialize: fn(C) -> Outcome<M>,
+  handled: List<C>,
   eq: fn(C, C) -> Bool
 ) -> List<Coverage<C>> {
-  missing_coverage(
-    expected: published,
-    actual: handled_mock_cases(published: published, materialize: materialize),
-    eq: eq
-  )
+  missing_coverage(expected: published, actual: handled, eq: eq)
 }
 
-// The TOTALITY lens. Accepts (returns the published corpus) iff the consumer is total over it;
-// fail-closes (§5) with a located diagnostic the moment a published member is unhandled.
-fn mock_totality_lens<C, M>(
+// The TOTALITY lens. Accepts (returns the published corpus) iff the consumer handled every
+// published member; fail-closes (§5) with a located diagnostic the moment one is left unhandled.
+// Pure reader over the substrate facts — stores nothing (§4).
+fn mock_totality_lens<C>(
   published: List<C>,
-  materialize: fn(C) -> Outcome<M>,
+  handled: List<C>,
   eq: fn(C, C) -> Bool
 ) -> Outcome<List<C>> {
-  if is_empty(
-    xs: mock_totality_missing(published: published, materialize: materialize, eq: eq)
-  ) {
+  if is_empty(xs: mock_totality_missing(published: published, handled: handled, eq: eq)) {
     outcome_accepted(value: published)
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
