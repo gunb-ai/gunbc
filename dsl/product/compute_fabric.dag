@@ -15,13 +15,16 @@ module product.compute_fabric
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.os.types {
+  Darwin,
   FileSystemSemantics,
   KernelFamily,
   Linux,
+  LinuxGuestOnWindows,
   OperatingSystemSurface,
   Posix,
   PosixProcess,
   ProcessSemantics,
+  WindowsNt,
 }
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize, MoneyMicros }
@@ -30,6 +33,8 @@ import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDi
 import std.cpu {
   CpuFacts,
   CpuArchitecture,
+  cpu_facts_architecture,
+  cpu_facts_cores,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads
 }
@@ -97,8 +102,17 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
+// GPU vendor is a closed domain like `CpuVendor` (std.cpu), NOT a free
+// `NonEmptyStr` — dissolves the DESIGN.md §3 "one vendor concept forks by
+// rigor" debt named for this field. Distinct enum from `CpuVendor` because
+// GPU and CPU vendors are different domains (Nvidia is GPU-only); reusing
+// `CpuVendor` would be a nickname, not a single authority. Fixing a
+// known-stringly field is type-correctness, not abstraction ahead of demand
+// (same move as `CostEstimate.unit_price` → `MoneyMicros`).
+type GpuVendor = Nvidia | AmdGpu | IntelGpu | AppleGpu | Qualcomm | ArmMali
+
 type GpuFacts {
-  vendor: NonEmptyStr
+  vendor: GpuVendor
   model: NonEmptyStr
   compute_capability: NonEmptyStr?
   memory: MemoryFacts
