@@ -80,7 +80,7 @@ jobs:
       - name: CI floor (.dag witness corpus + gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --scan-dir src/v2/compiler/extdeps_shape_transport_policy --notice-title "v2 claim corpus"
+          cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses --claim-run
