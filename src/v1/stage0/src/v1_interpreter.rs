@@ -3247,9 +3247,7 @@ fn eval_service_call(
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
         crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
-            .map_err(|e| InterpError::TypeError {
-                msg: e.to_string(),
-            })?;
+            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
     // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
@@ -4188,8 +4186,12 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
             return eval_expr(&val_node, &Env::empty(), ctx);
         }
     }
-    // No mock response — return Unit
-    Ok(Value::Unit)
+    let op_name = authored_name_at(ctx.si(), op_node.clone());
+    Err(InterpError::TypeError {
+        msg: format!(
+            "hermetic mode: no mock_response for operation {op_name} — refusing to fabricate Unit"
+        ),
+    })
 }
 
 // ---------------------------------------------------------------------------

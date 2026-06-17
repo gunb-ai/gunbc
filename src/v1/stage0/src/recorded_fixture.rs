@@ -357,10 +357,13 @@ fn operation_slug(operation: &str) -> String {
     operation.replace('.', "__")
 }
 
-fn require_object(json: &serde_json::Value) -> Result<&serde_json::Map<String, serde_json::Value>, FixtureError> {
-    json.as_object().ok_or_else(|| FixtureError::DeserializationMismatch {
-        reason: "expected tagged object".to_string(),
-    })
+fn require_object(
+    json: &serde_json::Value,
+) -> Result<&serde_json::Map<String, serde_json::Value>, FixtureError> {
+    json.as_object()
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: "expected tagged object".to_string(),
+        })
 }
 
 fn require_tag(obj: &serde_json::Map<String, serde_json::Value>) -> Result<&str, FixtureError> {
@@ -371,7 +374,10 @@ fn require_tag(obj: &serde_json::Map<String, serde_json::Value>) -> Result<&str,
         })
 }
 
-fn require_bool(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<bool, FixtureError> {
+fn require_bool(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<bool, FixtureError> {
     obj.get(key)
         .and_then(|v| v.as_bool())
         .ok_or_else(|| FixtureError::DeserializationMismatch {
@@ -379,7 +385,10 @@ fn require_bool(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> 
         })
 }
 
-fn require_i64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<i64, FixtureError> {
+fn require_i64(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<i64, FixtureError> {
     obj.get(key)
         .and_then(|v| v.as_i64())
         .ok_or_else(|| FixtureError::DeserializationMismatch {
@@ -387,7 +396,10 @@ fn require_i64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> R
         })
 }
 
-fn require_f64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<f64, FixtureError> {
+fn require_f64(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<f64, FixtureError> {
     obj.get(key)
         .and_then(|v| v.as_f64())
         .ok_or_else(|| FixtureError::DeserializationMismatch {
@@ -395,7 +407,10 @@ fn require_f64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> R
         })
 }
 
-fn require_str(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<String, FixtureError> {
+fn require_str(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<String, FixtureError> {
     obj.get(key)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
@@ -414,7 +429,10 @@ fn require_fields_obj(
         })
 }
 
-pub fn value_to_fixture_json(val: &Value, ctx: &InterpContext) -> Result<serde_json::Value, FixtureError> {
+pub fn value_to_fixture_json(
+    val: &Value,
+    ctx: &InterpContext,
+) -> Result<serde_json::Value, FixtureError> {
     match val {
         Value::Null => Ok(serde_json::Value::Null),
         Value::Unit => Ok(json!({ "__tag": "Unit" })),
@@ -483,12 +501,11 @@ pub fn value_from_fixture_json(
         "Float" => Ok(Value::Float(require_f64(obj, "value")?)),
         "Str" => Ok(Value::Str(require_str(obj, "value")?)),
         "List" => {
-            let items = obj
-                .get("items")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| FixtureError::DeserializationMismatch {
+            let items = obj.get("items").and_then(|v| v.as_array()).ok_or_else(|| {
+                FixtureError::DeserializationMismatch {
                     reason: "List missing items array".to_string(),
-                })?;
+                }
+            })?;
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 out.push(value_from_fixture_json(item, ctx)?);
@@ -496,7 +513,7 @@ pub fn value_from_fixture_json(
             Ok(list_value(out))
         }
         "Record" => {
-            let type_name = ctx.sym(require_str(obj, "__type")?.as_str());
+            let type_name = ctx.sym(&require_str(obj, "__type")?);
             let fields_obj = require_fields_obj(obj)?;
             let mut fields = HashMap::new();
             for (k, v) in fields_obj {
@@ -508,8 +525,8 @@ pub fn value_from_fixture_json(
             })
         }
         "Variant" => {
-            let type_name = ctx.sym(require_str(obj, "__type")?.as_str());
-            let variant_name = ctx.sym(require_str(obj, "__variant")?.as_str());
+            let type_name = ctx.sym(&require_str(obj, "__type")?);
+            let variant_name = ctx.sym(&require_str(obj, "__variant")?);
             let fields_obj = require_fields_obj(obj)?;
             let mut fields = HashMap::new();
             for (k, v) in fields_obj {
@@ -521,7 +538,10 @@ pub fn value_from_fixture_json(
                 fields: Rc::new(fields),
             })
         }
-        "Opaque" | other => Err(FixtureError::UnknownTag {
+        "Opaque" => Err(FixtureError::UnknownTag {
+            tag: "Opaque".to_string(),
+        }),
+        other => Err(FixtureError::UnknownTag {
             tag: other.to_string(),
         }),
     }

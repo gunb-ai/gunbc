@@ -211,8 +211,15 @@ fn witness() -> Bool {
     let val_a = v1_interpreter::run_in_context(&ctx, "witness", false).expect("witness runs");
     let store_dir = fixture_store_dir("response-drift");
     let store = RecordedFixtureStore::open(&store_dir);
+    let empty_inputs = serde_json::json!([]);
     store
-        .record("Filesystem.Write", "0123456789abcdef", &val_a, &ctx)
+        .record(
+            "Filesystem.Write",
+            "0123456789abcdef",
+            &empty_inputs,
+            &val_a,
+            &ctx,
+        )
         .expect("first record");
 
     let val_b_src = r#"module test.fixture_roundtrip
@@ -234,7 +241,13 @@ fn witness() -> Bool {
     let val_b = v1_interpreter::run_in_context(&ctx_b, "witness", false).expect("witness b");
 
     let err = store
-        .record("Filesystem.Write", "0123456789abcdef", &val_b, &ctx_b)
+        .record(
+            "Filesystem.Write",
+            "0123456789abcdef",
+            &empty_inputs,
+            &val_b,
+            &ctx_b,
+        )
         .expect_err("same input_hash with different response must fail closed");
     assert!(
         err.to_string().contains("response drift"),
@@ -308,15 +321,176 @@ fn witness() -> Bool {
     let val = v1_interpreter::run_in_context(&ctx, "witness", false).expect("witness runs");
     let store_dir = fixture_store_dir("value-roundtrip");
     let store = RecordedFixtureStore::open(&store_dir);
+    let empty_inputs = serde_json::json!([]);
     store
-        .record("Filesystem.Write", "0123456789abcdef", &val, &ctx)
+        .record(
+            "Filesystem.Write",
+            "0123456789abcdef",
+            &empty_inputs,
+            &val,
+            &ctx,
+        )
         .expect("record");
     let fixture = store
-        .lookup("Filesystem.Write", "0123456789abcdef")
+        .lookup("Filesystem.Write", "0123456789abcdef", &empty_inputs)
         .expect("lookup");
-    let back = v1_compiler::recorded_fixture::value_from_fixture_json(&fixture.response, &ctx);
+    let back = v1_compiler::recorded_fixture::value_from_fixture_json(&fixture.response, &ctx)
+        .expect("deserialize");
     assert_eq!(val, back, "fixture JSON round-trip must preserve Value");
     let _ = fs::remove_dir_all(&store_dir);
+}
+
+#[test]
+fn hermetic_replay_rejects_corrupted_fixture_response() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("corrupt-response");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let target = "/tmp/gunbc_fs_write_witness.txt";
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(record.status.success(), "record must capture write/read");
+
+    // Tamper: mutate bytes_written in a recorded Write response fixture (nested tagged JSON).
+    for path in fixture_files(&store_dir) {
+        let bytes = fs::read(&path).expect("read fixture");
+        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
+        if let Some(response) = fixture.get_mut("response") {
+            if let Some(fields) = response.get_mut("fields").and_then(|f| f.as_object_mut()) {
+                if let Some(bw) = fields.get_mut("bytes_written") {
+                    if let Some(val) = bw.get_mut("value") {
+                        *val = serde_json::json!(99i64);
+                    }
+                }
+            }
+        }
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .expect("write tampered fixture");
+    }
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        !hermetic.status.success(),
+        "corrupted fixture response must fail closed; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("FAIL") || combined.contains("deserialization"),
+        "expected witness failure on corrupted fixture, got:\n{combined}"
+    );
+    let _ = target; // witness path (recorded under /tmp)
+}
+
+#[test]
+fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("fixture-not-live");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let target = "/tmp/gunbc_fs_write_witness.txt";
+    let payload = "hello from the v2 file transport\n";
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(record.status.success(), "record must capture");
+
+    // Mutate live filesystem AFTER record — hermetic must NOT observe this.
+    fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic must replay recorded bytes, not live FS; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    let _ = payload; // original recorded payload
+}
+
+#[test]
+fn filesystem_hermetic_without_fixture_store_fails_closed() {
+    let ws = workspace_root();
+    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "witness_read_absent_fails_closed",
+        "--hermetic",
+    ]);
+    assert!(
+        !hermetic.status.success(),
+        "Filesystem op in Hermetic without fixture store must fail closed (no silent Unit)"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
+        "expected fail-closed mock_response diagnostic, got:\n{combined}"
+    );
 }
 
 fn fixture_files(dir: &Path) -> Vec<PathBuf> {
