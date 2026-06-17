@@ -1,12 +1,22 @@
 //! Cross-tree named-declaration census for `v2.lens.fact_cardinality`.
 //!
+//! **SCAFFOLD (DESIGN.md §7)** — bootstrap text-scan census only. Shrink target: delete
+//! this module when Node-tree decl projection + substrate `content_hash` own the census
+//! in `v2.lens.fact_cardinality` (dissolve-on named in that lens header).
+//!
 //! Host-reads `dsl/` and `src/v2/` without cross-resolve: each `.dag` file is scanned
 //! for column-0 `type` / `data` / `fn` items, normalized body text is hashed, and
 //! `{rel_path}:{decl_name}` keys present in BOTH trees with >1 distinct hash are forks.
+//!
+//! 🟡 bridge-boundary — `tree: String` here is host transport only (`"dsl"` / `"v2"`);
+//! modeled facts use `FactCardinalityTree = Dsl | V2` in the lens.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Must match `fact_cardinality_cross_tree_fork_baseline` in `src/v2/lens/fact_cardinality.dag`.
+pub const FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE: i64 = 34;
 
 const ITEM_KEYWORDS: [&str; 8] = [
     "data ",
@@ -193,9 +203,10 @@ mod tests {
     #[test]
     fn cross_tree_fork_count_matches_baseline() {
         let count = cross_tree_fork_count();
-        assert!(
-            (30..=40).contains(&count),
-            "unexpected fork count {count}; retune baseline if intentional"
+        assert_eq!(
+            count, FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE,
+            "fork count drifted from lens baseline {}; retune both if intentional",
+            FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE
         );
     }
 }

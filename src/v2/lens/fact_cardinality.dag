@@ -4,6 +4,9 @@
 // appear in BOTH `dsl/` and `src/v2/` with distinct normalized body content-hashes.
 // Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
 // Consumer: claim_batch discovery over src/v2/compiler/fact_cardinality.
+// Hand-Rust scaffold receipt (DESIGN.md §7): `fact_cardinality_census.rs` is bootstrap
+//   text-scan census only — shrink target is delete that module once Node-tree decl
+//   projection + substrate `content_hash` own the census in this lens.
 // Dissolve-on: Node-tree decl projection replaces text-scan body hash (substrate content_hash).
 
 module v2.lens.fact_cardinality
@@ -12,9 +15,17 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
+// 🟡 gated — coproduct-dissolution interim — feature:fact-cardinality-tree-coproduct —
+// bind PR-1 fact-cardinality lens — dissolve-on-arrival: closed `FactCardinalityTree`
+// replaces any stringly tree labels at the bridge boundary; forbidden: `"foo"` tree
+// tags in synthetic or corpus facts outside {Dsl, V2}.
+type FactCardinalityTree
+  = Dsl
+  | V2
+
 type FactCardinalityDeclFact {
   rel_path_decl_key: String
-  tree: String
+  tree: FactCardinalityTree
   content_hash: String
 }
 

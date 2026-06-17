@@ -11,13 +11,13 @@ import v2.std.logic { Bool }
 
 data synthetic_unified_dsl: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "algebra.dag:Lattice",
-  tree: "dsl",
+  tree: Dsl,
   content_hash: "7e31b580ce38306e"
 }
 
 data synthetic_unified_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "algebra.dag:Lattice",
-  tree: "v2",
+  tree: V2,
   content_hash: "7e31b580ce38306e"
 }
 

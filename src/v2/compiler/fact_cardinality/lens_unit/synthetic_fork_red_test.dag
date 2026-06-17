@@ -11,13 +11,13 @@ import v2.std.logic { Bool }
 
 data synthetic_fork_dsl: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "algebra.dag:FreeMonoid",
-  tree: "dsl",
+  tree: Dsl,
   content_hash: "dsl_free_monoid_record"
 }
 
 data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "algebra.dag:FreeMonoid",
-  tree: "v2",
+  tree: V2,
   content_hash: "v2_free_monoid_coproduct"
 }
 
