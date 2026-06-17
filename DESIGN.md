@@ -80,7 +80,18 @@ its real names, declare its version, model what the API actually returns), rathe
 Corollaries: the layer DAG is
 strict (`std ← extdeps ← compiler ← workflow`, imports point toward std); a fact's home is its *layer*,
 not its file (paths are discriminators, not gospel); below-boundary representation is opaque (the
-rename test).
+rename test). A direct consequence for `extdeps/` service operations, three separable facts that must
+not be fused into one row: (a) the **interface shape** — the dependency's parameterized contract
+(inputs → outputs, exit/error semantics) — is what extdeps owns; (b) the **transport** (shell / REST /
+SDK) is a §2 Realization *handler* bound to that shape, *one of N*, not a fact about the dependency — a
+single hardwired transport is the §4 N×M-adapter trap (`git diff` argv models the git CLI, a nickname
+for git's diff *semantics*; libgit2 and the compare API are the other handlers); (c) **business policy**
+(which base ref, which flag, an idempotency protocol the dependency doesn't provide) is a *workflow*
+fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has
+leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`,
+`--all-targets`); the tell that (b) has fused is the same operation forked once per transport
+(GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. This is not yet
+lens-enforced — until it is, it is §3 diligence.
 
 - *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model.
 

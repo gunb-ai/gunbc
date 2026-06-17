@@ -7,11 +7,21 @@
 
 module extdeps.cargo_build
 
-// -- Service: shell transport wiring -----------------------------
+// -- Service: shell transport binding (one realization of the cargo CLI) ------
+//
+// HONEST-MODELING DEBT (DESIGN.md §3): these argv lists fuse OUR policy flags
+// (`--all-targets`, `--workspace`, `-D warnings`, `--no-deps`) as literals, so
+// they model "gunbc's cargo invocation" rather than cargo's parameterized
+// interface. A previously-declared `all_targets`/`deny_args` input pretended to
+// parameterize this but was never wired into any argv (decorative parameter,
+// referenced by no caller) -- removed, since a parameter that changes nothing is
+// worse than honest hardcoding. Faithful parameterization needs conditional/
+// list-spread argv the grammar does not yet express (tracked with A1, the
+// transport-shape de-fusion); until then the fused policy is marked, not hidden.
 
 service cargo.Build {
   operation Build {
-    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
+    input { env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -39,7 +49,7 @@ service cargo.Build {
   }
 
   operation Clippy {
-    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
+    input { env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

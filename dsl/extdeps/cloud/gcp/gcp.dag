@@ -172,22 +172,12 @@ service oauth2.Google {
   }
 }
 
-service shell.OAuth2 {
-  operation RefreshToken {
-    input { refresh_token: Secret }
-    // BRIDGE: stdout is raw JSON; access_token should use JSON extraction
-    // or callers should use oauth2.Google.Refresh (REST) instead.
-    output { access_token: Secret from "stdout", valid: Bool from "exit_success" }
-    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token=\{refresh_token\}"] }
-    exit {
-      0 => Unit
-      nonzero => String "Token refresh failed"
-    }
-    mock_response {
-      0 => { access_token: "ya29.mock-shell-access-token", valid: true } "Token refreshed via shell"
-    }
-  }
-}
+// NOTE: the OAuth2 token-refresh endpoint is GCP's REST API, modeled faithfully
+// by `oauth2.Google.Refresh` above. A former `shell.OAuth2.RefreshToken` op
+// re-implemented that same endpoint with hand-rolled curl + form-encoding -- a
+// business bridge masquerading as a distinct dependency, with a known JSON/encoding
+// defect its own comment flagged. Removed: there is exactly one model of the
+// refresh endpoint, and `curl` is a transport, not a second handler we owe here.
 
 service shell.GCloud {
   operation AuthPrintAccessToken {

@@ -153,7 +153,7 @@ func metadata_oidc(audience: String) -> { token: Secret }
 //   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
 //
 //   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
-//   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
+//   adc_refresh = oauth2.Google.Refresh(refresh_token: adc_content.content, ...) [when adc_path.value != None]
 //   gcloud_auth = shell.GCloud.AuthPrintAccessToken()
 //
 //   let adc_token = adc_refresh.access_token
