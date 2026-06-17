@@ -34,8 +34,6 @@ data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = Extd
   function: "policy_leak_cargo_build_is_red_holds"
 }
 
-<<<<<<< HEAD
-=======
 data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "corpus cargo_build de-fused (regression guard)",
   violation_kind: violation_kind_policy_leak,
@@ -50,7 +48,6 @@ data receipt_git_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = Ext
   function: "corpus_git_policy_leak_defused_holds"
 }
 
->>>>>>> 919cce533 (WIP: extdeps/std section-3 conflation follow-up)
 data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit clean git diff",
   violation_kind: violation_kind_policy_leak,
@@ -137,11 +134,8 @@ data receipt_embedded_policy_corpus: ExtdepsShapeTransportPolicyReceiptRow = Ext
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
   receipt_policy_leak_lens_unit,
-<<<<<<< HEAD
-=======
   receipt_policy_leak_corpus,
   receipt_git_policy_leak_corpus,
->>>>>>> 919cce533 (WIP: extdeps/std section-3 conflation follow-up)
   receipt_clean_git_diff,
   receipt_clean_gist_create,
   receipt_gist_create_corpus,
@@ -166,13 +160,8 @@ fn rows_cover_kind(kind: String) -> Bool {
 fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_kind(kind: violation_kind_policy_leak)
     && rows_cover_kind(kind: violation_kind_transport_fusion)
-<<<<<<< HEAD
     && rows_cover_kind(kind: violation_kind_dead_param)
     && rows_cover_kind(kind: violation_kind_embedded_policy)
     && length(xs: violation_kinds) == 4
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 13
-=======
-    && length(xs: violation_kinds) == 2
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 8
->>>>>>> 919cce533 (WIP: extdeps/std section-3 conflation follow-up)
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 15
 }
