@@ -175,6 +175,7 @@ import v2.std.compilers.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetClosureShape,
   TargetEffectCalleeRow,
   TargetConditionalShape,
   TargetOperatorRealization,
@@ -608,6 +609,19 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
+    },
+    // Lane 2c — TODO(follow-up): TypeScript closures are `(p, ...) => expr` (fat-arrow), which needs
+    // a `=>` token and no `fn`/brace framing the single-token shape can't yet express. The .dag
+    // self-target is the witnessed callable/closure surface in this PR; this row exists only so the
+    // fail-closed projection bundle decodes — no TS closure emission is exercised or claimed here.
+    closure_form: TargetClosureShape {
+      fn_token: ^ts_token_kw_function,
+      open: ^ts_token_lparen,
+      separator: ^ts_token_comma,
+      close: ^ts_token_rparen,
+      body_open: ^ts_token_lbrace,
+      body_close: ^ts_token_rbrace,
+      param_ident_token: ^ts_token_ident
     },
     // Applied-effect projection: the `callees` catalog binds each v2.std.runtime EffectRequestKind
     // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
