@@ -3,10 +3,12 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
 import v2.extdeps.languages.dag {
-  dag_mvp1_loop_arrow_with_body_fixture,
+  dag_mvp1_fixture_emitted_loop_fn,
   dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
   dag_mvp1_loop_body_wrong_value_node,
-  dag_mvp1_target_model
+  dag_mvp1_loop_source_text,
+  dag_mvp1_loop_target_model,
+  dag_mvp1_loop_wrong_value_source_text
 }
 import v2.lens.application { apply_diff }
 import v2.lens.application_serializer {
@@ -37,31 +39,11 @@ data serialize_loop_body_diff: Diff = Diff {
   edits: [serialize_loop_body_edit]
 }
 
-data serialize_loop_target: TargetModel = dag_mvp1_target_model()
-
-test fn serialize_loop_before_accepts() -> Bool {
-  match serialize_dag_source(
-    emitted: dag_mvp1_loop_arrow_with_body_fixture,
-    target: serialize_loop_target
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn serialize_loop_after_accepts() -> Bool {
-  match serialize_dag_source(
-    emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
-    target: serialize_loop_target
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
+data serialize_loop_target: TargetModel = dag_mvp1_loop_target_model()
 
 fn serialize_loop_before_after_differ() -> Bool {
   match serialize_dag_source(
-    emitted: dag_mvp1_loop_arrow_with_body_fixture,
+    emitted: dag_mvp1_fixture_emitted_loop_fn,
     target: serialize_loop_target
   ) {
     Accepted { value: before, diagnostics: _ } =>
@@ -78,7 +60,7 @@ fn serialize_loop_before_after_differ() -> Bool {
 
 fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
   match serialize_applied_diff(
-    root: dag_mvp1_loop_arrow_with_body_fixture,
+    root: dag_mvp1_fixture_emitted_loop_fn,
     diff: serialize_loop_body_diff,
     target: serialize_loop_target
   ) {
@@ -96,7 +78,7 @@ fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
 
 fn serialize_loop_apply_diff_structurally_matches() -> Bool {
   match apply_diff(
-    root: dag_mvp1_loop_arrow_with_body_fixture,
+    root: dag_mvp1_fixture_emitted_loop_fn,
     d: serialize_loop_body_diff
   ) {
     Accepted { value: patched, diagnostics: _ } =>
@@ -107,7 +89,7 @@ fn serialize_loop_apply_diff_structurally_matches() -> Bool {
 
 fn serialize_loop_patch_carrier_holds() -> Bool {
   match serialize_diff_as_source_patch(
-    root: dag_mvp1_loop_arrow_with_body_fixture,
+    root: dag_mvp1_fixture_emitted_loop_fn,
     diff: serialize_loop_body_diff,
     target: serialize_loop_target
   ) {
@@ -115,7 +97,8 @@ fn serialize_loop_patch_carrier_holds() -> Bool {
       if patch.after == patch.before {
         false
       } else {
-        serialize_loop_applied_diff_matches_authority_after()
+        patch.before == dag_mvp1_loop_source_text
+          && patch.after == dag_mvp1_loop_wrong_value_source_text
       }
     Rejected { diagnostics: _ } => false
   }
