@@ -4437,7 +4437,7 @@ fn dag_mvp1_pick_target_model() -> TargetModel {
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
     authority_source_text: dag_mvp1_pick_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4578,7 +4578,7 @@ fn dag_mvp1_bind_target_model() -> TargetModel {
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
     authority_source_text: dag_mvp1_bind_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4719,7 +4719,7 @@ fn dag_mvp1_loop_target_model() -> TargetModel {
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
     authority_source_text: dag_mvp1_loop_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4729,7 +4729,7 @@ fn dag_mvp1_target_model() -> TargetModel {
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
     authority_source_text: dag_mvp1_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 

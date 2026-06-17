@@ -1254,7 +1254,7 @@ fn cpp_mvp1_target_model_for_profile(target_profile: Node) -> TargetModel {
     lex: cpp_wave1_lex(),
     binding_spellings: cpp_mvp1_binding_spellings(),
     authority_source_text: cpp_mvp1_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
