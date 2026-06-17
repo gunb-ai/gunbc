@@ -2018,10 +2018,8 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
 }
 
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
-    let mut witness_nodes: Vec<String> = records
-        .iter()
-        .map(emit_source_root_read_witness)
-        .collect();
+    let mut witness_nodes: Vec<String> =
+        records.iter().map(emit_source_root_read_witness).collect();
     let mut out = String::from("Empty");
     while let Some(head) = witness_nodes.pop() {
         out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
@@ -2128,9 +2126,10 @@ pub fn compile_sources_with_resolved_graph_cache(
 
     let resolved = v1_compiler_compile::compile_to_resolved(sources.clone());
     if !resolved_has_blocking_errors(resolved.as_ref()) {
-        if let (Some(cache_root), Some(graph)) =
-            (resolved_graph_cache_root_from_env(), resolved.graph.as_ref())
-        {
+        if let (Some(cache_root), Some(graph)) = (
+            resolved_graph_cache_root_from_env(),
+            resolved.graph.as_ref(),
+        ) {
             let si: HashMap<String, Rc<NewlineIndex>> = resolved
                 .source_indices
                 .iter()

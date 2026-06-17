@@ -42,9 +42,10 @@ fn main() -> ExitCode {
         }
     };
 
-    let sources = Rc::new(cli_run::load_compile_sources(&[
-        args.source_root.to_string_lossy().to_string(),
-    ]));
+    let sources = Rc::new(cli_run::load_compile_sources(&[args
+        .source_root
+        .to_string_lossy()
+        .to_string()]));
     eprintln!(
         "compile_cached: {} sources from {:?} (target: {})",
         sources.len(),
@@ -54,7 +55,10 @@ fn main() -> ExitCode {
 
     let result = cli_run::compile_sources_with_resolved_graph_cache(sources, render_target);
     std::fs::create_dir_all(&args.output_dir).unwrap_or_else(|e| {
-        eprintln!("error: failed to create output dir {:?}: {}", args.output_dir, e);
+        eprintln!(
+            "error: failed to create output dir {:?}: {}",
+            args.output_dir, e
+        );
         std::process::exit(1);
     });
     for file in result.files.iter() {
