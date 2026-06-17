@@ -32,7 +32,9 @@ import product.hardware_selection {
   wall_draw_watts,
   psu_is_adequate,
   dominates,
-  axes_on_front
+  axes_on_front,
+  cost_micros_per_gib,
+  bandwidth_per_watt
 }
 
 // --- Platform: 8-channel, 2 DIMMs/channel, DDR4-3200 ceiling -------------
@@ -154,9 +156,18 @@ fn front_keeps_tradeoffs_strips_dominated() -> Bool {
     && !axes_on_front(candidate: cfg_b_axes, pool: pool)
 }
 
+// Derived decision ratios are COMPUTED, not dead spec (§5): cost/GiB is a positive,
+// non-degenerate number, and single-rank A is more bandwidth-per-watt efficient than the
+// downclocked, hotter dual-rank B — the same cross-variable effect, read as a ratio.
+fn derived_ratios_are_computed() -> Bool {
+  cost_micros_per_gib(a: cfg_a_axes) > 0
+    && bandwidth_per_watt(a: cfg_a_axes) > bandwidth_per_watt(a: cfg_b_axes)
+}
+
 fn hardware_selection_holds() -> Bool {
   downclock_is_rank_dependent()
     && psu_sizing_is_computed()
     && single_rank_dominates_dual_at_2dpc()
     && front_keeps_tradeoffs_strips_dominated()
+    && derived_ratios_are_computed()
 }
