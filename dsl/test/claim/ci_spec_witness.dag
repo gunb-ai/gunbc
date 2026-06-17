@@ -47,11 +47,15 @@ fn witness_edit_witness_root_changes_scheduler() -> Bool {
     !string_contains(s: alt, pattern: " --source-root src/v2")
 }
 
-fn witness_scan_subtree_emits_scan_dir() -> Bool {
-  string_contains(
-    s: scheduler_invoke(spec: spec_with_scan_subtree),
-    pattern: " --scan-dir src/v2/test"
-  )
+// `claim_executor` has no `--scan-dir` flag (it hard-errors on unknown args), so a
+// spec with `scan_subtrees` must NOT leak `--scan-dir` onto the scheduler argv —
+// the scan dir is carried by the plan (`corpus_scan_dirs`, proven in
+// `ci_floor_plan_witness`). Discriminating: the source-root is still emitted; only
+// the harmful scan-dir flag is gone.
+fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
+  let script = scheduler_invoke(spec: spec_with_scan_subtree)
+  !string_contains(s: script, pattern: " --scan-dir") &&
+    string_contains(s: script, pattern: " --source-root src/v2")
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
@@ -84,7 +88,7 @@ fn witness_run_script_invokes_scheduler() -> Bool {
 fn ci_spec_witnesses() -> Bool {
   witness_roots_fold_into_scheduler() &&
     witness_edit_witness_root_changes_scheduler() &&
-    witness_scan_subtree_emits_scan_dir() &&
+    witness_scan_subtree_not_in_scheduler_argv() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
     witness_run_script_invokes_scheduler()

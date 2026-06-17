@@ -12,10 +12,22 @@ module v2.test.claim.ci_floor_plan_witness
 
 import v2.workflow.ci_floor_plan {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
-  gunbc_ci_floor_batches
+  gunbc_ci_floor_batches, corpus_scan_dirs
 }
+import gunbc.ci_spec { CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
+
+// A spec whose witness root carries a `scan_subtrees` — the scan dir must surface
+// in the PLAN (`corpus_scan_dirs`), the single authority for that derivation, NOT
+// on the `claim_executor` argv (proven absent in `ci_spec_witness`).
+data spec_with_scan_subtree: CiSpec = {
+  witness_roots: [{ root: "src/v2", scan_subtrees: ["test"] }],
+  witness_entries: [],
+  gates: [],
+  diff_policy: { base: "origin/main", head: "HEAD", mode: DiffMergeBase },
+  notice_title: "scan-test"
+}
 
 data corpus_sentinel: String = "__corpus__"
 
@@ -59,9 +71,18 @@ fn witness_independent_jobs_parallelize() -> Bool {
   gunbc_ci_floor_batches().skip(n: 1).first().length() > 1
 }
 
+// Scan dirs are carried by the plan (the corpus DiscoveryBatch), the single
+// authority — NOT by the scheduler argv. A spec with `scan_subtrees: ["test"]`
+// under root `src/v2` yields `src/v2/test`; a derivation that dropped the subtree
+// would go RED here.
+fn witness_scan_subtree_flows_through_plan() -> Bool {
+  list_contains_str(xs: corpus_scan_dirs(spec: spec_with_scan_subtree), target: "src/v2/test")
+}
+
 fn ci_floor_plan_witnesses() -> Bool {
   witness_two_readiness_layers() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
-    witness_independent_jobs_parallelize()
+    witness_independent_jobs_parallelize() &&
+    witness_scan_subtree_flows_through_plan()
 }

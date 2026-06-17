@@ -88,21 +88,13 @@ fn witness_root_source_flag(wr: WitnessRoot) -> String {
   concat(" --source-root ", wr.root)
 }
 
-fn witness_root_scan_flags(wr: WitnessRoot) -> String {
-  fold(wr.scan_subtrees, init: "", f: (acc, sub) => {
-    let dir = if starts_with(s: sub, prefix: wr.root) {
-      sub
-    } else {
-      concat(concat(wr.root, "/"), sub)
-    }
-    concat(acc, concat(" --scan-dir ", dir))
-  })
-}
-
-fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
-  fold(roots, init: "", f: (acc, wr) =>
-    concat(concat(acc, witness_root_source_flag(wr: wr)), witness_root_scan_flags(wr: wr))
-  )
+// `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
+// `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
+// SOLELY by the plan (`ci_floor_plan.corpus_scan_dirs` → `RunnableDiscoveryBatch.
+// scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
+// on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
+fn witness_roots_source_flags(roots: List<WitnessRoot>) -> String {
+  fold(roots, init: "", f: (acc, wr) => concat(acc, witness_root_source_flag(wr: wr)))
 }
 
 // The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
@@ -117,7 +109,7 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_flags(roots: spec.witness_roots)),
+        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
         concat(" --plan-entry ", floor_plan_entry)
       ),
       concat(" --plan-function ", floor_plan_function)
