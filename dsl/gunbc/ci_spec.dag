@@ -48,7 +48,7 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "dsl/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
+    { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" }
   ],
   gates: [
@@ -106,7 +106,7 @@ fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
 // gates pair — is the default CI runtime: both the discovery corpus and the gates
 // are scheduler plan nodes (`dsl/gunbc/ci_floor_plan.dag`), run dependency-ordered
 // and parallel-where-independent, fail-closed (DESIGN §4/§5).
-data floor_plan_entry: String = "dsl/gunbc/ci_floor_plan.dag"
+data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 
 fn scheduler_invoke(spec: CiSpec) -> String {
