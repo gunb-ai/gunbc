@@ -74,14 +74,12 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
         graph
             .modules
             .iter()
-            .cloned()
             .map(|m| {
-                let mut type_env = (*m.type_env).clone();
+                let mut typed = (**m).clone();
+                let mut type_env = (*typed.type_env).clone();
                 type_env.intern_table = empty_intern_table();
-                Rc::new(v1_compiler::v1_compiler_infer_items::TypedModule {
-                    type_env: Rc::new(type_env),
-                    ..(*m).clone()
-                })
+                typed.type_env = Rc::new(type_env);
+                Rc::new(typed)
             })
             .collect::<Vec<_>>(),
     );
