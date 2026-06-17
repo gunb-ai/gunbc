@@ -89,6 +89,12 @@ fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
 // DDR4 monolithic max die density = 16 Gibit (16 × 2^30 bits). Anchor: JEDEC DDR4 (JESD79-4)
 // device densities 2/4/8/16 Gbit; 32Gbit is DDR5-era. 🟡 raise for DDR5 (up to 64Gbit) when a
 // generation axis lands — for now the std.memory catalog is DDR4.
+// 🟡 flat Int with a unit-carrying name (DESIGN unit-modeling rule) — a density ceiling, not a
+// grounded magnitude yet. (Distinct from the value-note above: that is the DDR4→DDR5 VALUE
+// trigger; this is the Int→carrier REPRESENTATION trigger.)
+//   feature: die-density-bitwidth-carrier
+//   dissolve-on: die density re-carried as a std.measure inhabitant (a BitWidth/bit-magnitude
+//     scale) — this ceiling and dram_module_required_die_density_bits adopt that carrier together.
 data max_dram_die_density_bits: Int = 17179869184
 
 fn dram_module_required_die_density_bits(module: DramModuleCatalogRow) -> Int {

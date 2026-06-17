@@ -108,6 +108,12 @@ type Platform {
 }
 
 // DRAM data bus is 64 bits = 8 bytes per channel (ECC adds check bits, not data width).
+// 🟡 flat Int with unit-carrying name (DESIGN unit-modeling rule) — a scaling factor, not a
+// grounded magnitude yet.
+//   feature: bus-width-bytesize-carrier
+//   dissolve-on: the std.measure ByteSize migration that re-carries memory sizes (capacity /
+//     bandwidth bus width) as Measure inhabitants — this factor adopts that same carrier then,
+//     rolled under the existing measure-carrier dissolve-on (see max_data_rate_mts below).
 data dram_channel_bus_bytes: Int = 8
 
 // 🟡 CALIBRATE(board-downclock-thresholds) — the signal-integrity downclock model, one of
@@ -374,8 +380,11 @@ fn axes_on_front(candidate: HardwareAxes, pool: List<HardwareAxes>) -> Bool {
 // unifying `if` branches, so a guard like `if p <= 0 { 1 } else { p }` over a Nat-typed `p`
 // (a `*_count` magnitude) fails with "if branches resolve to incompatible types: Int vs Nat"
 // (verified by execution). Routing the magnitude through `as_int` first pins a single Int
-// domain so the divide-by-zero guards below type-check. Dissolves if/when v2 widens Nat⊂Int
-// across branch unification (then the call sites read the `*_count` Nat directly).
+// domain so the divide-by-zero guards below type-check.
+//   feature: v2-nat-int-branch-widening
+//   dissolve-on: the v2 checker auto-widening Nat ⊂ Int when unifying `if` branch types — then
+//     the guards read the `*_count` Nat directly and this no-op is deleted (§6: a scaffold with
+//     a named dissolution trigger, not a permanent fixture).
 fn as_int(n: Int) -> Int {
   n
 }
