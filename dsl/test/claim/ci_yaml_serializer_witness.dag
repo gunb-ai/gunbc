@@ -1,0 +1,174 @@
+// dsl/test/claim/ci_yaml_serializer_witness.dag
+//
+// By-execution witnesses for CI workflow YAML projection + serializer.
+
+module test.claim.ci_yaml_serializer_witness
+
+import extdeps.formats.yaml {
+  YamlValue, YamlKeyValue, YamlString, YamlInt, YamlMapping, YamlSequence,
+  serialize_yaml, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
+  empty_yaml_values
+}
+import gunbc.workflow_yaml_project { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
+import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
+import gunbc.ci_workflow { ci_workflow }
+
+fn witness_fetch_depth_is_int_not_string() -> Bool {
+  let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
+  let out = serialize_yaml(v: with_block)
+  (out == "fetch-depth: 0\n") && (out != "fetch-depth: \"0\"\n")
+}
+
+fn witness_rustflags_empty_string_quoted() -> Bool {
+  let with_block = yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))])
+  serialize_yaml(v: with_block) == "rustflags: ''\n"
+}
+
+fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
+  let job = ci_workflow.jobs.first()
+  match steps_yaml(steps: job.steps) {
+    YamlSequence { elements: els } => els.length() == 6
+    _ => false
+  }
+}
+
+fn witness_step_sequence_only_serializes() -> Bool {
+  let step = step_yaml(step: ci_workflow.jobs.first().steps.first())
+  serialize_yaml(v: yaml_sequence(elements: concat(empty_yaml_values, [step]))) != ""
+}
+
+fn witness_step_mapping_serializes() -> Bool {
+  serialize_yaml(v: step_yaml(step: ci_workflow.jobs.first().steps.first())) != ""
+}
+
+fn witness_first_step_is_mapping() -> Bool {
+  match steps_yaml(steps: ci_workflow.jobs.first().steps) {
+    YamlSequence { elements: els } =>
+      match els.first() {
+        YamlMapping { entries: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn witness_one_step_serializes() -> Bool {
+  let first = ci_workflow.jobs.first().steps.first()
+  serialize_yaml(v: yaml_mapping(entries: [
+    kv(key: "steps", value: yaml_sequence(elements: concat(empty_yaml_values, [step_yaml(step: first)])))
+  ])) != ""
+}
+
+fn witness_steps_wrapped_serializes() -> Bool {
+  serialize_yaml(v: yaml_mapping(entries: [
+    kv(key: "steps", value: steps_yaml(steps: ci_workflow.jobs.first().steps))
+  ])) != ""
+}
+
+fn witness_jobs_yaml_serializes() -> Bool {
+  serialize_yaml(v: yaml_mapping(entries: [
+    kv(key: "jobs", value: jobs_yaml(jobs: ci_workflow.jobs))
+  ])) != ""
+}
+
+fn witness_project_workflow_serializes() -> Bool {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow)) != ""
+}
+
+fn witness_ci_yaml_gate_red_on_perturbed_bytes() -> Bool {
+  let expected = expected_ci_yml()
+  ci_yml_drifted(committed: concat(expected, "\n# perturb")) &&
+    !ci_yml_drifted(committed: expected)
+}
+
+fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
+  let expected = expected_ci_yml()
+  ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
+}
+
+fn witness_cache_path_block_scalar() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(
+    s: yaml,
+    pattern: "          path: |\n            ${{ runner.temp }}/cargo/registry/index/"
+  ) &&
+    string_contains(
+      s: yaml,
+      pattern: concat(
+        concat(
+          "            ${{ runner.temp }}/cargo/registry/cache/\n",
+          "            ${{ runner.temp }}/cargo/git/db/\n"
+        ),
+        "            target/"
+      )
+    )
+}
+
+fn witness_restore_keys_block_scalar_indent() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(
+    s: yaml,
+    pattern: "          restore-keys: |\n            cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n"
+  ) &&
+    !string_contains(s: yaml, pattern: "          restore-keys: |\n          cargo-ci-")
+}
+
+fn witness_rustup_run_plain_not_quoted() -> Bool {
+  let yaml = expected_ci_yml()
+  let rustup_run = concat(
+    "        run: rustup default \"$(rustup show active-toolchain | awk '",
+    concat(concat("{", "print $1; exit"), concat("}", "')\""))
+  )
+  string_contains(s: yaml, pattern: rustup_run) &&
+    !string_contains(s: yaml, pattern: "run: \"rustup default")
+}
+
+fn witness_cache_key_plain_not_quoted() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles") &&
+    !string_contains(s: yaml, pattern: "key: \"cargo-ci")
+}
+
+fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
+  let broken = concat(
+    concat(
+      "          path: ${{ runner.temp }}/cargo/registry/index/\n",
+      "        ${{ runner.temp }}/cargo/registry/cache/\n"
+    ),
+    ""
+  )
+  !string_contains(s: expected_ci_yml(), pattern: broken)
+}
+
+fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
+  !string_contains(
+    s: expected_ci_yml(),
+    pattern: concat(
+      "          path: ${{ runner.temp }}/cargo/registry/index/\n",
+      "        ${{ runner.temp }}/cargo/registry/cache/"
+    )
+  )
+}
+
+fn witness_restore_keys_content_deeper_than_key() -> Bool {
+  !string_contains(
+    s: expected_ci_yml(),
+    pattern: "          restore-keys: |\n          cargo-ci-"
+  )
+}
+
+fn ci_yaml_serializer_keystone_holds() -> Bool {
+  witness_fetch_depth_is_int_not_string() &&
+    witness_rustflags_empty_string_quoted() &&
+    witness_steps_sequence_elements_are_yaml_values() &&
+    witness_project_workflow_serializes() &&
+    witness_ci_yaml_gate_red_on_perturbed_bytes() &&
+    witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() &&
+    witness_cache_path_block_scalar() &&
+    witness_restore_keys_block_scalar_indent() &&
+    witness_rustup_run_plain_not_quoted() &&
+    witness_cache_key_plain_not_quoted() &&
+    witness_multiline_without_block_scalar_is_invalid() &&
+    witness_cache_path_not_flat_multiline_sibling() &&
+    witness_restore_keys_content_deeper_than_key()
+}
