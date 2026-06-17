@@ -24,11 +24,8 @@ import v2.std.integer { Int }
 import v2.std.node { Symbol }
 
 
-data refinement_authoritative_locus_port: Symbol = refinement_authoritative_locus
-
-
 fn refinement_authoritative_locus() -> Locus {
-  port_locus(port: refinement_authoritative_locus_port)
+  port_locus(port: ^refinement_authoritative_locus)
 }
 
 
