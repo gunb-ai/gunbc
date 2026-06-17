@@ -1,0 +1,35 @@
+// gunbc/ci_yaml_validate.dag — host YAML parse check for generated ci.yml bytes.
+//
+// DESIGN §5: drift equality alone is insufficient; the committed file must parse as YAML.
+// Tries python3 PyYAML first, then actionlint on PATH, then the hand-written `yaml_check`
+// seed bin (SCAFFOLD — see `src/v1/stage0/src/bin/yaml_check.rs` dissolution trigger).
+
+module gunbc.ci_yaml_validate
+
+import extdeps.shell
+
+data yaml_parse_python: String = "python3 -c \"import yaml,sys; yaml.safe_load(open(sys.argv[1]))\""
+
+fn ci_yml_parse_script(path: String) -> String {
+  concat(
+    concat(yaml_parse_python, " "),
+    concat(
+      path,
+      concat(
+        " 2>/dev/null || actionlint ",
+        concat(
+          path,
+          concat(
+            " 2>/dev/null || cargo run -q -p v1-compiler --release --bin yaml_check -- ",
+            path
+          )
+        )
+      )
+    )
+  )
+}
+
+fn ci_yml_parses(path: String) -> Bool {
+  let result = shell.Exec.Run(script: ci_yml_parse_script(path: path))
+  result.success
+}

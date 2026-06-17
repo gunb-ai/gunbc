@@ -45,7 +45,7 @@ fn source_bridged_add_tightened_budget_fails_dominance(
         b: linear_complexity(size_var: SizeVariable { source: body })
       )
       && complexity_bound_dominates(
-        a: complexity_declared_budget_for_row(row: row),
+        a: complexity_declared_budget_for_row(row: row, body: body),
         b: computed
       )
     _ => false
