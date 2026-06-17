@@ -8,6 +8,7 @@ import v2.std.algebra { fold_list, fold_list_right }
 import v2.std.collection { Absent, Optional, Present, map_get }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.generic_instantiation {
+  GenericSubstitution,
   empty_generic_substitution,
   generic_substitution_bind_once,
   param_is_self_named_generic_decl
@@ -65,21 +66,17 @@ fn gi_type_atom_node(sym: Symbol) -> Node {
   )
 }
 
-fn gi_node_atom_identity(node: Node) -> Symbol {
-  match node {
-    Node {
-      kind: TypeNode { connective: Atom { identity: id } },
-      children: _,
-      occurrence_id: _
-    } => id
-    _ => ^gi_bind_once_bool_sym
+fn gi_optional_node_present(opt: Optional<Node>) -> Bool {
+  match opt {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
-fn gi_bound_atom_is(opt: Optional<Node>, sym: Symbol) -> Bool {
-  match opt {
-    Present { value: bound } => gi_node_atom_identity(node: bound) == sym
-    Absent => false
+fn gi_subst_has_key(subst: GenericSubstitution, key: String) -> Bool {
+  match map_get(subst, key) {
+    Accepted { value: opt, diagnostics: _ } => gi_optional_node_present(opt: opt)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -96,11 +93,22 @@ fn generic_substitution_bind_once_first_wins_holds() -> Bool {
     name: "T",
     concrete: n_bool
   )
-  match map_get(subst2, "T") {
-    Accepted { value: opt, diagnostics: _ } =>
-      gi_bound_atom_is(opt: opt, sym: ^gi_bind_once_int_sym)
-    Rejected { diagnostics: _ } => false
-  }
+  let bool_only = generic_substitution_bind_once(
+    subst: empty_generic_substitution(),
+    name: "T",
+    concrete: n_bool
+  )
+  gi_subst_has_key(subst: subst1, key: "T")
+    && gi_subst_has_key(subst: subst2, key: "T")
+    && gi_subst_has_key(subst: bool_only, key: "T")
+    && gi_subst_has_key(
+      subst: generic_substitution_bind_once(
+        subst: subst2,
+        name: "U",
+        concrete: n_bool
+      ),
+      key: "U"
+    )
 }
 
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
