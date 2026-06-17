@@ -31,8 +31,8 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 
 fn cron_tag_sources() -> Vec<Rc<v1_compiler::v1_compiler_compile::SourceFile>> {
     let path = workspace_root().join(CRON_TAG_DAG);
-    let content = fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let content =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     resolve_imports_transitively(CRON_TAG_DAG, &content)
 }
 
@@ -48,26 +48,21 @@ fn run_witness(sources: Vec<Rc<v1_compiler::v1_compiler_compile::SourceFile>>) -
 fn cron_tag_upsert_protocol_keystone_holds_via_interpreter() {
     match run_witness(cron_tag_sources()) {
         Value::Bool(true) => {}
-        other => panic!(
-            "cron_tag upsert protocol regressed: {WITNESS_FN} returned {other:?}"
-        ),
+        other => panic!("cron_tag upsert protocol regressed: {WITNESS_FN} returned {other:?}"),
     }
 }
 
 #[test]
 fn cron_tag_upsert_protocol_witness_discriminates_on_mutation() {
     let path = workspace_root().join(CRON_TAG_DAG);
-    let mut content = fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    content = content.replace(
-        "got == want",
-        "got != want",
-    );
+    let mut content =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    content = content.replace("got == want", "got != want");
     let sources = resolve_imports_transitively(CRON_TAG_DAG, &content);
     match run_witness(sources) {
         Value::Bool(false) => {}
-        other => panic!(
-            "expected mutated witness to return false (non-vacuous green), got {other:?}"
-        ),
+        other => {
+            panic!("expected mutated witness to return false (non-vacuous green), got {other:?}")
+        }
     }
 }
