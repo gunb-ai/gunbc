@@ -267,12 +267,12 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: Zero } => zero_cost()
+    ConstantCost { value: Zero } => b
     ConstantCost { value: Succ { prev: Zero } } => b
     UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
-        ConstantCost { value: Zero } => zero_cost()
+        ConstantCost { value: Zero } => a
         ConstantCost { value: Succ { prev: Zero } } => a
         UnknownCost { diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
