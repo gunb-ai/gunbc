@@ -288,8 +288,6 @@ fn step_yaml(step: Step) -> YamlValue {
   }
 }
 
-data empty_yaml_values: List<YamlValue> = []
-
 fn steps_yaml(steps: List<Step>) -> YamlValue {
   yaml_sequence(elements: fold(steps, init: empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
 }

@@ -47,8 +47,20 @@ func main_wet() -> ProcessExit {
 }
 
 // Composed CI entry point (tools.ci_gates imports this name).
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
 func run_ci_yaml_gate() -> ProcessExit {
-  run_gate()
+  let gate = run_gate()
+  let red = drift_red_receipt()
+  return if exit_ok(gate) && exit_ok(red) {
+    ExitSuccess
+  } else if !exit_ok(gate) {
+    gate
+  } else {
+    red
+  }
 }
 
 // §5 receipt: perturbed bytes must drift (gate would exit non-zero on this content).
