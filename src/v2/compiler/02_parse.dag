@@ -3,9 +3,9 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
-//         parse_expr Nonterminal arm uses memoized ParseTable (position × production) built by
-//         structurally bounded double fold — no measure: Nat / grammar_fuel scaffold.
-//         grammar_has_left_recursion validates left cycles pre-parse.
+//         parse_expr Nonterminal arm expands productions by direct recursive descent
+//         (grammar_has_left_recursion rejects left cycles pre-parse). CYK table pre-fill
+//         removed (#5084); ParseTable Realization carrier inhabitation: node://adhoc-942b5811-772.
 
 
 module v2.compiler.parse
@@ -149,7 +149,7 @@ type GrammarExprCornerFold {
 // ParseExprWalk (1:1 GrammarExpr mirror) deleted; parse_expr_run_walk deleted. parse_expr now
 // uses fold_grammar_expr<fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult>: each
 // algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
-// correct token threading; Nonterminal delegates to parse_nonterminal_from_table (leaf).
+// correct token threading; Nonterminal delegates to parse_nonterminal_direct (leaf).
 
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
@@ -159,12 +159,6 @@ type ParsePositionKey {
 
 // Memoized (position, production) → parse_expr result for production.expression at that offset.
 type ParseTable = Map<ParsePositionKey, ParseExprResult>
-
-type TokensAtPositionAcc {
-  skipped: Int
-  target: Int
-  current: List<Token>
-}
 
 
 
@@ -261,31 +255,6 @@ fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<Parse
 
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
   map_insert(m: table, key: key, value: value)
-}
-
-fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
-  length(xs: all_tokens) - length(xs: tokens)
-}
-
-fn tokens_at_position(all_tokens: List<Token>, position: Int) -> List<Token> {
-  fold_list(
-    xs: all_tokens,
-    empty: TokensAtPositionAcc { skipped: 0, target: position, current: all_tokens },
-    cons: fn(acc, _) {
-      match acc.skipped < acc.target {
-        true =>
-          match list_tail(xs: acc.current) {
-            TailFound { tail: t } => TokensAtPositionAcc {
-              skipped: acc.skipped + 1,
-              target: acc.target,
-              current: t
-            }
-            TailAbsent => acc
-          }
-        false => acc
-      }
-    }
-  ).current
 }
 
 // Positions 0..N inclusive for a token stream of length N (N+1 suffixes).
@@ -469,11 +438,11 @@ fn parse_wrap_production_captured(
   }
 }
 
-fn parse_nonterminal_from_table(
-  table: ParseTable,
+fn parse_nonterminal_direct(
   all_tokens: List<Token>,
   tokens: List<Token>,
   root: GrammarRoot,
+  table: ParseTable,
   prod_name: Symbol,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
@@ -481,31 +450,29 @@ fn parse_nonterminal_from_table(
     Violates { diagnostic: d } =>
       ParseExprRejected { diagnostics: [d] }
     Holds { value: production } =>
-      let key = ParsePositionKey {
-        position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
-        production: prod_name
-      }
-      match parse_table_lookup(table: table, key: key) {
-        Holds { value: inner } =>
-          match inner {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
-              let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
-              let stamped = parse_wrap_production_captured(
-                production: production,
-                captured: captured,
-                prov: merged_prov
-              )
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: stamped.node,
-                diagnostics: diags,
-                prov: stamped.prov
-              }
+      let inner = parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+      match inner {
+        ParseExprRejected { diagnostics: diags } =>
+          ParseExprRejected { diagnostics: diags }
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+          let stamped = parse_wrap_production_captured(
+            production: production,
+            captured: captured,
+            prov: inner_prov
+          )
+          ParseExprAccepted {
+            remaining: remaining,
+            captured: stamped.node,
+            diagnostics: diags,
+            prov: stamped.prov
           }
-        Violates { diagnostic: d } =>
-          ParseExprRejected { diagnostics: [d] }
       }
   }
 }
@@ -857,7 +824,7 @@ type ParseThunk {
 // where ParseThunk = { apply: fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult }.
 // fold_grammar_expr reduces children to ParseThunk (deferred combinators) before passing them to
 // each handler — no parsing runs during construction; only top thunk fires via .apply at the end.
-// Nonterminal arm: O(1) ParseTable lookup via parse_nonterminal_from_table (table-boundary leaf).
+// Nonterminal arm: direct production expansion (validated grammars are left-recursion free).
 // Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
   expr: GrammarExpr,
@@ -894,11 +861,11 @@ fn parse_expr(
       },
       nonterminal: fn(prod_name) {
         ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          parse_nonterminal_from_table(
-            table: table_in,
+          parse_nonterminal_direct(
             all_tokens: all_toks,
             tokens: tok_in,
             root: root_in,
+            table: table_in,
             prod_name: prod_name,
             prov: prov_in
           )
@@ -1013,107 +980,8 @@ fn parse_expr(
 }
 
 
-type ParseTableBuildAcc {
-  table: ParseTable
-  prov: ParseProvenanceState
-}
-
-fn parse_table_fill_production_step(
-  acc: ParseTableBuildAcc,
-  production: GrammarProduction,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTableBuildAcc {
-  let key = ParsePositionKey { position: position, production: production.name }
-  let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
-  let result = parse_expr(
-    expr: production.expression,
-    tokens: suffix,
-    all_tokens: all_tokens,
-    root: root,
-    table: acc.table,
-    prov: acc.prov
-  )
-  let next_prov = match result {
-    ParseExprAccepted { prov: p, diagnostics: _, remaining: _, captured: _ } => p
-    ParseExprRejected { diagnostics: _ } => acc.prov
-  }
-  ParseTableBuildAcc {
-    table: parse_table_insert(table: acc.table, key: key, value: result),
-    prov: next_prov
-  }
-}
-
-
-// One pass: update every production entry at a fixed position.
-fn parse_table_fill_position_pass(
-  acc: ParseTableBuildAcc,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTableBuildAcc {
-  fold_list(
-    xs: root.productions,
-    empty: acc,
-    cons: fn(acc2, prod) {
-      parse_table_fill_production_step(
-        acc: acc2,
-        production: prod,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
-}
-
-
-// |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
-fn parse_table_fill_position(
-  acc: ParseTableBuildAcc,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTableBuildAcc {
-  fold_list(
-    xs: root.productions,
-    empty: acc,
-    cons: fn(acc2, _) {
-      parse_table_fill_position_pass(
-        acc: acc2,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
-}
-
-
 fn parse_table_empty() -> ParseTable {
   empty_map()
-}
-
-
-// Outer fold over positions high→low; inner fold over productions × passes at each position.
-// Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
-fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTableBuildAcc {
-  fold_list_right(
-    xs: token_position_indices(tokens: all_tokens),
-    empty: ParseTableBuildAcc {
-      table: parse_table_empty(),
-      prov: parse_prov_initial()
-    },
-    snoc: fn(acc, position) {
-      parse_table_fill_position(
-        acc: acc,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
 }
 
 
@@ -1126,36 +994,37 @@ fn parse_production(
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
-      let built = build_parse_table(all_tokens: tokens, root: root)
-      let key = ParsePositionKey { position: 0, production: production_name }
-      match parse_table_lookup(table: built.table, key: key) {
-        Holds { value: inner } =>
-          match inner {
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
-              if is_empty(xs: remaining) {
-                let merged_prov = parse_prov_merge(base: built.prov, incoming: inner_prov)
-                let stamped = parse_wrap_production_captured(
-                  production: production,
-                  captured: captured,
-                  prov: merged_prov
-                )
-                Accepted {
-                  value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
-                  diagnostics: parse_diags_to_diagnostics(diags: diags)
-                }
-              } else {
-                Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
-              }
-            ParseExprRejected { diagnostics: diags } =>
-              Rejected {
-                diagnostics: parse_diags_to_non_empty(
-                  diags: diags,
-                  default: parse_e1_syntax_error_diagnostic(at: at)
-                )
-              }
+      let prov = parse_prov_initial()
+      let table = parse_table_empty()
+      match parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+          if is_empty(xs: remaining) {
+            let stamped = parse_wrap_production_captured(
+              production: production,
+              captured: captured,
+              prov: inner_prov
+            )
+            Accepted {
+              value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
+              diagnostics: parse_diags_to_diagnostics(diags: diags)
+            }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
           }
-        Violates { diagnostic: d } =>
-          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        ParseExprRejected { diagnostics: diags } =>
+          Rejected {
+            diagnostics: parse_diags_to_non_empty(
+              diags: diags,
+              default: parse_e1_syntax_error_diagnostic(at: at)
+            )
+          }
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
