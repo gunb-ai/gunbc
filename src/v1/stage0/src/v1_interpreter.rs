@@ -3437,12 +3437,14 @@ fn dispatch_rest(
         }
     }
 
-    // 7. Request body
+    // 7. Request body — serialized against the modeled CoproductWireContract
+    // registry so variant payloads carry their declared wire discriminator.
     let body_json =
         match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
             Some(body_node) => {
                 let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(value_to_json(&body_val)?)
+                let wire_contracts = coproduct_wire_contracts(ctx)?;
+                Some(value_to_json(&body_val, &wire_contracts)?)
             }
             None => None,
         };
@@ -3660,7 +3662,19 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
 /// structural-key map: JSON object keys are strings, and rendering a non-String key
 /// (e.g. `Int(1)` vs `Str("1")`) via its Display form would collapse distinct keys
 /// and silently drop entries. Such a map has no faithful JSON-object representation.
-fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
+/// Serialize an interpreter `Value` to request-body JSON.
+///
+/// `contracts` is the source-level `CoproductWireContract` registry (coproduct
+/// authored name → declared `VariantEncoding` value). A `Value::Variant` is
+/// encoded by *consuming* that contract — the same single authority the Rust
+/// emitter reads in `05_emit_rust.dag` — so REST request bodies carry the
+/// modeled discriminator (e.g. an Anthropic content block's `{"type": ...}`)
+/// instead of a bare, untagged field dump. Build the registry once with
+/// [`coproduct_wire_contracts`] and thread it through the recursion.
+fn value_to_json(
+    val: &Value,
+    contracts: &HashMap<String, Value>,
+) -> InterpResult<serde_json::Value> {
     Ok(match val {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
@@ -3678,7 +3692,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
         Value::List(items) => {
             let mut arr = Vec::with_capacity(items.len());
             for item in items.iter() {
-                arr.push(value_to_json(item)?);
+                arr.push(value_to_json(item, contracts)?);
             }
             serde_json::Value::Array(arr)
         }
@@ -3703,24 +3717,244 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
                         })
                     }
                 };
-                obj.insert(key, value_to_json(v)?);
+                obj.insert(key, value_to_json(v, contracts)?);
             }
             serde_json::Value::Object(obj)
         }
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let mut obj = serde_json::Map::new();
-            for (k, v) in fields.iter() {
-                if matches!(v, Value::Null) {
-                    continue;
-                }
-                obj.insert(resolve_sym(*k), value_to_json(v)?);
-            }
-            serde_json::Value::Object(obj)
+        Value::Record { fields, .. } => {
+            serde_json::Value::Object(variant_fields_object(fields, contracts)?)
         }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => variant_to_json(*type_name, *variant_name, fields, contracts)?,
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
         Value::Fn { node } => serde_json::Value::String(format!("<fn {}>", node.name)),
     })
+}
+
+/// Build a JSON object from a record/variant's payload fields, skipping `Null`
+/// (absent optionals do not appear on the wire). Nested variants are encoded
+/// against `contracts` by the recursive [`value_to_json`].
+fn variant_fields_object(
+    fields: &Rc<HashMap<Symbol, Value>>,
+    contracts: &HashMap<String, Value>,
+) -> InterpResult<serde_json::Map<String, serde_json::Value>> {
+    let mut obj = serde_json::Map::new();
+    for (k, v) in fields.iter() {
+        if matches!(v, Value::Null) {
+            continue;
+        }
+        obj.insert(resolve_sym(*k), value_to_json(v, contracts)?);
+    }
+    Ok(obj)
+}
+
+/// Look up a field on an evaluated record/variant by authored name, using the
+/// active context's interner so the key matches the symbols the value was built
+/// with.
+fn field_by_name<'a>(fields: &'a Rc<HashMap<Symbol, Value>>, name: &str) -> Option<&'a Value> {
+    let sym = active_ctx()?.sym(name);
+    fields.get(&sym)
+}
+
+/// Encode a `Value::Variant` to JSON by consuming its declared
+/// `CoproductWireContract`. With no contract for the coproduct, fall back to the
+/// historical untagged field dump (the modeled no-contract default lives in the
+/// emitter and is not mirrored here).
+fn variant_to_json(
+    type_name: Symbol,
+    variant_name: Symbol,
+    fields: &Rc<HashMap<Symbol, Value>>,
+    contracts: &HashMap<String, Value>,
+) -> InterpResult<serde_json::Value> {
+    let coproduct = resolve_sym(type_name);
+    let vname = resolve_sym(variant_name);
+    let encoding = match contracts.get(&coproduct) {
+        Some(e) => e,
+        None => return Ok(serde_json::Value::Object(variant_fields_object(fields, contracts)?)),
+    };
+    let (enc_name, enc_fields) = match encoding {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => (resolve_sym(*variant_name), fields),
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "CoproductWireContract encoding for {} must be a VariantEncoding value, got {}",
+                    coproduct,
+                    other.type_label()
+                ),
+            })
+        }
+    };
+    match enc_name.as_str() {
+        // Untagged: payload-shape determines the variant on the wire; no discriminator.
+        "UntaggedVariant" => {
+            Ok(serde_json::Value::Object(variant_fields_object(fields, contracts)?))
+        }
+        // Internally tagged: {"_variant": "Name", ...payload} (the .dag default tagging).
+        "TaggedVariant" => {
+            let mut obj = variant_fields_object(fields, contracts)?;
+            obj.insert("_variant".to_string(), serde_json::Value::String(vname));
+            Ok(serde_json::Value::Object(obj))
+        }
+        // Plain string: the variant name only — valid for nullary variants.
+        "StringVariant" => {
+            if !fields.is_empty() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "CoproductWireContract StringVariant requires a nullary-only coproduct: {} (variant {} carries fields)",
+                        coproduct, vname
+                    ),
+                });
+            }
+            let naming = field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
+                msg: format!("StringVariant encoding for {} missing naming", coproduct),
+            })?;
+            Ok(serde_json::Value::String(variant_wire_name(&vname, naming)?))
+        }
+        // Explicit discriminator field carrying the wire name, plus the payload.
+        "InternallyTaggedObject" => {
+            let tag_field = match field_by_name(enc_fields, "tag_field") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "InternallyTaggedObject encoding for {} requires a literal tag_field",
+                            coproduct
+                        ),
+                    })
+                }
+            };
+            let naming = field_by_name(enc_fields, "naming").ok_or_else(|| InterpError::TypeError {
+                msg: format!("InternallyTaggedObject encoding for {} missing naming", coproduct),
+            })?;
+            let tag = variant_wire_name(&vname, naming)?;
+            let mut obj = variant_fields_object(fields, contracts)?;
+            obj.insert(tag_field, serde_json::Value::String(tag));
+            Ok(serde_json::Value::Object(obj))
+        }
+        other => Err(InterpError::TypeError {
+            msg: format!("unsupported VariantEncoding for {}: {}", coproduct, other),
+        }),
+    }
+}
+
+/// Compute a variant's wire string from its authored name and the declared
+/// `VariantNaming` policy. Mirrors the affix-strip-then-snake_case rule the
+/// emitter encodes via serde renames (`wire_variant_rename_attr_for_policy`);
+/// a declared affix that the variant does not carry is a fail-closed error.
+fn variant_wire_name(variant_name: &str, naming: &Value) -> InterpResult<String> {
+    let (policy, fields) = match naming {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => (resolve_sym(*variant_name), fields),
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "VariantNaming must be a variant value, got {}",
+                    other.type_label()
+                ),
+            })
+        }
+    };
+    let affix = |key: &str| -> InterpResult<String> {
+        match field_by_name(fields, key) {
+            Some(Value::Str(s)) => Ok(s.clone()),
+            _ => Err(InterpError::TypeError {
+                msg: format!("VariantNaming {} requires a literal {}", policy, key),
+            }),
+        }
+    };
+    let strip_prefix = |s: &str, prefix: &str| -> InterpResult<String> {
+        s.strip_prefix(prefix)
+            .map(|x| x.to_string())
+            .ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "variant {} does not satisfy declared wire rename prefix: {}",
+                    variant_name, prefix
+                ),
+            })
+    };
+    let strip_suffix = |s: &str, suffix: &str| -> InterpResult<String> {
+        s.strip_suffix(suffix)
+            .map(|x| x.to_string())
+            .ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "variant {} does not satisfy declared wire rename suffix: {}",
+                    variant_name, suffix
+                ),
+            })
+    };
+    let to_snake = crate::v1_compiler_emit_core_support::to_snake;
+    match policy.as_str() {
+        "AsAuthored" => Ok(variant_name.to_string()),
+        "SnakeCase" => Ok(to_snake(variant_name.to_string())),
+        "StripPrefixAndSnakeCase" => {
+            let stripped = strip_prefix(variant_name, &affix("prefix")?)?;
+            Ok(to_snake(stripped))
+        }
+        "StripSuffixAndSnakeCase" => {
+            let stripped = strip_suffix(variant_name, &affix("suffix")?)?;
+            Ok(to_snake(stripped))
+        }
+        "StripPrefixSuffixAndSnakeCase" => {
+            let no_prefix = strip_prefix(variant_name, &affix("prefix")?)?;
+            let stripped = strip_suffix(&no_prefix, &affix("suffix")?)?;
+            Ok(to_snake(stripped))
+        }
+        other => Err(InterpError::TypeError {
+            msg: format!("unsupported VariantNaming: {}", other),
+        }),
+    }
+}
+
+/// Build the source-level `CoproductWireContract` registry: coproduct authored
+/// type name → declared `VariantEncoding` value. Reads the same `data … :
+/// CoproductWireContract` declarations the Rust emitter consumes, so the
+/// interpreter's REST wire serialization shares one authority with emission.
+fn coproduct_wire_contracts(ctx: &InterpContext) -> InterpResult<HashMap<String, Value>> {
+    let mut map = HashMap::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind != ItemKind::DataItem {
+            continue;
+        }
+        let node = match ctx.lookup_fn(name) {
+            Some(n) => n.clone(),
+            None => continue,
+        };
+        let type_node = match node.type_annotation.clone() {
+            Some(t) => t,
+            None => continue,
+        };
+        if authored_name_at(ctx.si(), type_node) != "CoproductWireContract" {
+            continue;
+        }
+        let body = match node.body.clone() {
+            Some(b) => b,
+            None => continue,
+        };
+        let val = eval_expr(&body, &Env::empty(), ctx)?;
+        let fields = match &val {
+            Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+            _ => continue,
+        };
+        let coproduct = match field_by_name(fields, "coproduct") {
+            Some(Value::Str(s)) => s.clone(),
+            _ => continue,
+        };
+        if let Some(encoding) = field_by_name(fields, "encoding") {
+            map.insert(coproduct, encoding.clone());
+        }
+    }
+    Ok(map)
 }
 
 /// Map a text response to the operation's return type.
