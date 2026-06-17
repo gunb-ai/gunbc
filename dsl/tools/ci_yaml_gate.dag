@@ -50,3 +50,15 @@ func main_wet() -> ProcessExit {
 func run_ci_yaml_gate() -> ProcessExit {
   run_gate()
 }
+
+// §5 receipt: perturbed bytes must drift (gate would exit non-zero on this content).
+func drift_red_receipt() -> ProcessExit {
+  let committed = Filesystem.Read(path: ci_yml_path)
+  let clean_ok = committed.success && !ci_yml_drifted(committed: committed.content)
+  let perturb_drifts = ci_yml_drifted(committed: concat(expected_ci_yml(), "\n# drift-receipt-perturb"))
+  return if clean_ok && perturb_drifts {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "ci.yml drift red receipt failed: clean must match; perturb must drift")
+  }
+}
