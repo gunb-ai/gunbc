@@ -1,4 +1,4 @@
-// src/v2/compiler/self_host__fixed_point_test.dag
+// src/v2/compiler/self_host/fixed_point_test.dag
 // Scope: the ONLY live-executed self-host coverage. Discovered + run by the live CI gate
 //   (.github/workflows/ci.yml: ci_claim_gate --source-root src/v2 --scan-dir src/v2/test), which
 //   executes `test fn () -> Bool` decls in *_test.dag files (GREEN pass = true, PERTURB pass = flips).

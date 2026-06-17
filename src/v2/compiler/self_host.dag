@@ -7,7 +7,7 @@
 //   No self-host facts live elsewhere — bin/main.dag carries only the trampoline one-liner.
 // Status: Stage A realized — stage_emission_equality is a real executed structural-equality body.
 //   self_host_fixed_point_digests_match is the realized fixed-point predicate (de-risked on fixture
-//   stages in self_host__fixed_point_test.dag). self_host_fixed_point_validate stays fail-closed
+//   stages in self_host/fixed_point_test.dag). self_host_fixed_point_validate stays fail-closed
 //   (stage C) and will consume digests_match once the v2 pipeline emits real stages over its source.
 
 module v2.compiler.self_host
