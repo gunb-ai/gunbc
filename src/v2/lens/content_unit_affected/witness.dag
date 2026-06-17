@@ -18,7 +18,7 @@
 module v2.test.lens_content_unit_affected.witness
 
 import v2.std.algebra { length }
-import v2.std.content_unit { ContentUnit }
+import v2.std.content_unit { ContentUnit, TrackedFile }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.verification {
@@ -38,11 +38,24 @@ import v2.lens.affected_set_examples {
 }
 import v2.lens.content_unit_affected { content_unit_frontier }
 
-// Two units, each at two fingerprints (v1 baseline, v2 drift).
-data cu_crate_a_v1: ContentUnit = ContentUnit { identity: ^cu_crate_a, fingerprint: ^cu_fp_a_v1 }
-data cu_crate_a_v2: ContentUnit = ContentUnit { identity: ^cu_crate_a, fingerprint: ^cu_fp_a_v2 }
-data cu_crate_b_v1: ContentUnit = ContentUnit { identity: ^cu_crate_b, fingerprint: ^cu_fp_b_v1 }
-data cu_crate_b_v2: ContentUnit = ContentUnit { identity: ^cu_crate_b, fingerprint: ^cu_fp_b_v2 }
+// Tracked files (declared path + host-read content digest). v1/v2 of a file = an edit (same
+// path, different digest).
+data cu_file_a_lib_v1: TrackedFile = TrackedFile { path: ^cu_a_lib_rs, content_digest: ^cu_dig_a_lib_v1 }
+data cu_file_a_lib_v2: TrackedFile = TrackedFile { path: ^cu_a_lib_rs, content_digest: ^cu_dig_a_lib_v2 }
+data cu_file_a_cargo: TrackedFile = TrackedFile { path: ^cu_a_cargo_toml, content_digest: ^cu_dig_a_cargo_v1 }
+data cu_file_b_lib_v1: TrackedFile = TrackedFile { path: ^cu_b_lib_rs, content_digest: ^cu_dig_b_lib_v1 }
+data cu_file_b_lib_v2: TrackedFile = TrackedFile { path: ^cu_b_lib_rs, content_digest: ^cu_dig_b_lib_v2 }
+
+// Units, each over a declared tracked-file set.
+//   a_v1: {a/lib.rs@v1, a/Cargo.toml}      — baseline.
+//   a_v2: {a/lib.rs@v2, a/Cargo.toml}      — one file's CONTENT edited (digest drift).
+//   a_v1_plus: {a/lib.rs@v1, a/Cargo.toml, a/extra.rs}  — SAME digests, a file ADDED (membership).
+data cu_crate_a_v1: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v1, cu_file_a_cargo] }
+data cu_crate_a_v2: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v2, cu_file_a_cargo] }
+data cu_file_a_extra: TrackedFile = TrackedFile { path: ^cu_a_extra_rs, content_digest: ^cu_dig_a_extra_v1 }
+data cu_crate_a_v1_plus: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v1, cu_file_a_cargo, cu_file_a_extra] }
+data cu_crate_b_v1: ContentUnit = ContentUnit { identity: ^cu_crate_b, tracked_files: [cu_file_b_lib_v1] }
+data cu_crate_b_v2: ContentUnit = ContentUnit { identity: ^cu_crate_b, tracked_files: [cu_file_b_lib_v2] }
 
 // An unchanged unit prunes: exactly one boundary exclusion, ChangedSubgraphFrontier.
 fn cu_unchanged_unit_prunes() -> Bool {
@@ -76,11 +89,25 @@ fn cu_drifted_unit_reruns_unchanged_peer_prunes() -> Bool {
   }
 }
 
+// MEMBERSHIP change: add a tracked file to the set with all per-file digests UNCHANGED. The
+// declared set itself is part of the content address, so this must NOT prune — it expands into
+// the frontier. This is the witness that most directly demonstrates the purity-falsifier
+// property the downstream cache needs: the declared set is what "read outside the set" is
+// checked against, so a set delta must be a content delta.
+fn cu_membership_change_enters_frontier() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v1_plus]) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 0
+    _ => false
+  }
+}
+
 // Aggregator for a single-entry resolve (fast local check / hand-enrollable witness row).
 fn content_unit_affected_witnesses() -> Bool {
   cu_unchanged_unit_prunes()
     && cu_changed_unit_enters_frontier()
     && cu_drifted_unit_reruns_unchanged_peer_prunes()
+    && cu_membership_change_enters_frontier()
 }
 
 fn cu_unchanged_unit_prunes_rhs() -> Node {
@@ -93,6 +120,10 @@ fn cu_changed_unit_enters_frontier_rhs() -> Node {
 
 fn cu_drifted_unit_reruns_unchanged_peer_prunes_rhs() -> Node {
   if cu_drifted_unit_reruns_unchanged_peer_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+}
+
+fn cu_membership_change_enters_frontier_rhs() -> Node {
+  if cu_membership_change_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
 }
 
 data claim_cu_unchanged_unit_prunes: TestClaim = EqualsClaim {
@@ -116,5 +147,13 @@ data claim_cu_drifted_unit_reruns_unchanged_peer_prunes: TestClaim = EqualsClaim
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: cu_drifted_unit_reruns_unchanged_peer_prunes_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cu_membership_change_enters_frontier: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/membership_change_enters_frontier: adding a tracked file (digests unchanged) is a content delta — declared set is part of the address",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: cu_membership_change_enters_frontier_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

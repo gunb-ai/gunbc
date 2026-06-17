@@ -1,24 +1,30 @@
 // src/v2/std/content_unit.dag
 // Scope: a content-addressed *external content unit* — a bundle of host inputs (e.g. a
-//   Rust crate's .rs/Cargo files) identified by a content fingerprint — projected into the
-//   substrate as an ordinary `Node` so the existing content-addressed machinery applies to
-//   it for free (DESIGN §2 horizontal: one content-address concept, every scale — a `.dag`
-//   node and a crate are the same kind of thing once both carry a fingerprint).
-// Status: model-before-implement seed for the Rust fmt/clippy gate's content-addressed
-//   selection. General by construction: nothing here mentions Rust — the unit is "some
-//   host content addressed by a fingerprint" (DESIGN §7 payoff: the Rust seed is just the
-//   first inhabitant; any external content unit de-fuses the same way).
+//   Rust crate's .rs/Cargo files) — projected into the substrate as an ordinary `Node` so
+//   the existing content-addressed machinery applies to it for free (DESIGN §2 horizontal:
+//   one content-address concept, every scale — a `.dag` node and a crate are the same kind
+//   of thing once both carry a content fingerprint).
+// Status: model-before-implement for the Rust fmt/clippy gate's content-addressed selection.
+//   General by construction: nothing here mentions Rust — the unit is "some host content"
+//   (DESIGN §7 payoff: the Rust seed is just the first inhabitant).
 //
 // Grounding (DESIGN §3, single authority): the unit's identity IS its content. We do NOT
 // mint a parallel "content hash" concept — the unit's structural identity is carried by the
-// substrate's own `content_hash` (v2.std.node) over this projection. A distinct fingerprint
-// yields a structurally-distinct `Node` (the fingerprint is an `Atom` identity, which
-// `canonical_hash_of_connective` folds into `content_hash`), so two units compare equal
-// under `content_hash` iff their fingerprints are equal — exactly the predicate
-// `v2.lens.affected_set` already decides over every other node.
+// substrate's own `content_hash` (v2.std.node) over this projection.
+//
+// Decomposition (DESIGN §2 deep): a content unit does NOT carry an opaque fingerprint — that
+// would be an anemic leaf hiding the named structure the digest is computed over. Instead the
+// unit DECLARES its tracked-file set (the unit→files manifest: which files belong to it) as
+// substrate data, and DERIVES its fingerprint from that set. Reading file *contents* stays a
+// host realization in `extdeps` (the §3(b) transport seam — only a per-file content digest
+// crosses the boundary); the file *set* is declared here. This declared set is load-bearing
+// for the downstream transparent-memoization cache: the content-key is `content_hash` over
+// the transitive closure of the *declared* inputs, so "a read outside the declared set" is the
+// purity falsifier — which an opaque host fingerprint, having no declared set, cannot provide.
 
 module v2.std.content_unit
 
+import v2.std.collection { List }
 import v2.std.node {
   Atom,
   Conj,
@@ -28,56 +34,91 @@ import v2.std.node {
   Path,
   Symbol,
   TypeNode,
+  Hash,
+  content_hash,
   node_synthetic
 }
 
-// A content unit: a named bundle of host inputs addressed by a content fingerprint.
-//   - `identity`    — which unit this is (stable across content changes), e.g. a crate name.
-//   - `fingerprint` — the content fingerprint of the unit's inputs, computed by the host
-//     (the boundary that can read files / run git) and handed in as an opaque `Symbol`.
-//     Two units with equal `fingerprint` have byte-identical content; a changed input
-//     changes the fingerprint. This is the §3 (b) transport seam: *how* the fingerprint is
-//     computed (git tree hash, digest of concatenated files, …) is a host realization, not
-//     a fact about the unit — the unit owns only the agnostic "content is addressed by this
-//     symbol" shape.
-type ContentUnit {
-  identity: Symbol
-  fingerprint: Symbol
+// A declared tracked file of a content unit:
+//   - `path`           — the file's declared path (manifest substrate data: this file belongs
+//     to this unit). The §3 single authority for "which files we track".
+//   - `content_digest` — the host-read content fingerprint of that file's bytes. Reading the
+//     bytes is a host realization (the §3(b) transport seam); the digest is what crosses into
+//     the substrate as an opaque `Symbol`. Two files with equal `content_digest` have
+//     byte-identical content; an edited file changes its digest.
+type TrackedFile {
+  path: Symbol
+  content_digest: Symbol
 }
 
-// Edge labels for the two structural coordinates of a unit's projection. Named (not
-// Positional) so `content_hash` order-independence over a Conj is irrelevant and the
-// projection reads structurally.
+// A content unit: a named bundle addressed by the content of its DECLARED tracked-file set.
+//   - `identity`      — which unit this is (stable across content changes), e.g. a crate name.
+//   - `tracked_files` — the declared file set the fingerprint is derived over. Decomposed (not
+//     an opaque blob) so the cache can falsify impurity against it (read-outside-set).
+type ContentUnit {
+  identity: Symbol
+  tracked_files: List<TrackedFile>
+}
+
+// Edge labels for the unit projection's structural coordinates. Named (not Positional) so
+// `content_hash`'s order-independence over a Conj is irrelevant and the projection reads
+// structurally.
 data content_unit_identity_edge: Symbol = ^content_unit_identity
-data content_unit_fingerprint_edge: Symbol = ^content_unit_fingerprint
+data content_unit_files_edge: Symbol = ^content_unit_tracked_files
 
 fn content_unit_identity_atom(unit: ContentUnit) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: unit.identity } }, children: [])
 }
 
-fn content_unit_fingerprint_atom(unit: ContentUnit) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: unit.fingerprint } }, children: [])
+// A tracked file projects as a Named(path) edge to an Atom carrying its content digest, so the
+// node structure encodes BOTH the declared path (edge label) AND the content (digest atom).
+// `content_hash` therefore folds the whole manifest: change a file's content, add, or remove a
+// file, and the unit's derived fingerprint changes.
+fn tracked_file_edge(file: TrackedFile) -> Edge {
+  Edge {
+    label: Named { name: file.path },
+    target: node_synthetic(kind: TypeNode { connective: Atom { identity: file.content_digest } }, children: [])
+  }
 }
 
-// Project a content unit to a substrate Node. The fingerprint sits at an `Atom` identity, so
-// `content_hash(content_unit_node(a)) == content_hash(content_unit_node(b))` iff `a` and `b`
-// carry the same identity AND the same fingerprint — i.e. the unit is unchanged. This is the
-// sole bridge from "external content" to "a node the affected-set lens can diff". It is a
-// *pure* projection (no host effect): the host computes the fingerprint; the substrate
-// computes everything downstream.
+// The declared tracked-file set projected as a single Conj node (one Named(path) child per
+// file). This is the structure the fingerprint is derived over.
+fn content_unit_files_node(unit: ContentUnit) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(unit.tracked_files, init: [], f: fn(acc, file) {
+      concat(acc, [tracked_file_edge(file: file)])
+    })
+  )
+}
+
+// Project a content unit to a substrate Node: a Conj with its identity and its declared
+// tracked-file set. The fingerprint is DERIVED from this projection (see
+// `content_unit_fingerprint`), never received opaquely. This is the sole bridge from
+// "external content" to "a node the affected-set lens can diff", and it is a *pure* projection
+// (no host effect): the host fills each `TrackedFile.content_digest`; the substrate computes
+// everything downstream.
 fn content_unit_node(unit: ContentUnit) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: content_unit_identity_edge }, target: content_unit_identity_atom(unit: unit) },
-      Edge { label: Named { name: content_unit_fingerprint_edge }, target: content_unit_fingerprint_atom(unit: unit) }
+      Edge { label: Named { name: content_unit_files_edge }, target: content_unit_files_node(unit: unit) }
     ]
   )
 }
 
+// The unit's content fingerprint, DERIVED as `content_hash` over its node projection (which
+// folds the declared tracked-file set + each file's host-read content digest). Two units are
+// content-equal iff this fingerprint matches — exactly the predicate `v2.lens.affected_set`
+// decides over every other node.
+fn content_unit_fingerprint(unit: ContentUnit) -> Hash {
+  content_hash(n: content_unit_node(unit: unit))
+}
+
 // The path locating a unit inside a units-dag: keyed by the unit's stable identity (NOT its
-// fingerprint), so the same unit at two fingerprints resolves to one path — the baseline and
-// the current state of the same crate. This is what lets the affected-set lens compare
+// content), so the same unit at two content states resolves to one path — the baseline and the
+// current state of the same crate. This is what lets the affected-set lens compare
 // `subterm_at(dag, path)` (baseline) against the diff's replacement (current). The units-dag
 // itself and the boundary-prune wiring live in `v2.lens.content_unit_affected` (the
 // affected-set bridge), not here — std owns the agnostic projection; consuming it through a
