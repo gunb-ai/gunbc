@@ -29,7 +29,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node, Symbol }
 import v2.std.collection { List }
-import v2.std.algebra { any, filter }
+import v2.std.algebra { any, filter, is_empty }
 import v2.std.logic { Bool }
 
 // The two §5 polarities a witness can assert. A claim asserting a behavior HOLDS
@@ -62,6 +62,13 @@ fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim — bound target: exact structural equality /
+// compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a —
+// dissolve-on-arrival: replace claim_asserts_green / claim_asserts_red with
+// `test_claim_polarity(c) == AssertsGreen` / `== AssertsRed` (the canonical fold composed
+// with closed-sum equality) and delete these two helpers in that same PR; forbidden:
+// permanent per-arm WitnessPolarity Bool predicate drift. These exist ONLY as the
+// `fn(T)->Bool` adapters `filter` requires; they add no new authority over test_claim_polarity.
 fn claim_asserts_green(c: TestClaim) -> Bool {
   match test_claim_polarity(c: c) {
     AssertsGreen => true
@@ -82,14 +89,6 @@ fn unit_greens(unit: List<TestClaim>) -> List<TestClaim> {
 
 fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
   filter(xs: unit, predicate: claim_asserts_red)
-}
-
-fn unit_has_green(unit: List<TestClaim>) -> Bool {
-  any(xs: unit, predicate: claim_asserts_green)
-}
-
-fn unit_has_red(unit: List<TestClaim>) -> Bool {
-  any(xs: unit, predicate: claim_asserts_red)
 }
 
 // A genuine §5 discriminator perturbs the input: a red claim over the IDENTICAL
@@ -121,11 +120,11 @@ fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {
 // negative, or whose negative is not a perturbation is Violated with a located,
 // typed reason. Empty unit → no green → Violates (anti-vacuity).
 fn discrimination_lens(unit: List<TestClaim>) -> Witness<DiscriminatingWitness> {
-  if !unit_has_green(unit: unit) {
+  if is_empty(xs: unit_greens(unit: unit)) {
     Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_positive)
     }
-  } else if !unit_has_red(unit: unit) {
+  } else if is_empty(xs: unit_reds(unit: unit)) {
     Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_discriminating_negative)
     }
