@@ -105,26 +105,41 @@ fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<
 // of the retired affected-set CI-timings crate (#5056): a pure lens
 // folded over the SAME edge fact, not a parallel host computation.
 // Edge convention matches GraphEdge: caller DEPENDS ON callee, so a
-// node's dependents are its reverse-adjacency neighbors.
+// node's dependents are the callers of edges that point at it.
+//
+// This folds directly over the edge LIST (no Map), so it runs on the v2
+// interpreter today (the Map-adjacency path above awaits interpreter Map
+// support — B-LOOKUP-1). DISSOLUTION TRIGGER: once `map_get` resolves on
+// the interpreter, re-express affected_set as `dfs_collect_component`
+// over `reverse_adjacency` and delete `affected_reachable` — one DFS.
 // ===================================================================
 
-// Direct (1-hop) dependents of `n`: the nodes that depend on / import it.
-fn dependents(names: List<String>, graph: CallGraph, n: String) -> List<String> {
-  match map_get(reverse_adjacency(names: names, graph: graph), n) {
-    Present { value: ns } => ns
-    Absent => []
-  }
+// Direct (1-hop) dependents of `n`: the callers of edges pointing at `n`.
+fn dependents(graph: CallGraph, n: String) -> List<String> {
+  graph.edges |> filter(e => e.callee == n) |> map(e => e.caller)
 }
 
-// The affected set of `n`: `n` plus every node transitively depending on
-// it (reverse-reachability). Reuses the visited-set-bounded DFS, so net
-// concepts do not grow (§2). Includes `n` itself (it changed).
-fn affected_set(names: List<String>, graph: CallGraph, n: String) -> List<String> {
-  dfs_collect_component(
-    node: n,
-    adjacency: reverse_adjacency(names: names, graph: graph),
-    acc: SccComponentAcc { visited: empty_set(), members: [] }
-  ).members
+// Visited-bounded reverse-reachability: expand each node to its direct
+// dependents, accumulating into `seen` (which doubles as the visited set —
+// a node is added exactly once). Bound: |V| - |seen| strictly decreases per
+// unvisited node, so the recursion terminates (same shape as
+// dfs_collect_component, list-membership in place of a Set).
+fn affected_reachable(graph: CallGraph, frontier: List<String>, seen: List<String>) -> List<String> {
+  frontier |> fold(init: seen, f: (acc, node) =>
+    if acc |> any(e => e == node) {
+      acc
+    } else {
+      affected_reachable(
+        graph: graph,
+        frontier: dependents(graph: graph, n: node),
+        seen: acc |> push(node))
+    })
+}
+
+// The affected set of `n`: `n` plus every node transitively depending on it.
+// Includes `n` itself (it changed).
+fn affected_set(graph: CallGraph, n: String) -> List<String> {
+  affected_reachable(graph: graph, frontier: [n], seen: [])
 }
 
 // Kosaraju pass 1: DFS on forward graph to compute finish order.

@@ -44,32 +44,32 @@ fn join(xs: List<String>) -> String {
 // affected_set("integer") must contain its transitive dependents and exclude
 // the unrelated branch.
 fn w_integer_reaches_cpu() -> Bool {
-  has(affected_set(names: demo_names(), graph: demo_graph(), n: "integer"), "cpu")
+  has(affected_set(graph: demo_graph(), n: "integer"), "cpu")
 }
 fn w_integer_includes_self_and_direct() -> Bool {
-  let a = affected_set(names: demo_names(), graph: demo_graph(), n: "integer")
+  let a = affected_set(graph: demo_graph(), n: "integer")
   has(a, "integer") && has(a, "algebra")
 }
 // DISCRIMINATING: the independent text/freemonoid branch is NOT affected by
 // integer. Goes red if the lens ever folds over forward (not reverse) edges,
 // or returns the whole graph.
 fn w_integer_excludes_unrelated() -> Bool {
-  let a = affected_set(names: demo_names(), graph: demo_graph(), n: "integer")
+  let a = affected_set(graph: demo_graph(), n: "integer")
   (has(a, "text") == false) && (has(a, "freemonoid") == false)
 }
 // A top node nothing depends on: affected set is just itself (minimal blast radius).
 fn w_cpu_affects_only_self() -> Bool {
-  let a = affected_set(names: demo_names(), graph: demo_graph(), n: "cpu")
+  let a = affected_set(graph: demo_graph(), n: "cpu")
   has(a, "cpu") && (has(a, "algebra") == false) && (has(a, "integer") == false)
 }
 // dependents is 1-hop only: integer's direct dependent is algebra, NOT cpu.
 fn w_dependents_one_hop() -> Bool {
-  let d = dependents(names: demo_names(), graph: demo_graph(), n: "integer")
+  let d = dependents(graph: demo_graph(), n: "integer")
   has(d, "algebra") && (has(d, "cpu") == false)
 }
 // Directionality cross-check: the other branch is symmetric and disjoint.
 fn w_other_branch_isolated() -> Bool {
-  let a = affected_set(names: demo_names(), graph: demo_graph(), n: "freemonoid")
+  let a = affected_set(graph: demo_graph(), n: "freemonoid")
   has(a, "text") && (has(a, "integer") == false) && (has(a, "cpu") == false)
 }
 
@@ -86,7 +86,7 @@ func main() -> ProcessExit {
   if keystone() {
     ExitSuccess
   } else {
-    let integer_blast = affected_set(names: demo_names(), graph: demo_graph(), n: "integer")
+    let integer_blast = affected_set(graph: demo_graph(), n: "integer")
     ExitFailure { code: exit_code_general_error, reason: concat(
       "affected-set witness FAILED. change 'integer' -> got {", join(integer_blast), "}") }
   }
@@ -98,6 +98,6 @@ func show() -> ProcessExit {
   let ns = demo_names()
   let g = demo_graph()
   let report = ns |> fold(init: "affected-set per node (change X -> re-realize):", f: (acc, x) =>
-    concat(acc, "\n  change '", x, "'  -> {", join(affected_set(names: ns, graph: g, n: x)), "}"))
+    concat(acc, "\n  change '", x, "'  -> {", join(affected_set(graph: g, n: x)), "}"))
   ExitFailure { code: exit_code_general_error, reason: report }
 }
