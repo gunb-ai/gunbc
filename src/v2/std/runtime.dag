@@ -5,7 +5,14 @@
 module v2.std.runtime
 
 import v2.std.collection { List, Map }
-import v2.std.diagnostic { Diagnostic, Outcome }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected
+}
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
@@ -206,12 +213,17 @@ type BindInterpreter {
   bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> Outcome<EvaluationEnvironment>
 }
 
+type MatchInterpreter {
+  choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+}
+
 type InterpretationAlgebra {
   value: ValueInterpreter
   transform: TransformInterpreter
   branch: BranchInterpreter
   loop: LoopInterpreter
   bind: BindInterpreter
+  match: MatchInterpreter
 }
 
 // P2/P3: one Symbol per top-level interpreter fn ref — co-located with InterpretationAlgebra literals at call sites; cache digests derive from this witness (not manual module pins alone).
@@ -220,7 +232,8 @@ type InterpretationStructureWitness {
   call_primitive: Symbol,
   choose_branch: Symbol,
   step_loop: Symbol,
-  bind_value: Symbol
+  bind_value: Symbol,
+  choose_arm: Symbol
 }
 
 // 🟢 coproduct dissolution — behavior dispatch authority lives with InterpretationAlgebra, not eval consumers.
@@ -230,6 +243,7 @@ type RuntimeBehaviorInterpreter
   | BranchRuntimeInterpreter { interpreter: BranchInterpreter }
   | LoopRuntimeInterpreter { interpreter: LoopInterpreter }
   | BindRuntimeInterpreter { interpreter: BindInterpreter }
+  | MatchRuntimeInterpreter { interpreter: MatchInterpreter }
 
 fn interpretation_behavior_dispatch(
   interpretation: InterpretationAlgebra,
@@ -241,7 +255,24 @@ fn interpretation_behavior_dispatch(
     Branch => BranchRuntimeInterpreter { interpreter: interpretation.branch }
     Loop => LoopRuntimeInterpreter { interpreter: interpretation.loop }
     Bind => BindRuntimeInterpreter { interpreter: interpretation.bind }
+    Match => MatchRuntimeInterpreter { interpreter: interpretation.match }
   }
+}
+
+data runtime_match_unimplemented: Symbol = ^runtime_match_unimplemented
+
+fn runtime_reject_match_arm(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    Diagnostic {
+      reason: runtime_match_unimplemented,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 type BoundaryAllowance {

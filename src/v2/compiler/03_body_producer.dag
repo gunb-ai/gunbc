@@ -28,6 +28,7 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
+  Match,
   Named,
   Node,
   Positional,
@@ -49,6 +50,8 @@ import v2.extdeps.languages.dag {
   dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
   dag_mvp1_loop_captured_flat_atom_binding_for_ident,
   dag_mvp1_loop_measure_node,
+  dag_mvp1_match_arrow_with_body_fixture,
+  dag_mvp1_match_arrow_with_body_swapped_arms_fixture,
   dag_mvp1_node_is_int_literal_atom,
   dag_mvp1_node_is_kw_false_atom,
   dag_mvp1_node_is_kw_true_atom,
@@ -791,6 +794,31 @@ fn produce_mvp1_pick_if_arrow_with_body_swapped_arms() -> Outcome<Node> {
       )
     )
   }
+}
+
+fn body_producer_match_if_body(
+  scrutinee: Node,
+  true_arm: Node,
+  false_arm: Node
+) -> Outcome<Node> {
+  outcome_accepted(
+    value: node_synthetic(
+      kind: ComputationNode { behavior: Match },
+      children: [
+        Edge { label: Positional, target: scrutinee },
+        Edge { label: Positional, target: true_arm },
+        Edge { label: Positional, target: false_arm }
+      ]
+    )
+  )
+}
+
+fn produce_mvp1_match_arrow_with_body() -> Outcome<Node> {
+  outcome_accepted(value: dag_mvp1_match_arrow_with_body_fixture)
+}
+
+fn produce_mvp1_match_arrow_with_body_swapped_arms() -> Outcome<Node> {
+  outcome_accepted(value: dag_mvp1_match_arrow_with_body_swapped_arms_fixture)
 }
 
 fn body_producer_bind_let_body(

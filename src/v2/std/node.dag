@@ -41,6 +41,7 @@ type Behavior
   | Branch
   | Loop
   | Bind
+  | Match
 
 
 // R-reflect Phase 2a — dissolving bridge + Path-3 I/O boundary (substrate-native).
@@ -119,8 +120,12 @@ fn connective_from_coproduct_variant(
 
 
 fn behavior_coproduct_variants() -> List<Behavior> {
-  [Value, Transform, Branch, Loop, Bind]
+  [Value, Transform, Branch, Loop, Bind, Match]
 }
+
+// Match arm carrier: pattern + body named edges on a Conj-shaped arm node.
+data match_arm_pattern: Symbol = ^match_arm_pattern
+data match_arm_body: Symbol = ^match_arm_body
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -362,10 +367,41 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
+// 🟡 gated — predicate-dissolution interim — feature:arrow-body-record-construct-m0 —
+// consumer:arrow_body_target_is_valid_realization —
+// bind: Lane 2a value-expression record construct (Conj body with type atom + named field inits) —
+// dissolve-on: Q-B1 named pattern edges for record construct (M0-B5);
+// forbidden: silent ordinal coupling past M0 constructor Conj on Arrow.body.
+fn arrow_body_record_construct_conforms(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if !all_edges_named(children: node.children) {
+        false
+      } else {
+        fold(node.children, init: false, f: fn(seen_first_named, edge) {
+          if seen_first_named {
+            seen_first_named
+          } else {
+            match edge.label {
+              Named { name: _ } =>
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: _ } } => true
+                  _ => false
+                }
+              Positional => false
+            }
+          }
+        })
+      }
+    _ => false
+  }
+}
+
 // 🟡 gated — predicate-dissolution interim — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v2.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match target.kind {
     ComputationNode { behavior: _ } => true
+    TypeNode { connective: Conj } => arrow_body_record_construct_conforms(node: target)
     _ => false
   }
 }
@@ -435,6 +471,46 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   }
 }
 // 🟡 gated — predicate-dissolution interim — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
+// 🟡 gated — feature:match-arm-positional-conformance-m0 — consumer:behavior_edges_conform Match arm — bind:node://adhoc-b4793d46-0a0 — dissolve-on:named pattern edges for match arms (Q-B1 / M0-B5) replace ordinal scrutinee-skip; forbidden:parallel ad-hoc match-arm arity predicates outside well_formed.
+fn match_arm_node_conforms(arm: Node) -> Bool {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      name_occurrences(name: match_arm_pattern, children: arm.children) == 1
+        && name_occurrences(name: match_arm_body, children: arm.children) == 1
+    _ => false
+  }
+}
+
+type MatchArmChildrenConformFold {
+  ok: Bool
+  skipped_scrutinee: Bool
+}
+
+fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee: Bool) -> Bool {
+  let folded = fold(
+    children,
+    init: MatchArmChildrenConformFold { ok: true, skipped_scrutinee: skipped_scrutinee },
+    f: fn(acc, edge) {
+      if !acc.ok {
+        acc
+      } else {
+        match edge.label {
+          Positional =>
+            if !acc.skipped_scrutinee {
+              MatchArmChildrenConformFold { ok: true, skipped_scrutinee: true }
+            } else if !match_arm_node_conforms(arm: edge.target) {
+              MatchArmChildrenConformFold { ok: false, skipped_scrutinee: true }
+            } else {
+              MatchArmChildrenConformFold { ok: true, skipped_scrutinee: true }
+            }
+          Named { name: _ } => acc
+        }
+      }
+    }
+  )
+  folded.ok && folded.skipped_scrutinee
+}
+
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
@@ -442,6 +518,10 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
+    Match =>
+      edges_conform(children: children, d: PositionalEdges)
+        && (positional_child_count(children: children) >= 2)
+        && match_arm_children_conform_skip_first(children: children, skipped_scrutinee: false)
   }
 }
 fn locally_well_formed(n: Node) -> Bool {
@@ -471,7 +551,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
   }
 }
 
-
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
@@ -479,6 +558,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Branch => PositionalEdges
     Loop => LoopBoundEdges
     Bind => PositionalEdges
+    Match => PositionalEdges
   }
 }
 fn node_edge_discipline(n: Node) -> EdgeDiscipline {
@@ -615,6 +695,7 @@ fn canonical_hash_of_behavior(b: Behavior) -> Hash {
     Branch => atom_identity_hash(s: ^canonical_tag_branch)
     Loop => atom_identity_hash(s: ^canonical_tag_loop)
     Bind => atom_identity_hash(s: ^canonical_tag_bind)
+    Match => atom_identity_hash(s: ^canonical_tag_match)
   }
 }
 

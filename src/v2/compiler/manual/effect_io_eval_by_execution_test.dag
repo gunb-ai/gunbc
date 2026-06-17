@@ -178,7 +178,8 @@ fn effect_io_eval_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: effect_io_eval_reject_primitive },
     branch: BranchInterpreter { choose_branch: effect_io_eval_reject_branch },
     loop: LoopInterpreter { step_loop: effect_io_eval_step_loop },
-    bind: BindInterpreter { bind_value: effect_io_eval_bind_value }
+    bind: BindInterpreter { bind_value: effect_io_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -188,7 +189,8 @@ fn effect_io_eval_structure_witness() -> InterpretationStructureWitness {
     call_primitive: ^effect_io_eval_reject_primitive_sym,
     choose_branch: ^effect_io_eval_reject_branch_sym,
     step_loop: ^effect_io_eval_step_loop_sym,
-    bind_value: ^effect_io_eval_bind_value_sym
+    bind_value: ^effect_io_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

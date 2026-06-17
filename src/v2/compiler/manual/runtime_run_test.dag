@@ -176,7 +176,8 @@ fn runtime_run_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive },
     branch: BranchInterpreter { choose_branch: runtime_run_reject_branch },
     loop: LoopInterpreter { step_loop: runtime_run_reject_loop },
-    bind: BindInterpreter { bind_value: runtime_run_bind_value }
+    bind: BindInterpreter { bind_value: runtime_run_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -186,7 +187,8 @@ fn runtime_run_structure_witness() -> InterpretationStructureWitness {
     call_primitive: ^runtime_run_reject_primitive_sym,
     choose_branch: ^runtime_run_reject_branch_sym,
     step_loop: ^runtime_run_reject_loop_sym,
-    bind_value: ^runtime_run_bind_value_sym
+    bind_value: ^runtime_run_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
