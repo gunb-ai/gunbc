@@ -88,10 +88,6 @@ fn gate_runnable(g: Gate) -> Runnable {
   }
 }
 
-fn gate_is_compile_root(g: Gate) -> Bool {
-  match g { DslCompileCleanGate => true  _ => false }
-}
-
 // The fail-fast root: the whole-tree compile-clean gate.
 fn floor_compile_root_node() -> Node {
   gate_node(g: DslCompileCleanGate)
@@ -137,12 +133,14 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
   }
 }
 
+// Every gate except the compile-clean ROOT depends on it (the root gates nothing
+// before itself). Consume `Gate` structurally at the dependency site — the root
+// arm adds no self-edge, every other gate gets one.
 fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
   fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
-    if gate_is_compile_root(g: g) {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: gate_node(g: g)))
+    match g {
+      DslCompileCleanGate => acc
+      _ => list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: gate_node(g: g)))
     }
   })
 }
