@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
-use v1_compiler::v1_interpreter::{self, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 use v1_compiler::v1_std_core::diagnostic_to_message;
 
 use crate::helpers::{source_roots, workspace_root};
@@ -70,7 +70,8 @@ fn cost_projection_float_witness_evaluates_true() {
         blocking_diagnostics(resolved.as_ref())
     );
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     match v1_interpreter::run_in_context(&ctx, "cost_projection_float_witness", false) {
         Ok(Value::Bool(true)) => {}
         other => panic!("expected Bool(true) Float-in-v2 witness, got {other:?}"),

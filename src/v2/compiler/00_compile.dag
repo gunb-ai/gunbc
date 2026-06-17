@@ -1,7 +1,8 @@
 // src/v2/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile;
+//   compile_source_root_ingest_with_admission: SourceRootIngest → program_assembly → validate_then_compile (stage C multi-file).
 // Anchor: P3 commitment 6 + Ratified Q11.
 
 
@@ -15,6 +16,8 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission
 }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve }
@@ -92,16 +95,11 @@ type Validated<T> {
 }
 
 
-data compile_stage_locus_port: Symbol = compile_stage_locus_port
-data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_file
-data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
-data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
-data compile_eval_not_realized: Symbol = compile_eval_not_realized
 
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_pipeline_not_realized,
+    reason: ^compile_pipeline_not_realized,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -110,7 +108,7 @@ fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_lens_gate_rejected,
+    reason: ^compile_lens_gate_rejected,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -119,7 +117,7 @@ fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
 
 fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: compile_eval_not_realized,
+    reason: ^compile_eval_not_realized,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -297,7 +295,7 @@ fn compile_inferred(
     Eval { runtime: _ } =>
       outcome_rejected(
         compile_eval_not_realized_diagnostic(
-          at: port_locus(port: compile_stage_locus_port)
+          at: port_locus(port: ^compile_stage_locus_port)
         )
       )
   }
@@ -378,7 +376,7 @@ fn compile_ingest_with_admission(
   bind_outcome(
     o: tokenize(
       text: source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -409,7 +407,7 @@ fn compile_ingest_with_admission(
                         EvalResult { value: _ } =>
                           outcome_rejected(
                             compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
+                              at: port_locus(port: ^compile_stage_locus_port)
                             )
                           )
                       }
@@ -426,12 +424,45 @@ fn compile_ingest_with_admission(
 }
 
 
+fn compile_source_root_ingest_with_admission(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: validate_then_compile(
+          source: resolved,
+          lenses: [],
+          mode: TranslateTo { target: target }
+        ),
+        f: fn(validated) {
+          match validated.value {
+            TranslateResult { source: target_source } =>
+              outcome_accepted(target_source)
+            EvalResult { value: _ } =>
+              outcome_rejected(
+                compile_eval_not_realized_diagnostic(
+                  at: port_locus(port: ^compile_stage_locus_port)
+                )
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
+
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
       text: source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -457,7 +488,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
                         EvalResult { value: _ } =>
                           outcome_rejected(
                             compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
+                              at: port_locus(port: ^compile_stage_locus_port)
                             )
                           )
                       }

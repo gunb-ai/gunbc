@@ -42,9 +42,6 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates }
 
-data occurrence_model_file: Symbol = ^occurrence_model_file
-data occurrence_model_derive_producer: Symbol = ^occurrence_model_derive_producer
-data occurrence_eq_child: Symbol = ^occurrence_eq_child
 
 fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
@@ -61,7 +58,7 @@ fn span_index_from_source_round_trip_holds() -> Bool {
   let minted = alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
   let locus = Textual {
-    file: occurrence_model_file,
+    file: ^occurrence_model_file,
     extent: ByteRange { start: 0, end: 12 }
   }
   let event = origin_event_from_source(locus: locus)
@@ -76,7 +73,7 @@ fn span_index_from_source_round_trip_holds() -> Bool {
         FromSource { locus: got_locus } =>
           match got_locus {
             Textual { file: f, extent: ext } =>
-              (f == occurrence_model_file)
+              (f == ^occurrence_model_file)
                 && match ext {
                   ByteRange { start: s, end: e } => (s == 0) && (e == 12)
                   WholeFile => false
@@ -98,7 +95,7 @@ fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: OccurrenceId)
         FromSource { locus: locus } =>
           match locus {
             Textual { file: f, extent: ByteRange { start: start, end: end_byte } } =>
-              (f == occurrence_model_file) && (start >= 0) && (end_byte > start)
+              (f == ^occurrence_model_file) && (start >= 0) && (end_byte > start)
             _ => false
           }
         _ => false
@@ -112,11 +109,11 @@ fn span_index_merge_disjoint_entries_holds() -> Bool {
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
   let locus0 = Textual {
-    file: occurrence_model_file,
+    file: ^occurrence_model_file,
     extent: ByteRange { start: 0, end: 4 }
   }
   let locus1 = Textual {
-    file: occurrence_model_file,
+    file: ^occurrence_model_file,
     extent: ByteRange { start: 4, end: 8 }
   }
   let left = span_index_record(
@@ -139,7 +136,7 @@ fn span_index_resolve_derived_chain_holds() -> Bool {
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
   let locus0 = Textual {
-    file: occurrence_model_file,
+    file: ^occurrence_model_file,
     extent: ByteRange { start: 0, end: 12 }
   }
   let index0 = span_index_record(
@@ -150,13 +147,13 @@ fn span_index_resolve_derived_chain_holds() -> Bool {
   let index1 = span_index_record(
     index: index0,
     id: r1.id,
-    event: DerivedBy { producer: occurrence_model_derive_producer, from: [r0.id] }
+    event: DerivedBy { producer: ^occurrence_model_derive_producer, from: [r0.id] }
   )
   match span_index_resolve_textual_locus(index: index1, id: r1.id) {
     Holds { value: locus } =>
       match locus {
         Textual { file: f, extent: ByteRange { start: s, end: e } } =>
-          (f == occurrence_model_file) && (s == 0) && (e == 12)
+          (f == ^occurrence_model_file) && (s == 0) && (e == 12)
         _ => false
       }
     Violates { diagnostic: _ } => false
@@ -168,7 +165,7 @@ fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
   let child = node_synthetic(
-    kind: TypeNode { connective: Atom { identity: occurrence_eq_child } },
+    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: []
   )
   let left = node_with_occurrence_id(
@@ -191,12 +188,12 @@ fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
   let child_left = node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: occurrence_eq_child } },
+    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
     occurrence_id: node_occurrence_minted(id: m0.id)
   )
   let child_right = node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: occurrence_eq_child } },
+    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )

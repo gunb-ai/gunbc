@@ -37,7 +37,7 @@ use std::thread;
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_value, ClaimOutcome,
 };
-use v1_compiler::v1_interpreter::{InterpContext, Value};
+use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
 /// One runnable claim, projected from a `ClaimRef` record in the plan value.
 #[derive(Clone)]
@@ -169,7 +169,7 @@ fn run_one_claim(source_roots: Vec<String>, claim: ClaimRef) -> ClaimResult {
         }
     };
     // Context scoped to this claim's graph: its `data` cache drops with it.
-    let ctx = make_eval_context(&graph, source_indices);
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
     match run_claim(&ctx, &claim.function) {
         ClaimOutcome::Pass => ClaimResult {
             function: claim.function,
@@ -204,7 +204,7 @@ fn eval_plan(
 ) -> Result<Vec<Vec<ClaimRef>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices);
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",

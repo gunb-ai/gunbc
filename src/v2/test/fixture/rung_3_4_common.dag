@@ -5,7 +5,7 @@ module v2.test.rung_3_4_common
 import v2.compiler.emit_host {
   run_test_claim_emit_vs_eval
 }
-import v2.extdeps.languages.rust { rust_mvp1_source_text_authority }
+import v2.extdeps.languages.rust { rust_mvp1_runtime_row, rust_mvp1_source_text_authority }
 import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
@@ -44,7 +44,8 @@ data rung34_emit_host_rust_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_target_bundle,
   lex: VoidLexRules,
   binding_spellings: empty_map(),
-  authority_source_text: rust_mvp1_source_text_authority()
+  authority_source_text: rust_mvp1_source_text_authority(),
+  runtime_row: rust_mvp1_runtime_row()
 }
 
 fn rung34_inferred_tree(root: Node) -> InferredTree {

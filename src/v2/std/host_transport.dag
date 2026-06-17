@@ -2,19 +2,34 @@
 // Scope: omni-emission host transport descriptor (design-omni-emission-transport.md §3.1).
 // Status: B3 minimal substrate — modeled workspace/build/run + runtime-value codec; one generic
 //   `run_host_process` primitive; executable host boundary is `dsl/tools/emit_host_gate.dag`.
+//   T-22: TargetEmitHostRuntimeRow on TargetModel dissolves per-target authority_source_text
+//   dispatch in emit_host.dag (gunbc#4750).
 
 module v2.std.host_transport
 
 
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.node { Symbol }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  None,
+  diagnostics_singleton,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.machine { Byte }
+import v2.std.node { Node, Symbol }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.text { String }
 
+type ByteString = List<Byte>
 
-data host_tool_npx: Symbol = host_tool_npx
-data host_tool_node: Symbol = host_tool_node
-data host_tool_tsc: Symbol = host_tool_tsc
+
+
 
 type RelPath = String
 
@@ -48,4 +63,75 @@ type HostTransportDescriptor {
   build: List<ProcessInvocation>
   run: ProcessInvocation
   runtime_value_codec: RuntimeValueCodec
+}
+
+// T-22 — per-target emit-host runtime row (gunbc#4750). Typed field on TargetModel; extdeps
+// languages attach HostRuntimeRowPresent rows; absent targets stay HostRuntimeRowAbsent (fail-closed).
+type EmitHostRuntimeRow {
+  transport: HostTransportDescriptor
+  runtime_primitive_type: Node
+}
+
+type TargetEmitHostRuntimeRow
+  = HostRuntimeRowPresent { row: EmitHostRuntimeRow }
+  | HostRuntimeRowAbsent
+
+data target_emit_host_runtime_row_unconfigured: TargetEmitHostRuntimeRow = HostRuntimeRowAbsent
+
+fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_host_runtime_row_unconfigured_reason,
+    at: port_locus(port: ^emit_host_runtime_row_unconfigured_reason),
+    correction: None
+  }
+}
+
+fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_host_runtime_row_parse_byte_width_mismatch,
+    at: port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch),
+    correction: None
+  }
+}
+
+fn runtime_value_codec_expected_byte_count(codec: RuntimeValueCodec) -> Int {
+  match codec {
+    FixedWidthBytes { width: w } => w
+    SignedI32Le => 4
+  }
+}
+
+fn runtime_value_parse_from_row(
+  row: EmitHostRuntimeRow,
+  bytes: ByteString
+) -> Outcome<RuntimeValue> {
+  let expected = runtime_value_codec_expected_byte_count(codec: row.transport.runtime_value_codec)
+  if length(xs: bytes) == expected {
+    Accepted {
+      value: RuntimePrimitive {
+        value: {
+          primitive_type: row.runtime_primitive_type,
+          bytes: bytes
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: emit_host_runtime_row_parse_byte_width_mismatch_diagnostic()
+      )
+    }
+  }
+}
+
+fn configured_emit_host_runtime_row_from_target_row(
+  row: TargetEmitHostRuntimeRow
+) -> Outcome<EmitHostRuntimeRow> {
+  match row {
+    HostRuntimeRowPresent { row: configured } =>
+      Accepted { value: configured, diagnostics: None }
+    HostRuntimeRowAbsent =>
+      outcome_rejected(d: emit_host_runtime_row_unconfigured_diagnostic())
+  }
 }

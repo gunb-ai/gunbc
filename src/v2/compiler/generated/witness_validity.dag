@@ -8,7 +8,6 @@ import v2.std.node { Symbol }
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness {
   PreservationPredicate,
-  preservation_rule_constraint_satisfaction
 }
 import v2.std.verification { TestClaim }
 import v2.lens.testgen { testgen_emit_witness_validity_claim }
@@ -19,10 +18,10 @@ data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = te
     candidate: stub_empty_conj,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
-      preservation_rule: preservation_rule_constraint_satisfaction,
+      preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: StructuralPropertyWitness {
-      property: preservation_rule_constraint_satisfaction,
+      property: ^preservation_rule_constraint_satisfaction,
       evidence: stub_empty_conj,
     }
   )
@@ -34,7 +33,7 @@ data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen
     candidate: stub_empty_conj,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
-      preservation_rule: preservation_rule_constraint_satisfaction,
+      preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: StructuralPropertyWitness {
       property: ^witness_validity_unrealized_rule,
@@ -49,10 +48,10 @@ data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> = testgen_e
     candidate: stub_empty_conj,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
-      preservation_rule: preservation_rule_constraint_satisfaction,
+      preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: StructuralPropertyWitness {
-      property: preservation_rule_constraint_satisfaction,
+      property: ^preservation_rule_constraint_satisfaction,
       evidence: stub_empty_disj,
     }
   )

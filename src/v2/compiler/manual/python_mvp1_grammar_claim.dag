@@ -4,7 +4,6 @@ module v2.test.manual.python_mvp1_grammar_claim
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.python {
@@ -37,7 +36,7 @@ fn python_claim_bool_atom(b: Bool) -> Node {
 }
 
 fn python_mvp1_grammar_validates_fixture() -> Bool {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -52,7 +51,7 @@ fn python_mvp1_grammar_parse_accepted() -> Bool {
 }
 
 fn python_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: python_mvp1_source_text,
     file: ^python_mvp1_parse_fixture_file,

@@ -8,6 +8,7 @@
 
 module v2.extdeps.languages.swift
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
@@ -63,9 +64,6 @@ import v2.std.model_core {
   EffectSemanticsDecl,
   EffectSignature,
   FailClosedAtBoundary,
-  model_core_wave1_law_field_algebra,
-  model_core_wave1_law_field_kind,
-  model_core_wave1_law_field_subject,
   ModelCore,
   PartialitySemanticsDecl,
   PartialOperationDecl,
@@ -81,17 +79,6 @@ import v2.std.model_core {
 import v2.std.witness { Holds, Violates }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.compilers.target_model {
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  serialize_source_field_source_grammar,
-  serialize_source_field_source_text,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules,
-  target_model_edge_serialize_source
-}
 import v2.std.node {
   Arrow,
   Atom,
@@ -616,7 +603,7 @@ fn swift_mvp1_serialize_source_children() -> List<Edge> {
     left: swift_mvp1_serialize_source_prefix_edges(),
     right: [
       swift_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: swift_mvp1_concrete_tokens(),
           token_to_node: swift_concrete_token_node
@@ -675,12 +662,12 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
-        name: grammar_relation_field_production,
+        name: ^grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      swift_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      swift_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       swift_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: swift_concrete_token_node
@@ -709,19 +696,19 @@ fn swift_mvp1_target_model_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: swift_mvp1_selection_policy_node()
       ),
       swift_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: swift_declared_inhabitants_root()
       ),
       swift_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: swift_mvp1_translation_rules_node()
       ),
       swift_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: swift_mvp1_serialize_source_node()
       )
     ],
@@ -754,7 +741,8 @@ fn swift_mvp1_target_model() -> TargetModel {
     bundle: swift_mvp1_target_model_node(),
     lex: swift_wave1_lex(),
     binding_spellings: swift_mvp1_binding_spellings(),
-    authority_source_text: swift_mvp1_source_text_authority()
+    authority_source_text: swift_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -2135,10 +2123,10 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      swift_named_edge(name: model_core_wave1_law_field_subject, target: witness),
-      swift_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      swift_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
+      swift_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
       swift_named_edge(
-        name: model_core_wave1_law_field_kind,
+        name: ^model_core_wave1_law_field_kind,
         target: swift_atom(id: discriminant(v: key))
       )
     ],

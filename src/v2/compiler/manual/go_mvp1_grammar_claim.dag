@@ -6,7 +6,6 @@ module v2.test.manual.go_mvp1_grammar_claim
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.go {
@@ -39,7 +38,7 @@ fn go_claim_bool_atom(b: Bool) -> Node {
 }
 
 fn go_mvp1_grammar_validates_fixture() -> Bool {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: go_wave1_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -54,7 +53,7 @@ fn go_mvp1_grammar_parse_accepted() -> Bool {
 }
 
 fn go_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: go_mvp1_source_text,
     file: ^go_mvp1_parse_fixture_file,

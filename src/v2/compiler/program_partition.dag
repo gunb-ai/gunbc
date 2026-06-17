@@ -56,11 +56,6 @@ import v2.std.program_segment {
   SubtreeAtPath,
   SubtreeRoot,
   WholeProgram,
-  partition_boundary_free_ref,
-  partition_empty_segment,
-  partition_facts_miss,
-  partition_root_not_in_ambient,
-  partition_section_adapter_unavailable
 }
 import v2.std.witness { Holds, Violates }
 
@@ -75,7 +70,7 @@ type ProgramPartition {
 
 fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
   Diagnostic {
-    reason: partition_root_not_in_ambient,
+    reason: ^partition_root_not_in_ambient,
     at: node_locus(node: segment_root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -83,7 +78,7 @@ fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
 
 fn partition_facts_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
-    reason: partition_facts_miss,
+    reason: ^partition_facts_miss,
     at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -91,7 +86,7 @@ fn partition_facts_miss_diagnostic(key: Node) -> Diagnostic {
 
 fn partition_boundary_free_ref_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: partition_boundary_free_ref,
+    reason: ^partition_boundary_free_ref,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -99,7 +94,7 @@ fn partition_boundary_free_ref_diagnostic(node: Node) -> Diagnostic {
 
 fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
-    reason: partition_empty_segment,
+    reason: ^partition_empty_segment,
     at: node_locus(node: root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -390,7 +385,7 @@ fn emit_for_target(
 fn program_segment_from_section_unavailable() -> Outcome<ProgramSegment> {
   outcome_rejected(
     d: Diagnostic {
-      reason: partition_section_adapter_unavailable,
+      reason: ^partition_section_adapter_unavailable,
       at: port_locus(port: ^program_segment_from_section_port),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

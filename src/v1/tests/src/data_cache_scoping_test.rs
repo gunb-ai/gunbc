@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
-use v1_compiler::v1_interpreter::{self, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 use crate::helpers::resolve_imports_transitively;
 
@@ -61,7 +61,7 @@ fn read_magic() -> Int { magic }
             graph,
             resolved.source_indices.clone(),
             "read_magic",
-            false,
+            ExecutionMode::Wet,
             false,
         ) {
             Ok(Value::Int(n)) => assert_eq!(n, expected),
@@ -81,7 +81,8 @@ fn read_xs() -> List<Int> { xs }
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
     let first = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("first run");
     let second = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("second run");
@@ -109,11 +110,13 @@ fn read_xs() -> List<Int> { xs }
     let graph = resolved.graph.as_ref().expect("graph");
 
     let first = {
-        let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+        let ctx =
+            cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
         v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("first context")
         // ctx drops here, releasing its cache.
     };
-    let ctx2 = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx2 =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let second = v1_interpreter::run_in_context(&ctx2, "read_xs", false).expect("second context");
     match (&first, &second) {
         (Value::List(a), Value::List(b)) => {

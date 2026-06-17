@@ -58,16 +58,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  canonical_tag_arrow,
-  canonical_tag_bind,
-  canonical_tag_branch,
-  canonical_tag_cardinality,
-  canonical_tag_conj,
-  canonical_tag_disj,
-  canonical_tag_instantiation,
-  canonical_tag_loop,
-  canonical_tag_transform,
-  canonical_tag_value,
   content_hash,
   SyntheticOccurrence
 }
@@ -1179,22 +1169,22 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
   match connective {
     Atom { identity: identity } => identity
-    Conj => canonical_tag_conj
-    Disj => canonical_tag_disj
-    Arrow => canonical_tag_arrow
-    Cardinality => canonical_tag_cardinality
-    Instantiation => canonical_tag_instantiation
+    Conj => ^canonical_tag_conj
+    Disj => ^canonical_tag_disj
+    Arrow => ^canonical_tag_arrow
+    Cardinality => ^canonical_tag_cardinality
+    Instantiation => ^canonical_tag_instantiation
   }
 }
 
 
 fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
   match behavior {
-    Value => canonical_tag_value
-    Transform => canonical_tag_transform
-    Branch => canonical_tag_branch
-    Loop => canonical_tag_loop
-    Bind => canonical_tag_bind
+    Value => ^canonical_tag_value
+    Transform => ^canonical_tag_transform
+    Branch => ^canonical_tag_branch
+    Loop => ^canonical_tag_loop
+    Bind => ^canonical_tag_bind
   }
 }
 

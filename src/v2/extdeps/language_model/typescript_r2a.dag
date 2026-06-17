@@ -21,7 +21,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_ts_r2a_number_algebra_operations,
   TargetTypeScriptCompileVerdict,
   TargetTypeScriptCompileRejected,
-  target_diagnostic_ts2339_property_does_not_exist
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -88,5 +87,5 @@ data claim_typescript_r2a_verification_receipt_shape: TestClaim = EqualsClaim {
 }
 
 data typescript_r2a_modeled_falsification_expectation: TargetTypeScriptCompileVerdict = TargetTypeScriptCompileRejected {
-  diagnostic_code: target_diagnostic_ts2339_property_does_not_exist
+  diagnostic_code: ^target_diagnostic_ts2339_property_does_not_exist
 }

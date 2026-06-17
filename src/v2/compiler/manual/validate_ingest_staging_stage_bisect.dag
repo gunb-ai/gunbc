@@ -7,7 +7,6 @@ import v2.compiler.compile {
   LensGateWitness,
   Source,
   always_required_lenses,
-  compile_ingest_staging_source_file,
   run_required_lens_gates_on_subtree
 }
 import v2.compiler.infer { infer, InferredTree }
@@ -32,7 +31,7 @@ fn bisect_through_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model_wave1()
   tokenize(
     text: bisect_empty_source,
-    file: compile_ingest_staging_source_file,
+    file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   )
 }
@@ -42,7 +41,7 @@ fn bisect_through_parse() -> Outcome<ParseTree> {
   bind_outcome(
     o: tokenize(
       text: bisect_empty_source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -56,7 +55,7 @@ fn bisect_through_normalize() -> Outcome<Node> {
   bind_outcome(
     o: tokenize(
       text: bisect_empty_source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
@@ -96,7 +95,7 @@ fn bisect_through_resolve() -> Outcome<Node> {
   bind_outcome(
     o: tokenize(
       text: bisect_empty_source,
-      file: compile_ingest_staging_source_file,
+      file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {

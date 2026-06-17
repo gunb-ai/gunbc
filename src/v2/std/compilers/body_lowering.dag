@@ -36,11 +36,9 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  loop_bound_edge,
   node_synthetic
 }
 
-data body_lowering_reason_unsupported_form: Symbol = body_lowering_reason_unsupported_form
 
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -90,7 +88,7 @@ fn lower_loop(value: Node, bound: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: value },
-      Edge { label: Named { name: loop_bound_edge }, target: bound }
+      Edge { label: Named { name: ^loop_bound_edge }, target: bound }
     ]
   )
 }
@@ -128,22 +126,22 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
                 outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
               } else {
                 outcome_rejected(
-                  d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+                  d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
                 )
               }
             Absent =>
               outcome_rejected(
-                d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+                d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
               )
           }
         Absent =>
           outcome_rejected(
-            d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+            d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
           )
       }
     Absent =>
       outcome_rejected(
-        d: body_lowering_diagnostic(reason: body_lowering_reason_unsupported_form, n: witness)
+        d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )
   }
 }

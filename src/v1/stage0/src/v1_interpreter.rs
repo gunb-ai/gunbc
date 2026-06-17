@@ -444,6 +444,35 @@ fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
 
+/// Build `Optional<T>::Present { value }` for structural `map_get` results.
+fn optional_present(value: Value, ctx: &InterpContext) -> Value {
+    let mut fields = HashMap::new();
+    fields.insert(ctx.sym("value"), value);
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Present"),
+        fields: Rc::new(fields),
+    }
+}
+
+/// Build `Optional<T>::Absent` for a native-map miss (`raw_map_lookup` -> Null).
+fn optional_absent(ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Absent"),
+        fields: Rc::new(HashMap::new()),
+    }
+}
+
+/// Wrap a `raw_map_lookup` probe as the typed `map_get` surface (`Optional<V>`).
+fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
+    if matches!(raw, Value::Null) {
+        optional_absent(ctx)
+    } else {
+        optional_present(raw, ctx)
+    }
+}
+
 impl Value {
     /// Public name of this value's kind (e.g. "List", "Record", "Variant"),
     /// for host diagnostics that walk interpreter values (see `claim_executor`).
@@ -1000,6 +1029,20 @@ fn account_value(
     }
 }
 
+/// How service operations are executed: hermetic witnesses use modeled
+/// `mock_response` data; wet mode dispatches live transports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionMode {
+    Hermetic,
+    Wet,
+}
+
+impl ExecutionMode {
+    pub fn is_hermetic(self) -> bool {
+        matches!(self, ExecutionMode::Hermetic)
+    }
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -1011,8 +1054,8 @@ pub struct InterpContext {
     fn_nodes: HashMap<String, Rc<Node>>,
     /// Service registry: "service.Operation" → (service_node, op_node).
     service_ops: HashMap<String, ServiceOp>,
-    /// Dry-run mode: use mock responses instead of executing services.
-    pub dry_run: bool,
+    /// Service execution mode: hermetic uses mock responses; wet dispatches live.
+    pub execution_mode: ExecutionMode,
     /// Cache for evaluated `data` items (immutable global constants), keyed by
     /// the data item's node identity. Preserves structural sharing across
     /// references so a `data` referenced N times yields ONE Value, not N
@@ -1107,7 +1150,7 @@ impl InterpContext {
     pub fn new(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-        dry_run: bool,
+        execution_mode: ExecutionMode,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1149,7 +1192,7 @@ impl InterpContext {
             source_indices,
             fn_nodes,
             service_ops,
-            dry_run,
+            execution_mode,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -1179,17 +1222,17 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    run_with_options(graph, source_indices, entry_fn, false, true)
+    run_with_options(graph, source_indices, entry_fn, ExecutionMode::Wet, true)
 }
 
 pub fn run_with_options(
     graph: &ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
-    dry_run: bool,
+    execution_mode: ExecutionMode,
     eager_data_env: bool,
 ) -> InterpResult<Value> {
-    let ctx = InterpContext::new(graph, source_indices, dry_run);
+    let ctx = InterpContext::new(graph, source_indices, execution_mode);
     run_in_context(&ctx, entry_fn, eager_data_env)
 }
 
@@ -2973,6 +3016,21 @@ fn eval_algebra_method(
         // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
         // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
         // same Str-representation rule as `index` / `slice` / `contains`).
+        //
+        // `map_get` is the structural-method name the typechecker desugars from bare
+        // `map_get(m, k)` calls (std.graph adjacency, complexity.dag, …). It returns an
+        // explicit `Optional` variant so empty-list hits (`Present { value: [] }`) do not
+        // fall into the List/Empty/Cons pattern arm before the Optional bridge.
+        // NOT added to eval_builtin — B-LOOKUP-1 routes typed v2.std.collection `map_get`
+        // (Outcome<Optional<V>>) through eval_call as a user function instead.
+        "map_get" => {
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "map_get requires a key argument".to_string(),
+            })?;
+            let raw = raw_map_lookup(&receiver, key, env, ctx)?;
+            Ok(map_lookup_as_optional(raw, ctx))
+        }
+
         "get" => {
             if matches!(&receiver, Value::Str(_)) {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
@@ -3160,9 +3218,9 @@ fn eval_service_call(
     // Bind input params to arg values
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
 
-    // Dry-run: return mock response
-    if ctx.dry_run {
-        eprintln!("[dry-run] {}.{}", service_name, op_name);
+    // Hermetic: return modeled mock response instead of live dispatch.
+    if ctx.execution_mode.is_hermetic() {
+        eprintln!("[hermetic] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
 
@@ -4047,7 +4105,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
-/// Evaluate mock_response from an operation's properties for dry-run mode.
+/// Evaluate mock_response from an operation's properties for hermetic execution.
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
     for prop in op_node.properties.iter() {
@@ -4437,7 +4495,7 @@ fn eval_builtin(
 fn apply_closure(
     closure: &Value,
     args: &[Value],
-    _env: &Rc<Env>,
+    env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match closure {
@@ -4456,6 +4514,18 @@ fn apply_closure(
                 Err(InterpError::EarlyReturn { value }) => Ok(value),
                 other => other,
             }
+        }
+        // A top-level named function (`Value::Fn`) is a first-class `fn(...) -> ...` value: the
+        // typechecker admits it wherever a closure type is expected, so a higher-order argument
+        // bound to a bare named function must be applied here too — positionally, mirroring the
+        // Record/Variant field-fn dispatch in `eval_method_call`. Without this arm the program
+        // typechecks but the evaluator rejects it at apply time ("expected closure, got Fn"),
+        // a fail-open spec-without-execution gap (DESIGN.md §5).
+        Value::Fn { node } => {
+            let node = node.clone();
+            let named: Vec<(Option<String>, Value)> =
+                args.iter().map(|v| (None, v.clone())).collect();
+            call_function(ctx, &node, &named, env)
         }
         _ => Err(InterpError::TypeError {
             msg: format!("expected closure, got {}", closure.type_label()),

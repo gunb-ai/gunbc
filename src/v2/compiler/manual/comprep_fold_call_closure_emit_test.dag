@@ -40,7 +40,6 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  arrow_body_edge,
   content_hash,
   node_synthetic,
   well_formed
@@ -53,8 +52,6 @@ import v2.std.compilers.target_model {
   TargetModel,
   canonical_operation_op_add,
   concrete_syntax_token_list_to_node,
-  target_model_edge_operator_realizations,
-  target_model_edge_value_expression_projection,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   target_project_arrow_body_to_value_expression,
@@ -110,7 +107,7 @@ fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node 
       ),
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       fold_call_named_edge(
-        name: arrow_body_edge,
+        name: ^arrow_body_edge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -146,7 +143,7 @@ fn fold_call_arrow(closure: Node) -> Node {
       ),
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       fold_call_named_edge(
-        name: arrow_body_edge,
+        name: ^arrow_body_edge,
         target: fold_call_body(closure: closure)
       )
     ]
@@ -192,13 +189,13 @@ fn fold_call_target_model() -> TargetModel {
       kind: TypeNode { connective: Conj },
       children: [
         fold_call_named_edge(
-          name: target_model_edge_value_expression_projection,
+          name: ^target_model_edge_value_expression_projection,
           target: value_expr_projection_bundle_node(
             projection: dag_value_expression_projection()
           )
         ),
         fold_call_named_edge(
-          name: target_model_edge_operator_realizations,
+          name: ^target_model_edge_operator_realizations,
           target: fold_call_operator_catalog()
         )
       ]

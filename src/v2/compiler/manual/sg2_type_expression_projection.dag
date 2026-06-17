@@ -9,10 +9,6 @@ import v2.compiler.translate {
   target_bundle_child_optional_type_expr_projection,
   target_serialize_source_from_model,
   translate,
-  translate_type_expression_shape_missing,
-  translate_type_expr_kind_authority_invalid,
-  translate_grammar_inverse_not_realized,
-  translate_grammar_relation_row_not_found,
   ProjectionAbsent
 }
 import v2.extdeps.languages.rust {
@@ -202,7 +198,6 @@ fn sg2_arrow_projected_serialize_accepts() -> Bool {
   sg2_serialize_accepts(emitted: sg2_project_arrow_emitted())
 }
 
-data sg2_serialize_probe_not_rejected: Symbol = sg2_serialize_probe_not_rejected
 
 fn sg2_arrow_projected_serialize_outcome() -> Outcome<String> {
   match target_serialize_source_from_model(
@@ -230,7 +225,7 @@ fn sg2_arrow_projected_serialize_reject_head_reason() -> Symbol {
 }
 
 fn sg2_arrow_projected_serialize_reject_is_shape_missing() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == translate_type_expression_shape_missing
+  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_type_expression_shape_missing
 }
 
 fn sg2_arrow_projected_serialize_reject_is_emitted_shape_malformed() -> Bool {
@@ -238,15 +233,15 @@ fn sg2_arrow_projected_serialize_reject_is_emitted_shape_malformed() -> Bool {
 }
 
 fn sg2_arrow_projected_serialize_reject_is_kind_authority_invalid() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == translate_type_expr_kind_authority_invalid
+  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_type_expr_kind_authority_invalid
 }
 
 fn sg2_arrow_projected_serialize_reject_is_grammar_inverse_not_realized() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == translate_grammar_inverse_not_realized
+  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_grammar_inverse_not_realized
 }
 
 fn sg2_arrow_projected_serialize_reject_is_grammar_relation_row_not_found() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == translate_grammar_relation_row_not_found
+  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_grammar_relation_row_not_found
 }
 
 fn sg2_conj_serialize_matches_expected() -> Bool {
@@ -503,7 +498,6 @@ fn witness_sg2_projection_falsification_holds() -> Bool {
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
 }
 
-data sg2_wrong_arrow_token: Symbol = sg2_wrong_arrow_token
 
 fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
   let row = rust_type_expression_projection()
@@ -515,7 +509,7 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
       surface: row.arrow_form.surface,
       open: row.arrow_form.open,
       close: row.arrow_form.close,
-      arrow: sg2_wrong_arrow_token,
+      arrow: ^sg2_wrong_arrow_token,
       param_ident_token: row.arrow_form.param_ident_token,
       param_type_separator: row.arrow_form.param_type_separator,
       param_list_separator: row.arrow_form.param_list_separator

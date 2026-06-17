@@ -113,15 +113,7 @@ type InferGatherFoldAcc {
   children_remaining: Int
 }
 
-data infer_descent_not_derived: Symbol = infer_descent_not_derived
-data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
-data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 // 🟢 SM5-satisfied: v2 bootstrap on src/v2 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
-data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
-data infer_branch_shape_invalid: Symbol = infer_branch_shape_invalid
-data infer_branch_cond_not_bool: Symbol = infer_branch_cond_not_bool
-data infer_branch_arm_type_mismatch: Symbol = infer_branch_arm_type_mismatch
-data infer_gather_fold_failure: Symbol = infer_gather_fold_failure
 
 // §1-tail A4 disposition (post-#4692): `_bounded` fuel residue = 0 in this stage.
 // SG-6 BoundedLattice gather/gate → fuel-delete: rows in v2.std.bounded_lattice_completeness
@@ -130,14 +122,14 @@ data infer_gather_fold_failure: Symbol = infer_gather_fold_failure
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_facts_lookup_miss,
+    reason: ^infer_facts_lookup_miss,
     at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_canonical_grounding_incoherent,
+    reason: ^infer_canonical_grounding_incoherent,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -145,7 +137,7 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
 
 fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_algebra_ref_ungrounded,
+    reason: ^infer_algebra_ref_ungrounded,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -153,7 +145,7 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 
 fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_branch_shape_invalid,
+    reason: ^infer_branch_shape_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -161,7 +153,7 @@ fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
 
 fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_branch_cond_not_bool,
+    reason: ^infer_branch_cond_not_bool,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -169,7 +161,7 @@ fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
 
 fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_branch_arm_type_mismatch,
+    reason: ^infer_branch_arm_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -189,7 +181,7 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
 
 fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: infer_descent_not_derived,
+    reason: ^infer_descent_not_derived,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }

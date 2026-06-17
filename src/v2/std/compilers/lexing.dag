@@ -159,12 +159,11 @@ fn lex_empty_node() -> Node {
 }
 
 
-data lex_void_lex_rules_evidence: Symbol = lex_void_lex_rules_evidence
 
 
 fn lex_void_lex_rules_evidence_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: lex_void_lex_rules_evidence } },
+    kind: TypeNode { connective: Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

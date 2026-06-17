@@ -24,8 +24,6 @@ import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
-  grammar_relation_field_emitted,
-  grammar_relation_field_tokens
 }
 import v2.std.diagnostic {
   Accepted,
@@ -52,25 +50,22 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data emit_ingest_fold_perturb_bogus_tok: Symbol = emit_ingest_fold_perturb_bogus_tok
-data emit_ingest_fold_row_label_dag: Symbol = emit_ingest_fold_row_label_dag
-data emit_ingest_fold_row_label_python: Symbol = emit_ingest_fold_row_label_python
 
 // Claim-local negative fixture: same token-spine as a real row, foreign emitted (A2 only — not B1 N=2).
 fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       outcome_accepted(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: grammar_relation_field_emitted },
+              label: Named { name: ^grammar_relation_field_emitted },
               target: emitted
             },
             Edge {
-              label: Named { name: grammar_relation_field_tokens },
+              label: Named { name: ^grammar_relation_field_tokens },
               target: tokens_root
             }
           ],
@@ -85,8 +80,8 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: emit_ingest_fold_row_label_dag }, target: dag_row },
-      Edge { label: Named { name: emit_ingest_fold_row_label_python }, target: python_row }
+      Edge { label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
+      Edge { label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -94,7 +89,7 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
 
 fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
@@ -114,7 +109,7 @@ fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> 
 }
 
 fn emit_ingest_fold_row_emitted(row: Node) -> Outcome<Node> {
-  find_named_child(root: row, name: grammar_relation_field_emitted)
+  find_named_child(root: row, name: ^grammar_relation_field_emitted)
 }
 
 // Generic per-row selector bijectivity — NO per-production / per-language arm.

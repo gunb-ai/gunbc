@@ -53,6 +53,7 @@ use v1_compiler::resolved_graph_cache::{
     build_valid_artifact_bytes, lookup, subject_digest_for_closure, write_raw_artifact_for_test,
     CacheLookupResult, CacheRejectReason,
 };
+use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
@@ -123,7 +124,7 @@ fn with_cache_env<T, F: FnOnce() -> T>(cache_dir: &std::path::Path, f: F) -> T {
 
 fn cold_oracle(roots: &[String], entry: &str, function: &str) -> String {
     let (graph, si) = resolve_entry_graph(roots, entry).expect("cold resolve");
-    let ctx = make_eval_context(&graph, si);
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
 }
 
@@ -136,7 +137,7 @@ fn cached_verdict(
     with_cache_env(cache_dir, || {
         let index = build_multi_entry_index(roots);
         let (graph, si) = resolve_entry_with_index(&index, entry).expect("cached resolve");
-        let ctx = make_eval_context(&graph, si);
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
         outcome_tag(&run_claim(&ctx, function))
     })
 }
@@ -219,7 +220,7 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
         let index = build_multi_entry_index(&roots);
         let (recomputed, si2) =
             resolve_entry_with_index(&index, &a).expect("recompute after poison");
-        let ctx = make_eval_context(&recomputed, si2);
+        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
@@ -257,7 +258,7 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
         let index = build_multi_entry_index(&roots);
         let (recomputed, si2) =
             resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
-        let ctx = make_eval_context(&recomputed, si2);
+        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
@@ -286,7 +287,7 @@ fn concurrent_resolve_write_once_no_torn_read() {
         b1.wait();
         let index = build_multi_entry_index(&roots_a);
         let (graph, si) = resolve_entry_with_index(&index, &entry).expect("resolve t1");
-        let ctx = make_eval_context(&graph, si);
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
         outcome_tag(&run_claim(&ctx, "witness_a_true"))
     });
     let roots_b = roots.clone();
@@ -295,7 +296,7 @@ fn concurrent_resolve_write_once_no_torn_read() {
         b2.wait();
         let index = build_multi_entry_index(&roots_b);
         let (graph, si) = resolve_entry_with_index(&index, &a_b).expect("resolve t2");
-        let ctx = make_eval_context(&graph, si);
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
         outcome_tag(&run_claim(&ctx, "witness_a_true"))
     });
 
@@ -344,7 +345,7 @@ fn key_mismatch_forces_miss_not_stale_hit() {
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
         let (graph, si) = resolve_entry_with_index(&index, &a).expect("resolve after perturb");
-        let ctx = make_eval_context(&graph, si);
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
@@ -368,7 +369,7 @@ fn cross_process_child_worker() {
     let verdict = with_cache_env(std::path::Path::new(&cache), || {
         let index = build_multi_entry_index(&[roots]);
         let (graph, si) = resolve_entry_with_index(&index, &entry).expect("child resolve");
-        let ctx = make_eval_context(&graph, si);
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
         outcome_tag(&run_claim(&ctx, "witness_a_true"))
     });
     fs::write(&verdict_path, verdict).expect("write verdict");
