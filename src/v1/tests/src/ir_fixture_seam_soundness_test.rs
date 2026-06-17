@@ -29,7 +29,9 @@ fn resolved_from_source() -> Rc<ResolvedPipelineResult> {
     compile_to_resolved(Rc::new(sources))
 }
 
-fn emit_rust(resolved: Rc<ResolvedPipelineResult>) -> Rc<v1_compiler::v1_compiler_compile::PipelineResult> {
+fn emit_rust(
+    resolved: Rc<ResolvedPipelineResult>,
+) -> Rc<v1_compiler::v1_compiler_compile::PipelineResult> {
     emit_resolved_for_target(resolved, RenderTarget::Rust)
 }
 
@@ -107,8 +109,9 @@ fn ir_fixture_round_trip_emit_is_bit_identical_to_direct() {
         direct.diagnostics
     );
 
-    let payload = serialize_fixture_payload_for_test(graph.as_ref(), direct.source_indices.as_ref())
-        .expect("serialize fixture");
+    let payload =
+        serialize_fixture_payload_for_test(graph.as_ref(), direct.source_indices.as_ref())
+            .expect("serialize fixture");
     let cached = deserialize_fixture_payload_for_test(&payload).expect("deserialize fixture");
     validate_fixture_intern_table_for_test(&cached).expect("valid fixture intern table");
 
@@ -132,8 +135,9 @@ fn ir_fixture_round_trip_emit_is_bit_identical_to_direct() {
 fn ir_fixture_wrong_intern_table_born_marks_fail_loader_guard() {
     let direct = resolved_from_source();
     let graph = direct.graph.clone().expect("typed graph");
-    let payload = serialize_fixture_payload_for_test(graph.as_ref(), direct.source_indices.as_ref())
-        .expect("serialize fixture");
+    let payload =
+        serialize_fixture_payload_for_test(graph.as_ref(), direct.source_indices.as_ref())
+            .expect("serialize fixture");
     let cached = deserialize_fixture_payload_for_test(&payload).expect("deserialize fixture");
     let poisoned = strip_intern_table_from_fixture(cached);
 

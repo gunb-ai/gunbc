@@ -28,8 +28,7 @@ import v2.std.algebra { Empty, list_append }
 import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-  grammar_relation_field_tokens
+  concrete_syntax_token_list_from_node
 }
 import v2.std.diagnostic {
   Accepted,
@@ -63,7 +62,7 @@ fn type_decl_foreign_emitted() -> Node {
 // exactly the frontier the forward selector keys on (mirrors v2.compiler.ingest row_token_spine_classes).
 fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),

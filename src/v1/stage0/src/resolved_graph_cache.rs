@@ -324,8 +324,8 @@ pub fn serialize_fixture_payload_for_test(
 /// Test-scoped fixture loader (inverse of `serialize_fixture_payload_for_test`).
 /// Dissolve-on: hermetic inter-stage fixture loader lands in pipeline proper (P5).
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
-    let payload: CachePayload = serde_json::from_slice(bytes)
-        .map_err(|e| format!("fixture payload decode: {e}"))?;
+    let payload: CachePayload =
+        serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
     let source_indices = Rc::new(
         payload
             .source_indices
