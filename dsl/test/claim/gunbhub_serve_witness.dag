@@ -36,16 +36,16 @@ import gunbc.gunbhub_serve {
   serve_gunbhub_page_source,
 }
 import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
+import std.markup { MarkupNode }
 import std.react_markup {
   EmitOk,
   EmitRejected,
-  ReactMarkupNode,
   serialize_react_markup,
 }
 import std.types { GET, POST }
 
 // Witness-only: extract ComposedOk html; pages under test are known compose-safe.
-fn witness_compose_ok_html(node: ReactMarkupNode) -> String {
+fn witness_compose_ok_html(node: MarkupNode) -> String {
   match gunbhub_compose_body(node: node) {
     ComposedOk { html: h } => h
     ComposeRejected { reason: _ } => ""
