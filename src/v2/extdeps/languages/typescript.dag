@@ -610,18 +610,27 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
     },
-    // Lane 2c — TODO(follow-up): TypeScript closures are `(p, ...) => expr` (fat-arrow), which needs
-    // a `=>` token and no `fn`/brace framing the single-token shape can't yet express. The .dag
-    // self-target is the witnessed callable/closure surface in this PR; this row exists only so the
-    // fail-closed projection bundle decodes — no TS closure emission is exercised or claimed here.
+    // 🟡 gated — feature:ts-closure-fat-arrow-projection — bind: node://adhoc-02906b5e-1f6 (Lane 2c) —
+    // dissolve-on-arrival: a TypeScript closure emit path that models `(p, ...) => expr` (fat-arrow,
+    // expression body — needs a `=>` token + no `fn`/brace framing the single-token TargetClosureShape
+    // cannot yet express); replace the sentinels below with the real fat-arrow spelling then.
+    // forbidden: spelling these fields with real TS tokens (`kw_function`/braces) before that lands —
+    // that would let a closure routed through the TS target SILENTLY emit invalid `function(){}` (§5).
+    //
+    // Fail-closed posture: every field is the same non-lexable sentinel `^ts_closure_emit_unsupported`.
+    // The projection bundle still decodes (the field is structurally a Symbol), so all OTHER TS
+    // value-expression emission is unaffected; but if a closure is ever routed through the TS target,
+    // the emitted ConcreteSyntaxTokens carry the sentinel token-class, which has no `ts_wave1_lex_rules`
+    // spelling and so fails LOUDLY at serialize — never a plausible-but-wrong TS source string. No TS
+    // closure call path exists today, so this is unreachable; it exists only so the bundle decodes.
     closure_form: TargetClosureShape {
-      fn_token: ^ts_token_kw_function,
-      open: ^ts_token_lparen,
-      separator: ^ts_token_comma,
-      close: ^ts_token_rparen,
-      body_open: ^ts_token_lbrace,
-      body_close: ^ts_token_rbrace,
-      param_ident_token: ^ts_token_ident
+      fn_token: ^ts_closure_emit_unsupported,
+      open: ^ts_closure_emit_unsupported,
+      separator: ^ts_closure_emit_unsupported,
+      close: ^ts_closure_emit_unsupported,
+      body_open: ^ts_closure_emit_unsupported,
+      body_close: ^ts_closure_emit_unsupported,
+      param_ident_token: ^ts_closure_emit_unsupported
     },
     // Applied-effect projection: the `callees` catalog binds each v2.std.runtime EffectRequestKind
     // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
