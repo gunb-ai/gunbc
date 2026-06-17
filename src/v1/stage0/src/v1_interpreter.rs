@@ -4061,7 +4061,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
-/// Evaluate mock_response from an operation's properties for dry-run mode.
+/// Evaluate mock_response from an operation's properties for hermetic execution.
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
     for prop in op_node.properties.iter() {

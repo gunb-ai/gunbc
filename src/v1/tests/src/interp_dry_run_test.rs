@@ -47,6 +47,17 @@ fn run_subcommand_wires_cli_dry_run_flag() {
 }
 
 #[test]
+fn claim_batch_wires_wet_flag_to_execution_mode() {
+    let claim_batch = read_v2_file("src/v1/stage0/src/bin/claim_batch.rs");
+    assert!(
+        claim_batch.contains("\"--wet\"")
+            && claim_batch.contains("ExecutionMode::Hermetic")
+            && claim_batch.contains("ExecutionMode::Wet"),
+        "claim_batch must accept --wet and default witnesses to Hermetic execution"
+    );
+}
+
+#[test]
 fn interpreter_dry_run_returns_modeled_rest_mock_response() {
     let src = r#"module test.dry_run_mock
 
