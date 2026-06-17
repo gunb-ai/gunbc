@@ -267,6 +267,10 @@ impl CanonKey {
             None
         }
     }
+
+    pub(crate) fn value_ref(&self) -> &Value {
+        &self.key
+    }
 }
 
 impl PartialEq for CanonKey {

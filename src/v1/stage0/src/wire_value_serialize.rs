@@ -101,12 +101,11 @@ pub fn value_to_wire_json(val: &Value, ctx: &InterpContext) -> WireResult<serde_
         Value::Map(m) => {
             let mut obj = serde_json::Map::new();
             for (k, v) in m.iter() {
-                let key = match &k.key {
+                let key = match k.value_ref() {
                     Value::Str(s) => s.clone(),
                     other => {
                         return Err(format!(
-                            "cannot serialize map with non-string key to JSON (got {} key)",
-                            other.type_label()
+                            "cannot serialize map with non-string key to JSON (got {other:?} key)"
                         ))
                     }
                 };
