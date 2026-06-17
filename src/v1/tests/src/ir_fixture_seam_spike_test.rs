@@ -1,9 +1,14 @@
-//! P5-SPIKE witness: does the manual compiler-stage IR fixture seam
-//! (`front_end_sources` → `normalize_graph` → `reconcile` with `frontend.intern_table`)
-//! agree with the production `compile_to_resolved_with_options` path on complexity output?
+//! Permanent regression witness for the single-closure IR fixture seam born-mark in
+//! `pipeline.rs` (`compile_dag_with_complexity`).
 //!
-//! The seam under test is `compile_dag_with_complexity` in pipeline.rs — it stitches stages
-//! manually instead of calling `compile_sources_with_options(analyze_complexity: true)`.
+//! Property proved: within one import closure, manually stitching
+//! `front_end_sources` → `normalize_graph` → `reconcile(..., frontend.intern_table)`
+//! yields the same complexity report as the production
+//! `compile_sources_with_options(analyze_complexity: true)` path.
+//!
+//! Separate concern (already born-marked in `cli_run.rs`): cross-entry typed-module
+//! cache reuse requires `seed_kernel_intern_names` — see
+//! `resolve_typed_cache_equivalence_test`.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -16,7 +21,7 @@ use v1_compiler::v1_compiler_complexity::build_complexity_report;
 use v1_compiler::v1_compiler_infer::reconcile;
 use v1_compiler::v1_compiler_normalize::normalize_graph;
 use v1_compiler::v1_std_core::NewlineIndex;
-use v1_compiler::RenderTarget;
+use v1_compiler::v1_compiler_languages::RenderTarget;
 
 use crate::helpers::resolve_imports_transitively;
 
