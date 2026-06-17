@@ -55,6 +55,13 @@ data corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip: ClaimWitnessCor
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_emit_ingest_type_decl_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "emit ingest type-decl Conj node round trip (grammar-inverse)",
+  entry: "src/v2/compiler/manual/emit_ingest_type_decl_round_trip_test.dag",
+  function: "emit_ingest_type_decl_round_trip_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_emit_ingest_python_same_language_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest python same language selector bijectivity",
   entry: "src/v2/compiler/manual/emit_ingest_python_same_language_round_trip_test.dag",
