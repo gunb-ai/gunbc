@@ -1,5 +1,6 @@
 //! Parse + resolve receipts for `v2.lens.extdeps_shape_transport_policy`.
 
+use v1_compiler::extdeps_shape_transport_policy_project;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, Value};
 
@@ -37,6 +38,38 @@ fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
         .unwrap_or_else(|e| panic!("run {witness_fn}: {e:?}"))
 }
 
+fn assert_witness_true(entry: &str, witness_fn: &str) {
+    let content = std::fs::read_to_string(workspace_root().join(entry))
+        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
+    match run_v4_module(entry, &content, witness_fn) {
+        Value::Bool(true) => {}
+        other => panic!("expected {witness_fn} true, got {other:?}"),
+    }
+}
+
+#[test]
+fn extdeps_argv_projection_catches_main_seam_a_sites() {
+    let root = workspace_root();
+    assert!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_operation(
+            root.join("dsl/extdeps/cloud/gcp/gcp.dag")
+                .to_string_lossy()
+                .into_owned(),
+            "gcloud.Auth".to_string(),
+            "Login".to_string(),
+        ) == 1
+    );
+    assert!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_operation(
+            root.join("dsl/extdeps/rust/cargo_build.dag")
+                .to_string_lossy()
+                .into_owned(),
+            "cargo.Build".to_string(),
+            "Clippy".to_string(),
+        ) >= 2
+    );
+}
+
 #[test]
 fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
     let lens_entry = "src/v2/lens/extdeps_shape_transport_policy.dag";
@@ -50,38 +83,36 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         ),
     )));
 
-    let policy_leak_entry =
-        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag";
-    let policy_leak_content = std::fs::read_to_string(workspace_root().join(policy_leak_entry))
-        .unwrap_or_else(|e| panic!("read {policy_leak_entry}: {e}"));
-    match run_v4_module(
-        policy_leak_entry,
-        &policy_leak_content,
-        "policy_leak_cargo_build_is_red_holds",
-    ) {
-        Value::Bool(true) => {}
-        other => panic!("expected policy leak witness true, got {other:?}"),
-    }
-
-    let clean_entry =
-        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag";
-    let clean_content = std::fs::read_to_string(workspace_root().join(clean_entry))
-        .unwrap_or_else(|e| panic!("read {clean_entry}: {e}"));
-    match run_v4_module(clean_entry, &clean_content, "clean_git_diff_is_green_holds") {
-        Value::Bool(true) => {}
-        other => panic!("expected clean git diff witness true, got {other:?}"),
-    }
-
-    let dead_param_entry =
-        "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag";
-    let dead_param_content = std::fs::read_to_string(workspace_root().join(dead_param_entry))
-        .unwrap_or_else(|e| panic!("read {dead_param_entry}: {e}"));
-    match run_v4_module(
-        dead_param_entry,
-        &dead_param_content,
-        "dead_param_cargo_build_is_red_holds",
-    ) {
-        Value::Bool(true) => {}
-        other => panic!("expected dead param witness true, got {other:?}"),
+    for (entry, witness_fn) in [
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
+            "policy_leak_cargo_build_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
+            "clean_git_diff_is_green_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
+            "dead_param_cargo_build_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
+            "dead_param_gcp_login_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
+            "dead_param_cargo_clippy_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
+            "corpus_cargo_clippy_dead_param_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
+            "corpus_gcp_login_dead_param_is_red_holds",
+        ),
+    ] {
+        assert_witness_true(entry, witness_fn);
     }
 }

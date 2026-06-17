@@ -2,6 +2,7 @@
 //! Parses an extdeps `.dag` module and counts dead input params per operation.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::v1_compiler_emit::effective_operation_transport;
@@ -10,6 +11,26 @@ use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
     build_newline_index, param_node_name_at, ExprData, LiteralValue, Node,
 };
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("workspace root")
+        .to_path_buf()
+}
+
+fn resolve_extdeps_path(path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_file() {
+        return candidate.to_path_buf();
+    }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return rooted;
+    }
+    panic!("extdeps argv projection: file not found: {path}");
+}
 
 fn argv_expr_token(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>) -> String {
     match node.expr_data.as_ref() {
@@ -79,9 +100,11 @@ fn parse_module_items(
     Rc<Vec<Rc<Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
-    let content = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("extdeps argv projection: failed to read {path}: {e}"));
-    let filename = std::path::Path::new(path)
+    let resolved = resolve_extdeps_path(path);
+    let path_str = resolved.to_string_lossy();
+    let content = std::fs::read_to_string(&resolved)
+        .unwrap_or_else(|e| panic!("extdeps argv projection: failed to read {path_str}: {e}"));
+    let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
