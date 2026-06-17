@@ -28,8 +28,7 @@ import v2.std.algebra { Empty, list_append }
 import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-  grammar_relation_field_tokens
+  concrete_syntax_token_list_from_node
 }
 import v2.std.diagnostic {
   Accepted,
@@ -44,7 +43,7 @@ import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates }
 
 // A perturbed name binding declared by no row — drives the fail-closed control.
-data type_decl_round_trip_foreign_binding: Symbol = type_decl_round_trip_foreign_binding
+data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 
 // n: the type-decl Conj node under test (typescript `type Task = { ... }`).
 fn type_decl_emitted() -> Node {
@@ -63,7 +62,7 @@ fn type_decl_foreign_emitted() -> Node {
 // exactly the frontier the forward selector keys on (mirrors v2.compiler.ingest row_token_spine_classes).
 fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
