@@ -37,8 +37,6 @@ import std.measure {
   ByteSize,
   byte_size,
   byte_size_count,
-  BitWidth,
-  bit_width_count,
   Watt,
   watt,
   watt_count,
@@ -51,7 +49,7 @@ import std.measure {
 }
 import product.compute_fabric { Bandwidth }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow }
+import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -173,18 +171,34 @@ fn memory_total_capacity(platform: Platform, cfg: MemoryConfig) -> ByteSize {
   byte_size(count: byte_size_count(b: cfg.module.capacity_bytes) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
-// Aggregate memory bandwidth = effective rate (MT/s) × 8 bytes/transfer × channels, in
-// bytes/s. The effective rate folds in the platform's per-DPC/rank downclock, capped by the
-// module's own rated rate — so a faster module on a slower platform is held to the platform.
+// 🟡 CALIBRATE(rank-interleave-factor) — multi-rank bandwidth gain, as an integer percent.
+// A multi-rank DIMM lets the controller interleave accesses across ranks, hiding row-activate
+// latency the rank-bank machinery would otherwise stall on, for a real ~5–15% effective-
+// bandwidth edge over single-rank at the SAME data rate. Modeled as a percent applied to the
+// rate: ≥2 ranks → 100 (the reference), 1 rank → 90 (single-rank gives up the interleave).
+// Without this term 1R and 2R compute IDENTICAL bandwidth, so 1R (fewer devices → less power)
+// unconditionally DOMINATES 2R everywhere — a wrong answer (§5); with it, 1R-vs-2R is a
+// genuine Incomparable trade-off (1R lower power, 2R higher bandwidth). 🟡 the 90/100 split is
+// a placeholder for a live STREAM/bandwidth measurement on the target platform.
+fn rank_interleave_percent(rank_count: Int) -> Int {
+  if rank_count >= 2 { 100 } else { 90 }
+}
+
+// Aggregate memory bandwidth = effective rate (MT/s) × rank-interleave factor × 8 bytes/
+// transfer × channels, in bytes/s. The effective rate folds in the platform's per-DPC/rank
+// downclock, capped by the module's own rated rate — so a faster module on a slower platform
+// is held to the platform; the interleave factor then credits multi-rank's real edge.
 fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
   let rated = min_int(a: cfg.module.data_rate_mts, b: effective_data_rate_mts(platform: platform, dimms_per_channel: cfg.dimms_per_channel, rank_count: cfg.module.rank_count))
-  Bandwidth { count: rated * 1000000 * dram_channel_bus_bytes * platform.memory_channels }
+  let interleaved = rated * rank_interleave_percent(rank_count: cfg.module.rank_count) / 100
+  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes * platform.memory_channels }
 }
 
 // DRAM device count per stick, DERIVED from the grounded axes (DESIGN §2 derive-don't-store):
-// a 72-bit ECC word is spread across (72 / device-width) devices per rank, × rank_count.
+// chips_per_rank (the 72/width authority now lives in std.memory.types, shared with the
+// realizability derivation — no fork) × rank_count.
 fn chips_per_rank(module: DramModuleCatalogRow) -> Int {
-  72 / bit_width_count(b: module.chip_width)
+  dram_chips_per_rank(module: module)
 }
 
 fn devices_per_stick(module: DramModuleCatalogRow) -> Int {
@@ -212,6 +226,13 @@ type CpuCandidate {
   catalog: CpuModelCatalogRow
   typical_draw: Watt           // 🟡 measured average draw under the target workload
   price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
+  // 🟡 MEASURED aggregate compute throughput — a relative index from a real benchmark
+  // (SPECrate-style, or builds/hour on the target CI workload), NOT synthesized from
+  // cores × GHz (that is a fabricated number — the §5 trap; per-core IPC, frequency scaling,
+  // and NUMA make cores×clock a poor proxy). Dimensionless (a ratio to a reference machine),
+  // so it is the `throughput` HardwareAxes value directly. Pending live measurement it is the
+  // confirm point that decides CPU value — the model is blind to compute without it.
+  aggregate_throughput: Int
 }
 
 // === Motherboard ==========================================================
@@ -231,8 +252,8 @@ type Motherboard {
 // === PSU ==================================================================
 //
 // EfficiencyRating is the closed, grounded 80 PLUS certification axis — each tier is a
-// measured efficiency FLOOR (at 50% load), not a free percentage string (mirrors the
-// CpuSocket exemplar: decompose the marketing token into grounded structure).
+// measured efficiency FLOOR, not a free percentage string (mirrors the CpuSocket exemplar:
+// decompose the marketing token into grounded structure).
 // Anchor: https://en.wikipedia.org/wiki/80_Plus
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 
@@ -243,16 +264,19 @@ type PsuModel {
   price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
 }
 
-// Efficiency floor as a percent (×100 → integer percent at 50% load). These are the 80 PLUS
-// (115V internal) published floors — grounded certification values, not guesses.
+// Efficiency floor as an integer percent at the 50%-LOAD point — chosen deliberately: a CI
+// node sized so its typical DC draw sits near half the PSU's rated output (the ~46% in the
+// witness) is read at the 50% column, NOT the 20%/100% floors (where Gold is 87%). At 50%
+// load Gold is 90%. These are the 80 PLUS (115V internal) published 50%-load floors —
+// grounded certification values, not guesses.
 fn efficiency_percent(e: EfficiencyRating) -> Int {
   match e {
     Plus80 => 80
-    Bronze => 82
-    Silver => 85
-    Gold => 87
-    Platinum => 90
-    Titanium => 92
+    Bronze => 85
+    Silver => 88
+    Gold => 90
+    Platinum => 92
+    Titanium => 94
   }
 }
 
@@ -295,11 +319,19 @@ fn config_total_cost(cfg: SystemConfig) -> MoneyMicros {
 
 fn config_axes(cfg: SystemConfig) -> HardwareAxes {
   HardwareAxes {
+    throughput: cfg.cpu.aggregate_throughput,
     capacity: memory_total_capacity(platform: cfg.platform, cfg: cfg.memory),
     bandwidth: memory_bandwidth(platform: cfg.platform, cfg: cfg.memory),
     power: wall_draw_watts(cfg: cfg),
     cost: config_total_cost(cfg: cfg)
   }
+}
+
+// A config is REALIZABLE iff its DIMM is a part that can physically exist (std.memory owns the
+// DDR4 die-density physics; this is the selection-time filter, fail-closed like
+// psu_is_adequate — a non-existent SKU must never reach the Pareto front, §5).
+fn config_is_realizable(cfg: SystemConfig) -> Bool {
+  dram_module_is_realizable(module: cfg.memory.module)
 }
 
 // === Dominance: the ONE kernel, applied =================================
@@ -312,9 +344,10 @@ fn bandwidth_count(bw: Bandwidth) -> Int {
 }
 
 // Project the two axis-vectors to per-axis preferences and fold via std.pareto. This is the
-// only place the four axes' goals are named; every component set flows through it.
+// only place the five axes' goals are named; every component set flows through it.
 fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<AxisComparison> {
   [
+    axis_comparison_int(goal: HigherIsBetter, a: a.throughput, b: b.throughput),
     axis_comparison_int(goal: HigherIsBetter, a: byte_size_count(b: a.capacity), b: byte_size_count(b: b.capacity)),
     axis_comparison_int(goal: HigherIsBetter, a: bandwidth_count(bw: a.bandwidth), b: bandwidth_count(bw: b.bandwidth)),
     axis_comparison_int(goal: LowerIsBetter, a: watt_count(w: a.power), b: watt_count(w: b.power)),

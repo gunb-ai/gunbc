@@ -2,7 +2,7 @@
 
 module std.memory.types
 
-import std.measure { ByteSize, BitWidth }
+import std.measure { ByteSize, BitWidth, byte_size_count, bit_width_count }
 import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
@@ -51,6 +51,36 @@ type DramModuleCatalogRow {
   // For SK Hynix DDR4 rank is NOT a PN field — derived per density+width and confirmed
   // on the live host (dmidecode `Rank:`); never guessed from the "...R4..." digit.
   rank_count: Int
+}
+
+// chips_per_rank — the DRAM devices in one rank: a 72-bit ECC word spread across
+// (72 / device-width) devices. The single authority for this derivation (the comment on
+// capacity_bytes and downstream power/realizability derivations all key on it).
+fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
+  72 / bit_width_count(b: module.chip_width)
+}
+
+// REALIZABILITY (the inverse of the DERIVE-TRIGGER(P-CF-DIMM-CAPACITY) relationship above,
+// capacity = die_density × chips_per_rank × rank_count). A stored capacity_bytes only
+// describes a part that can PHYSICALLY exist: the per-die density it implies must not exceed
+// the technology's monolithic ceiling. e.g. a 32GB 1Rx8 DDR4 RDIMM would need 32Gbit dies
+// (256Gbit ÷ 8 devices) but DDR4 tops out at 16Gbit monolithic — there is no such part, so a
+// candidate matrix carrying it is silently scoring a non-existent SKU. This is the §5
+// fail-closed guard: reject the impossible rather than emit a plausible-but-fake winner.
+// DDR4 monolithic max die density = 16 Gibit (16 × 2^30 bits). Anchor: JEDEC DDR4 (JESD79-4)
+// device densities 2/4/8/16 Gbit; 32Gbit is DDR5-era. 🟡 raise for DDR5 (up to 64Gbit) when a
+// generation axis lands — for now the std.memory catalog is DDR4.
+data max_dram_die_density_bits: Int = 17179869184
+
+fn dram_module_required_die_density_bits(module: DramModuleCatalogRow) -> Int {
+  byte_size_count(b: module.capacity_bytes) * 8 / (dram_chips_per_rank(module: module) * module.rank_count)
+}
+
+// A module is realizable iff its implied per-die density fits the monolithic ceiling. Used by
+// selection-time candidate filtering (product.hardware_selection) so a Pareto front can never
+// contain a physically non-existent part.
+fn dram_module_is_realizable(module: DramModuleCatalogRow) -> Bool {
+  dram_module_required_die_density_bits(module: module) <= max_dram_die_density_bits
 }
 
 type MemoryPopulationRow {
