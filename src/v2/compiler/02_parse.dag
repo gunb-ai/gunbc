@@ -373,16 +373,24 @@ fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
   )
 }
 
-fn parse_stamp_atom_terminal(tok: Token, prov: ParseProvenanceState) -> ParseStampResult {
+fn parse_stamp_terminal(
+  tok: Token,
+  binding: Optional<Symbol>,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
   let minted = parse_mint_from_source(
     prov: prov,
     file: tok.file,
     start: tok.start,
     end: tok.end
   )
+  let identity = match binding {
+    Present { value: b } => b
+    Absent => tok.class
+  }
   ParseStampResult {
     node: node_with_occurrence_id(
-      kind: TypeNode { connective: Atom { identity: tok.class } },
+      kind: TypeNode { connective: Atom { identity: identity } },
       children: [],
       occurrence_id: node_occurrence_minted(id: minted.id)
     ),
@@ -534,7 +542,7 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> B
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(_) { false },
+      terminal: fn(_, _) { false },
       nonterminal: fn(name) { nullable_set.member(name) },
       sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
       choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
@@ -638,7 +646,7 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Gr
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(token_class) { expr_corner_fold_terminal(token_class) },
+      terminal: fn(token_class, _) { expr_corner_fold_terminal(token_class) },
       nonterminal: fn(name) { expr_corner_fold_nonterminal(name: name, nullable_set: nullable_set) },
       sequence: expr_corner_fold_sequence,
       choice: expr_corner_fold_choice,
@@ -724,7 +732,7 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(_) { false },
+      terminal: fn(_, _) { false },
       nonterminal: fn(p) {
         match grammar_lookup_production(root: root, name: p) {
           Violates { diagnostic: _ } => true
@@ -872,7 +880,7 @@ fn parse_expr(
   let thunk = fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(token_class) {
+      terminal: fn(token_class, binding) {
         ParseThunk { apply: fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
           match parse_token_first(tokens: tok_in) {
             Absent => ParseExprRejected { diagnostics: [] }
@@ -881,7 +889,7 @@ fn parse_expr(
                 true =>
                   match list_tail(xs: tok_in) {
                     TailFound { tail: remaining } =>
-                      let stamped = parse_stamp_atom_terminal(tok: tok, prov: prov_in)
+                      let stamped = parse_stamp_terminal(tok: tok, binding: binding, prov: prov_in)
                       ParseExprAccepted {
                         remaining: remaining,
                         captured: stamped.node,

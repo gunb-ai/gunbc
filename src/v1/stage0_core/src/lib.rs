@@ -52,6 +52,8 @@ pub mod std_coercion;
 pub mod std_computation;
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
+#[path = "../../stage0/src/std_emit_model.rs"]
+pub mod std_emit_model;
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
 #[path = "../../stage0/src/std_graph.rs"]

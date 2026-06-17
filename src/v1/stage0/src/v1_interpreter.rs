@@ -59,6 +59,7 @@ use crate::v1_std_core::{
     if_then_branch,
     index_base,
     index_expr,
+    is_file_transport,
     is_rest_transport,
     is_shell_transport,
     lambda_body,
@@ -95,6 +96,7 @@ use crate::v1_std_core::{
     UnaryOpKind,
     VarBindingKind,
 };
+use crate::wire_value_serialize::value_to_wire_json;
 
 // ---------------------------------------------------------------------------
 // Symbol interning (ctrl#1533 phase 3)
@@ -265,6 +267,10 @@ impl CanonKey {
         } else {
             None
         }
+    }
+
+    pub(crate) fn value_ref(&self) -> &Value {
+        &self.key
     }
 }
 
@@ -3166,6 +3172,12 @@ fn eval_service_call(
         return map_shell_outputs(&result, op_node, ctx);
     }
 
+    // File transport dispatch (filesystem read/write at the configured path)
+    if is_file_transport(transport.clone(), ctx.si()) {
+        let result = dispatch_file(op_node, transport, &param_env, ctx)?;
+        return map_file_outputs(&result, op_node, ctx);
+    }
+
     // REST transport dispatch (any non-shell transport with service config endpoint)
     return dispatch_rest(service_node, op_node, transport, &param_env, ctx);
 }
@@ -3342,6 +3354,175 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
 }
 
 // ---------------------------------------------------------------------------
+// File transport dispatch (filesystem read/write — POSIX.1-2017 read(2)/write(2))
+// ---------------------------------------------------------------------------
+
+/// Outcome of a filesystem operation. Mirrors `ShellResult`: the host captures
+/// the effect's observable result into a flat record and NEVER throws on an
+/// expected failure (a missing dir, a permission denial) — exactly as the shell
+/// transport returns its record even on a nonzero exit. The consumer branches on
+/// `success`. An *unexpected* condition (no path configured) is still a loud
+/// `InterpError` per DESIGN.md §5.
+struct FileResult {
+    /// True when the underlying read/write syscall succeeded.
+    success: bool,
+    /// Bytes written (write) or read (read). 0 on failure.
+    byte_count: i64,
+    /// The resolved POSIX pathname the effect acted on.
+    path: String,
+    /// Empty on success; the OS error text otherwise.
+    error: String,
+    /// Read payload; empty for writes.
+    content: String,
+}
+
+/// Execute a file transport. The operation's static signature selects the
+/// direction, deterministically (no runtime state-space conflation):
+///   * a `content` input param present  -> WRITE that content to the path;
+///   * absent                           -> READ the file at the path.
+/// The path is the transport's `base_path` expression with `{param}`
+/// placeholders substituted from the bound inputs — the same interpolation the
+/// REST transport applies to its path template.
+fn dispatch_file(
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<FileResult> {
+    let si = ctx.si();
+
+    // Resolve the target path: `base_path` (the key the file-transport parser
+    // stores `path:`/`base_path:` under), evaluated then `{param}`-substituted.
+    let path = match find_property(
+        transport.properties.clone(),
+        "base_path".to_string(),
+        si.clone(),
+    ) {
+        Some(path_node) => {
+            let path_val = eval_expr(&path_node, param_env, ctx)?;
+            substitute_template(&format!("{}", path_val), param_env, ctx)
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "file transport has no path".to_string(),
+            })
+        }
+    };
+    if path.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "file transport resolved to an empty path".to_string(),
+        });
+    }
+
+    // Direction = does the operation declare a `content` input?
+    let has_content = op_node
+        .params
+        .iter()
+        .any(|p| param_node_name_at(p.clone(), si.clone()) == "content");
+
+    if has_content {
+        let content = match param_env.lookup(ctx.sym("content")) {
+            Some(v) => format!("{}", v),
+            None => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "file write operation missing `content` argument for {}",
+                        path
+                    ),
+                })
+            }
+        };
+        let byte_count = content.len() as i64;
+        eprintln!("[file] write {} ({} bytes)", path, byte_count);
+        match std::fs::write(&path, content.as_bytes()) {
+            Ok(()) => Ok(FileResult {
+                success: true,
+                byte_count,
+                path,
+                error: String::new(),
+                content: String::new(),
+            }),
+            Err(e) => Ok(FileResult {
+                success: false,
+                byte_count: 0,
+                path,
+                error: format!("{}", e),
+                content: String::new(),
+            }),
+        }
+    } else {
+        eprintln!("[file] read {}", path);
+        match std::fs::read_to_string(&path) {
+            Ok(s) => Ok(FileResult {
+                success: true,
+                byte_count: s.len() as i64,
+                path,
+                error: String::new(),
+                content: s,
+            }),
+            Err(e) => Ok(FileResult {
+                success: false,
+                byte_count: 0,
+                path,
+                error: format!("{}", e),
+                content: String::new(),
+            }),
+        }
+    }
+}
+
+/// Map a `FileResult` onto the operation's output fields. Recognized `from`
+/// keys (and, as a fallback, field names) name the channel each output reads
+/// from — the file-transport analogue of shell's `from "stdout_lines"`:
+///   `write_success` / `success` -> Bool   (syscall succeeded)
+///   `bytes_written` / `bytes`   -> Int    (byte count)
+///   `path`                      -> String (resolved pathname)
+///   `error`                     -> String (OS error text; "" on success)
+///   `content`                   -> String (read payload)
+fn map_file_outputs(
+    result: &FileResult,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => {
+            // No structured return type — a write reports success, a read its content.
+            if result.content.is_empty() {
+                return Ok(Value::Bool(result.success));
+            }
+            return Ok(Value::Str(result.content.clone()));
+        }
+    };
+
+    let children = &return_type.children;
+    if children.is_empty() {
+        return Ok(Value::Unit);
+    }
+
+    let mut fields = HashMap::new();
+    for child in children.iter() {
+        let field_name = authored_name_at(ctx.si(), child.clone());
+        let from_key = extract_from_key(child, ctx);
+        let key = from_key.as_deref().unwrap_or(field_name.as_str());
+        let value = match key {
+            "write_success" | "success" => Value::Bool(result.success),
+            "bytes_written" | "bytes" | "byte_count" => Value::Int(result.byte_count),
+            "path" => Value::Str(result.path.clone()),
+            "error" => Value::Str(result.error.clone()),
+            "content" => Value::Str(result.content.clone()),
+            _ => Value::Null,
+        };
+        fields.insert(ctx.sym(&field_name), value);
+    }
+
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(fields),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // REST transport dispatch (I-3)
 // ---------------------------------------------------------------------------
 
@@ -3442,7 +3623,10 @@ fn dispatch_rest(
         match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
             Some(body_node) => {
                 let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(value_to_json(&body_val)?)
+                Some(
+                    value_to_wire_json(&body_val, ctx)
+                        .map_err(|msg| InterpError::TypeError { msg })?,
+                )
             }
             None => None,
         };
@@ -3660,6 +3844,8 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
 /// structural-key map: JSON object keys are strings, and rendering a non-String key
 /// (e.g. `Int(1)` vs `Str("1")`) via its Display form would collapse distinct keys
 /// and silently drop entries. Such a map has no faithful JSON-object representation.
+/// Legacy JSON dump without wire contracts — retained only for non-REST paths if needed.
+/// REST request bodies must use `wire_value_serialize::value_to_wire_json`.
 fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
     Ok(match val {
         Value::Null => serde_json::Value::Null,
@@ -3707,7 +3893,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
             }
             serde_json::Value::Object(obj)
         }
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+        Value::Record { fields, .. } => {
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
                 if matches!(v, Value::Null) {
@@ -3716,6 +3902,12 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
                 obj.insert(resolve_sym(*k), value_to_json(v)?);
             }
             serde_json::Value::Object(obj)
+        }
+        Value::Variant { .. } => {
+            return Err(InterpError::TypeError {
+                msg: "value_to_json must not serialize coproduct variants; use value_to_wire_json"
+                    .to_string(),
+            });
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
@@ -4221,6 +4413,17 @@ fn eval_builtin(
                 msg: "hash_combine requires exactly two Hash arguments".to_string(),
             }),
         },
+
+        "filesystem_read" => {
+            let path = expect_str(positional.first().copied(), "filesystem_read")?;
+            let result = v1_rt::filesystem_read(path);
+            let mut fields = HashMap::new();
+            fields.insert(ctx.sym("content"), Value::Str(result.content));
+            Ok(Some(Value::Record {
+                type_name: ctx.sym("FilesystemReadResult"),
+                fields: Rc::new(fields),
+            }))
+        }
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),

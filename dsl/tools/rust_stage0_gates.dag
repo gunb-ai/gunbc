@@ -1,0 +1,57 @@
+// Scope: the coarse "Rust stage0 monolith" CI dependency — the entire Rust seed
+//   (every `*.rs` and Cargo/toolchain manifest) treated as ONE dependency with two
+//   gate-dependents (clippy, fmt). A diff touching the monolith fires both; a non-Rust
+//   diff fires neither.
+//
+// This is the dsl-tree home of the selector (was src/v2/workflow/rust_stage0_gates.dag).
+// It lives here because its consumer — `tools.rust_gates_ci`, run by `gunbc` — needs the
+// shell-transport host effects (git/cargo) that ONLY exist in the dsl tree. src/v2 is the
+// pure compiler corpus (no host effects), so the gate cannot live there. String is atomic
+// here, so suffix matching uses the native `ends_with` primitive (no char-fold).
+//
+// SCAFFOLD — dissolution trigger: delete when the Rust seed reaches zero. The proper model
+// is per-file Rust dependence (which .rs affects which gate), DELIBERATELY skipped: the Rust
+// bootstrap is the seed that shrinks toward zero (DESIGN §7), so fine-graining a dependency
+// graph over code that is being deleted is redundant work (§2). One blob, two dependents is
+// the correct because-it-is-temporary call.
+
+module tools.rust_stage0_gates
+
+import std.list { List }
+
+// The path-tail markers that identify a Rust-monolith path, matched as suffixes (not exact
+// equality) so nested ones — e.g. `src/v1/stage0/Cargo.toml`, `crate/.cargo/config.toml` —
+// are caught too.
+//
+// COMPLETENESS CLAIM (this is the guarantee): every change that can alter a Rust gate's
+// verdict carries one of these tails.
+//   - `.rs`               — all Rust source, including `build.rs`.
+//   - Cargo.toml/.lock    — deps + the resolved graph (clippy/fmt see new code).
+//   - rust-toolchain.toml — the toolchain clippy/fmt run under.
+//   - clippy.toml / rustfmt.toml / .cargo/config.toml — change what clippy / fmt / build
+//     *do*, so they must re-run the gates even with no `.rs` in the diff.
+// FAIL-CLOSED BIAS (§5): under-firing ships broken Rust silently; over-firing only costs CI
+// time. So when unsure whether a tail belongs here, include it. `rustfmt.toml` is listed
+// defensively (no such file today) because fmt is one of our gates and a future one must fire.
+fn rust_monolith_suffixes() -> List<String> {
+  [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+   "clippy.toml", "rustfmt.toml", ".cargo/config.toml"]
+}
+
+// A changed repo path belongs to the Rust monolith iff it carries any monolith suffix.
+// Native `ends_with` (a true suffix, not a substring) is the discriminating matcher.
+fn path_is_rust_monolith(path: String) -> Bool {
+  fold(rust_monolith_suffixes(), false, fn(acc, suffix) { acc || ends_with(s: path, suffix: suffix) })
+}
+
+// Any path in the change-set belongs to the monolith.
+fn any_rust_monolith(paths: List<String>) -> Bool {
+  fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
+}
+
+// THE DECISION. Run the Rust gates iff a path in the diff touches the monolith. FAIL-CLOSED:
+// if git could not determine the diff (`git_success == false`), run the gates — never skip
+// on an undeterminable change-set (§5: under-firing ships broken Rust silently).
+fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
+  if git_success { any_rust_monolith(paths: paths) } else { true }
+}

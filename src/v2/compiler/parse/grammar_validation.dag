@@ -66,7 +66,7 @@ fn validation_outcome_accepted(out: Outcome<ParseTree>) -> Bool {
 fn validation_terminal_production(name: Symbol) -> GrammarProduction {
   GrammarProduction {
     name: name,
-    expression: Terminal { token_class: ^validation_tok_class },
+    expression: Terminal { token_class: ^validation_tok_class, binding: Absent },
     emitted: grammar_atom(identity: name)
   }
 }
@@ -121,7 +121,7 @@ data validation_left_recursive_root: GrammarRoot = GrammarRoot {
       name: ^validation_rec_start,
       expression: Sequence {
         left: Nonterminal { production: ^validation_rec_start },
-        right: Terminal { token_class: ^validation_tok_class }
+        right: Terminal { token_class: ^validation_tok_class, binding: Absent }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
     },
@@ -140,7 +140,7 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
     head: GrammarProduction {
       name: ^validation_rec_start,
       expression: Sequence {
-        left: Terminal { token_class: ^validation_tok_class },
+        left: Terminal { token_class: ^validation_tok_class, binding: Absent },
         right: Optional { element: Nonterminal { production: ^validation_rec_start } }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)

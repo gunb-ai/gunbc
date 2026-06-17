@@ -83,6 +83,7 @@ pub mod v1_compiler_workspace_members;
 pub mod v1_interpreter;
 pub mod v1_rt;
 pub mod v1_std_core;
+pub mod wire_value_serialize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

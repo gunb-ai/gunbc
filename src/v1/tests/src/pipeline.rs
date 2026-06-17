@@ -3475,6 +3475,7 @@ fn python_emit_snake_case_functions() {
 ///     template map (`len(...)`);
 ///   - the binary+ methods (`fold`/`map`/`concat`) route through the runtime
 ///     bridge, which forwards EVERY argument — NOT the flat one-arg template.
+///
 /// The `fold` case is the regression sentinel: a flat `functools.reduce({arg},
 /// {recv})` / `v2rt.Fold({recv},{arg})` template would drop fold's callback.
 fn method_template_emit_source() -> &'static str {

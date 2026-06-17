@@ -521,7 +521,7 @@ fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
 
 
 fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 

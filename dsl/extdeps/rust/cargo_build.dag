@@ -7,6 +7,7 @@
 
 module extdeps.cargo_build
 
+<<<<<<< HEAD
 // -- Service: shell transport binding (one realization of the cargo CLI) ------
 //
 // HONEST-MODELING DEBT (DESIGN.md §3): these argv lists fuse OUR policy flags
@@ -18,6 +19,17 @@ module extdeps.cargo_build
 // worse than honest hardcoding. Faithful parameterization needs conditional/
 // list-spread argv the grammar does not yet express (tracked with A1, the
 // transport-shape de-fusion); until then the fused policy is marked, not hidden.
+=======
+// Default input values for the cargo ops below. These were referenced by the op defaults
+// (`env = cargo_compile_env`, `deny_args = clippy_deny_args`) but never defined — so Build/
+// Test/Clippy errored at runtime (`undefined variable`) and had no by-execution consumer until
+// tools.rust_gates_ci ran them (DESIGN §5: spec-without-execution). `clippy_deny_args` mirrors
+// the deny flags already hardcoded in the Clippy argv.
+data cargo_compile_env: Map<String, String> = empty_map()
+data clippy_deny_args: List<String> = ["-D", "warnings"]
+
+// -- Service: shell transport wiring -----------------------------
+>>>>>>> origin/main
 
 service cargo.Build {
   operation Build {
@@ -59,6 +71,20 @@ service cargo.Build {
     exit {
       0 => Unit
       101 => String "Clippy warnings or errors"
+    }
+  }
+
+  operation Fmt {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "fmt", "--all", "--check"] }
+    exit {
+      0 => Unit
+      1 => String "Formatting check failed"
     }
   }
 

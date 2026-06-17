@@ -20,6 +20,7 @@ import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
+  formal_grammar_symbol_to_grammar_expr,
   FormalGrammarSymbol,
   FormalNonterminal,
   FormalNonterminalOccurrence,
@@ -1063,19 +1064,14 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
 // interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
 // dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
-  match sym {
-    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
-      Terminal { token_class: terminal.identity }
-    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
-      Nonterminal { production: nonterminal.identity }
-  }
+  formal_grammar_symbol_to_grammar_expr(sym: sym)
 }
 
 // 🟡 gated — feature:python-formal-epsilon-grammar-expr-shim — bind gunbc#4761 / CP-1b —
 // dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
-    element: Terminal { token_class: ^python_formal_epsilon_shim_terminal }
+    element: Terminal { token_class: ^python_formal_epsilon_shim_terminal, binding: Absent }
   }
 }
 

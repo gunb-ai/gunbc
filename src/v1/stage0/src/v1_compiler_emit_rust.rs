@@ -2504,7 +2504,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;".to_string()
         } else {
             "".to_string()
         };
@@ -7207,41 +7207,87 @@ pub fn string_without_suffix(value: String, suffix: String) -> Option<String> {
     }
 }
 
+pub fn wire_variant_tag_for_policy(
+    authored: String,
+    policy: Rc<RustEnumWireSerde>,
+) -> Option<String> {
+    if policy.error_message.is_some() {
+        return None;
+    }
+    match policy.rename_style.clone() {
+        Some(style) => {
+            if style.as_str() == "StripAffixAndSnakeCase" {
+                let without_prefix = match policy.rename_prefix.clone() {
+                    Some(prefix) => match string_without_prefix(authored, prefix) {
+                        Some(stripped) => stripped,
+                        None => return None,
+                    },
+                    None => authored,
+                };
+                let without_suffix = match policy.rename_suffix.clone() {
+                    Some(suffix) => match string_without_suffix(without_prefix, suffix) {
+                        Some(stripped) => stripped,
+                        None => return None,
+                    },
+                    None => without_prefix,
+                };
+                Some(to_snake(without_suffix))
+            } else {
+                None
+            }
+        }
+        None => {
+            if policy.enum_attr.contains("rename_all = \"snake_case\"") {
+                Some(to_snake(authored))
+            } else if policy.enum_attr.is_empty()
+                && policy.rename_prefix.is_none()
+                && policy.rename_suffix.is_none()
+            {
+                Some(authored)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+pub fn policy_serde_tag_field(policy: &RustEnumWireSerde) -> Option<String> {
+    let needle = "tag = \"";
+    let start = policy.enum_attr.find(needle)? + needle.len();
+    let rest = &policy.enum_attr[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+pub fn policy_is_untagged(policy: &RustEnumWireSerde) -> bool {
+    policy.enum_attr.contains("untagged")
+}
+
+pub fn policy_is_string_variant(policy: &RustEnumWireSerde) -> bool {
+    !policy.enum_attr.contains("tag =")
+        && policy.rename_prefix.is_none()
+        && policy.rename_suffix.is_none()
+        && policy.rename_style.is_none()
+}
+
 pub fn wire_variant_rename_attr_for_policy(
     authored: String,
     policy: Rc<RustEnumWireSerde>,
 ) -> String {
-    match policy.rename_style.clone() {
-        Some(style) => {
-            if (style.clone().as_str() == "StripAffixAndSnakeCase".to_string().as_str()) {
-                {
-                    let without_prefix = match policy.rename_prefix.clone() {
-                        Some(prefix) => match string_without_prefix(authored, prefix.clone()) {
-                            Some(stripped) => stripped.clone(),
-                            None => return "".to_string(),
-                        },
-                        None => authored,
-                    };
-                    let without_suffix = match policy.rename_suffix.clone() {
-                        Some(suffix) => match string_without_suffix(without_prefix, suffix.clone())
-                        {
-                            Some(stripped) => stripped.clone(),
-                            None => return "".to_string(),
-                        },
-                        None => without_prefix,
-                    };
+    match wire_variant_tag_for_policy(authored, policy.clone()) {
+        Some(tag) => match policy.rename_style.clone() {
+            Some(style) => {
+                if style.as_str() == "StripAffixAndSnakeCase" {
                     v1_rt::concat(
-                        v1_rt::concat(
-                            "    #[serde(rename = \"".to_string(),
-                            to_snake(without_suffix),
-                        ),
+                        v1_rt::concat("    #[serde(rename = \"".to_string(), tag),
                         "\")]\n".to_string(),
                     )
+                } else {
+                    "".to_string()
                 }
-            } else {
-                "".to_string()
             }
-        }
+            None => "".to_string(),
+        },
         None => "".to_string(),
     }
 }
@@ -21221,7 +21267,7 @@ pub fn emit_run_match_arm(crate_name: String) -> String {
         v1_rt::concat(
             "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n"
                 .to_string(),
-            "            cli_run::handle_run(source_roots, function, entry, claim_run);\n"
+            "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n"
                 .to_string(),
         ),
         "        },".to_string(),
