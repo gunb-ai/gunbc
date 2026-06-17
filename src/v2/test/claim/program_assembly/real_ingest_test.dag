@@ -21,6 +21,10 @@ import v2.compiler.source_authority {
   node_artifact_provenance_from_source_root,
   source_root_provenance_coverage_receipt
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse, parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.source_authority { DagSource }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty, length }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -71,6 +75,76 @@ fn pa_real_cross_file_admission() -> Admission {
       },
       tail: Empty
     }
+  }
+}
+
+data pa_real_debug_peer_source: DagSource = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
+
+fn pa_real_debug_tokenize_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pa_real_debug_parse_module_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pa_real_debug_normalize_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match normalize(parse_tree: tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pa_real_debug_parse_only_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pa_real_debug_inline_parse_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match normalize(parse_tree: tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
