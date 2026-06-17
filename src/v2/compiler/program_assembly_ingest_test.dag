@@ -1,0 +1,126 @@
+module v2.test.compiler.program_assembly_ingest
+
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject
+}
+import v2.compiler.source_authority {
+  DagSource,
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_authority_read_artifact_not_source_file
+}
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QnCons, QnEmpty }
+
+data pai_peer_seg: Symbol = pai_peer_seg
+data pai_subject_seg: Symbol = pai_subject_seg
+data pai_export_sym: Symbol = pai_export_sym
+data pai_peer_cu: Symbol = pai_peer_cu
+data pai_subject_cu: Symbol = pai_subject_cu
+
+data pai_peer_source: DagSource = "module pai_peer_seg\ndata pai_export_sym: Symbol = pai_export_sym"
+data pai_subject_source: DagSource = "module pai_subject_seg\nimport pai_peer_seg { pai_export_sym }\ndata pai_use: Symbol = pai_export_sym"
+
+data pai_peer_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^pai_peer_artifact,
+  file_path: "src/v2/test/fixture/pai_peer.dag"
+}
+data pai_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^pai_subject_artifact,
+  file_path: "src/v2/test/fixture/pai_subject.dag"
+}
+data pai_bad_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^pai_bad_artifact,
+  file_path: "src/v2/test/fixture/pai_bad.dag"
+}
+
+data pai_peer_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: pai_peer_source,
+  artifact: pai_peer_artifact,
+  compilation_unit: pai_peer_cu
+}
+data pai_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: pai_subject_source,
+  artifact: pai_subject_artifact,
+  compilation_unit: pai_subject_cu
+}
+
+data pai_cross_file_ingest: SourceRootIngest = [pai_subject_read, pai_peer_read]
+
+fn pai_cross_file_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: QnCons { head: pai_subject_seg, tail: QnEmpty }
+    },
+    imports: Cons {
+      head: Import {
+        target: QnCons { head: pai_peer_seg, tail: QnEmpty },
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+test fn program_assembly_ingest_single_module_holds() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: Cons { head: pai_peer_read, tail: Empty },
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: QnCons { head: pai_peer_seg, tail: QnEmpty }
+      },
+      imports: Empty
+    },
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn program_assembly_ingest_cross_file_holds() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: pai_cross_file_ingest,
+    admission: pai_cross_file_admission(),
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: pai_peer_source,
+        artifact: pai_bad_artifact,
+        compilation_unit: pai_peer_cu
+      },
+      tail: Empty
+    },
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: QnCons { head: pai_peer_seg, tail: QnEmpty }
+      },
+      imports: Empty
+    },
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == source_authority_read_artifact_not_source_file
+  }
+}
