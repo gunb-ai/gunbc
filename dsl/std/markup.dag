@@ -145,3 +145,191 @@ fn serialize_fragment(frag: Fragment) -> String {
       )
   }
 }
+
+// ===================================================================
+// Consumer-facing markup IR (String tags) + the ONE href/src XSS gate
+// ===================================================================
+//
+// gunbhub's HtmlNode (#4927) and React's ReactMarkupNode (#4934) were
+// byte-identical forks of THIS element tree, AND each re-minted the href/src
+// scheme gate -- divergently (react's old allowlist rejected `HTTPS://` that
+// `validate_href` accepts: a real drift bug). This is the SINGLE authority for
+// both; std.html_markup / std.react_markup are now thin result-type wrappers
+// that import the surface below, and std.markdown reuses `validate_href` over
+// its own (genuinely distinct) inline/block tree.
+//
+// MarkupNode is the format-agnostic consumer IR that reduces to Fragment via
+// the adapter below; the per-leaf escaping still flows through the one
+// serialize_fragment fold.
+
+type MarkupAttr {
+  name: String
+  value: String
+}
+
+type MarkupNode
+  = ElementNode { tag: String, attrs: List<MarkupAttr>, children: List<MarkupNode> }
+  | TextNode { text: String }
+
+// --- href/src scheme allowlist (the single XSS gate) ------------------------
+//
+// Positive allowlist, fail-closed: only http/https/mailto/relative pass;
+// everything else -- javascript:/data:/vbscript:/protocol-relative -- is
+// rejected BEFORE escape_url runs (escape_url CHARACTER-escapes only; see the
+// SECURITY SCOPE note above -- it does NOT neutralize a dangerous scheme).
+//
+// Mixed-case scheme spellings (JaVaScRiPt:) bypass the DangerousScheme reason
+// CLASSIFICATION (no String.to_lower in v2) but the positive allowlist still
+// fail-closes them as SchemeNotAllowlisted -- safer than enumerating casings.
+
+type RejectedUrlScheme
+  = DangerousScheme { scheme: DangerousUrlScheme }
+  | SchemeNotAllowlisted
+
+type DangerousUrlScheme
+  = JavascriptScheme
+  | DataScheme
+  | VbscriptScheme
+
+type HrefValidation
+  = SafeHref { url: String }
+  | RejectedHref { reason: RejectedUrlScheme }
+
+fn href_scheme_is_javascript(s: String) -> Bool {
+  starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:")
+}
+
+fn href_scheme_is_data(s: String) -> Bool {
+  starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:")
+}
+
+fn href_scheme_is_vbscript(s: String) -> Bool {
+  starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:")
+}
+
+fn href_is_http(s: String) -> Bool {
+  starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://")
+    || starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://")
+}
+
+fn href_is_mailto(s: String) -> Bool {
+  starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:")
+}
+
+fn href_is_relative(s: String) -> Bool {
+  starts_with(s, prefix: "/")
+    || starts_with(s, prefix: "#")
+    || starts_with(s, prefix: "./")
+    || starts_with(s, prefix: "../")
+    || !(s |> contains(":"))
+}
+
+fn href_is_allowlisted(url: String) -> Bool {
+  let s = trim(url)
+  if starts_with(s, prefix: "//") {
+    false
+  } else if href_is_http(s: s) || href_is_mailto(s: s) || href_is_relative(s: s) {
+    true
+  } else {
+    false
+  }
+}
+
+fn validate_href(url: String) -> HrefValidation {
+  let normalized = trim(url)
+  if href_is_allowlisted(url: url) {
+    SafeHref { url: url }
+  } else if href_scheme_is_javascript(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
+  } else if href_scheme_is_data(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
+  } else if href_scheme_is_vbscript(s: normalized) {
+    RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
+  } else {
+    RejectedHref { reason: SchemeNotAllowlisted }
+  }
+}
+
+fn attr_is_url_attr(name: String) -> Bool {
+  name == "href" || name == "src"
+}
+
+// The first rejected href/src in the tree, carrying the offending URL so a
+// consumer can surface it in a diagnostic. Absent when the whole tree is
+// allowlisted. (markdown.dag walks its own inline/block tree the same way.)
+type RejectedUrl {
+  url: String
+  reason: RejectedUrlScheme
+}
+
+fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
+  match node {
+    TextNode { text: _ } => Absent
+    ElementNode { tag: _, attrs, children } => {
+      let from_attr = fold(attrs,
+        init: Absent,
+        f: (acc, a) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            if attr_is_url_attr(name: a.name) {
+              match validate_href(url: a.value) {
+                SafeHref { url: _ } => Absent
+                RejectedHref { reason: rs } =>
+                  Present { value: RejectedUrl { url: a.value, reason: rs } }
+              }
+            } else {
+              Absent
+            }
+        }
+      )
+      match from_attr {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          fold(children,
+            init: Absent,
+            f: (acc, c) => match acc {
+              Present { value: r } => Present { value: r }
+              Absent => find_first_rejected_url(node: c)
+            }
+          )
+      }
+    }
+  }
+}
+
+// --- MarkupNode -> Fragment adapter + serialize -----------------------------
+
+fn markup_attr_escape_context(name: String) -> EscapeContext {
+  if attr_is_url_attr(name: name) {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn markup_attr_to_fragment(attr: MarkupAttr) -> Attribute {
+  Attribute {
+    name: attr.name,
+    ctx: markup_attr_escape_context(name: attr.name),
+    value: attr.value,
+  }
+}
+
+fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
+  match node {
+    TextNode { text } =>
+      TextNode { content: text }
+    ElementNode { tag, attrs, children } =>
+      Element {
+        tag: tag,
+        attributes: map(attrs, a => markup_attr_to_fragment(attr: a)),
+        children: map(children, c => markup_node_to_fragment(node: c)),
+      }
+  }
+}
+
+// Unchecked serialize -- the caller must have validated the tree (or it is a
+// known-safe fixture). Checked consumers gate on find_first_rejected_url first.
+fn serialize_markup_node(node: MarkupNode) -> String {
+  serialize_fragment(frag: markup_node_to_fragment(node: node))
+}

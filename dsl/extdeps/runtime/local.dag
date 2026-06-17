@@ -6,10 +6,8 @@ import std.types { NonEmptyStr }
 
 type LocalDevRuntime {
   adc_env_var: NonEmptyStr
-  fallback_auth_command: NonEmptyStr
 }
 
 data local_dev_runtime: LocalDevRuntime = {
   adc_env_var: "GOOGLE_APPLICATION_CREDENTIALS"
-  fallback_auth_command: "gcloud auth print-access-token"
 }

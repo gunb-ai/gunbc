@@ -12,21 +12,9 @@ import v2.lens.extdeps_shape_transport_policy {
   extdeps_live_file_shows_transport_fusion_fork
 }
 import v2.std.logic { Bool }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 
 data gcp_core_path: String = "dsl/extdeps/cloud/gcp/gcp.dag"
 
-fn corpus_gcp_oauth_defused_holds() -> Bool {
+test fn corpus_gcp_oauth_defused_holds() -> Bool {
   !extdeps_live_file_shows_transport_fusion_fork(path: gcp_core_path)
-}
-
-data unified_claim_corpus_gcp_oauth_defused: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
-    function: corpus_gcp_oauth_defused_holds
-  }
 }
