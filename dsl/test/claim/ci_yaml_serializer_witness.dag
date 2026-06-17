@@ -159,10 +159,11 @@ fn witness_restore_keys_content_deeper_than_key() -> Bool {
 
 fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "if [ -n \"$SCCACHE_SERVER_UDS\" ]") &&
+  string_contains(s: yaml, pattern: "if sccache --show-stats >/dev/null 2>&1; then") &&
     string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
     string_contains(s: yaml, pattern: "CARGO_INCREMENTAL=0") &&
     !string_contains(s: yaml, pattern: "sccache --stop-server") &&
+    !string_contains(s: yaml, pattern: "sccache --start-server") &&
     !string_contains(s: yaml, pattern: "SCCACHE_DIR=$RUNNER_TEMP/sccache")
 }
 

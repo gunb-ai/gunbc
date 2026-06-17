@@ -57,6 +57,8 @@ data ci_workflow: Workflow = {
       RunStep {
         name: Present { value: "Isolate toolchain dirs" },
         id: none,
+        // CARGO_HOME/RUSTUP_HOME before Setup Rust + Cache Cargo. Fleet sccache is
+        // host-managed (SCCACHE_SERVER_UDS); enable wrapper only when daemon responds.
         run: concat(
           concat(
             concat(
@@ -66,15 +68,14 @@ data ci_workflow: Workflow = {
             "echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n"
           ),
           concat(
-            concat(
-              "# Fleet runners expose SCCACHE_SERVER_UDS; never sccache --stop-server (#4991).\n",
-              "if sccache --show-stats >/dev/null 2>&1; then\n"
-            ),
+            "if sccache --show-stats >/dev/null 2>&1; then\n",
             concat(
               "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
-              "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n"
-            ),
-            "fi"
+              concat(
+                "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n",
+                "fi"
+              )
+            )
           )
         ),
         shell: none,
