@@ -1,0 +1,49 @@
+// src/v2/extdeps/filesystem/mock_corpus.dag
+// Scope: the filesystem layer's PUBLISHED mock corpus as a closed, declared structural fact.
+// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
+//
+// The operator's layering contract: each layer PUBLISHES an extensive mock corpus as a
+// structural fact, an adjacent layer materializes ANY case impl-blind, and a lens enforces
+// the consumer is TOTAL over the published corpus (`v2.lens.mock_totality`). This file is the
+// published-corpus half for ONE proven layer — filesystem — whose live I/O contract
+// (dsl/extdeps/filesystem/filesystem_io.dag) declares `Write` and `Read`, each with one
+// inline `mock_response` case keyed `0`. A corpus ROW mirrors that contract's structural key
+// — (operation, case id) — and NOTHING of the response payload, so there is no second copy of
+// a mock value to drift (§3): the payload's sole authority stays the `mock_response` clause.
+
+module v2.extdeps.filesystem.mock_corpus
+
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+
+// One published mock case of the filesystem I/O contract: the structural key
+// (which operation, which mock-response case id) an adjacent layer must be able
+// to materialize impl-blind. Carries NO response payload — that lives once, in
+// filesystem_io.dag's `mock_response` clause.
+type FilesystemMockCase {
+  operation: Symbol
+  case_id: Int
+}
+
+data filesystem_mock_case_write_committed: FilesystemMockCase = FilesystemMockCase {
+  operation: ^Write,
+  case_id: 0
+}
+
+data filesystem_mock_case_read_contents: FilesystemMockCase = FilesystemMockCase {
+  operation: ^Read,
+  case_id: 0
+}
+
+// 🟡 gated — feature:filesystem-mock-corpus-from-service-decl — bind node://adhoc-a9399cb3-628
+// dissolve-on-arrival: project this corpus directly from the `service Filesystem` node tree
+// in dsl/extdeps/filesystem/filesystem_io.dag (its `operation` + `mock_response` clauses are
+// the SINGLE authority) once a v2 lens can read a service decl's operation/mock-case nodes;
+// this declared list then deletes in the same PR. forbidden: a row carrying a `mock_response`
+// VALUE (success/bytes_written/content/error) — that would fork the payload authority (§3);
+// rows mirror the (operation, case id) structural key ONLY, and grow when a published case is
+// added to filesystem_io.dag.
+data filesystem_published_mock_corpus: List<FilesystemMockCase> = [
+  filesystem_mock_case_write_committed,
+  filesystem_mock_case_read_contents
+]
