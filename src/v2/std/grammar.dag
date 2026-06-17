@@ -150,7 +150,7 @@ fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFor
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
-  = Terminal { token_class: Symbol }
+  = Terminal { token_class: Symbol, binding: Optional<Symbol> }
   | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
@@ -161,6 +161,31 @@ fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
 }
 
+
+fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, binding: Absent }
+}
+
+
+fn grammar_expr_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, binding: Present { value: binding } }
+}
+
+
+fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
+  match sym {
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+      match binding {
+        Present { value: b } =>
+          grammar_expr_terminal_bound(token_class: terminal.identity, binding: b)
+        Absent =>
+          grammar_expr_terminal(token_class: terminal.identity)
+      }
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      Nonterminal { production: nonterminal.identity }
+  }
+}
+
 // 🟢 substrate catamorphism — feature:grammar-expr-structural-morphism — bind node://adhoc-b696538c-710.
 // GrammarExprFold is the algebra for a structural fold (catamorphism) over the GrammarExpr
 // coproduct: one handler per variant, with recursive positions (Sequence/Choice children,
@@ -168,7 +193,7 @@ fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
 // a GrammarExpr query or projection as a GrammarExprFold instead of re-deriving the per-variant
 // recursion by hand — the same role NodeFold plays for Node (v2.std.node.fold_node).
 type GrammarExprFold<R> {
-  terminal: fn(Symbol) -> R
+  terminal: fn(Symbol, Optional<Symbol>) -> R
   nonterminal: fn(Symbol) -> R
   sequence: fn(R, R) -> R
   choice: fn(R, R) -> R
