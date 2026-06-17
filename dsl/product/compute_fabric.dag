@@ -27,7 +27,17 @@ import std.os.types {
   WindowsNt,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, MoneyMicros }
+import std.measure {
+  Measure,
+  Time,
+  DataRate,
+  One,
+  ByteSize,
+  MoneyMicros,
+  byte_size,
+  hardware_thread_count,
+  hertz,
+}
 import std.currency { CurrencyCode }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
@@ -39,6 +49,18 @@ import std.cpu {
   cpu_facts_threads
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
+// CPU catalog shape (+ the variants the example fixture inhabits) for the
+// cpu-dimension witnesses — std.cpu owns the shape, this product only reads it.
+import std.cpu.types {
+  Aarch64,
+  Ampere,
+  CpuDeploymentFacts,
+  CpuModelCatalogRow,
+  CpuSocket,
+  CpuVendor,
+  LandGridArray,
+  SocketPackage,
+}
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -384,26 +406,227 @@ fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> 
   isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
 }
 
-// Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
-// helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
-// only the dimensions actually proven.
-// Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
-fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
+// --- §1.5b orthogonal dimension checks ---------------------------------------
+//
+// Each demand DIMENSION is checked INDEPENDENTLY by its own pure
+// `check_<dimension>` reader over (offer, demand): the dimensions are
+// orthogonal — one dimension's verdict never reads another's. A checker reports
+// one of three states for its axis:
+//
+//   DimensionNotDemanded — the workflow imposes no constraint on this axis
+//                          (optional field Absent / empty list); nothing to prove.
+//   DimensionSatisfied   — the offer's supply provably honors the demand.
+//   DimensionUnmet       — the demand is present and the offer does NOT honor it.
+//
+// `satisfies` folds the per-dimension verdicts into one ComputeLeaseEligibility,
+// FAIL-CLOSED (§5): the FIRST Unmet dimension rejects the whole lease (a wrong
+// admission is a silent harm paid later at interest), and the Eligible witness
+// enumerates exactly the dimensions actually PROVEN (NotDemanded axes are not
+// listed — nothing was demanded, so nothing was proven). This is what abstracts
+// the workflow's compute demand FROM the compute supply: the workflow expresses
+// its envelope once as orthogonal dimensions, and ANY offer that proves them all
+// is eligible — the mapreduce over the change DAG runs on whatever supply fits.
+//
+// (Prior `satisfies` gated on isolation ALONE and returned Eligible regardless
+// of cpu/gpu/memory/… demand — a fail-OPEN admission. The fold closes that hole:
+// every demanded dimension must now be proven.)
+//
+// Grounded today (real comparisons of three distinct kinds): isolation (lattice
+// ordinal), cpu (Int core count + architecture enum), os (kernel family enum),
+// toolchains (name+version membership). The remaining supply-match dimensions
+// are modeled but FAIL-CLOSED pending their comparison primitive:
+//   🟡 P-CF-DIM-BYTESIZE — memory/storage/gpu-vram need an ORDERED ByteSize;
+//      `Measure`'s carrier `Magnitude` is an opaque atom with no `>=` today, and
+//      adding it is the gated std numeric-cascade slice, not this product change.
+//      Dissolve each fail-closed arm when ByteSize inhabits a total order.
+//   🟡 P-CF-DIM-NETWORK — supply carries no egress-class fact to match a
+//      NetworkRequirement.egress (NetworkInterface has locality/addressability
+//      only). Dissolve when the supply surface gains an egress-class fact.
+//
+// parallelism / data_locality / effects are NOT per-offer supply-match
+// dimensions: they shape how the mapreduce DECOMPOSES work ACROSS supply — an
+// orthogonal concern from "does this one offer fit the per-unit envelope" — and
+// belong to the placement/decomposition layer, not this eligibility fold.
+
+type DimensionCheck
+  = DimensionNotDemanded { dimension: DemandDimension }
+  | DimensionSatisfied { dimension: DemandDimension }
+  | DimensionUnmet { fact: MissingDemandFact }
+
+fn check_isolation(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
   if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
-    Eligible {
-      witness: ComputeLeaseWitness {
-        provider: offer.provider,
-        satisfied: [DemandIsolation],
-      },
-    }
+    DimensionSatisfied { dimension: DemandIsolation }
   } else {
-    Rejected {
-      reason: MissingDemandFact {
+    DimensionUnmet {
+      fact: MissingDemandFact {
         dimension: DemandIsolation,
         required: isolation_boundary_label(boundary: demand.isolation.boundary),
       },
     }
   }
+}
+
+// First CpuProcessor's facts in the host's processor list (Absent if the host
+// advertises no CPU processor).
+fn first_cpu_facts(processors: List<ProcessorKind>) -> CpuFacts? {
+  fold(processors, init: none, f: (acc, p) =>
+    match acc {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        match p {
+          CpuProcessor { cpu: c } => Present { value: c }
+          GpuProcessor { gpu: _ } => Absent
+          AcceleratorProcessor { accelerator: _ } => Absent
+        }
+    })
+}
+
+fn cpu_requirement_architecture_ok(facts: CpuFacts, req: CpuRequirement) -> Bool {
+  match req.architecture {
+    Absent => true
+    Present { value: arch } => cpu_facts_architecture(facts) == arch
+  }
+}
+
+fn check_cpu(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.resources.cpu {
+    Absent => DimensionNotDemanded { dimension: DemandCpu }
+    Present { value: req } =>
+      match first_cpu_facts(offer.supply.physical.processors) {
+        Absent =>
+          DimensionUnmet { fact: MissingDemandFact { dimension: DemandCpu, required: "cpu processor" } }
+        Present { value: facts } =>
+          if cpu_facts_cores(facts) >= req.min_cores && cpu_requirement_architecture_ok(facts: facts, req: req) {
+            DimensionSatisfied { dimension: DemandCpu }
+          } else {
+            DimensionUnmet { fact: MissingDemandFact { dimension: DemandCpu, required: "min_cores+architecture" } }
+          }
+      }
+  }
+}
+
+fn kernel_family_label(kernel: KernelFamily) -> NonEmptyStr {
+  match kernel {
+    Linux               => "Linux"
+    Darwin              => "Darwin"
+    WindowsNt           => "WindowsNt"
+    LinuxGuestOnWindows => "LinuxGuestOnWindows"
+  }
+}
+
+fn check_os(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.os {
+    Absent => DimensionNotDemanded { dimension: DemandOs }
+    Present { value: req } =>
+      if offer.supply.execution.os.kernel == req.surface.kernel {
+        DimensionSatisfied { dimension: DemandOs }
+      } else {
+        DimensionUnmet {
+          fact: MissingDemandFact {
+            dimension: DemandOs,
+            required: kernel_family_label(kernel: req.surface.kernel),
+          },
+        }
+      }
+  }
+}
+
+fn toolchain_available(supply: List<ToolchainCapability>, req: ToolchainRequirement) -> Bool {
+  supply |> any(cap => cap.name == req.name && cap.version == req.version)
+}
+
+fn toolchain_check_step(supply: List<ToolchainCapability>, req: ToolchainRequirement) -> DimensionCheck {
+  if toolchain_available(supply: supply, req: req) {
+    DimensionSatisfied { dimension: DemandToolchains }
+  } else {
+    DimensionUnmet { fact: MissingDemandFact { dimension: DemandToolchains, required: req.name } }
+  }
+}
+
+// Empty demand → NotDemanded; every requirement met → Satisfied; first
+// unmet requirement → Unmet (its name). One fold, no `length`.
+fn check_toolchains(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  let supply = offer.supply.execution.toolchains
+  fold(demand.toolchains, init: DimensionNotDemanded { dimension: DemandToolchains }, f: (acc, req) =>
+    match acc {
+      DimensionUnmet { fact: f } => DimensionUnmet { fact: f }
+      _ => toolchain_check_step(supply: supply, req: req)
+    })
+}
+
+// 🟡 P-CF-DIM-BYTESIZE: min_vram needs an ordered ByteSize — fail-closed until then.
+fn check_gpu(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.resources.gpu {
+    Absent => DimensionNotDemanded { dimension: DemandGpu }
+    Present { value: _ } =>
+      DimensionUnmet { fact: MissingDemandFact { dimension: DemandGpu, required: "min_vram (ordered ByteSize pending P-CF-DIM-BYTESIZE)" } }
+  }
+}
+
+// 🟡 P-CF-DIM-BYTESIZE: min_bytes needs an ordered ByteSize — fail-closed until then.
+fn check_memory(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.resources.memory {
+    Absent => DimensionNotDemanded { dimension: DemandMemory }
+    Present { value: _ } =>
+      DimensionUnmet { fact: MissingDemandFact { dimension: DemandMemory, required: "min_bytes (ordered ByteSize pending P-CF-DIM-BYTESIZE)" } }
+  }
+}
+
+// 🟡 P-CF-DIM-BYTESIZE: min_bytes needs an ordered ByteSize — fail-closed until then.
+fn check_storage(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.resources.storage {
+    Absent => DimensionNotDemanded { dimension: DemandStorage }
+    Present { value: _ } =>
+      DimensionUnmet { fact: MissingDemandFact { dimension: DemandStorage, required: "min_bytes (ordered ByteSize pending P-CF-DIM-BYTESIZE)" } }
+  }
+}
+
+// 🟡 P-CF-DIM-NETWORK: supply carries no egress-class fact to match — fail-closed until then.
+fn check_network(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
+  match demand.resources.network {
+    Absent => DimensionNotDemanded { dimension: DemandNetwork }
+    Present { value: _ } =>
+      DimensionUnmet { fact: MissingDemandFact { dimension: DemandNetwork, required: "egress class (supply egress fact pending P-CF-DIM-NETWORK)" } }
+  }
+}
+
+// Fold step: keep the FIRST Unmet (fail-closed); accumulate proven dimensions.
+fn fold_dimension_check(acc: ComputeLeaseEligibility, check: DimensionCheck) -> ComputeLeaseEligibility {
+  match acc {
+    Rejected { reason: r } => Rejected { reason: r }
+    Eligible { witness: w } =>
+      match check {
+        DimensionUnmet { fact: f } => Rejected { reason: f }
+        DimensionSatisfied { dimension: d } =>
+          Eligible {
+            witness: ComputeLeaseWitness {
+              provider: w.provider,
+              satisfied: append(w.satisfied, items: [d]),
+            },
+          }
+        DimensionNotDemanded { dimension: _ } => Eligible { witness: w }
+      }
+  }
+}
+
+// Orthogonal fold over the per-dimension verdicts. Fail-closed (§5): first Unmet
+// rejects; the Eligible witness enumerates exactly the dimensions proven.
+// Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
+fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
+  fold(
+    [
+      check_isolation(offer: offer, demand: demand),
+      check_cpu(offer: offer, demand: demand),
+      check_os(offer: offer, demand: demand),
+      check_toolchains(offer: offer, demand: demand),
+      check_gpu(offer: offer, demand: demand),
+      check_memory(offer: offer, demand: demand),
+      check_storage(offer: offer, demand: demand),
+      check_network(offer: offer, demand: demand),
+    ],
+    init: Eligible { witness: ComputeLeaseWitness { provider: offer.provider, satisfied: [] } },
+    f: (acc, check) => fold_dimension_check(acc: acc, check: check),
+  )
 }
 
 // --- §1.1 executable unit + ingress --------------------------------------------
@@ -596,6 +819,215 @@ fn witness_vm_offer_admits_vm_demand() -> Bool {
   match satisfies(offer: example_vm_offer, demand: vm_isolation_work_demand) {
     Eligible { witness: _ } => true
     Rejected { reason: _ } => false
+  }
+}
+
+// --- §7b orthogonal-dimension witnesses (concept-only example fixtures) -------
+//
+// Each witness exercises ONE demand dimension through the same `satisfies` fold,
+// proving the dimensions are independent: a cpu demand rejects on the cpu axis,
+// an os demand on the os axis, a (fail-closed) memory demand on the memory axis,
+// and a non-conflicting demand is admitted with the proven dimensions in the
+// witness. Concept fixtures, naming no real machine (cf. the §7 offers above).
+
+// Example 64-core Aarch64 CPU — grounds the cpu dimension's real Int core-count
+// + architecture-enum comparison (no real machine; mirrors the extdeps Ampere row).
+data example_cpu_facts: CpuFacts = CpuFacts {
+  catalog: CpuModelCatalogRow {
+    model_number: "example-64c",
+    oem_listing_id: none,
+    vendor: Ampere,
+    architecture: Aarch64,
+    cores: 64,
+    threads: hardware_thread_count(64),
+    nominal_sustained_per_thread_hz: hertz(3000000000),
+    socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+    tdp_watts: 124,
+  },
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data example_cpu_compute_host: ComputeHost = ComputeHost {
+  identity: example_host_identity,
+  processors: [CpuProcessor { cpu: example_cpu_facts }],
+  memory: [],
+  storage: [],
+  network_interfaces: [],
+}
+
+// SharedHostHome offer carrying the 64-core CPU (exercises the cpu axis).
+data example_cpu_offer: ComputeOffer = ComputeOffer {
+  provider: example_shared_host_provider,
+  supply: ComputeSupplyFacts {
+    physical: example_cpu_compute_host,
+    execution: example_shared_host_execution_surface,
+    cost: Present { value: example_owned_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: example_availability_open, close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+data example_darwin_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Darwin,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+// A 4-core demand (SharedHostHome) — satisfied by the 64-core example supply.
+data cpu_4core_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: Present { value: CpuRequirement { min_cores: 4, architecture: none } },
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// A 128-core demand — exceeds the 64-core example supply (cpu axis goes red).
+data cpu_128core_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: Present { value: CpuRequirement { min_cores: 128, architecture: none } },
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// A memory demand — fail-closed pending ordered ByteSize (P-CF-DIM-BYTESIZE).
+data memory_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: byte_size(1073741824) } },
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// Vm isolation + Linux OS — matches example_vm_offer (Linux kernel, Vm).
+data vm_linux_os_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: Present { value: OperatingSystemRequirement { surface: example_linux_os_surface } },
+  isolation: IsolationRequirement { boundary: Vm },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// Vm isolation + Darwin OS — mismatches example_vm_offer's Linux kernel.
+data vm_darwin_os_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: Present { value: OperatingSystemRequirement { surface: example_darwin_os_surface } },
+  isolation: IsolationRequirement { boundary: Vm },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// cpu — a 4-core demand is admitted by the 64-core supply (Int comparison green;
+// isolation SharedHostHome also honored).
+fn witness_cpu_demand_admitted_when_cores_suffice() -> Bool {
+  match satisfies(offer: example_cpu_offer, demand: cpu_4core_demand) {
+    Eligible { witness: _ } => true
+    Rejected { reason: _ } => false
+  }
+}
+
+// cpu — a 128-core demand exceeds the 64-core supply: rejected on the cpu axis
+// (discriminating — the same offer admits the 4-core demand above).
+fn witness_cpu_demand_rejected_when_cores_short() -> Bool {
+  match satisfies(offer: example_cpu_offer, demand: cpu_128core_demand) {
+    Rejected { reason: r } =>
+      match r.dimension {
+        DemandCpu => true
+        _ => false
+      }
+    Eligible { witness: _ } => false
+  }
+}
+
+// cpu — a cpu demand against a processor-less offer is rejected on the cpu axis
+// (fail-closed: no CpuProcessor to prove against).
+fn witness_cpu_demand_rejected_when_no_processor() -> Bool {
+  match satisfies(offer: example_shared_host_offer, demand: cpu_4core_demand) {
+    Rejected { reason: r } =>
+      match r.dimension {
+        DemandCpu => true
+        _ => false
+      }
+    Eligible { witness: _ } => false
+  }
+}
+
+// os — a matching kernel family is admitted (Vm offer is Linux, demand Linux).
+fn witness_os_demand_admitted_matching_kernel() -> Bool {
+  match satisfies(offer: example_vm_offer, demand: vm_linux_os_demand) {
+    Eligible { witness: _ } => true
+    Rejected { reason: _ } => false
+  }
+}
+
+// os — a mismatched kernel family is rejected on the os axis (Linux supply,
+// Darwin demand) even though isolation is honored — dimensions are independent.
+fn witness_os_demand_rejected_mismatched_kernel() -> Bool {
+  match satisfies(offer: example_vm_offer, demand: vm_darwin_os_demand) {
+    Rejected { reason: r } =>
+      match r.dimension {
+        DemandOs => true
+        _ => false
+      }
+    Eligible { witness: _ } => false
+  }
+}
+
+// fail-OPEN fix — a memory demand (which the prior isolation-only `satisfies`
+// admitted silently) is now rejected fail-closed on the memory axis.
+fn witness_memory_demand_fail_closed() -> Bool {
+  match satisfies(offer: example_shared_host_offer, demand: memory_demand) {
+    Rejected { reason: r } =>
+      match r.dimension {
+        DemandMemory => true
+        _ => false
+      }
+    Eligible { witness: _ } => false
   }
 }
 
