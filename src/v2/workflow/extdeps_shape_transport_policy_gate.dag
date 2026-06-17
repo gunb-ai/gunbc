@@ -29,6 +29,12 @@ data row_lens_unit_clean_git_diff: ExtdepsShapeTransportPolicyClaimRunRow = Extd
   function: "clean_git_diff_is_green_holds"
 }
 
+data row_lens_unit_clean_gist_create: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/clean_gist_create",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
+  function: "clean_gist_create_is_green_holds"
+}
+
 data row_lens_unit_transport_fusion: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
   label: "extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
@@ -47,12 +53,20 @@ data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShape
   function: "corpus_gcp_oauth_defused_holds"
 }
 
+data row_corpus_gist_create: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/gist_create_policy_leak",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
+  function: "corpus_gist_create_defused_holds"
+}
+
 data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPolicyClaimRunRow> = [
   row_lens_unit_policy_leak,
   row_lens_unit_clean_git_diff,
+  row_lens_unit_clean_gist_create,
   row_lens_unit_transport_fusion,
   row_corpus_cargo_build,
-  row_corpus_gcp_oauth
+  row_corpus_gcp_oauth,
+  row_corpus_gist_create
 ]
 
 fn extdeps_shape_transport_policy_claim_run_rows_tsv() -> String {
