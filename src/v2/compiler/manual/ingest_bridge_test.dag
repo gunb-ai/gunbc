@@ -17,6 +17,8 @@ import v2.compiler.parse {
   parse_production,
 }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   GrammarProduction,
   GrammarRoot,
   Terminal,
@@ -82,7 +84,7 @@ fn ingest_fixture_root() -> GrammarRoot {
     productions: Cons {
       head: GrammarProduction {
         name: ^ingest_fixture_start,
-        expression: Terminal { token_class: ^ingest_fixture_tok, binding: Absent },
+        expression: Terminal { token_class: ^ingest_fixture_tok, stamp: StampClass },
         emitted: dag_mvp1_fixture_emitted_add_fn
       },
       tail: Empty

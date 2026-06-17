@@ -7,6 +7,8 @@ module v2.test.parse.grammar_validation
 
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   GrammarProduction,
   GrammarRoot,
   Nonterminal,
@@ -65,7 +67,7 @@ fn validation_outcome_accepted(out: Outcome<ParseTree>) -> Bool {
 fn validation_terminal_production(name: Symbol) -> GrammarProduction {
   GrammarProduction {
     name: name,
-    expression: Terminal { token_class: ^validation_tok_class, binding: Absent },
+    expression: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
     emitted: grammar_atom(identity: name)
   }
 }
@@ -120,7 +122,7 @@ data validation_left_recursive_root: GrammarRoot = GrammarRoot {
       name: ^validation_rec_start,
       expression: Sequence {
         left: Nonterminal { production: ^validation_rec_start },
-        right: Terminal { token_class: ^validation_tok_class, binding: Absent }
+        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
     },
@@ -139,7 +141,7 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
     head: GrammarProduction {
       name: ^validation_rec_start,
       expression: Sequence {
-        left: Terminal { token_class: ^validation_tok_class, binding: Absent },
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
         right: Optional { element: Nonterminal { production: ^validation_rec_start } }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)

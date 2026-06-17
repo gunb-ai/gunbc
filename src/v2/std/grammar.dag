@@ -153,9 +153,16 @@ fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFor
 }
 
 
+// 🟢 coproduct dissolution — T-8 parse-stage terminal identity (lane 3a.2 QN materialization):
+// how parse_stamp_terminal projects a matched token into an Atom identity.
+type TerminalStampMode
+  = StampClass
+  | StampBinding { binding: Symbol }
+  | StampLexeme
+
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
-  = Terminal { token_class: Symbol, binding: Optional<Symbol> }
+  = Terminal { token_class: Symbol, stamp: TerminalStampMode }
   | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
@@ -168,12 +175,17 @@ fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
 
 
 fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 
 fn grammar_expr_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Present { value: binding } }
+  Terminal { token_class: token_class, stamp: StampBinding { binding: binding } }
+}
+
+
+fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampLexeme }
 }
 
 
@@ -198,7 +210,7 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
 // a GrammarExpr query or projection as a GrammarExprFold instead of re-deriving the per-variant
 // recursion by hand — the same role NodeFold plays for Node (v2.std.node.fold_node).
 type GrammarExprFold<R> {
-  terminal: fn(Symbol, Optional<Symbol>) -> R
+  terminal: fn(Symbol, TerminalStampMode) -> R
   nonterminal: fn(Symbol) -> R
   sequence: fn(R, R) -> R
   choice: fn(R, R) -> R
@@ -213,8 +225,8 @@ type GrammarExprFold<R> {
 // First consumer: v2.compiler.parse.expr_is_nullable_given_set.
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
-    Terminal { token_class: token_class, binding: binding } =>
-      algebra.terminal(token_class, binding)
+    Terminal { token_class: token_class, stamp: stamp } =>
+      algebra.terminal(token_class, stamp)
     Nonterminal { production: production } => algebra.nonterminal(production)
     Sequence { left: left, right: right } =>
       algebra.sequence(
@@ -1594,16 +1606,21 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(token_class, binding) {
-        match binding {
-          Present { value: b } =>
+      terminal: fn(token_class, stamp) {
+        match stamp {
+          StampBinding { binding: b } =>
             grammar_expr_node(children: [
               grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
               grammar_named_edge(name: ^grammar_terminal_binding_node_projection, target: grammar_atom(identity: b))
             ])
-          Absent =>
+          StampClass =>
             grammar_expr_node(children: [
               grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+            ])
+          StampLexeme =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+              grammar_named_edge(name: ^grammar_terminal_stamp_lexeme_node_projection, target: grammar_atom(identity: ^grammar_terminal_stamp_lexeme))
             ])
         }
       },

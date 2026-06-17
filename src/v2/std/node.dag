@@ -7,6 +7,9 @@
 
 
 module v2.std.node
+
+import v2.std.text { String }
+
 type Symbol
 type Hash
 // PROV A-pivot:
@@ -60,6 +63,11 @@ fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
 
 fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
   syntactic_coproduct_arm_pairs(type_name: type_name)
+}
+
+// T-8 wave-1: materialize source lexeme spelling as Symbol (parse StampLexeme).
+fn symbol_intern_lexeme(lexeme: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: lexeme)
 }
 
 

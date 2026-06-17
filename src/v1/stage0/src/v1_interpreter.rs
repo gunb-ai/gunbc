@@ -2260,6 +2260,7 @@ pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
     "resolve_type_node",
     "syntactic_coproduct_arm_keys",
     "syntactic_coproduct_arm_pairs",
+    "symbol_intern_lexeme",
 ];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
@@ -2318,6 +2319,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
             "syntactic_coproduct_arm_pairs" => {
                 crate::coproduct_reflection::eval_syntactic_coproduct_arm_pairs(ctx, &args)
+            }
+            "symbol_intern_lexeme" => {
+                crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
             }
             _ => unreachable!("bridge fn set mismatch"),
         };

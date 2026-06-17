@@ -50,6 +50,7 @@ import v2.std.node {
   node_occurrence_minted,
   node_synthetic,
   node_with_occurrence_id,
+  symbol_intern_lexeme,
   SyntheticOccurrence,
   well_formed
 }
@@ -87,6 +88,10 @@ import v2.std.grammar {
   Terminal,
   ValidatedGrammarRoot,
   VoidGrammar,
+  TerminalStampMode,
+  StampBinding,
+  StampClass,
+  StampLexeme,
   fold_grammar_expr,
   grammar_empty_node,
   grammar_named_edge,
@@ -430,7 +435,7 @@ fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
 
 fn parse_stamp_terminal(
   tok: Token,
-  binding: Optional<Symbol>,
+  stamp: TerminalStampMode,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
   let minted = parse_mint_from_source(
@@ -439,9 +444,10 @@ fn parse_stamp_terminal(
     start: tok.start,
     end: tok.end
   )
-  let identity = match binding {
-    Present { value: b } => b
-    Absent => tok.class
+  let identity = match stamp {
+    StampClass => tok.class
+    StampBinding { binding: b } => b
+    StampLexeme => symbol_intern_lexeme(lexeme: tok.lexeme)
   }
   ParseStampResult {
     node: node_with_occurrence_id(
@@ -964,7 +970,7 @@ fn parse_expr(
   let thunk = fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
-      terminal: fn(token_class, binding) {
+      terminal: fn(token_class, stamp) {
         ParseThunk { apply: fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
           match parse_token_first(tokens: tok_in) {
             Absent => ParseExprRejected { diagnostics: [] }
@@ -973,7 +979,7 @@ fn parse_expr(
                 true =>
                   match list_tail(xs: tok_in) {
                     TailFound { tail: remaining } =>
-                      let stamped = parse_stamp_terminal(tok: tok, binding: binding, prov: prov_in)
+                      let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov_in)
                       ParseExprAccepted {
                         remaining: remaining,
                         captured: stamped.node,

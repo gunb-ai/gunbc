@@ -28,6 +28,7 @@ import v2.std.grammar {
   grammar_expr_optional,
   grammar_expr_terminal,
   grammar_expr_terminal_bound,
+  grammar_expr_terminal_lexeme,
   formal_grammar_symbol_to_grammar_expr,
   ParseGrammar,
   FormalGrammarSymbol,
@@ -1790,6 +1791,11 @@ fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarEx
 }
 
 
+fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
+  grammar_expr_terminal_lexeme(token_class: token_class)
+}
+
+
 fn dag_grammar_terminal_from_concrete_token(token: ConcreteSyntaxToken) -> GrammarExpr {
   formal_grammar_symbol_to_grammar_expr(
     sym: dag_formal_grammar_symbol_from_token(token: token)
@@ -1840,11 +1846,11 @@ fn dag_grammar_module_header_expr() -> GrammarExpr {
 
 fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
     right: dag_grammar_repeat(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
-        right: dag_grammar_terminal(token_class: ^dag_token_ident)
+        right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
       )
     )
   )

@@ -11,7 +11,9 @@ module v2.extdeps.languages.ptx
 
 
 
-import v2.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v2.std.grammar {
+  StampClass,
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -169,7 +171,7 @@ fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
 
 
 fn ptx_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 
