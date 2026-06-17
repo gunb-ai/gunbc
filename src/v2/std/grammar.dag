@@ -561,7 +561,7 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
 }
 
 
-fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalTerminalOccurrence> {
+fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   match formal_terminal_from_node(node: node) {
     Holds { value: terminal } =>
       match find_named_child(root: node, name: ^formal_terminal_occurrence_binding_node_projection) {
@@ -594,16 +594,7 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^formal_symbol_terminal_node_projection) {
         Accepted { value: terminal_node, diagnostics: _ } =>
-          match formal_terminal_occurrence_from_node(node: terminal_node) {
-            Holds { value: occurrence } =>
-              Holds {
-                value: FormalTerminalOccurrence {
-                  terminal: occurrence.terminal,
-                  binding: occurrence.binding
-                }
-              }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
-          }
+          formal_terminal_occurrence_from_node(node: terminal_node)
         Rejected { diagnostics: _ } =>
           match find_named_child(root: node, name: ^formal_symbol_nonterminal_node_projection) {
             Accepted { value: nonterminal_node, diagnostics: _ } =>
@@ -1772,4 +1763,120 @@ fn grammar_relation_row_backward_selection(
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
+}
+
+
+// Reverse-parse fold: does this row's production structurally match the emitted core node?
+// Conj/Atom shapes walk the production RHS against positional emitted children (the grammar-
+// inverse of forward parse); Arrow and other unsupported shapes fall back to exact fixture
+// equality on grammar_relation_field_emitted until lhs-exact structural coverage lands.
+fn grammar_relation_row_emitted_reverse_parse_matches(
+  row: Node,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: emitted) {
+    match grammar_relation_row_production_from_node(row: row) {
+      Holds { value: production } =>
+        formal_production_matches_lhs_exact_child(
+          productions: productions,
+          lhs: production.lhs.identity,
+          child: emitted,
+          candidate: production
+        )
+      Violates { diagnostic: _ } => false
+    }
+  } else {
+    match grammar_relation_row_emitted_fixture(row: row) {
+      Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+
+// Three-state fold accumulator for unique backward selection (G.2 backward-determinism).
+type BackwardRowSelection
+  = BackwardRowNone
+  | BackwardRowOne { row: Node }
+  | BackwardRowMany
+
+
+fn backward_row_select_step(
+  acc: BackwardRowSelection,
+  productions: List<FormalProduction>,
+  emitted: Node,
+  row: Node
+) -> BackwardRowSelection {
+  if grammar_relation_row_emitted_reverse_parse_matches(
+    row: row,
+    productions: productions,
+    emitted: emitted
+  ) {
+    match acc {
+      BackwardRowNone => BackwardRowOne { row: row }
+      BackwardRowOne { row: _ } => BackwardRowMany
+      BackwardRowMany => BackwardRowMany
+    }
+  } else {
+    acc
+  }
+}
+
+
+fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_production_not_found,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// Select the unique translation row whose production structurally matches the emitted core node
+// (reverse parse fold over grammar_relation_field_production — NOT exact fixture lookup on
+// grammar_relation_field_emitted). GENERIC — every row is tried by the same structural match.
+fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: grammar_relation_rules_formal_productions(rules: rules),
+    f: fn(productions) {
+      match rules.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            rules.children,
+            init: BackwardRowNone,
+            f: fn(acc, edge) {
+              match edge.label {
+                Named { name: _ } =>
+                  backward_row_select_step(
+                    acc: acc,
+                    productions: productions,
+                    emitted: emitted,
+                    row: edge.target
+                  )
+                Positional => acc
+              }
+            }
+          ) {
+            BackwardRowOne { row: row } => outcome_accepted(value: row)
+            BackwardRowMany =>
+              outcome_rejected(
+                Diagnostic {
+                  reason: ^grammar_relation_row_backward_selection_ambiguous,
+                  at: node_locus(node: emitted),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            BackwardRowNone =>
+              outcome_rejected(
+                grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
+              )
+          }
+        _ =>
+          outcome_rejected(
+            grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
+          )
+      }
+    }
+  )
 }
