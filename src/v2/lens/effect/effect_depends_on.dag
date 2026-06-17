@@ -204,7 +204,8 @@ fn effect_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: effect_call_primitive },
     branch: BranchInterpreter { choose_branch: effect_choose_branch },
     loop: LoopInterpreter { step_loop: effect_step_loop },
-    bind: BindInterpreter { bind_value: effect_bind_value }
+    bind: BindInterpreter { bind_value: effect_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -214,7 +215,8 @@ fn effect_interpretation_structure_witness() -> InterpretationStructureWitness {
     call_primitive: ^effect_call_primitive_sym,
     choose_branch: ^effect_choose_branch_sym,
     step_loop: ^effect_step_loop_sym,
-    bind_value: ^effect_bind_value_sym
+    bind_value: ^effect_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

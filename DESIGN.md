@@ -93,9 +93,18 @@ leaked is an argv carrying a literal it should receive as a parameter (`origin/m
 (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers.
 Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact
 rows; corpus RED witnesses execute against live `dsl/extdeps/**` via `filesystem_read`
-(dissolve-on: Node-tree argv projection supersedes text scan).
+(dissolve-on: Node-tree argv projection supersedes text scan). This holds at *any*
+interface↔realization seam, not only service ops: the cited data behind an agnostic std
+surface de-fuses exactly as a transport does, and its directional reading is the same — the
+*dispatch* that selects a realization is itself realization, so it sits peripheral
+(`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std projection that
+*matched* over its realizations would have to name them, inverting the import arrow above).
+What migrates outward is each realization's grounded specifics — cited rows, *or* a per-OS
+taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays
+central. A std type that privileged one realization's taxonomy (POSIX `st_mode` over the
+`Ntfs`/`Apfs` that `FileSystemSemantics` already enumerates) is itself that inversion.
 
-- *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model.
+- *e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one "vendor" concept forks by rigor — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly. Counter-example done right: `std/cpu` owns the catalog *shape*, the vendor SKU rows live in `extdeps/cpu/ampere`; `compute_fabric` moved std→product as a domain model. Likewise `std/os.dag` projects per-vendor rows with no `match` ("projection only"), while the cited rows and the product→vendor dispatch (`cited_operating_system_surface`) live in `extdeps/os/{ubuntu,windows,macos,os}.dag` ("dispatch lives in extdeps/, not std/", promoted from that hub header).
 
 ## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
@@ -183,4 +192,4 @@ still a violation) · internal review finds missing tests, external review finds
 
 - `cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`
 - one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)
-- CI floor (all `v1-compiler` seed bins, no shell gate): `cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test` discovers + evaluates the witness corpus and enforces v2 `.dag` filename hygiene (no `__` in basenames; use subdirectories); the Rust fmt/clippy gate runs via `gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main`
+- CI floor (all `v1-compiler` seed bins, no shell gate): two composed passes in `.github/workflows/ci.yml` — (1) `claim_batch --roster-from-discovery` over `src/v2` plus the hand-enrolled Bool witnesses (`--source-root dsl`, shared module index; incl. the dsl compile-clean witness); (2) `gunbc run --entry dsl/tools/ci_floor_gates.dag` sequences the four effectful ProcessExit gates (rust fmt/clippy selector, emit-host MVP smokes, layering-imports host scan + perturb receipts, dsl whole-tree compile-clean — SCAFFOLD on `--target rust` pending the `v1.compiler.dag_collect` identity-key fix) behind one resolve

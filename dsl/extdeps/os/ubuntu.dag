@@ -18,7 +18,7 @@ data noble_numbat_2404_catalog: UbuntuDistributionCatalogRow = UbuntuDistributio
   kernel_version: "6.8",
   package_manager: Apt,
   libc: GnuGlibc,
-  libc_version: Some { value: "2.39" },
+  libc_version: Present { value: "2.39" },
   security_maintenance_until: "2029-05-31",
 }
 

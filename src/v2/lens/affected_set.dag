@@ -1185,6 +1185,7 @@ fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
     Branch => ^canonical_tag_branch
     Loop => ^canonical_tag_loop
     Bind => ^canonical_tag_bind
+    Match => ^canonical_tag_match
   }
 }
 

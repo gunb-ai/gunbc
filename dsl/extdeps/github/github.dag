@@ -1,13 +1,16 @@
-// extdeps/github/core.dag -- "What is GitHub?"
+// extdeps/github/github.dag -- "What is GitHub?"
 //
 // Core resource model: repositories, users, auth, pagination.
 // Complements extdeps/api/github_ops.dag (which covers rate limits and tiers).
+// REST-transport bindings of these resources live in sibling service files
+// (pulls.dag, gists.dag, actions_runs.dag) -- co-located since services/ was
+// merged into extdeps/. REST is one realization handler; the `gh` CLI and
+// GraphQL are others not yet bound.
 //
 // Consumers:
 //   extdeps/github/issues.dag        -- issue resource model
 //   extdeps/github/pull_requests.dag -- PR resource model
 //   extdeps/github/gists.dag         -- gist resource model
-//   services/github/*                -- transport wiring
 
 module extdeps.github.github
 
