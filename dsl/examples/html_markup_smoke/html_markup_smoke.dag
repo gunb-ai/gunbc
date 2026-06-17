@@ -1,6 +1,6 @@
 // examples/html_markup_smoke.dag — in-repo consumer for std.html_markup.
 //
-// Builds HtmlNode trees and asserts try_serialize_html_node output through
+// Builds MarkupNode trees and asserts try_serialize_html_node output through
 // func main (executed-green receipt). Run:
 //   gunbc run \
 //     --source-root dsl/examples/html_markup_smoke \
@@ -11,58 +11,60 @@
 module examples.html_markup_smoke
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
-import std.html_markup {
-  HtmlAttr,
-  HtmlNode,
+import std.markup {
+  MarkupAttr,
+  MarkupNode,
   ElementNode,
   TextNode,
+}
+import std.html_markup {
   Serialized,
   Rejected,
   try_serialize_html_node,
   escape_text_content,
 }
 
-data tiny: HtmlNode = ElementNode {
+data tiny: MarkupNode = ElementNode {
   tag: "p",
   attrs: [],
   children: [ TextNode { text: "ok" } ],
 }
 
-data with_attr: HtmlNode = ElementNode {
+data with_attr: MarkupNode = ElementNode {
   tag: "a",
-  attrs: [ HtmlAttr { name: "href", value: "/tree/dsl" } ],
+  attrs: [ MarkupAttr { name: "href", value: "/tree/dsl" } ],
   children: [ TextNode { text: "dsl" } ],
 }
 
-data href_amp: HtmlNode = ElementNode {
+data href_amp: MarkupNode = ElementNode {
   tag: "a",
-  attrs: [ HtmlAttr { name: "href", value: "/x?a=1&b=2" } ],
+  attrs: [ MarkupAttr { name: "href", value: "/x?a=1&b=2" } ],
   children: [ TextNode { text: "link" } ],
 }
 
 // REQ-A: url-within-attribute composition — hostile href must not break out of
 // the double-quoted attr (quote percent-encoded, not left literal).
-data href_hostile: HtmlNode = ElementNode {
+data href_hostile: MarkupNode = ElementNode {
   tag: "a",
-  attrs: [ HtmlAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
+  attrs: [ MarkupAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
   children: [],
 }
 
 // XSS: dangerous URL schemes must fail-closed before serialization.
-data href_javascript: HtmlNode = ElementNode {
+data href_javascript: MarkupNode = ElementNode {
   tag: "a",
-  attrs: [ HtmlAttr { name: "href", value: "javascript:alert(1)" } ],
+  attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
   children: [ TextNode { text: "click" } ],
 }
 
-fn serialize_ok(node: HtmlNode, expected: String) -> Bool {
+fn serialize_ok(node: MarkupNode, expected: String) -> Bool {
   match try_serialize_html_node(node: node) {
     Serialized { html: h } => h == expected
     Rejected { reason: _ } => false
   }
 }
 
-fn serialize_rejects(node: HtmlNode) -> Bool {
+fn serialize_rejects(node: MarkupNode) -> Bool {
   match try_serialize_html_node(node: node) {
     Rejected { reason: _ } => true
     Serialized { html: _ } => false

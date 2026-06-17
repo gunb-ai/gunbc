@@ -79,8 +79,6 @@ jobs:
           cargo run -p v1-compiler --release --bin claim_batch -- \
             --source-root src/v2 --source-root dsl \
             --roster-from-discovery \
-            --scan-dir src/v2/test \
-            --scan-dir src/v2/compiler/extdeps_shape_transport_policy \
             --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses \
             --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses \
             --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds \

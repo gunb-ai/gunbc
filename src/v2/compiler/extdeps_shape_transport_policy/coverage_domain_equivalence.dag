@@ -26,44 +26,60 @@ type ExtdepsShapeTransportPolicyReceiptRow {
 data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit cargo_build policy leak",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
   function: "policy_leak_cargo_build_is_red_holds"
 }
 
 data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "corpus cargo_build policy leak",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
   function: "corpus_cargo_build_policy_leak_is_red_holds"
 }
 
 data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit clean git diff",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
   function: "clean_git_diff_is_green_holds"
+}
+
+data receipt_clean_gist_create: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit clean gist create",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
+  function: "clean_gist_create_is_green_holds"
 }
 
 data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit gcp oauth fusion",
   violation_kind: violation_kind_transport_fusion,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
   function: "transport_fusion_gcp_oauth_is_red_holds"
 }
 
 data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "corpus gcp oauth de-fused (regression guard)",
   violation_kind: violation_kind_transport_fusion,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
   function: "corpus_gcp_oauth_defused_holds"
+}
+
+data receipt_gist_create_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gist create de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
+  function: "corpus_gist_create_defused_holds"
 }
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
   receipt_policy_leak_lens_unit,
   receipt_policy_leak_corpus,
   receipt_clean_git_diff,
+  receipt_clean_gist_create,
   receipt_transport_fusion_lens_unit,
-  receipt_transport_fusion_corpus
+  receipt_transport_fusion_corpus,
+  receipt_gist_create_corpus
 ]
 
 fn rows_cover_kind(kind: String) -> Bool {
@@ -77,5 +93,5 @@ fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_kind(kind: violation_kind_policy_leak)
     && rows_cover_kind(kind: violation_kind_transport_fusion)
     && length(xs: violation_kinds) == 2
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 5
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 7
 }

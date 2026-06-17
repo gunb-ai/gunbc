@@ -19,11 +19,13 @@ import std.http_path {
   MalformedPathTemplate,
   parse_path_template,
 }
-import std.react_markup {
+import std.markup {
   ElementNode,
-  ReactTextNode,
-  ReactAttr,
-  ReactMarkupNode,
+  TextNode,
+  MarkupAttr,
+  MarkupNode,
+}
+import std.react_markup {
   EmitOk,
   EmitRejected,
   UntrustedUrlScheme,
@@ -61,7 +63,7 @@ type GunbhubServeResult
   | MethodNotAllowed
 
 // 🟢 TERMINAL — React consumer page source (M2 browse route).
-type GunbhubPageSource = ReactPage { node: ReactMarkupNode }
+type GunbhubPageSource = ReactPage { node: MarkupNode }
 
 // 🟢 TERMINAL — closed render outcome for per-request page-source serve path.
 type GunbhubRenderResult
@@ -70,7 +72,7 @@ type GunbhubRenderResult
 
 // --- Browse page (R1 structural compose; M3 replaces hardcoded entries) ----
 
-fn gunbhub_browse_entry(name: String) -> ReactMarkupNode {
+fn gunbhub_browse_entry(name: String) -> MarkupNode {
   ElementNode {
     tag: "li",
     attrs: [],
@@ -78,13 +80,13 @@ fn gunbhub_browse_entry(name: String) -> ReactMarkupNode {
       ElementNode {
         tag: "a",
         attrs: [],
-        children: [ ReactTextNode { text: name } ],
+        children: [ TextNode { text: name } ],
       },
     ],
   }
 }
 
-fn gunbhub_browse_page() -> ReactMarkupNode {
+fn gunbhub_browse_page() -> MarkupNode {
   ElementNode {
     tag: "div",
     attrs: [],
@@ -92,7 +94,7 @@ fn gunbhub_browse_page() -> ReactMarkupNode {
       ElementNode {
         tag: "h1",
         attrs: [],
-        children: [ ReactTextNode { text: "gunbc" } ],
+        children: [ TextNode { text: "gunbc" } ],
       },
       ElementNode {
         tag: "ul",
@@ -108,17 +110,17 @@ fn gunbhub_browse_page() -> ReactMarkupNode {
 }
 
 // Hostile fixture — javascript: href must be rejected before any response body.
-fn gunbhub_hostile_page() -> ReactMarkupNode {
+fn gunbhub_hostile_page() -> MarkupNode {
   ElementNode {
     tag: "a",
-    attrs: [ ReactAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ ReactTextNode { text: "x" } ],
+    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
+    children: [ TextNode { text: "x" } ],
   }
 }
 
 // README doc view — M1 placeholder: react-composed body until std.markdown
 // consumer merges; swap body builder when M1 lands (table shape unchanged).
-fn gunbhub_readme_page() -> ReactMarkupNode {
+fn gunbhub_readme_page() -> MarkupNode {
   ElementNode {
     tag: "article",
     attrs: [],
@@ -126,13 +128,13 @@ fn gunbhub_readme_page() -> ReactMarkupNode {
       ElementNode {
         tag: "h1",
         attrs: [],
-        children: [ ReactTextNode { text: "gunbc" } ],
+        children: [ TextNode { text: "gunbc" } ],
       },
       ElementNode {
         tag: "p",
         attrs: [],
         children: [
-          ReactTextNode {
+          TextNode {
             text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
           },
         ],
@@ -146,7 +148,7 @@ type GunbhubComposeResult
   = ComposedOk { html: String }
   | ComposeRejected { reason: String }
 
-fn gunbhub_compose_body(node: ReactMarkupNode) -> GunbhubComposeResult {
+fn gunbhub_compose_body(node: MarkupNode) -> GunbhubComposeResult {
   match serialize_react_markup(node: node) {
     EmitOk { html: h } => ComposedOk { html: h }
     EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
