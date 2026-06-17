@@ -12,7 +12,6 @@ members = [
     "tools/ci_timings_collector",
     "tools/ci_claim_gate",
     "tools/layering_imports_scan",
-    "tools/compile_host_runner",
     "tools/emit_host_runner",
 ]
 
