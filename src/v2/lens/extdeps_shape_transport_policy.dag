@@ -18,11 +18,23 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-type ExtdepsShapeTransportPolicyViolationKind
-  = PolicyLiteralInArgv
-  | TransportFusionFork
+type ExtdepsShapeTransportPolicyViolation
+  = PolicyLiteralInArgv {
+      path: String
+      service: String
+      operation: String
+      argv_token: String
+    }
+  | TransportFusionFork {
+      path: String
+      service_a: String
+      service_b: String
+      endpoint_key: String
+    }
 
-// Host scanner emits one row per shell argv token with consumer-policy classification.
+data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
+
+// Witness / corpus snapshot: one row per shell argv token with consumer-policy classification.
 type ExtdepsTransportArgvFact {
   path: String
   service: String
@@ -33,23 +45,13 @@ type ExtdepsTransportArgvFact {
   is_consumer_policy_literal: Bool
 }
 
-// Host scanner emits one row per detected same-endpoint multi-transport fork.
+// Witness / corpus snapshot: one row per detected same-endpoint multi-transport fork.
 type ExtdepsTransportFusionFact {
   path: String
   endpoint_key: String
   service_a: String
   service_b: String
 }
-
-type ExtdepsShapeTransportPolicyViolation {
-  kind: ExtdepsShapeTransportPolicyViolationKind
-  path: String
-  service: String
-  operation: String
-  detail: String
-}
-
-data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
 
 data empty_extdeps_transport_argv_facts: List<ExtdepsTransportArgvFact> = []
 data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
@@ -81,12 +83,11 @@ fn scan_argv_facts_for_violations(
       if fact.is_consumer_policy_literal {
         list_snoc_item(
           xs: acc,
-          item: ExtdepsShapeTransportPolicyViolation {
-            kind: PolicyLiteralInArgv,
+          item: PolicyLiteralInArgv {
             path: fact.path,
             service: fact.service,
             operation: fact.operation,
-            detail: fact.argv_token
+            argv_token: fact.argv_token
           }
         )
       } else {
@@ -105,12 +106,11 @@ fn scan_fusion_facts_for_violations(
     cons: fn(acc, fact) {
       list_snoc_item(
         xs: acc,
-        item: ExtdepsShapeTransportPolicyViolation {
-          kind: TransportFusionFork,
+        item: TransportFusionFork {
           path: fact.path,
-          service: fact.service_a,
-          operation: fact.service_b,
-          detail: fact.endpoint_key
+          service_a: fact.service_a,
+          service_b: fact.service_b,
+          endpoint_key: fact.endpoint_key
         }
       )
     }
