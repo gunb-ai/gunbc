@@ -226,6 +226,35 @@ const DISCOVERY_EXCLUDES: &[&str] = &[
 /// Reflection roster: every discovered `unified_claim_*` BoolWitness decl across
 /// the scan dirs becomes a gate row (label = decl name minus the `unified_claim_`
 /// prefix, entry/function = the modeled witness). No hand-typed roster, no rows-fn.
+/// Fail-closed: `.dag` basenames under `--source-root` must not contain `__`
+/// (legacy flat-dir encoding; use subdirectories instead). Preserved from the
+/// retired `ci_claim_gate` (#5051) when discovery moved into this binary.
+fn check_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
+    let mut violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(root), &mut dag_files);
+        for path in dag_files {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.contains("__"))
+            {
+                violations.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if violations.is_empty() {
+        return Ok(());
+    }
+    violations.sort();
+    Err(format!(
+        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
+         offending file(s): {}",
+        violations.join(", ")
+    ))
+}
+
 fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<GateRow>, String> {
     let excludes: Vec<String> = DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
     let mut rows: Vec<GateRow> = Vec::new();
@@ -625,6 +654,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Discovery mode: reflect over the scan dirs for the roster, group by entry,
     // and run through the SAME batch loop the explicit path uses.
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
+        // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
+        // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
+        // preserved from the retired ci_claim_gate).
+        if let Err(e) = check_filename_hygiene(&source_roots) {
+            eprintln!("claim_batch: {e}");
+            return Err(ExitCode::from(2));
+        }
         let rows = match discover_roster(&source_roots, &disc.scan_dirs) {
             Ok(r) => r,
             Err(e) => {
