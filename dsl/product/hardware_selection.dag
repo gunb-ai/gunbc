@@ -42,6 +42,9 @@ import std.measure {
   Watt,
   watt,
   watt_count,
+  Milliwatt,
+  milliwatt,
+  milliwatt_count,
   MoneyMicros,
   money_micros,
   money_micros_count
@@ -128,15 +131,17 @@ fn min_int(a: Int, b: Int) -> Int {
 type MemoryConfig {
   module: DramModuleCatalogRow
   dimms_per_channel: Int
-  // 🟡 CALIBRATE(dram-power-coefficient) — milliwatts drawn per DRAM device at this data
-  // rate, the SECOND live-confirm point. Milliwatts (not watts) because a single device
-  // draws a fraction of a watt — an Int watt coefficient would round to nothing. DRAM power
-  // scales with the device COUNT, derived (not stored) from the grounded axes:
-  // chips_per_rank = 72 / chip_width-bits (18 for x4, 9 for x8), × rank_count, × sticks.
-  // This per-device coefficient is a measured input, not a grounded fact.
-  milliwatts_per_chip: Int
-  // 🟡 used-market price per stick (operator's live eBay data confirms).
-  price_micros_per_stick: Int
+  // 🟡 CALIBRATE(dram-power-coefficient) — power drawn per DRAM device at this data rate, the
+  // SECOND live-confirm point. Carried as `Milliwatt` (Power dimension at milli scale) not a
+  // bare Int: a single device draws a fraction of a watt, so an Int-watt coefficient rounds to
+  // nothing — the std.measure Milliwatt carrier denominates sub-watt power exactly as
+  // MoneyMicros denominates sub-major money. DRAM power scales with the device COUNT, derived
+  // (not stored) from the grounded axes: chips_per_rank = 72 / chip_width-bits (18 for x4, 9
+  // for x8), × rank_count, × sticks. This per-device coefficient is a measured input.
+  power_per_chip: Milliwatt
+  // 🟡 used-market price per stick (operator's live eBay data confirms). MoneyMicros carrier
+  // (the single money authority), not a flat `Int` with the unit baked into the field name.
+  price_per_stick: MoneyMicros
 }
 
 fn memory_stick_count(platform: Platform, cfg: MemoryConfig) -> Int {
@@ -169,12 +174,12 @@ fn devices_per_stick(module: DramModuleCatalogRow) -> Int {
 // draws ~2× a 1Rx8 (twice the devices) and an x4 part more than an x8 (narrower → more
 // devices) — the device-count effect the rank/width axes were modeled to carry.
 fn memory_power(platform: Platform, cfg: MemoryConfig) -> Watt {
-  let total_mw = cfg.milliwatts_per_chip * devices_per_stick(module: cfg.module) * memory_stick_count(platform: platform, cfg: cfg)
+  let total_mw = milliwatt_count(w: cfg.power_per_chip) * devices_per_stick(module: cfg.module) * memory_stick_count(platform: platform, cfg: cfg)
   watt(count: total_mw / 1000)
 }
 
 fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyMicros {
-  money_micros(count: cfg.price_micros_per_stick * memory_stick_count(platform: platform, cfg: cfg))
+  money_micros(count: money_micros_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
 // === CPU: catalog identity (hard spec) + measured draw (empirical) =======
@@ -185,7 +190,7 @@ fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyMicros {
 type CpuCandidate {
   catalog: CpuModelCatalogRow
   typical_draw: Watt           // 🟡 measured average draw under the target workload
-  price_micros: Int            // 🟡 used-market price
+  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
 }
 
 // === Motherboard ==========================================================
@@ -199,7 +204,7 @@ type Motherboard {
   memory_channels: Int
   max_dimms_per_channel: Int
   idle_draw: Watt              // 🟡 measured board-only draw
-  price_micros: Int            // 🟡 used-market price
+  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
 }
 
 // === PSU ==================================================================
@@ -214,7 +219,7 @@ type PsuModel {
   label: NonEmptyStr
   max_output: Watt             // rated continuous DC output (hard spec)
   efficiency: EfficiencyRating
-  price_micros: Int            // 🟡 used-market price
+  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
 }
 
 // Efficiency floor as a percent (×100 → integer percent at 50% load). These are the 80 PLUS
@@ -263,7 +268,7 @@ fn psu_is_adequate(cfg: SystemConfig) -> Bool {
 
 fn config_total_cost(cfg: SystemConfig) -> MoneyMicros {
   let mem_cost = money_micros_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
-  let total = cfg.cpu.price_micros + mem_cost + cfg.board.price_micros + cfg.psu.price_micros
+  let total = money_micros_count(m: cfg.cpu.price) + mem_cost + money_micros_count(m: cfg.board.price) + money_micros_count(m: cfg.psu.price)
   money_micros(count: total)
 }
 
