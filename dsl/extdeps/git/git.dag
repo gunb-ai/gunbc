@@ -1,7 +1,10 @@
 // extdeps/git/git.dag -- "What is Git?"
 //
-// Core Git object model: commits, branches, refs, diffs, merge strategies.
-// Facts about Git's data model, not how we invoke it (that's services/git.dag).
+// Core Git object model: commits, branches, refs, diffs, merge strategies,
+// and the shell-transport binding of git's operations (co-located since the
+// services/ tree was merged into extdeps/, commit 55dd577e8c). The operations
+// below model git's *interface shape*; `transport shell` is one realization
+// handler (libgit2 / the GitHub compare API are others not yet bound).
 //
 // Consumers:
 //   gunbc/tools/gist.dag           -- branch name
@@ -164,6 +167,43 @@ service git.Core {
     }
     mock_response {
       0 => { diff: "" } "Empty diff"
+    }
+  }
+
+  // Name-only diff projection -- git's two faithful diff modes. Both are git
+  // primitives; the *policy* of which mode and which base (e.g. "origin/main")
+  // belongs to the workflow consumer, NOT to this model. PR #5048's `ChangedFiles`
+  // op (`git diff --name-only origin/main...HEAD`) is exactly the business case
+  // that must NOT live here -- it is faithfully composed in the tools layer as
+  //   DiffNameOnlyMerge(base: "origin/main", head: "HEAD")
+  // leaving git/extdeps modeling only what git provides.
+  operation DiffNameOnly {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output { paths: List<FilePath> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+    mock_response {
+      0 => { paths: [] } "No changed files"
+    }
+  }
+
+  // Three-dot (merge-base) name-only diff: paths changed on `head` since it
+  // diverged from `base`. A documented git primitive (`git diff A...B`).
+  operation DiffNameOnlyMerge {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output { paths: List<FilePath> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "{base}...{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+    mock_response {
+      0 => { paths: [] } "No changed files"
     }
   }
 

@@ -1,8 +1,10 @@
-// extdeps/cloud/gcp/core.dag -- "What is GCP?"
+// extdeps/cloud/gcp/gcp.dag -- "What is GCP?"
 //
 // GCP identity model: projects, service accounts, OAuth2 scopes,
 // Workload Identity Federation, API endpoint patterns, regions,
-// and shell/REST transport wiring for GCP auth operations.
+// and the transport bindings of GCP auth operations. OAuth2 token refresh
+// is modeled once (oauth2.Google.Refresh, REST -- the canonical handler);
+// gcloud-CLI shell ops are a distinct surface, not a duplicate of it.
 //
 // Complements extdeps/api/gcp_ops.dag (which covers retries,
 // propagation delays, and operational constraints).
