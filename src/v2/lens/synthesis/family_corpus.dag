@@ -21,6 +21,16 @@
 // lens is not vacuously green — its realization EXCEEDS the bound, so the gap FIRES.
 // A real relation with a provable gap would be fabrication (feedback_no_engine), so the
 // firing control stays synthetic by design.
+//
+// HONESTY CAVEAT (cost-authority limitation, NOT a lens defect — confirmed by jolly-bear-882
+// 2026-06-17, independently hit by the complexity child): "zero gaps over real code" is
+// currently NEAR-VACUOUS. cost.dag's symbolic_product ABSORBS zero (cost.dag:269/274) and
+// loops fold via IterativeCost = symbolic_product (cost.dag:394), so a loop over a zero-cost
+// body LOSES its iteration-count linear factor and projects CONSTANT. Hence every real wave-1
+// subject (incl. `loop`) looks constant → below any lower bound → no gap CAN surface yet.
+// This lens is correct: per U2 it CONSUMES cost and never re-derives it; the limitation is
+// UPSTREAM in the cost authority (cost.dag is load-bearing — operator-pending fix). When the
+// cost model gives loops a linear floor, RE-VALIDATE these gaps and widen the real roster.
 
 module v2.test.lens_synthesis.family_corpus
 
