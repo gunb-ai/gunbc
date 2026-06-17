@@ -121,15 +121,6 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
     }
 }
 
-fn assert_witness_true(entry: &str, witness_fn: &str) {
-    let content = std::fs::read_to_string(workspace_root().join(entry))
-        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-    match run_v4_module(entry, &content, witness_fn) {
-        Value::Bool(true) => {}
-        other => panic!("expected {witness_fn} true, got {other:?}"),
-    }
-}
-
 #[test]
 fn extdeps_embedded_policy_projection_catches_pre_5109_class() {
     assert_eq!(
