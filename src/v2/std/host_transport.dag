@@ -1,7 +1,7 @@
 // src/v2/std/host_transport.dag
 // Scope: omni-emission host transport descriptor (design-omni-emission-transport.md §3.1).
 // Status: B3 minimal substrate — modeled workspace/build/run + runtime-value codec; one generic
-//   `run_host_process` primitive in `tools/emit_host_runner` consumes rows from extdeps.
+//   `run_host_process` primitive; executable host boundary is `dsl/tools/emit_host_gate.dag`.
 
 module v2.std.host_transport
 

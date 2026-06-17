@@ -21,7 +21,6 @@ use im_rc::Vector as RrbVector;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::wire_value_serialize::value_to_wire_json;
 use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
@@ -97,6 +96,7 @@ use crate::v1_std_core::{
     UnaryOpKind,
     VarBindingKind,
 };
+use crate::wire_value_serialize::value_to_wire_json;
 
 // ---------------------------------------------------------------------------
 // Symbol interning (ctrl#1533 phase 3)

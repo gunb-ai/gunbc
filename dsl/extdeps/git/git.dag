@@ -153,6 +153,26 @@ service git.Core {
     }
   }
 
+  // Changed files vs origin/main (merge-base, three-dot). Fixed argv (no ref param) so no
+  // string interpolation is needed; `success` is false when the ref is unavailable, which the
+  // gate treats as fail-closed (run the gates). Used by tools.rust_gates_ci.
+  operation ChangedFiles {
+    input {}
+    output {
+      paths: List<String> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "origin/main...HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+    mock_response {
+      0 => { paths: [], success: true } "No changed files"
+    }
+  }
+
   operation Diff {
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String from "stdout" }
