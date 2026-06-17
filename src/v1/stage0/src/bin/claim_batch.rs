@@ -228,8 +228,15 @@ const DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery.dag",
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
+    "host_source_root_ingest_manifest.dag",
+    // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
+    "program_assembly/real_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
+
+fn discovery_path_excluded(path: &str) -> bool {
+    DISCOVERY_EXCLUDES.iter().any(|sub| path.contains(sub))
+}
 
 /// Reflection roster: every discovered `unified_claim_*` BoolWitness decl across
 /// the scan dirs becomes a gate row (label = decl name minus the `unified_claim_`
@@ -314,6 +321,9 @@ fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
+            if discovery_path_excluded(&entry) {
+                continue;
+            }
             let content =
                 fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
@@ -841,5 +851,24 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod discovery_exclude_tests {
+    use super::discovery_path_excluded;
+
+    #[test]
+    fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
+        let paths = [
+            "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest_test.dag",
+        ];
+        for path in paths {
+            assert!(
+                discovery_path_excluded(path),
+                "expected gate-only overlay witness excluded: {path}"
+            );
+        }
     }
 }

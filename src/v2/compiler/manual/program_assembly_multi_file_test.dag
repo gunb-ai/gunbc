@@ -182,7 +182,7 @@ data pa_ingest_stub_source: DagSource = "module pa_subject_seg"
 data pa_ingest_source_file_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^pa_ingest_source_file_artifact,
-  file_path: "src/v2/test/fixture/pa_ingest_peer.dag"
+  file_path: "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag"
 }
 
 data pa_ingest_test_claim_artifact: Artifact = Artifact {

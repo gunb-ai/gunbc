@@ -392,7 +392,14 @@ fn compose_child_cost(
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
     AlternativeCost => symbolic_max(a: acc, b: child)
-    IterativeCost => symbolic_product(a: acc, b: child)
+    // Per-iteration factor = max(body, one control step). symbolic_max floors ONLY
+    // zero: max(0,1)=1 (empty body -> O(n)); max(1,1)=1 and max(linear,1)=linear leave
+    // unit/linear bodies unchanged vs plain symbolic_product. Absorbing zero untouched.
+    IterativeCost =>
+      symbolic_product(
+        a: acc,
+        b: symbolic_max(a: child, b: unit_cost())
+      )
   }
 }
 

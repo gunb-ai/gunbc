@@ -41,10 +41,34 @@ data row_lens_unit_transport_fusion: ExtdepsShapeTransportPolicyClaimRunRow = Ex
   function: "transport_fusion_gcp_oauth_is_red_holds"
 }
 
-data row_corpus_cargo_build: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
-  label: "extdeps_shape_transport_policy/corpus/cargo_build_policy_leak",
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
-  function: "corpus_cargo_build_policy_leak_is_red_holds"
+data row_lens_unit_dead_param_cargo_build: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
+  function: "dead_param_cargo_build_is_red_holds"
+}
+
+data row_lens_unit_dead_param_gcp_login: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
+  function: "dead_param_gcp_login_is_red_holds"
+}
+
+data row_lens_unit_dead_param_cargo_clippy: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
+  function: "dead_param_cargo_clippy_is_red_holds"
+}
+
+data row_corpus_cargo_clippy_dead_param: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
+  function: "corpus_cargo_clippy_dead_param_is_red_holds"
+}
+
+data row_corpus_gcp_login_dead_param: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/gcp_login_dead_param",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
+  function: "corpus_gcp_login_dead_param_defused_holds"
 }
 
 data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
@@ -64,7 +88,11 @@ data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPo
   row_lens_unit_clean_git_diff,
   row_lens_unit_clean_gist_create,
   row_lens_unit_transport_fusion,
-  row_corpus_cargo_build,
+  row_lens_unit_dead_param_cargo_build,
+  row_lens_unit_dead_param_gcp_login,
+  row_lens_unit_dead_param_cargo_clippy,
+  row_corpus_cargo_clippy_dead_param,
+  row_corpus_gcp_login_dead_param,
   row_corpus_gcp_oauth,
   row_corpus_gist_create
 ]
