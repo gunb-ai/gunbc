@@ -21,6 +21,7 @@ use im_rc::Vector as RrbVector;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::wire_value_serialize::value_to_wire_json;
 use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
@@ -3442,7 +3443,10 @@ fn dispatch_rest(
         match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
             Some(body_node) => {
                 let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(value_to_json(&body_val)?)
+                Some(
+                    value_to_wire_json(&body_val, ctx)
+                        .map_err(|msg| InterpError::TypeError { msg })?,
+                )
             }
             None => None,
         };
@@ -3660,6 +3664,8 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
 /// structural-key map: JSON object keys are strings, and rendering a non-String key
 /// (e.g. `Int(1)` vs `Str("1")`) via its Display form would collapse distinct keys
 /// and silently drop entries. Such a map has no faithful JSON-object representation.
+/// Legacy JSON dump without wire contracts — retained only for non-REST paths if needed.
+/// REST request bodies must use `wire_value_serialize::value_to_wire_json`.
 fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
     Ok(match val {
         Value::Null => serde_json::Value::Null,
@@ -3707,7 +3713,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
             }
             serde_json::Value::Object(obj)
         }
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+        Value::Record { fields, .. } => {
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
                 if matches!(v, Value::Null) {
@@ -3716,6 +3722,12 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
                 obj.insert(resolve_sym(*k), value_to_json(v)?);
             }
             serde_json::Value::Object(obj)
+        }
+        Value::Variant { .. } => {
+            return Err(InterpError::TypeError {
+                msg: "value_to_json must not serialize coproduct variants; use value_to_wire_json"
+                    .to_string(),
+            });
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
