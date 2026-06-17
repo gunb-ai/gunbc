@@ -52,7 +52,7 @@
 //!   claim_batch --source-root <dir> [--source-root <dir> ...] \
 //!               --roster-from-discovery \
 //!               --scan-dir <dir> [--scan-dir <dir> ...] \
-//!               [--notice-title <title>] [--wet]
+//!               [--notice-title <title>] [--wet] [--hermetic]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
 //! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage
@@ -388,8 +388,9 @@ struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
-    /// When false (default), witnesses run hermetic (modeled `mock_response`).
-    /// `--wet` selects live service dispatch for the same `.dag` test fn.
+    /// Execution mode for witness eval. Phase 1: default **Wet** (live dispatch,
+    /// CI unchanged). `--hermetic` selects modeled `mock_response`; `--wet`
+    /// is explicit Wet (becomes the Phase 2 opt-in when default flips Hermetic).
     wet: bool,
 }
 
@@ -405,7 +406,9 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut roster_from_discovery = false;
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "v2 CI claim gate".to_string();
-    let mut wet = false;
+    // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
+    // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
+    let mut wet = true;
 
     let mut i = 1;
     while i < args.len() {
@@ -462,6 +465,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             // claim-run (Bool witnesses).
             "--claim-run" => {}
             "--wet" => wet = true,
+            "--hermetic" => wet = false,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
