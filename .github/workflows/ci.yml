@@ -62,14 +62,16 @@ jobs:
       # CI floor — two composed passes (was nine separate cargo-run lines on main):
       #   (1) claim_batch: discovery over src/v2 (test fn / unified_claim_* corpus)
       #       PLUS hand-enrolled Bool witnesses (rust_stage0, emit_host, layering coverage,
-      #       filesystem entry-kind, power/watt consuming-fold) that lived on separate
-      #       `gunbc run --claim-run` lines. One module index, one resolve per distinct
-      #       entry — not one cold resolve per witness.
+      #       filesystem entry-kind, power/watt consuming-fold, dsl compile-clean) that lived
+      #       on separate `gunbc run --claim-run` lines. One module index, one resolve per
+      #       distinct entry — not one cold resolve per witness.
       #   SCAFFOLD — dissolve when the hand-enrolled witnesses enroll as discoverable
       #   `test fn` rows under a scanned dsl root (then drop the explicit --entry lines).
-      #   (2) gunbc: tools.ci_floor_gates — the three effectful ProcessExit gates
-      #       (rust fmt/clippy selector, emit-host MVP smokes, layering-imports
-      #       host scan + perturb receipts) composed behind one entry resolve.
+      #   (2) gunbc: tools.ci_floor_gates — the four effectful ProcessExit gates
+      #       (rust fmt/clippy selector, emit-host MVP smokes, layering-imports host scan +
+      #       perturb receipts, dsl whole-tree compile-clean) composed behind one entry
+      #       resolve. The compile-clean gate is a SCAFFOLD (`--target rust` pending the
+      #       v1.compiler.dag_collect identity-key fix).
       # The git fetch makes `origin/main...HEAD` resolvable for the rust gate.
       - name: CI floor (.dag witness corpus + gates via gunbc)
         run: |
@@ -84,6 +86,7 @@ jobs:
             --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds \
             --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses \
             --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses \
+            --entry dsl/test/claim/dsl_compile_clean_witness.dag --function dsl_compile_clean_witnesses \
             --notice-title "v2 claim corpus"
           cargo run -p v1-compiler --release --bin gunbc -- run \
             --source-root dsl --source-root src/v2 \
