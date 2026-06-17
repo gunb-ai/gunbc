@@ -1,0 +1,71 @@
+// src/v2/workflow/extdeps_shape_transport_policy_gate.dag
+//
+// Extdeps shape/transport/policy gate transport authority (DESIGN.md §3).
+// Witness roster: unified_claim_* rows discovered by claim_batch; lens owns semantics.
+//
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.workflow.extdeps_shape_transport_policy_gate
+
+import v2.std.collection { List }
+import v2.std.algebra { fold_list_right }
+import v2.std.text { String }
+
+type ExtdepsShapeTransportPolicyClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data row_lens_unit_policy_leak: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag",
+  function: "policy_leak_cargo_build_is_red_holds"
+}
+
+data row_lens_unit_clean_git_diff: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/clean_git_diff",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag",
+  function: "clean_git_diff_is_green_holds"
+}
+
+data row_lens_unit_transport_fusion: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth.dag",
+  function: "transport_fusion_gcp_oauth_is_red_holds"
+}
+
+data row_corpus_cargo_build: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/cargo_build_policy_leak",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak.dag",
+  function: "corpus_cargo_build_policy_leak_is_red_holds"
+}
+
+data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
+  function: "corpus_gcp_oauth_fusion_fork_is_red_holds"
+}
+
+data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPolicyClaimRunRow> = [
+  row_lens_unit_policy_leak,
+  row_lens_unit_clean_git_diff,
+  row_lens_unit_transport_fusion,
+  row_corpus_cargo_build,
+  row_corpus_gcp_oauth
+]
+
+fn extdeps_shape_transport_policy_claim_run_rows_tsv() -> String {
+  fold_list_right(
+    xs: extdeps_shape_transport_policy_claim_run_rows,
+    empty: "",
+    snoc: fn(acc, row) {
+      concat(acc,
+        concat(row.label,
+          concat("\t",
+            concat(row.entry,
+              concat("\t",
+                concat(row.function, "\n"))))))
+    }
+  )
+}

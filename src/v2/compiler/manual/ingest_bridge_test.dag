@@ -5,6 +5,7 @@
 
 module v2.test.manual.ingest_bridge
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
@@ -44,8 +45,7 @@ import v2.std.compilers.target_model {
   target_model_edge_fidelity_quotient,
   target_model_edge_selection_policy,
   target_model_edge_serialize_source,
-  target_model_edge_translation_rules
-}
+  target_model_edge_translation_rules}
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -165,7 +165,8 @@ fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
     bundle: bundle,
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
-    authority_source_text: dag_mvp1_source_text
+    authority_source_text: dag_mvp1_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 

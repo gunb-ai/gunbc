@@ -3,7 +3,9 @@
 //        subject_producer → extract body → complexity_lens → dominance.
 //        unrated producers must be rated before the row lands, never pass via lattice top.
 //        Empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent).
-// Status: executable --claim-run witness (lens_ci_gate row).
+// Status: discoverable `test fn` witness — CI floor gates it via claim_batch
+//         --roster-from-discovery (`test fn` in `*_test.dag` scanned across src/v2).
+//         (Was a `fn` that the dead lens_ci_gate.dag roster named but never ran.)
 
 module v2.test.complexity_gate.budget_roster_completeness
 
@@ -74,7 +76,9 @@ fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexit
   )
 }
 
-fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool {
+// Discriminating control (planted bad row → RED): appending an unrated-budget row
+// to the real roster makes the family fold reject — the gate is not vacuously green.
+test fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool {
   !complexity_budget_roster_family_all_rows_hold(
     rows: list_append(
       left: complexity_subject_budget_rows,
@@ -83,7 +87,10 @@ fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool
   )
 }
 
-fn complexity_budget_roster_family_gate_holds() -> Bool {
+// By-execution gate: fail-closed family fold over the real roster (empty → false,
+// never vacuous green); every rated row's declared budget must dominate its
+// computed complexity, and the planted unrated row must be rejected.
+test fn complexity_budget_roster_family_gate_holds() -> Bool {
   if is_empty(xs: complexity_subject_budget_rows) {
     false
   } else {
