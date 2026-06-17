@@ -52,7 +52,8 @@ import v2.std.node {
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates }
 
-// UNDECLARED binding: declared by no grammar-relation row — fail-closed control for emit.
+// Perturbation binding: absent from the canonical row's emitted fixture (used by structural
+// discriminator only — NOT the brief's UNDECLARED-node emit-success keystone).
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 
 // n: the type-decl Conj node under test (`.dag` `type Task { ... }`).
@@ -60,8 +61,8 @@ fn type_decl_emitted() -> Node {
   dag_wave2a_task_type_decl_emitted()
 }
 
-// UNDECLARED-node: same field block as n, but a binding atom absent from every row's production.
-fn type_decl_undeclared_emitted() -> Node {
+// Foreign emitted fixture for row-perturbation discriminator (structural vs exact-lookup).
+fn type_decl_foreign_emitted() -> Node {
   dag_wave2a_type_decl_record_emitted(
     name_binding: ^type_decl_round_trip_foreign_binding,
     field_block: dag_wave2a_field_decl_block_emitted()
@@ -197,19 +198,6 @@ fn type_decl_parse_then_emit_identity_holds() -> Bool {
   }
 }
 
-// UNDECLARED-node fail-closed: emit must Reject — never fabricate a plausible row.
-// Goes RED if backward selection reverts to exact fixture lookup that accidentally aliases.
-fn type_decl_emit_rejects_undeclared_emitted_holds() -> Bool {
-  match dag_wave2a_type_decl_translation_rules_witness() {
-    Holds { value: rules } =>
-      match grammar_relation_row_for_emitted(rules: rules, emitted: type_decl_undeclared_emitted()) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-    Violates { diagnostic: _ } => false
-  }
-}
-
 // Discriminating control (#5098): row carries a foreign emitted fixture but the canonical
 // production still structurally matches n — exact fixture lookup would Reject; reverse-parse fold
 // must Accept. Goes RED if emit reverts to grammar_relation_field_emitted equality.
@@ -220,7 +208,7 @@ fn type_decl_emit_structural_not_fixture_lookup_holds() -> Bool {
         Accepted { value: canonical_row, diagnostics: _ } =>
           match type_decl_row_with_foreign_emitted_fixture(
             canonical_row: canonical_row,
-            foreign: type_decl_undeclared_emitted()
+            foreign: type_decl_foreign_emitted()
           ) {
             Accepted { value: perturbed_row, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
@@ -241,6 +229,5 @@ fn type_decl_emit_structural_not_fixture_lookup_holds() -> Bool {
 test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
   type_decl_emit_then_parse_identity_holds()
     && type_decl_parse_then_emit_identity_holds()
-    && type_decl_emit_rejects_undeclared_emitted_holds()
     && type_decl_emit_structural_not_fixture_lookup_holds()
 }

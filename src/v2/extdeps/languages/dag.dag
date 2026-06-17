@@ -3823,6 +3823,7 @@ fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
 }
 
 // DESIGN-6 / grammar-inverse wave-2a — `.dag` type-decl Conj keystone (record with field block).
+data dag_wave2a_task_type_decl_source_text: String = "type Task { id: TaskId, title: String, status: TaskStatus }"
 
 // DESIGN-1: Conj positional slots = bound-terminal atoms + nonterminal RHS children only.
 fn dag_wave2a_qualified_name_emitted(binding: Symbol) -> Node {
@@ -4026,6 +4027,69 @@ fn dag_wave2a_type_decl_translation_rules_witness() -> Witness<Node> {
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
+}
+
+fn dag_wave2a_task_type_decl_serialize_source_children() -> List<Edge> {
+  [
+    dag_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: dag_inhabitant_atom(id: ^dag_wave2a_task_type_decl_source_literal)
+    ),
+    dag_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: dag_inhabitant_atom(id: ^dag_production_type_decl)
+    )
+  ]
+}
+
+fn dag_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<Edge>> {
+  match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
+    Accepted { value: tokens_root, diagnostics: _ } =>
+      match tokens_root.kind {
+        TypeNode { connective: Conj } => Holds { value: tokens_root.children }
+        _ =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_row_tokens_not_conj,
+              at: node_locus(node: tokens_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+  }
+}
+
+// DESIGN-6 bit-identical authority: dag_wave2a_task_type_decl_source_text
+fn dag_wave2a_task_type_decl_serialize_source_witness() -> Witness<Node> {
+  match dag_wave2a_task_type_decl_relation_row_witness() {
+    Holds { value: row } =>
+      match dag_grammar_relation_row_token_edges_witness(row: row) {
+        Holds { value: token_edges } =>
+          Holds {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: list_append(
+                left: dag_wave2a_task_type_decl_serialize_source_children(),
+                right: token_edges
+              ),
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn dag_wave2a_type_decl_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^dag_binding_wave2a_task, "Task")
+  let m1 = map_insert(m0, ^dag_binding_wave2a_field_id, "id")
+  let m2 = map_insert(m1, ^dag_binding_wave2a_field_title, "title")
+  let m3 = map_insert(m2, ^dag_binding_wave2a_field_status, "status")
+  let m4 = map_insert(m3, ^dag_binding_wave2a_type_task_id, "TaskId")
+  let m5 = map_insert(m4, ^dag_binding_wave2a_type_task_status, "TaskStatus")
+  map_insert(m5, ^dag_binding_type_string, "String")
 }
 
 fn dag_mvp1_grammar_relation_row_node() -> Node {
