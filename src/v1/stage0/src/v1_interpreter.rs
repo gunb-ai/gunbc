@@ -3219,24 +3219,11 @@ fn eval_algebra_method(
 
 /// Infra clock for RecordedFixture `recorded_at` / freshness — always wet shell
 /// transport (`date +%s`), matching extdeps/clock/clock.dag. Never SystemTime.
+/// Clock.Now returns ISO Timestamp for DAG consumers; freshness uses epoch seconds only.
 pub fn fixture_now_secs(
     _ctx: &InterpContext,
 ) -> Result<u64, crate::recorded_fixture::FixtureError> {
     wet_clock_unix_secs_via_shell()
-}
-
-/// Clock.Now via the full service + RecordedFixture seam (for witnesses/tests).
-pub fn clock_now_via_service(
-    ctx: &InterpContext,
-) -> Result<u64, crate::recorded_fixture::FixtureError> {
-    if ctx.service_ops.contains_key("Clock.Now") {
-        match eval_service_call("Clock", "Now", &[], &Env::empty(), ctx) {
-            Ok(val) => value_unix_secs(&val, ctx),
-            Err(_) => wet_clock_unix_secs_via_shell(),
-        }
-    } else {
-        wet_clock_unix_secs_via_shell()
-    }
 }
 
 fn wet_clock_unix_secs_via_shell() -> Result<u64, crate::recorded_fixture::FixtureError> {
@@ -3252,29 +3239,7 @@ fn wet_clock_unix_secs_via_shell() -> Result<u64, crate::recorded_fixture::Fixtu
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
-fn value_unix_secs(
-    val: &Value,
-    ctx: &InterpContext,
-) -> Result<u64, crate::recorded_fixture::FixtureError> {
-    match val {
-        Value::Record { fields, .. } => {
-            let raw = ctx
-                .field(&fields, "timestamp")
-                .or_else(|| ctx.field(&fields, "unix_secs"))
-                .map(|v| format!("{v}"))
-                .ok_or(crate::recorded_fixture::FixtureError::ClockUnavailable)?;
-            raw.parse::<u64>()
-                .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
-        }
-        Value::Str(s) => s
-            .parse::<u64>()
-            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable),
-        Value::Int(n) if *n >= 0 => Ok(*n as u64),
-        _ => Err(crate::recorded_fixture::FixtureError::ClockUnavailable),
-    }
-}
-
-/// Wet Environment.Read transport — printenv realization (extdeps/environment/environment.dag).
+/// Wet shell.Env.Get transport — printenv realization (extdeps/shell/shell.dag).
 fn wet_env_var(name: &str) -> Option<String> {
     let output = std::process::Command::new("printenv")
         .arg(name)
@@ -3292,9 +3257,9 @@ fn wet_env_var(name: &str) -> Option<String> {
 }
 
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
-    if ctx.service_ops.contains_key("Environment.Read") {
+    if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
-        match eval_service_call("Environment", "Read", &args, &Env::empty(), ctx) {
+        match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
             Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
                 Value::Str(s) if !s.is_empty() => Some(s.clone()),
                 _ => None,

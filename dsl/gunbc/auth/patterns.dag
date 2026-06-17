@@ -21,7 +21,7 @@ import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.sts { MetadataRuntime }
 import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
-import extdeps.environment
+import extdeps.shell
 
 // 🟢 terminal coproduct: consumer-owned auth runtime choice; each payload lives in its discrete concern home.
 type AuthRuntime
@@ -126,8 +126,8 @@ pattern credential_chain(
 func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
   uses net: Network
 {
-  url = Environment.Read(name: runtime.oidc_request_url_env)
-  auth = Environment.Read(name: runtime.oidc_request_token_env)
+  url = shell.Env.Get(name: runtime.oidc_request_url_env)
+  auth = shell.Env.Get(name: runtime.oidc_request_token_env)
 
   response = github.OIDC.GetToken(
     audience: audience,
@@ -150,7 +150,7 @@ func metadata_oidc(audience: String) -> { token: Secret }
 // func local_auth() -> Secret
 //   uses fs: Filesystem
 // {
-//   adc_path = Environment.Read(name: "GOOGLE_APPLICATION_CREDENTIALS")
+//   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
 //
 //   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
 //   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]

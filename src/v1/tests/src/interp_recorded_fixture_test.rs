@@ -648,7 +648,7 @@ fn env_get_record_then_hermetic_replay_holds() {
     ]);
     assert!(
         record.status.success(),
-        "Environment.Read record capture must pass (wet); stderr={}",
+        "shell.Env.Get record capture must pass (wet); stderr={}",
         String::from_utf8_lossy(&record.stderr)
     );
 
@@ -668,7 +668,7 @@ fn env_get_record_then_hermetic_replay_holds() {
     let _ = fs::remove_dir_all(&store_dir);
     assert!(
         hermetic.status.success(),
-        "hermetic Environment.Read replay must pass from recorded fixtures; stderr={}",
+        "hermetic shell.Env.Get replay must pass from recorded fixtures; stderr={}",
         String::from_utf8_lossy(&hermetic.stderr)
     );
 }
@@ -693,10 +693,7 @@ fn hermetic_env_fixture_staleness_fails_closed() {
         "--fixture-store",
         store_dir.to_str().expect("store path"),
     ]);
-    assert!(
-        record.status.success(),
-        "record must capture Environment.Read"
-    );
+    assert!(record.status.success(), "record must capture shell.Env.Get");
 
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
@@ -727,7 +724,7 @@ fn hermetic_env_fixture_staleness_fails_closed() {
     let _ = fs::remove_dir_all(&store_dir);
     assert!(
         !hermetic.status.success(),
-        "stale Environment.Read fixture must fail closed"
+        "stale shell.Env.Get fixture must fail closed"
     );
     let combined = format!(
         "{}{}",
@@ -758,7 +755,7 @@ fn env_hermetic_without_fixture_store_fails_closed() {
     ]);
     assert!(
         !hermetic.status.success(),
-        "Environment.Read in Hermetic without fixture store must fail closed"
+        "shell.Env.Get in Hermetic without fixture store must fail closed"
     );
     let combined = format!(
         "{}{}",
