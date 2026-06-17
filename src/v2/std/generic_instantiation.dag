@@ -14,7 +14,7 @@ import v2.std.collection {
   map_get,
   map_insert
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.node { Node }
 
 // Substitution map: generic name → concrete type node at a call site.
@@ -29,10 +29,12 @@ fn generic_substitution_bind_once(
   subst: GenericSubstitution,
   name: String,
   concrete: Node,
-) -> GenericSubstitution {
+) -> Outcome<GenericSubstitution> {
   match map_get(subst, name) {
-    Accepted { value: Absent, diagnostics: _ } => map_insert(subst, name, concrete)
-    Accepted { value: Present { value: _ }, diagnostics: _ } => subst
-    Rejected { diagnostics: _ } => subst
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_accepted(value: map_insert(subst, name, concrete))
+    Accepted { value: Present { value: _ }, diagnostics: _ } =>
+      outcome_accepted(value: subst)
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
