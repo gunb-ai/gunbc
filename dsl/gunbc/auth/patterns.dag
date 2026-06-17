@@ -60,16 +60,16 @@ pattern optional_impersonation(
     access_token: access_token,
     target_sa: service_account,
     lifetime_seconds: lifetime_seconds
-  ) [when service_account != None]
+  ) [when service_account != none]
   let result_token = match service_account {
-    Some(_sa) => impersonated.access_token
-    None => access_token
+    Present { value: _sa } => impersonated.access_token
+    Absent => access_token
   }
   return { token: result_token }
 }
 
 fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
-  { token: payload, scheme: scheme, expires_at: None }
+  { token: payload, scheme: scheme, expires_at: none }
 }
 
 // OIDC -> STS -> optional impersonation -> secret access -> credential.
@@ -152,12 +152,12 @@ func metadata_oidc(audience: String) -> { token: Secret }
 // {
 //   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
 //
-//   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
-//   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
+//   adc_content = fs.read(path: adc_path.value) [when adc_path.value != none]
+//   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != none]
 //   gcloud_auth = shell.GCloud.AuthPrintAccessToken()
 //
 //   let adc_token = adc_refresh.access_token
 //   let gcloud_token = gcloud_auth.access_token
-//   let result = if adc_path.value != None { adc_token } else { gcloud_token }
+//   let result = if adc_path.value != none { adc_token } else { gcloud_token }
 //   return result
 // }

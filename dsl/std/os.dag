@@ -20,8 +20,8 @@ import std.os.types {
 fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {
   OperatingSystemSurface {
     kernel: Linux,
-    distro_or_product: Some { value: "Ubuntu" },
-    version: Some { value: row.release_label },
+    distro_or_product: Present { value: "Ubuntu" },
+    version: Present { value: row.release_label },
     filesystem_semantics: Posix,
     process_semantics: PosixProcess,
   }
@@ -30,8 +30,8 @@ fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> Operati
 fn operating_system_surface_windows(row: WindowsDistributionCatalogRow) -> OperatingSystemSurface {
   OperatingSystemSurface {
     kernel: WindowsNt,
-    distro_or_product: Some { value: "Windows 11" },
-    version: Some { value: concat(row.release_label, " (OS build ", row.os_build, ")") },
+    distro_or_product: Present { value: "Windows 11" },
+    version: Present { value: concat(row.release_label, " (OS build ", row.os_build, ")") },
     filesystem_semantics: Ntfs,
     process_semantics: WindowsProcess,
   }
@@ -40,8 +40,8 @@ fn operating_system_surface_windows(row: WindowsDistributionCatalogRow) -> Opera
 fn operating_system_surface_macos(row: MacosDistributionCatalogRow) -> OperatingSystemSurface {
   OperatingSystemSurface {
     kernel: Darwin,
-    distro_or_product: Some { value: "macOS Sequoia" },
-    version: Some { value: row.annual_release_label },
+    distro_or_product: Present { value: "macOS Sequoia" },
+    version: Present { value: row.annual_release_label },
     filesystem_semantics: Apfs,
     process_semantics: PosixProcess,
   }

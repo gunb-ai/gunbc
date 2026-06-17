@@ -40,7 +40,7 @@ data gitignore_output_format: OutputFormat = {
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
   let by_build = filter(categories, c => match c.when_build_system {
-    None => true
+    Absent => true
     _ => c.when_build_system == build_system
   })
   filter(by_build, c => c.items |> count > 0)
