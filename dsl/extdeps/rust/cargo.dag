@@ -10,12 +10,37 @@
 
 module extdeps.cargo
 
+import std.types { FilePathParts }
+
+// -- Edition -------------------------------------------------------
+// Rust edition is a CLOSED set (Cargo Reference: "The edition field"), not an
+// arbitrary String. Single authority: this is the one place the edition values
+// live — `languages/rust/imports.dag` imports `default_rust_edition` rather than
+// re-coining `default_edition: String = "2021"` (that fork is the §3 violation
+// this collapses). `rust_edition_str` renders the canonical manifest token.
+type RustEdition
+  = Edition2015
+  | Edition2018
+  | Edition2021
+  | Edition2024
+
+fn rust_edition_str(edition: RustEdition) -> String {
+  match edition {
+    Edition2015 => "2015"
+    Edition2018 => "2018"
+    Edition2021 => "2021"
+    Edition2024 => "2024"
+  }
+}
+
+data default_rust_edition: RustEdition = Edition2021
+
 // -- Package model -------------------------------------------------
 
 type CargoPackage {
   name: String
   version: String
-  edition: String
+  edition: RustEdition
   path: String
 }
 
