@@ -1,10 +1,9 @@
 // src/v2/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 rust/go rows — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
-//   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
-//   T-22 python row — eval intercept dispatches `run_emit_host_python` → `emit_host_runner` and
-//   hand-reifies `v2.std.host_run` in `emit_host_eval.rs` (claim-only transport pins).
-//   `emit_host_bridge.rs` remains for W3 harness until T-PB-B dissolution (SG-0 receipts).
+// Status: T-22 rust/go/python rows — substrate `run_emit_host_*` bodies stay fail-closed in
+//   src/v2 (no host effects). Executable host boundary: `dsl/tools/emit_host_gate.dag`
+//   (gunbc run; replaces deleted `tools/emit_host_runner`). Eval intercept for in-corpus
+//   emit-vs-eval awaits T-22 Realization wiring.
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
@@ -213,7 +212,7 @@ fn runtime_value_parse_signed_i32_le(bytes: ByteString) -> Outcome<RuntimeValue>
 }
 
 fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
-  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_gate.dag transport rows) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
   if target.authority_source_text == rust_mvp1_source_text_authority() {
     runtime_value_parse_rust(bytes: stdout.bytes)
   } else if target.authority_source_text == python_mvp1_source_text {
@@ -234,8 +233,7 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   outcome_rejected(d: emit_host_parse_unsupported_target_diagnostic())
 }
 
-// Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
-// `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
+// Substrate row: body stays fail-closed; executable proof is `dsl/tools/emit_host_gate.dag`.
 fn run_emit_host_rust(
   target: TargetModel,
   source: TargetSource,
@@ -246,9 +244,7 @@ fn run_emit_host_rust(
   }
 }
 
-// Substrate row: body stays fail-closed; T-22 eval intercept hand-reifies `v2.std.host_run`
-// in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
-// Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
+// Substrate row: body stays fail-closed; executable proof is `dsl/tools/emit_host_gate.dag`.
 fn run_emit_host_python(
   target: TargetModel,
   source: TargetSource,
@@ -269,7 +265,7 @@ fn run_emit_host_go(
   }
 }
 
-// B3 omni-emission — one generic primitive; eval intercept runs `emit_host_runner::run_host_process`.
+// B3 omni-emission — one generic primitive; executable boundary is `dsl/tools/emit_host_gate.dag`.
 fn run_host_process(
   descriptor: HostTransportDescriptor,
   target: TargetModel,
@@ -286,7 +282,7 @@ fn run_emit_host(
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
-  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_gate.dag transport rows) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
   if target.authority_source_text == ts_mvp1_source_text_authority() {
     run_host_process(
       descriptor: ts_host_transport_mvp1_descriptor(),
