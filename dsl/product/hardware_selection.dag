@@ -85,6 +85,17 @@ type Platform {
   label: NonEmptyStr
   memory_channels: Int
   slots_per_channel: Int
+  // 🟡 DDR transfer rate in MT/s — carried as a bare Int ON PURPOSE, not forked to a Measure
+  // here. The AUTHORITY for "DDR data rate" is std.memory.types.DramModuleCatalogRow
+  // .data_rate_mts (also Int), which effective_data_rate_mts / memory_bandwidth min_int this
+  // ceiling against. Re-carrying ONLY the platform ceiling as a Measure while the module rate
+  // stays Int would split one concept across two representations (DESIGN §3 single authority).
+  // So it dissolves WITH the authority, not ahead of it:
+  //   feature: ddr-data-rate-measure-carrier
+  //   dissolve-on: std.memory.types.DramModuleCatalogRow.data_rate_mts re-carried as a shared
+  //     std.measure rate (Measure<Frequency, Mega, Nat> — MT/s is mega-transfers/s, the Hertz
+  //     family's dimension); this field AND the 2400/2933 downclock thresholds then adopt that
+  //     same carrier in one coordinated migration (std.memory owns the trigger).
   max_data_rate_mts: Int
 }
 
