@@ -355,6 +355,18 @@ fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGra
 // Free-name-slot marker: one emitted Atom per ident terminal, binding spelled from atom identity
 // (symbol interning — parse text→intern→^Name, emit ^Name→name→"Name"). Distinct from fixed
 // grammar_formal_terminal_bound spellings; invertibility requires exactly one atom per slot.
+// 🟡 gated — feature:grammar-free-name-slot-binding — the free-vs-fixed terminal binding is
+//   carried as a sentinel Symbol (^grammar_free_name_slot) + the predicate
+//   formal_binding_is_free_name_slot, an in-band three-way discriminator over
+//   binding: Optional<Symbol> (Absent | Present{sentinel} | Present{real ident}) on the core
+//   FormalGrammarSymbol carrier — a hand-rolled sum, not a declared coproduct (§3/§4;
+//   the sentinel could collide with a real ident). dissolve-on: declare
+//   FormalTerminalBinding = AbsentBinding | FixedBinding { symbol: Symbol } | FreeNameSlot,
+//   carry it on the formal terminal instead of the bare Symbol, and replace every
+//   formal_binding_is_free_name_slot(...) call (formal_production_rhs_matches_emitted_conj_step,
+//   formal_production_matches_emitted_child, derive_grammar_relation_token_edges_recursive_step)
+//   with a match — once the carrier change is scoped against the forward parser consumers
+//   (03_ingest / 02_parse). The sentinel + predicate dissolve with it.
 data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
 
 
