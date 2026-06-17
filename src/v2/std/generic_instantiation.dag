@@ -1,0 +1,80 @@
+// src/v2/std/generic_instantiation.dag
+// Scope: value-level generic instantiation substrate — single authority for generic
+// substitution carriers and generic-decl predicates (Lane 2b / R2 §4a).
+// Status: modeled — infer/translate/emit consumers import; no parallel nicknames.
+// Anchor: v1/04_infer.dag R2 minimal generic instantiation (parametric bind + substitute).
+
+module v2.std.generic_instantiation
+
+import v2.std.algebra { length }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  empty_map,
+  map_get,
+  map_insert
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol, TypeNode, Atom }
+
+// Substitution map: generic name → concrete type node at a call site.
+type GenericSubstitution = Map<String, Node>
+
+// Fold state for generic-aware value-arg inference: threads substitution built from
+// concrete args left-to-right through later formals (R2).
+type ArgGenericFoldState {
+  typed_args: List<Node>
+  subst: GenericSubstitution
+}
+
+fn empty_generic_substitution() -> GenericSubstitution {
+  empty_map()
+}
+
+fn arg_generic_fold_init() -> ArgGenericFoldState {
+  ArgGenericFoldState {
+    typed_args: [],
+    subst: empty_generic_substitution()
+  }
+}
+
+// Algebra metavariable names that must not leak as ambient user-facing type bindings.
+fn is_algebra_type_variable_name(name: String) -> Bool {
+  name == "T"
+    || name == "K"
+    || name == "V"
+    || name == "MappedElement"
+    || name == "FoldAccumulator"
+}
+
+// Fail-closed: bind a generic name once (first wins); never silently overwrite.
+fn generic_substitution_bind_once(
+  subst: GenericSubstitution,
+  name: String,
+  concrete: Node,
+) -> GenericSubstitution {
+  match map_get(subst, name) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => subst
+    Accepted { value: Absent, diagnostics: _ } => map_insert(subst, name, concrete)
+    Rejected { diagnostics: _ } => subst
+  }
+}
+
+// Generic DECLARATION param is self-named: value-name equals type-name (`T: T`).
+// Distinguishes type params from value params whose type happens to be generic (`x: T`).
+fn param_is_self_named_generic_decl(
+  param_name: String,
+  type_name: String,
+  type_is_bare_leaf: Bool,
+) -> Bool {
+  type_is_bare_leaf && param_name != "" && param_name == type_name
+}
+
+fn node_is_bare_type_atom_leaf(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: _ } } => length(xs: n.children) == 0
+    _ => false
+  }
+}
