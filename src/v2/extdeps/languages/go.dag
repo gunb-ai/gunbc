@@ -100,6 +100,18 @@ import v2.std.compilers.target_model {
   target_model_edge_serialize_source,
   target_value_template_for_kind
 }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  HostRuntimeRowPresent,
+  TargetEmitHostRuntimeRow,
+  FixedWidthBytes,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  WorkspaceContent,
+  WorkspaceFile,
+  WorkspacePath,
+  host_tool_go}
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v2.std.witness { Holds, Violates }
@@ -1854,6 +1866,48 @@ fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
+// T-22 emit-host runtime row — gunbc#4750.
+data go_host_transport_mvp1_identity: Symbol = go_host_transport_mvp1_identity
+data go_emit_host_runtime_primitive_symbol: Symbol = go_emit_host_runtime_primitive_symbol
+
+fn go_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: go_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: go_host_transport_mvp1_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "main.go",
+        content: EmittedSource
+      }
+    ],
+    build: Empty,
+    run: ProcessInvocation {
+      tool: host_tool_go,
+      args: [
+        LiteralArg { text: "run" },
+        WorkspacePath { path: "main.go" }
+      ]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn go_mvp1_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: go_host_transport_mvp1_descriptor(),
+      runtime_primitive_type: go_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
 fn go_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1872,7 +1926,8 @@ fn go_mvp1_target_model_staging() -> TargetModel {
     bundle: go_mvp1_target_model_bundle_core(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 
@@ -1948,7 +2003,8 @@ fn go_mvp1_target_model() -> TargetModel {
     bundle: go_mvp1_target_model_node(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 
@@ -1979,7 +2035,8 @@ fn go_mvp1_target_model_int64_selection_policy() -> TargetModel {
     ),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 

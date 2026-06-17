@@ -8,6 +8,7 @@
 
 module v2.extdeps.languages.wasm
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
@@ -77,7 +78,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.witness { Holds, Violates }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.compilers.target_model {
   grammar_relation_field_emitted,
@@ -728,7 +729,8 @@ fn wasm_mvp1_target_model() -> TargetModel {
     bundle: wasm_mvp1_target_model_node(),
     lex: wasm_wave1_lex(),
     binding_spellings: wasm_mvp1_binding_spellings(),
-    authority_source_text: wasm_mvp1_source_text_authority()
+    authority_source_text: wasm_mvp1_source_text_authority(),
+  runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 

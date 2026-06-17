@@ -1,6 +1,7 @@
 
 module v2.test.manual.mvp1_go_add_translate
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
   CompileOutput,
@@ -40,7 +41,7 @@ import v2.extdeps.languages.go {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel}
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add_mvp {
   infer_receipt_context
@@ -108,7 +109,8 @@ data mvp1_go_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: go_mvp1_target_model_node(),
   lex: go_wave1_lex(),
   binding_spellings: go_mvp1_binding_spellings(),
-  authority_source_text: mvp1_go_forbidden_authority_source_text
+  authority_source_text: mvp1_go_forbidden_authority_source_text,,
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 data mvp1_go_empty_translation_rules_bundle: Node = Node {
@@ -121,7 +123,8 @@ data mvp1_go_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: mvp1_go_empty_translation_rules_bundle,
   lex: go_wave1_lex(),
   binding_spellings: empty_map(),
-  authority_source_text: ""
+  authority_source_text: "",,
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 fn anchor_mvp1_go_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
