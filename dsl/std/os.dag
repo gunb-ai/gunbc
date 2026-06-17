@@ -16,7 +16,6 @@ import std.os.types {
   WindowsNt,
   WindowsProcess,
 }
-import std.primitives { concat }
 
 fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {
   OperatingSystemSurface {
