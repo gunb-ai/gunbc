@@ -194,7 +194,7 @@ fn rank_interleave_percent(rank_count: Int) -> Int {
 fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
   let rated = min_int(a: cfg.module.data_rate_mts, b: effective_data_rate_mts(platform: platform, dimms_per_channel: cfg.dimms_per_channel, rank_count: cfg.module.rank_count))
   let interleaved = rated * rank_interleave_percent(rank_count: cfg.module.rank_count) / 100
-  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes * platform.memory_channels }
+  Bandwidth { count: interleaved * 1000000 * byte_size_count(b: dram_channel_bus_bytes) * platform.memory_channels }
 }
 
 // DRAM device count per stick, DERIVED from the grounded axes (DESIGN §2 derive-don't-store):

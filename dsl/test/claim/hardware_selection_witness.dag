@@ -21,9 +21,9 @@ module test.claim.hardware_selection
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.measure { byte_size, bit_width, watt, watt_count, milliwatt, money_micros, hardware_thread_count, hertz }
+import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, milliwatt, money_micros, hardware_thread_count, hertz }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density_bits }
+import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density }
 import std.pareto { verdict_dominates, verdict_is_incomparable }
 import product.hardware_selection {
   Platform,
@@ -226,13 +226,14 @@ fn realizability_rejects_impossible_sku() -> Bool {
 }
 
 // DISCRIMINATING (§5 teeth): a REAL 16GB 1Rx4 RDIMM is built from 8 Gibit dies — 16 data chips
-// (64/4) × 1 rank, marketed capacity / data chips. The guard must compute that REAL die density
-// EXACTLY: 8589934592 bits = 8 Gibit. This goes RED under a 72/width (ECC-inclusive) divisor
-// (137438953472/18 = 7.11 Gibit, a die that does not exist) and GREEN under the correct 64/width
-// data-chip divisor — so it PINS the divisor, not merely that the threshold rejects an
-// impossible part (both 64 and 72 reject the 32GB fake, so that test alone cannot tell them apart).
+// (64/4) × 1 rank, marketed capacity / data chips. The guard must compute that REAL per-die
+// capacity EXACTLY: 1073741824 bytes = 1 GiB (= an 8 Gibit die). This goes RED under a 72/width
+// (ECC-inclusive) divisor (17179869184/18 = 954437177 B, a die that does not exist) and GREEN
+// under the correct 64/width data-chip divisor — so it PINS the divisor, not merely that the
+// threshold rejects an impossible part (both 64 and 72 reject the 32GB fake, so that test alone
+// cannot tell them apart).
 fn real_part_computes_real_die_density() -> Bool {
-  dram_module_required_die_density_bits(module: mod_1rx4_16g) == 8589934592
+  byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
 // Derived decision ratios are COMPUTED, not dead spec (§5): cost/GiB is a positive,
