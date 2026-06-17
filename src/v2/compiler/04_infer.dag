@@ -17,6 +17,7 @@ import v2.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   list_at_optional
 }
@@ -41,6 +42,7 @@ import v2.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   outcome_rejected,
+  outcome_accepted,
   rejected_with_pending
 }
 import v2.std.logic { Bool, bool_node }
@@ -49,6 +51,7 @@ import v2.std.node {
   Branch,
   ComputationNode,
   Edge,
+  Match,
   Node,
   NodeFold,
   Symbol,
@@ -56,9 +59,11 @@ import v2.std.node {
   TypeNode,
   all_edges_positional,
   fold_node,
+  match_arm_body,
+  match_arm_pattern,
   well_formed
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 // AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
@@ -110,11 +115,11 @@ type InferGatherFoldAcc {
   failed: Bool
   pending: Diagnostics
   await_branch_row: Bool
+  await_match_row: Bool
   children_remaining: Int
 }
 
 // 🟢 SM5-satisfied: v2 bootstrap on src/v2 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
-
 // §1-tail A4 disposition (post-#4692): `_bounded` fuel residue = 0 in this stage.
 // SG-6 BoundedLattice gather/gate → fuel-delete: rows in v2.std.bounded_lattice_completeness
 // (fold_node owns traversal; fold_init/fold_step are algebra rows, not fuel).
@@ -162,6 +167,46 @@ fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
 fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_arm_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_scrutinee_not_bool_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_scrutinee_not_bool,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_pattern_not_bool_literal_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_pattern_not_bool_literal,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_arm_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_non_exhaustive,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -566,10 +611,181 @@ fn infer_branch_bool_if_else(
   }
 }
 
+type InferMatchArmRow {
+  has_true: Bool
+  has_false: Bool
+  body_type: Node
+}
+
+fn infer_match_pattern_is_bool_literal(pattern: Node) -> Bool {
+  infer_branch_is_bool_literal_atom(node: pattern)
+}
+
+fn infer_branch_is_bool_true_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
+    _ => false
+  }
+}
+
+fn infer_branch_is_bool_false_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
+    _ => false
+  }
+}
+
+fn infer_match_arm_contributes_exhaustiveness(pattern: Node) -> InferMatchArmRow {
+  if infer_branch_is_bool_true_literal_atom(node: pattern) {
+    InferMatchArmRow {
+      has_true: true,
+      has_false: false,
+      body_type: bool_node()
+    }
+  } else if infer_branch_is_bool_false_literal_atom(node: pattern) {
+    InferMatchArmRow {
+      has_true: false,
+      has_false: true,
+      body_type: bool_node()
+    }
+  } else {
+    InferMatchArmRow {
+      has_true: false,
+      has_false: false,
+      body_type: bool_node()
+    }
+  }
+}
+
+fn infer_match_bool_arm_row(
+  arm: Node,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferMatchArmRow> {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: arm, name: match_arm_pattern) {
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+        Accepted { value: pat, diagnostics: pd } =>
+          match find_named_child(root: arm, name: match_arm_body) {
+            Rejected { diagnostics: _ } =>
+              outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+            Accepted { value: body_target, diagnostics: bd } =>
+              if !infer_match_pattern_is_bool_literal(pattern: pat) {
+                outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
+              } else {
+                let exhaust = infer_match_arm_contributes_exhaustiveness(pattern: pat)
+                match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
+                  Violates { diagnostic: diag } => outcome_rejected(diag)
+                  Holds { value: body_facts } =>
+                    Accepted {
+                      value: InferMatchArmRow {
+                        has_true: exhaust.has_true,
+                        has_false: exhaust.has_false,
+                        body_type: infer_branch_operand_resolved_type(
+                          node: body_target,
+                          facts: body_facts
+                        )
+                      },
+                      diagnostics: diagnostics_merge(outer: pd, inner: bd)
+                    }
+                }
+              }
+          }
+      }
+    _ => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+  }
+}
+
+// Q-B2 gather-algebra row: Bool match — scrutinee typed Bool; bool-literal arms unify; exhaustiveness fail-closed.
+fn infer_match_bool(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferredFacts> {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) < 2 {
+    outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+      Present { value: scrutinee_target } =>
+        match list_at_optional(xs: positional_targets, index: 1) {
+          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          Present { value: first_arm_target } =>
+            match list_at_optional(xs: positional_targets, index: 2) {
+              Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+              Present { value: second_arm_target } =>
+                match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
+                  Violates { diagnostic: d } => outcome_rejected(d)
+                  Holds { value: scrutinee_facts } =>
+                    match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: _, diagnostics: cd } =>
+                        if !infer_branch_type_is_bool(
+                          type_node: infer_branch_operand_resolved_type(
+                            node: scrutinee_target,
+                            facts: scrutinee_facts
+                          )
+                        ) {
+                          outcome_rejected(infer_match_scrutinee_not_bool_diagnostic(node: node))
+                        } else {
+                          match infer_match_bool_arm_row(arm: first_arm_target, entries: entries) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: first_row, diagnostics: fd } =>
+                              match infer_match_bool_arm_row(arm: second_arm_target, entries: entries) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: second_row, diagnostics: sd } =>
+                                  let has_true = first_row.has_true || second_row.has_true
+                                  let has_false = first_row.has_false || second_row.has_false
+                                  if !has_true || !has_false {
+                                    outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+                                  } else if !infer_branch_type_atoms_equal(
+                                    a: first_row.body_type,
+                                    b: second_row.body_type
+                                  ) {
+                                    outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+                                  } else {
+                                    match infer_descent_witness_for_node(n: node) {
+                                      Violates { diagnostic: d } =>
+                                        Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                      Holds { value: descent_proof } =>
+                                        bind_outcome(
+                                          o: inferred_facts_from_grounding(
+                                            grounding: infer_branch_canonical_grounding(
+                                              node: node,
+                                              unified_type: first_row.body_type
+                                            ),
+                                            descent: Holds { value: descent_proof }
+                                          ),
+                                          f: fn(facts) {
+                                            Accepted {
+                                              value: facts,
+                                              diagnostics: diagnostics_merge(
+                                                outer: diagnostics_merge(outer: cd, inner: fd),
+                                                inner: sd
+                                              )
+                                            }
+                                          }
+                                        )
+                                    }
+                                  }
+                              }
+                          }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
 fn infer_gather_fold_acc_failed(
   node: Node,
   pending: NonEmptyDiagnostics,
   await_branch_row: Bool,
+  await_match_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -578,6 +794,7 @@ fn infer_gather_fold_acc_failed(
     failed: true,
     pending: Some { diagnostics: pending },
     await_branch_row: await_branch_row,
+    await_match_row: await_match_row,
     children_remaining: children_remaining
   }
 }
@@ -587,6 +804,7 @@ fn infer_gather_fold_acc_ok(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   await_branch_row: Bool,
+  await_match_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -595,6 +813,7 @@ fn infer_gather_fold_acc_ok(
     failed: false,
     pending: pending,
     await_branch_row: await_branch_row,
+    await_match_row: await_match_row,
     children_remaining: children_remaining
   }
 }
@@ -638,6 +857,7 @@ fn infer_gather_branch_row_on_entries(
         node: node,
         pending: rejected_with_pending(pending: pending, rejected: r),
         await_branch_row: false,
+        await_match_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -647,6 +867,7 @@ fn infer_gather_branch_row_on_entries(
             node: node,
             pending: rejected_with_pending(pending: pending, rejected: r),
             await_branch_row: false,
+            await_match_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -658,6 +879,48 @@ fn infer_gather_branch_row_on_entries(
               inner: ed
             ),
             await_branch_row: false,
+            await_match_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+fn infer_gather_match_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_match_bool(node: node, partials: partials, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
             children_remaining: 0
           )
       }
@@ -672,6 +935,16 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
         entries: empty_inferred_facts_entry_list(),
         pending: None,
         await_branch_row: true,
+        await_match_row: false,
+        children_remaining: length(xs: n.children)
+      )
+    ComputationNode { behavior: Match } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: false,
+        await_match_row: true,
         children_remaining: length(xs: n.children)
       )
     _ =>
@@ -681,6 +954,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
             node: n,
             pending: r,
             await_branch_row: false,
+            await_match_row: false,
             children_remaining: 0
           )
         Accepted { value: facts, diagnostics: d } =>
@@ -690,6 +964,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
                 node: n,
                 pending: r,
                 await_branch_row: false,
+                await_match_row: false,
                 children_remaining: 0
               )
             Accepted { value: entry, diagnostics: ed } =>
@@ -698,6 +973,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
                 entries: [entry],
                 pending: diagnostics_merge(outer: d, inner: ed),
                 await_branch_row: false,
+                await_match_row: false,
                 children_remaining: 0
               )
           }
@@ -731,6 +1007,7 @@ fn infer_gather_fold_step(
         rejected: infer_gather_failed_non_empty(acc: child)
       ),
       await_branch_row: acc.await_branch_row,
+      await_match_row: acc.await_match_row,
       children_remaining: acc.children_remaining
     )
   } else {
@@ -744,12 +1021,20 @@ fn infer_gather_fold_step(
         pending: merged_pending,
         partials: partials
       )
+    } else if acc.await_match_row && children_remaining == 0 {
+      infer_gather_match_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials
+      )
     } else {
       infer_gather_fold_acc_ok(
         node: acc.node,
         entries: merged_entries,
         pending: merged_pending,
         await_branch_row: acc.await_branch_row,
+        await_match_row: acc.await_match_row,
         children_remaining: children_remaining
       )
     }

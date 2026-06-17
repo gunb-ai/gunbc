@@ -16,6 +16,9 @@ import v2.std.algebra {
   length,
   list_append,
   fold_list_right,
+  list_tail,
+  TailAbsent,
+  TailFound
 }
 import v2.std.collection {
   Absent,
@@ -83,6 +86,9 @@ import v2.std.node {
   Instantiation,
   LabeledEdges,
   LoopBoundEdges,
+  Match,
+  match_arm_body,
+  match_arm_pattern,
   Named,
   NoEdges,
   Node,
@@ -92,10 +98,12 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  all_edges_named,
   all_edges_positional,
   connective_edge_discipline,
   content_hash,
   fold_node,
+  match_arm_children_conform_skip_first,
   name_occurrences,
   node_rebuild,
   SyntheticOccurrence
@@ -509,6 +517,9 @@ type TargetValueExpressionKind
   | TargetValueExprConditional
   | TargetValueExprBindLet
   | TargetValueExprLoop
+  | TargetValueExprRecordConstruct
+  | TargetValueExprFieldAccess
+  | TargetValueExprMatch
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -530,6 +541,9 @@ type TargetValueTemplateKind
   | ValueConditional
   | ValueBindLet
   | ValueLoop
+  | ValueRecordConstruct
+  | ValueFieldAccess
+  | ValueMatch
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -637,6 +651,25 @@ type TargetLoopShape {
   loop_token: Symbol
 }
 
+type TargetRecordConstructShape {
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+  assign: Symbol
+}
+
+type TargetFieldAccessShape {
+  dot: Symbol
+}
+
+type TargetMatchShape {
+  match_token: Symbol
+  open: Symbol
+  close: Symbol
+  fat_arrow: Symbol
+  arm_separator: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
@@ -646,6 +679,9 @@ type TargetValueExpressionProjection {
   conditional_form: TargetConditionalShape
   let_form: TargetBindLetShape
   loop_form: TargetLoopShape
+  record_construct_form: TargetRecordConstructShape
+  field_access_form: TargetFieldAccessShape
+  match_form: TargetMatchShape
 }
 
 // T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
@@ -1189,6 +1225,86 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   )
 }
 
+fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordConstructShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_open),
+    f: fn(open) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_close),
+        f: fn(close) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_separator),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_assign),
+                f: fn(assign) {
+                  outcome_accepted(
+                    TargetRecordConstructShape {
+                      open: open,
+                      close: close,
+                      separator: separator,
+                      assign: assign
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_field_access_shape_bundle(bundle: Node) -> Outcome<TargetFieldAccessShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_field_access_dot),
+    f: fn(dot) {
+      outcome_accepted(TargetFieldAccessShape { dot: dot })
+    }
+  )
+}
+
+fn decode_match_shape_bundle(bundle: Node) -> Outcome<TargetMatchShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_match_token),
+    f: fn(match_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_match_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_match_close),
+            f: fn(close) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_match_fat_arrow),
+                f: fn(fat_arrow) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_match_arm_separator
+                    ),
+                    f: fn(arm_separator) {
+                      outcome_accepted(
+                        TargetMatchShape {
+                          match_token: match_token,
+                          open: open,
+                          close: close,
+                          fat_arrow: fat_arrow,
+                          arm_separator: arm_separator
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(
@@ -1328,7 +1444,7 @@ fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEff
 }
 
 // Fold the effect-callee catalog rows off the wire bundle. Row edges carry
-// `target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
+// `^target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
 // differently and are skipped here (decoded by `decode_effect_apply_shape_bundle`). A malformed row
 // fails the whole decode closed.
 fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
@@ -1481,16 +1597,64 @@ fn decode_value_expression_projection_bundle(
                                                               bundle: loop_bundle
                                                             ),
                                                             f: fn(loop_form) {
-                                                              outcome_accepted(
-                                                                TargetValueExpressionProjection {
-                                                                  binding_ref_form: binding_ref_form,
-                                                                  primitive_apply_form: primitive_apply_form,
-                                                                  callable_apply_form: callable_apply_form,
-                                                                  closure_form: closure_form,
-                                                                  effect_apply_form: effect_apply_form,
-                                                                  conditional_form: conditional_form,
-                                                                  let_form: let_form,
-                                                                  loop_form: loop_form
+                                                              bind_outcome(
+                                                                o: projection_bundle_child(
+                                                                  bundle: bundle,
+                                                                  name: ^target_value_expr_field_record_construct
+                                                                ),
+                                                                f: fn(record_bundle) {
+                                                                  bind_outcome(
+                                                                    o: decode_record_construct_shape_bundle(
+                                                                      bundle: record_bundle
+                                                                    ),
+                                                                    f: fn(record_construct_form) {
+                                                                      bind_outcome(
+                                                                        o: projection_bundle_child(
+                                                                          bundle: bundle,
+                                                                          name: ^target_value_expr_field_field_access
+                                                                        ),
+                                                                        f: fn(field_access_bundle) {
+                                                                          bind_outcome(
+                                                                            o: decode_field_access_shape_bundle(
+                                                                              bundle: field_access_bundle
+                                                                            ),
+                                                                            f: fn(field_access_form) {
+                                                                              bind_outcome(
+                                                                                o: projection_bundle_child(
+                                                                                  bundle: bundle,
+                                                                                  name: ^target_value_expr_field_match
+                                                                                ),
+                                                                                f: fn(match_bundle) {
+                                                                                  bind_outcome(
+                                                                                    o: decode_match_shape_bundle(
+                                                                                      bundle: match_bundle
+                                                                                    ),
+                                                                                    f: fn(match_form) {
+                                                                                      outcome_accepted(
+                                                                                        TargetValueExpressionProjection {
+                                                                                          binding_ref_form: binding_ref_form,
+                                                                                          primitive_apply_form: primitive_apply_form,
+                                                                                          callable_apply_form: callable_apply_form,
+                                                                                          closure_form: closure_form,
+                                                                                          effect_apply_form: effect_apply_form,
+                                                                                          conditional_form: conditional_form,
+                                                                                          let_form: let_form,
+                                                                                          loop_form: loop_form,
+                                                                                          record_construct_form: record_construct_form,
+                                                                                          field_access_form: field_access_form,
+                                                                                          match_form: match_form
+                                                                                        }
+                                                                                      )
+                                                                                    }
+                                                                                  )
+                                                                                }
+                                                                              )
+                                                                            }
+                                                                          )
+                                                                        }
+                                                                      )
+                                                                    }
+                                                                  )
                                                                 }
                                                               )
                                                             }
@@ -2316,6 +2480,12 @@ fn source_atom_value_for_value_template(
       optional_absent()
     ValueLoop =>
       optional_absent()
+    ValueRecordConstruct =>
+      optional_absent()
+    ValueFieldAccess =>
+      optional_absent()
+    ValueMatch =>
+      optional_absent()
   }
 }
 
@@ -3038,6 +3208,157 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
   }
 }
 
+type TargetValueExprFieldInitSlot {
+  label: Symbol
+  value: TargetValueExpression
+}
+
+fn target_value_expr_field_init_slot_edges(slots: List<TargetValueExprFieldInitSlot>) -> List<Edge> {
+  fold(slots, init: Empty, f: fn(acc, slot) {
+    list_snoc_item(
+      xs: acc,
+      item: target_model_named_edge(name: slot.label, target: slot.value.node)
+    )
+  })
+}
+
+fn target_value_expression_record_construct(
+  type_name: Symbol,
+  fields: List<TargetValueExprFieldInitSlot>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprRecordConstruct,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_record_construct_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_record_type,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: type_name } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          )
+        ],
+        right: target_value_expr_field_init_slot_edges(slots: fields)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+fn target_value_expression_field_access(
+  base: TargetValueExpression,
+  field_name: Symbol
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprFieldAccess,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_field_access_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expr_field_field_access_base,
+          target: base.node
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_field_access_field,
+          target: Node {
+            kind: TypeNode { connective: Atom { identity: field_name } },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+type TargetValueExprMatchArmSlot {
+  pattern: TargetValueExpression
+  body: TargetValueExpression
+}
+
+type TargetValueExprMatchArmEdgeFold {
+  edges: List<Edge>
+  skipped_scrutinee: Bool
+}
+
+fn target_value_expr_positional_child_optional(node: Node, index: Int) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: node), index: index)
+}
+
+fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> List<Edge> {
+  let folded = fold(
+    children,
+    init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
+    f: fn(acc, edge) {
+      match edge.label {
+        Positional =>
+          if !acc.skipped_scrutinee {
+            TargetValueExprMatchArmEdgeFold {
+              edges: acc.edges,
+              skipped_scrutinee: true
+            }
+          } else {
+            TargetValueExprMatchArmEdgeFold {
+              edges: list_snoc_item(xs: acc.edges, item: edge),
+              skipped_scrutinee: true
+            }
+          }
+        Named { name: _ } => acc
+      }
+    }
+  )
+  folded.edges
+}
+
+fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
+      target_model_named_edge(name: match_arm_body, target: arm.body.node)
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn target_value_expr_match_arm_edges(arms: List<TargetValueExprMatchArmSlot>) -> List<Edge> {
+  fold(arms, init: Empty, f: fn(acc, arm) {
+    list_snoc_item(xs: acc, item: Edge { label: Positional, target: target_value_expr_match_arm_wire(arm: arm) })
+  })
+}
+
+fn target_value_expression_match(
+  scrutinee: TargetValueExpression,
+  arms: List<TargetValueExprMatchArmSlot>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprMatch,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_match_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_match_scrutinee,
+            target: scrutinee.node
+          )
+        ],
+        right: target_value_expr_match_arm_edges(arms: arms)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
 // Lane 2c — callable-apply wire: a `callee` atom edge followed by one `callable_arg` edge per
 // positional argument (order preserved; args extracted by an order-preserving fold, never by
 // content_hash reorder). Mirrors primitive_apply's operand-edge layout but the head is a callee
@@ -3592,6 +3913,27 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_record_construct_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprRecordConstruct,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_field_access_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprFieldAccess,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_match_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprMatch,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_callable_apply_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -3898,6 +4240,712 @@ fn target_value_expression_loop_to_concrete_tokens(
                   },
                   right: body_tokens
                 )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_wire_atom_identity(wire: Node) -> Outcome<Symbol> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_record_construct_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_record_construct_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_record_type,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if !all_edges_named(children: wire.children) {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        outcome_accepted(true)
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_record_construct_type_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_record_type {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: type_name } => outcome_accepted(type_name)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_record_construct_field_slots_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExprFieldInitSlot>> {
+  match fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_record_type {
+                acc
+              } else {
+                bind_outcome(
+                  o: target_value_expression_reify_from_wire(wire: edge.target),
+                  f: fn(value) {
+                    outcome_accepted(
+                      list_snoc_item(
+                        xs: slots,
+                        item: TargetValueExprFieldInitSlot { label: n, value: value }
+                      )
+                    )
+                  }
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  ) {
+    Accepted { value: slots, diagnostics: d } => Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_value_expr_labeled_edge_head(labeled: List<Edge>) -> Optional<Edge> {
+  fold(labeled, init: optional_absent(), f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => optional_present(value: edge)
+    }
+  })
+}
+
+fn target_value_expr_labeled_edges_tail(labeled: List<Edge>) -> List<Edge> {
+  match list_tail(xs: labeled) {
+    TailFound { tail: rest } => rest
+    TailAbsent => Empty
+  }
+}
+
+fn target_value_expr_record_construct_field_tokens(
+  slots: List<TargetValueExprFieldInitSlot>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match fold(
+    slots,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, slot) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: slot.value,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(value_tokens) {
+              let field_chunk = list_append(
+                left: list_append(
+                  left: Cons {
+                    head: target_value_expression_binding_ref_token(
+                      binding: slot.label,
+                      projection: projection
+                    ),
+                    tail: Empty
+                  },
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.record_construct_form.assign
+                    },
+                    tail: Empty
+                  }
+                ),
+                right: value_tokens
+              )
+              if is_empty(xs: prior_tokens) {
+                outcome_accepted(field_chunk)
+              } else {
+                outcome_accepted(
+                  list_append(
+                    left: list_append(
+                      left: prior_tokens,
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.separator
+                        },
+                        tail: Empty
+                      }
+                    ),
+                    right: field_chunk
+                  )
+                )
+              }
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: tokens, diagnostics: d } => Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_value_expression_record_construct_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_record_construct_type_from_wire(wire: expr.node),
+        f: fn(type_name) {
+          bind_outcome(
+            o: target_value_expr_record_construct_field_slots_from_wire(wire: expr.node),
+            f: fn(field_slots) {
+              bind_outcome(
+                o: target_value_expr_record_construct_field_tokens(
+                  slots: field_slots,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(field_tokens) {
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: list_append(
+                          left: list_append(
+                            left: Cons {
+                              head: target_value_expression_binding_ref_token(
+                                binding: type_name,
+                                projection: projection
+                              ),
+                              tail: Empty
+                            },
+                            right: Cons {
+                              head: FixedToken {
+                                token_class: projection.record_construct_form.open
+                              },
+                              tail: Empty
+                            }
+                          ),
+                          right: field_tokens
+                        ),
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.record_construct_form.close
+                          },
+                          tail: Empty
+                        }
+                      ),
+                      right: Empty
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_field_access_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_field_access_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_field_access_base,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_field_access_field,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == ^target_value_expr_field_field_access_base
+                  || n == ^target_value_expr_field_field_access_field
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_field_access_base_from_wire(
+  wire: Node
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: ^target_value_expr_field_field_access_base
+  )
+}
+
+fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_field_access_field {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: field_name } => outcome_accepted(field_name)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expression_field_access_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_field_access_base_from_wire(wire: expr.node),
+        f: fn(base) {
+          bind_outcome(
+            o: target_value_expr_field_access_field_from_wire(wire: expr.node),
+            f: fn(field_name) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: base,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(base_tokens) {
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: base_tokens,
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.field_access_form.dot
+                          },
+                          tail: Empty
+                        }
+                      ),
+                      right: Cons {
+                        head: target_value_expression_binding_ref_token(
+                          binding: field_name,
+                          projection: projection
+                        ),
+                        tail: Empty
+                      }
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool> {
+  match arm_wire.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(name: match_arm_pattern, children: arm_wire.children) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+        )
+      } else if name_occurrences(name: match_arm_body, children: arm_wire.children) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+        )
+      } else {
+        match fold(
+          arm_wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == match_arm_pattern || n == match_arm_body
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+      )
+  }
+}
+
+fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_match_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_match_scrutinee,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: Accepted { value: true, diagnostics: None },
+          f: fn(acc, edge) {
+            match acc {
+              Rejected { diagnostics: r } => acc
+              Accepted { value: ok, diagnostics: d } =>
+                if !ok {
+                  acc
+                } else {
+                  match edge.label {
+                    Named { name: n } =>
+                      if n == ^target_value_expr_field_match_scrutinee {
+                        acc
+                      } else {
+                        outcome_rejected(
+                          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                        )
+                      }
+                    Positional =>
+                      bind_outcome(
+                        o: target_value_expr_match_arm_wire_schema_valid(arm_wire: edge.target),
+                        f: fn(_) {
+                          outcome_accepted(true)
+                        }
+                      )
+                  }
+                }
+            }
+          }
+        ) {
+          Accepted { value: true, diagnostics: d } => Accepted { value: true, diagnostics: d }
+          Accepted { value: false, diagnostics: d } =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_match_scrutinee_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: ^target_value_expr_field_match_scrutinee
+  )
+}
+
+fn target_value_expr_match_arm_slot_from_wire(arm_wire: Node) -> Outcome<TargetValueExprMatchArmSlot> {
+  bind_outcome(
+    o: target_value_expr_match_arm_wire_schema_valid(arm_wire: arm_wire),
+    f: fn(_) {
+      bind_outcome(
+        o: find_named_child(root: arm_wire, name: match_arm_pattern),
+        f: fn(pattern_wire) {
+          bind_outcome(
+            o: find_named_child(root: arm_wire, name: match_arm_body),
+            f: fn(body_wire) {
+              bind_outcome(
+                o: target_value_expression_reify_from_wire(wire: pattern_wire),
+                f: fn(pat_expr) {
+                  bind_outcome(
+                    o: target_value_expression_reify_from_wire(wire: body_wire),
+                    f: fn(body_expr) {
+                      outcome_accepted(
+                        TargetValueExprMatchArmSlot {
+                          pattern: pat_expr,
+                          body: body_expr
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_match_arms_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExprMatchArmSlot>> {
+  match fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: arms, diagnostics: d } =>
+          match edge.label {
+            Named { name: _ } => acc
+            Positional =>
+              bind_outcome(
+                o: target_value_expr_match_arm_slot_from_wire(arm_wire: edge.target),
+                f: fn(arm) {
+                  outcome_accepted(list_snoc_item(xs: arms, item: arm))
+                }
+              )
+          }
+      }
+    }
+  ) {
+    Accepted { value: arms, diagnostics: d } => Accepted { value: arms, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_value_expr_match_arm_tokens(
+  arms: List<TargetValueExprMatchArmSlot>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match fold(
+    arms,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, arm) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: arm.pattern,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(pattern_tokens) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: arm.body,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(body_tokens) {
+                  let arm_chunk = list_append(
+                    left: list_append(
+                      left: pattern_tokens,
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.match_form.fat_arrow
+                        },
+                        tail: Empty
+                      }
+                    ),
+                    right: body_tokens
+                  )
+                  if is_empty(xs: prior_tokens) {
+                    outcome_accepted(arm_chunk)
+                  } else {
+                    outcome_accepted(
+                      list_append(
+                        left: list_append(
+                          left: prior_tokens,
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.match_form.arm_separator
+                            },
+                            tail: Empty
+                          }
+                        ),
+                        right: arm_chunk
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: tokens, diagnostics: d } => Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_value_expression_match_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_match_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_match_scrutinee_from_wire(wire: expr.node),
+        f: fn(scrutinee) {
+          bind_outcome(
+            o: target_value_expr_match_arms_from_wire(wire: expr.node),
+            f: fn(arms) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: scrutinee,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(scrutinee_tokens) {
+                  bind_outcome(
+                    o: target_value_expr_match_arm_tokens(
+                      arms: arms,
+                      projection: projection,
+                      catalog: catalog
+                    ),
+                    f: fn(arm_tokens) {
+                      outcome_accepted(
+                        list_append(
+                          left: list_append(
+                            left: list_append(
+                              left: list_append(
+                                left: Cons {
+                                  head: FixedToken {
+                                    token_class: projection.match_form.match_token
+                                  },
+                                  tail: Empty
+                                },
+                                right: scrutinee_tokens
+                              ),
+                              right: Cons {
+                                head: FixedToken {
+                                  token_class: projection.match_form.open
+                                },
+                                tail: Empty
+                              }
+                            ),
+                            right: arm_tokens
+                          ),
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.match_form.close
+                            },
+                            tail: Empty
+                          }
+                        )
+                      )
+                    }
+                  )
+                }
               )
             }
           )
@@ -4379,6 +5427,24 @@ fn target_value_expression_to_concrete_tokens(
         projection: projection,
         catalog: catalog
       )
+    TargetValueExprRecordConstruct =>
+      target_value_expression_record_construct_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprFieldAccess =>
+      target_value_expression_field_access_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprMatch =>
+      target_value_expression_match_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
     _ =>
       outcome_rejected(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
@@ -4767,6 +5833,87 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             )
           ]
         )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_record_construct,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_open,
+              target: target_model_type_atom_node(
+                identity: projection.record_construct_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_close,
+              target: target_model_type_atom_node(
+                identity: projection.record_construct_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_separator,
+              target: target_model_type_atom_node(
+                identity: projection.record_construct_form.separator
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_assign,
+              target: target_model_type_atom_node(
+                identity: projection.record_construct_form.assign
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_field_access,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_field_access_dot,
+              target: target_model_type_atom_node(
+                identity: projection.field_access_form.dot
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_match,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_token,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.match_token
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_open,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_close,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_fat_arrow,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.fat_arrow
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_arm_separator,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.arm_separator
+              )
+            )
+          ]
+        )
       )
     ]
   )
@@ -4843,6 +5990,18 @@ fn target_value_template_apply(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
     ValueLoop =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueRecordConstruct =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueFieldAccess =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueMatch =>
       outcome_rejected(
         target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
       )
@@ -8379,11 +9538,29 @@ fn target_value_expr_arrow_has_loop_body(arrow: Node) -> Bool {
   }
 }
 
+fn target_value_expr_arrow_has_match_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      target_value_expr_match_gate(node: body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn target_value_expr_arrow_has_record_construct_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      target_value_expr_record_construct_gate(node: body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
     || target_value_expr_arrow_has_bind_body(arrow: arrow)
     || target_value_expr_arrow_has_loop_body(arrow: arrow)
+    || target_value_expr_arrow_has_match_body(arrow: arrow)
+    || target_value_expr_arrow_has_record_construct_body(arrow: arrow)
 }
 
 // 🟡 gated — predicate-dissolution interim —
@@ -8624,6 +9801,18 @@ fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValu
     outcome_accepted(
       target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_two)
     )
+  } else if id == ^dag_mvp1_rec_lit_nine {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_rec_lit_nine)
+    )
+  } else if id == ^dag_binding_param_r {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_param_r)
+    )
+  } else if id == ^dag_binding_mvp1_rec_v {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_rec_v)
+    )
   } else {
     outcome_accepted(
       target_value_expression_symbol_identity(identity: id)
@@ -8642,6 +9831,380 @@ fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpr
           node: node
         )
       )
+  }
+}
+
+// 🟡 gated — feature:value-expression-record-construct-m0 —
+// consumer:target_value_expr_project_body_subexpression —
+// bind: COMPREP wave-2 M0 record construct (Conj body with type atom + named field inits) —
+// dissolve-on: Q-B1 named pattern edges for record construct (M0-B5);
+// forbidden: silent ordinal coupling past M0 constructor Conj.
+fn target_value_expr_record_construct_gate(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if !all_edges_named(children: node.children) {
+        false
+      } else {
+        match target_value_expr_labeled_edge_head(
+          labeled: node_labeled_child_edges(node: node)
+        ) {
+          Present { value: first_edge } =>
+            match first_edge.target.kind {
+              TypeNode { connective: Atom { identity: _ } } => true
+              _ => false
+            }
+          Absent => false
+        }
+      }
+    _ => false
+  }
+}
+
+fn target_value_expr_record_construct_field_slots_from_edges(
+  arrow: Node,
+  edges: List<Edge>,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<List<TargetValueExprFieldInitSlot>> {
+  match fold(
+    edges,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
+          match edge.label {
+            Named { name: field_label } =>
+              bind_outcome(
+                o: target_value_expr_project_body_subexpression(
+                  arrow: arrow,
+                  node: edge.target,
+                  target: target,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_value) {
+                  outcome_accepted(
+                    list_snoc_item(
+                      xs: slots,
+                      item: TargetValueExprFieldInitSlot {
+                        label: field_label,
+                        value: projected_value
+                      }
+                    )
+                  )
+                }
+              )
+            Positional =>
+              outcome_rejected(
+                target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: edge.target
+                )
+              )
+          }
+      }
+    }
+  ) {
+    Accepted { value: slots, diagnostics: d } => Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_project_record_construct(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_record_construct_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    let labeled = node_labeled_child_edges(node: body)
+    match target_value_expr_labeled_edge_head(labeled: labeled) {
+      Present { value: type_edge } =>
+        match type_edge.target.kind {
+          TypeNode { connective: Atom { identity: type_name } } =>
+            bind_outcome(
+              o: target_value_expr_record_construct_field_slots_from_edges(
+                arrow: arrow,
+                edges: target_value_expr_labeled_edges_tail(labeled: labeled),
+                target: target,
+                handle_transform: handle_transform
+              ),
+              f: fn(fields) {
+                outcome_accepted(
+                  target_value_expression_record_construct(
+                    type_name: type_name,
+                    fields: fields
+                  )
+                )
+              }
+            )
+          _ =>
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+        }
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+    }
+  }
+}
+
+// 🟡 gated — feature:value-expression-field-access-m0 —
+// consumer:target_value_expr_project_body_subexpression —
+// bind: COMPREP wave-2 M0 field access (Transform[callee=dot, base, field]) —
+// dissolve-on: Q-B1 named pattern edges for field access (M0-B5);
+// forbidden: silent ordinal coupling past M0 postfix dot Transform.
+fn target_value_expr_field_access_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      if !all_edges_positional(children: node.children)
+        || length(xs: node_positional_child_targets(node: node)) != 3 {
+        false
+      } else {
+        match target_value_expr_positional_child_optional(node: node, index: 0) {
+          Present { value: callee } =>
+            match callee.kind {
+              TypeNode { connective: Atom { identity: id } } =>
+                id == ^dag_token_dot
+              _ => false
+            }
+          Absent => false
+        }
+      }
+    _ => false
+  }
+}
+
+fn target_project_field_access(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_field_access_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match target_value_expr_positional_child_optional(node: body, index: 1) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: base_node } =>
+        match target_value_expr_positional_child_optional(node: body, index: 2) {
+          Absent =>
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+          Present { value: field_node } =>
+            bind_outcome(
+              o: target_value_expr_project_body_subexpression(
+                arrow: arrow,
+                node: base_node,
+                target: target,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_base) {
+                match field_node.kind {
+                  TypeNode { connective: Atom { identity: field_name } } =>
+                    outcome_accepted(
+                      target_value_expression_field_access(
+                        base: projected_base,
+                        field_name: field_name
+                      )
+                    )
+                  _ =>
+                    outcome_rejected(
+                      target_value_expr_diagnostic(
+                        reason: ^target_value_expr_reason_transform_shape_invalid,
+                        node: body
+                      )
+                    )
+                }
+              }
+            )
+        }
+    }
+  }
+}
+
+fn target_value_expr_match_arm_node_conforms(arm: Node) -> Bool {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      name_occurrences(name: match_arm_pattern, children: arm.children) == 1
+        && name_occurrences(name: match_arm_body, children: arm.children) == 1
+    _ => false
+  }
+}
+
+// 🟡 gated — feature:value-expression-match-positional-m0 —
+// consumer:target_value_expr_project_body_subexpression —
+// bind: COMPREP wave-2 M0 match (ComputationNode Match + positional arms) —
+// dissolve-on: Q-B1 named pattern edges for match (M0-B5);
+// forbidden: silent ordinal coupling past M0 match arms.
+fn target_value_expr_match_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Match } =>
+      length(xs: node_positional_child_targets(node: node)) >= 2
+        && match_arm_children_conform_skip_first(
+          children: node.children,
+          skipped_scrutinee: false
+        )
+    _ => false
+  }
+}
+
+fn target_value_expr_match_arm_slot_from_arm_edge(
+  arrow: Node,
+  arm_edge: Edge,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExprMatchArmSlot> {
+  bind_outcome(
+    o: find_named_child(root: arm_edge.target, name: match_arm_pattern),
+    f: fn(pattern_node) {
+      bind_outcome(
+        o: find_named_child(root: arm_edge.target, name: match_arm_body),
+        f: fn(body_node) {
+          bind_outcome(
+            o: target_value_expr_project_body_subexpression(
+              arrow: arrow,
+              node: pattern_node,
+              target: target,
+              handle_transform: handle_transform
+            ),
+            f: fn(projected_pattern) {
+              bind_outcome(
+                o: target_value_expr_project_body_subexpression(
+                  arrow: arrow,
+                  node: body_node,
+                  target: target,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_body) {
+                  outcome_accepted(
+                    TargetValueExprMatchArmSlot {
+                      pattern: projected_pattern,
+                      body: projected_body
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_match_project_arms(
+  arrow: Node,
+  children: List<Edge>,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<List<TargetValueExprMatchArmSlot>> {
+  match fold(
+    target_value_expr_match_arm_edges_after_scrutinee(children: children),
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, arm_edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expr_match_arm_slot_from_arm_edge(
+              arrow: arrow,
+              arm_edge: arm_edge,
+              target: target,
+              handle_transform: handle_transform
+            ),
+            f: fn(arm) {
+              outcome_accepted(list_snoc_item(xs: slots, item: arm))
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: slots, diagnostics: d } => Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_project_match(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_match_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: scrutinee_node } =>
+        bind_outcome(
+          o: target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: scrutinee_node,
+            target: target,
+            handle_transform: handle_transform
+          ),
+          f: fn(projected_scrutinee) {
+            bind_outcome(
+              o: target_value_expr_match_project_arms(
+                arrow: arrow,
+                children: body.children,
+                target: target,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_arms) {
+                outcome_accepted(
+                  target_value_expression_match(
+                    scrutinee: projected_scrutinee,
+                    arms: projected_arms
+                  )
+                )
+              }
+            )
+          }
+        )
+    }
   }
 }
 
@@ -8862,7 +10425,16 @@ fn target_value_expr_project_body_subexpression(
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      handle_transform(arrow, node, target)
+      if target_value_expr_field_access_gate(node: node) {
+        target_project_field_access(
+          arrow: arrow,
+          body: node,
+          target: target,
+          handle_transform: handle_transform
+        )
+      } else {
+        handle_transform(arrow, node, target)
+      }
     ComputationNode { behavior: Branch } =>
       target_project_branch_bool_if_else(
         arrow: arrow,
@@ -8884,6 +10456,29 @@ fn target_value_expr_project_body_subexpression(
         target: target,
         handle_transform: handle_transform
       )
+    ComputationNode { behavior: Match } =>
+      target_project_match(
+        arrow: arrow,
+        body: node,
+        target: target,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Conj } =>
+      if target_value_expr_record_construct_gate(node: node) {
+        target_project_record_construct(
+          arrow: arrow,
+          body: node,
+          target: target,
+          handle_transform: handle_transform
+        )
+      } else {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: node
+          )
+        )
+      }
     // Lane 2c — a `TypeNode { connective: Arrow }` appearing as an operand is an inline closure
     // (`fn(params) { body }`). Project its own param domain + body, with the closure itself as the
     // new scope arrow so the body's binding refs resolve against the closure params (nested-closure
@@ -8981,7 +10576,16 @@ fn target_project_arrow_body_to_value_expression(
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } =>
-          handle_transform(arrow, body, target)
+          if target_value_expr_field_access_gate(node: body) {
+            target_project_field_access(
+              arrow: arrow,
+              body: body,
+              target: target,
+              handle_transform: handle_transform
+            )
+          } else {
+            handle_transform(arrow, body, target)
+          }
         ComputationNode { behavior: Branch } =>
           target_project_branch_bool_if_else(
             arrow: arrow,
@@ -9003,6 +10607,29 @@ fn target_project_arrow_body_to_value_expression(
             target: target,
             handle_transform: handle_transform
           )
+        ComputationNode { behavior: Match } =>
+          target_project_match(
+            arrow: arrow,
+            body: body,
+            target: target,
+            handle_transform: handle_transform
+          )
+        TypeNode { connective: Conj } =>
+          if target_value_expr_record_construct_gate(node: body) {
+            target_project_record_construct(
+              arrow: arrow,
+              body: body,
+              target: target,
+              handle_transform: handle_transform
+            )
+          } else {
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+          }
         _ =>
           outcome_rejected(
             target_value_expr_diagnostic(

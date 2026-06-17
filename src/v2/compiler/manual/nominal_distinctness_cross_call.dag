@@ -284,7 +284,8 @@ fn nominal_distinct_interpretation() -> InterpretationAlgebra {
     transform: TransformInterpreter { call_primitive: nominal_distinct_call_primitive },
     branch: BranchInterpreter { choose_branch: nominal_distinct_choose_branch },
     loop: LoopInterpreter { step_loop: nominal_distinct_step_loop },
-    bind: BindInterpreter { bind_value: nominal_distinct_bind_value }
+    bind: BindInterpreter { bind_value: nominal_distinct_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
@@ -294,7 +295,8 @@ fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructur
     call_primitive: ^nominal_distinct_call_primitive_sym,
     choose_branch: ^nominal_distinct_choose_branch_sym,
     step_loop: ^nominal_distinct_step_loop_sym,
-    bind_value: ^nominal_distinct_bind_value_sym
+    bind_value: ^nominal_distinct_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
