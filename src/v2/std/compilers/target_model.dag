@@ -526,6 +526,15 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  // Lane 2c — value-level function application `callee(arg, ...)` (positional). The head of a
+  // Transform body that does NOT canonicalize to an operator is a callee reference (eval treats a
+  // Transform with a non-operator Atom/Arrow head as a call, 05_eval eval_node_is_callee_reference);
+  // args are arbitrary value-expressions, so a closure argument recurses through the same projector.
+  | TargetValueExprCallableApply
+  // Lane 2c — anonymous function value `fn(params) { body }`. Appears as an argument to a callable
+  // apply (the fold-family `cons`/`f`/`step` closures); the body recurses through the value-expr
+  // projector with the closure's own param domain as scope (nested-closure scoping).
+  | TargetValueExprClosure
   | TargetValueExprConditional
   | TargetValueExprBindLet
   | TargetValueExprLoop
@@ -627,6 +636,20 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
+// Lane 2c — per-language anonymous-function spelling. `fn ( p, ... ) { body }` for .dag; a target
+// whose closures read `(p, ...) => body` supplies the same single-token framing fields with its own
+// token classes. param_ident_token spells each param binding (via binding_spellings, like a
+// binding-ref). Single-token fields keep the wire bundle flat (no token-list round-trip).
+type TargetClosureShape {
+  fn_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+  body_open: Symbol
+  body_close: Symbol
+  param_ident_token: Symbol
+}
+
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
@@ -647,6 +670,7 @@ type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
+  closure_form: TargetClosureShape
   effect_apply_form: TargetEffectApplyShape
   conditional_form: TargetConditionalShape
   let_form: TargetBindLetShape
@@ -670,6 +694,14 @@ data target_model_edge_operator_realizations: Symbol = target_model_edge_operato
 data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
 data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
 data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
+data target_value_expr_field_closure: Symbol = target_value_expr_field_closure
+data target_value_expr_field_callee: Symbol = target_value_expr_field_callee
+data target_value_expr_field_callable_arg: Symbol = target_value_expr_field_callable_arg
+data target_value_expr_field_closure_param: Symbol = target_value_expr_field_closure_param
+data target_value_expr_field_closure_body: Symbol = target_value_expr_field_closure_body
+data target_value_expr_field_fn_token: Symbol = target_value_expr_field_fn_token
+data target_value_expr_field_body_open: Symbol = target_value_expr_field_body_open
+data target_value_expr_field_body_close: Symbol = target_value_expr_field_body_close
 data target_value_expr_field_effect_apply: Symbol = target_value_expr_field_effect_apply
 data target_value_expr_effect_callee_row_edge: Symbol = target_value_expr_effect_callee_row_edge
 data target_value_expr_field_effect_callee: Symbol = target_value_expr_field_effect_callee
