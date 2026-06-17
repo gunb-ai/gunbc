@@ -1,6 +1,6 @@
 // src/v2/lens/fact_cardinality.dag
 // Scope: fact-cardinality lens — cross-tree named-declaration fork census + ratchet.
-// DESIGN.md §3 single-authority enforcement: flags `{rel_path}:{decl_name}` keys that
+// DESIGN.md §3 single-authority enforcement: flags `{rel_path_within_tree}:{decl_name}` keys that
 // appear in BOTH `dsl/` and `src/v2/` with distinct normalized body content-hashes.
 // Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
 // Consumer: claim_batch discovery over src/v2/compiler/fact_cardinality.
@@ -31,7 +31,7 @@ type FactCardinalityDeclFact {
 
 // Ratchet baseline — current cross-tree fork debt counted by execution (2026-06-17).
 // Only moves DOWN as forks unify; gate RED if live count exceeds this.
-data fact_cardinality_cross_tree_fork_baseline: Int = 34
+data fact_cardinality_cross_tree_fork_baseline: Int = 33
 
 fn fact_cardinality_cross_tree_variant_mismatch(
   left: FactCardinalityDeclFact,

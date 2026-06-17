@@ -17,7 +17,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Must match `fact_cardinality_cross_tree_fork_baseline` in `src/v2/lens/fact_cardinality.dag`.
-pub const FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE: i64 = 34;
+pub const FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE: i64 = 33;
 
 const ITEM_KEYWORDS: [&str; 8] = [
     "data ",
