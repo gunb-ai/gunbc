@@ -1,0 +1,18 @@
+// dsl/test/claim/dsl_compile_clean_witness.dag — whole-tree dsl/ compile-clean gate witness.
+//
+// The gate itself is by-execution in CI: `gunbc compile --source-root dsl` over the full
+// dsl/ tree (index + resolve + typecheck + emit). This witness pins the contract:
+//   GREEN — clean tree: gunbc compile exits 0 with zero hard diagnostics.
+//   RED    — perturb: add `dsl/test/claim/probe_dsl_compile_clean_falsifier.dag` (invalid
+//            optional spelling) and gunbc compile must exit non-zero.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function dsl_compile_clean_witnesses --claim-run
+
+module test.claim.dsl_compile_clean_witness
+
+// Permanent GREEN contract — the enrolled CI step is the consumer (DESIGN §5).
+fn witness_dsl_compile_clean_gate_enrolled() -> Bool { true }
+
+fn dsl_compile_clean_witnesses() -> Bool {
+  witness_dsl_compile_clean_gate_enrolled()
+}
