@@ -1,0 +1,6 @@
+module v2.test.complexity_gate.probe_closure_only
+import v2.std.logic { Bool }
+import v2.test.complexity_gate.comprep_wave1_add_subject_producer { comprep_source_bridged_add_arrow_with_body }
+import v2.test.complexity_gate.lens_subject_body_supply { lens_subject_arrow_body_for_budget_row }
+import v2.test.complexity_gate.subject_complexity_budget_roster { complexity_subject_budget_rows }
+test fn probe_closure_only_holds() -> Bool { true }
