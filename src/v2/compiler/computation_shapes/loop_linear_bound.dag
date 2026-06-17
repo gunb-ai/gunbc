@@ -15,7 +15,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  loop_bound_edge,
   well_formed,
   SyntheticOccurrence
 }
@@ -53,7 +52,7 @@ data loop_linear_bound_subject: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -102,7 +101,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }

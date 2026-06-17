@@ -21,7 +21,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_python_r2a_int_algebra_operations,
   TargetPythonExerciseVerdict,
   TargetPythonExecRejected,
-  target_diagnostic_python_attribute_error_method_not_found
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -88,5 +87,5 @@ data claim_python_r2a_verification_receipt_shape: TestClaim = EqualsClaim {
 }
 
 data python_r2a_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
-  diagnostic_code: target_diagnostic_python_attribute_error_method_not_found
+  diagnostic_code: ^target_diagnostic_python_attribute_error_method_not_found
 }

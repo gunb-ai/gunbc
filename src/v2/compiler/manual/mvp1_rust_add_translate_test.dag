@@ -19,7 +19,6 @@ import v2.compiler.translate {
   coerce_grounded_node,
   target_serialize_source_from_model,
   translate,
-  translate_target_bundle_malformed
 }
 import v2.extdeps.languages.rust {
   rust_inhabitant_i32_node,
@@ -574,7 +573,7 @@ data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = Diagnos
   input: mvp1_rust_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
-      reason: translate_target_bundle_malformed,
+      reason: ^translate_target_bundle_malformed,
       at: node_locus(node: mvp1_rust_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

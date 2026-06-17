@@ -64,8 +64,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  arrow_body_edge,
-  loop_bound_edge,
   SyntheticOccurrence
 }
 import v2.std.node_query { node_positional_child_targets }
@@ -510,7 +508,7 @@ fn comprep_swapped_add_arrow() -> Node {
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: arrow_body_edge }, target: comprep_swapped_operand_body() }
+      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_swapped_operand_body() }
     ]
   }
 }
@@ -527,7 +525,7 @@ fn comprep_excess_signature_arrow() -> Node {
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: arrow_body_edge }, target: comprep_eval_canonical_body() }
+      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_eval_canonical_body() }
     ]
   }
 }
@@ -555,7 +553,7 @@ fn comprep_excess_body_arrow() -> Node {
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: arrow_body_edge }, target: comprep_excess_body() }
+      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_excess_body() }
     ]
   }
 }
@@ -781,7 +779,7 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
       Edge {
-        label: Named { name: loop_bound_edge },
+        label: Named { name: ^loop_bound_edge },
         target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal)
       }
     ]

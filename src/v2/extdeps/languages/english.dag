@@ -16,13 +16,6 @@ import v2.std.compilers.target_model {
   TargetModel,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_serialize_source,
-  target_model_edge_translation_rules
 }
 import v2.std.node {
   Arrow,
@@ -601,12 +594,12 @@ fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
-        name: grammar_relation_field_production,
+        name: ^grammar_relation_field_production,
         target: formal_production_to_node(production: row.production)
       ),
-      english_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      english_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       english_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: english_concrete_token_node
@@ -643,7 +636,7 @@ fn english_add_fn_serialize_source_node() -> Node {
         target: english_inhabitant_atom(id: ^english_production_add_fn_paragraph)
       ),
       english_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: english_add_fn_concrete_tokens(),
           token_to_node: english_concrete_token_node
@@ -705,10 +698,10 @@ fn english_add_fn_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      english_named_edge(name: target_model_edge_selection_policy, target: english_selection_policy_node()),
-      english_named_edge(name: target_model_edge_declared_inhabitants, target: english_declared_inhabitants_root()),
-      english_named_edge(name: target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
-      english_named_edge(name: target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
+      english_named_edge(name: ^target_model_edge_selection_policy, target: english_selection_policy_node()),
+      english_named_edge(name: ^target_model_edge_declared_inhabitants, target: english_declared_inhabitants_root()),
+      english_named_edge(name: ^target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
+      english_named_edge(name: ^target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }

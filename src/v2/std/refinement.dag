@@ -153,37 +153,32 @@ fn exact_one_int_admits(value: Int) -> Bool {
 }
 
 
-data positive_int_out_of_range: Symbol = positive_int_out_of_range
-data non_negative_int_out_of_range: Symbol = non_negative_int_out_of_range
-data at_least_minus_one_int_out_of_range: Symbol = at_least_minus_one_int_out_of_range
-data at_least_minus_two_int_out_of_range: Symbol = at_least_minus_two_int_out_of_range
-data exact_one_int_out_of_range: Symbol = exact_one_int_out_of_range
 data positive_int_validation: Validation<Int> = Validation {
-  reason: positive_int_out_of_range,
+  reason: ^positive_int_out_of_range,
   admits: positive_int_admits
 }
 
 
 data non_negative_int_validation: Validation<Int> = Validation {
-  reason: non_negative_int_out_of_range,
+  reason: ^non_negative_int_out_of_range,
   admits: non_negative_int_admits
 }
 
 
 data at_least_minus_one_int_validation: Validation<Int> = Validation {
-  reason: at_least_minus_one_int_out_of_range,
+  reason: ^at_least_minus_one_int_out_of_range,
   admits: at_least_minus_one_int_admits
 }
 
 
 data at_least_minus_two_int_validation: Validation<Int> = Validation {
-  reason: at_least_minus_two_int_out_of_range,
+  reason: ^at_least_minus_two_int_out_of_range,
   admits: at_least_minus_two_int_admits
 }
 
 
 data exact_one_int_validation: Validation<Int> = Validation {
-  reason: exact_one_int_out_of_range,
+  reason: ^exact_one_int_out_of_range,
   admits: exact_one_int_admits
 }
 
@@ -374,7 +369,6 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 type IterationOrdering
   = StructurallyOrdered
   | StructurallyUnordered
-data naming_the_leak: Symbol = naming_the_leak
 // 🟡 gated — feature:iteration-ordering-carrier-keyed-witness-lookup — bind T-25-tail —
 // dissolve-on-arrival: substrate exports a carrier-keyed witness lookup so
 // IterationClassifier<B> is replaced by non-forgeable per-carrier
@@ -397,7 +391,7 @@ fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: naming_the_leak,
+            reason: ^naming_the_leak,
             at: at,
             correction: Unavailable { reason: UserInputBoundary }
           }

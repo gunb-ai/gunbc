@@ -13,7 +13,6 @@ module v2.compiler.emit_host
 import v2.compiler.emit { emit }
 import v2.extdeps.languages.typescript {
   ts_host_transport_mvp1_descriptor,
-  ts_host_transport_mvp1_identity,
   ts_mvp1_source_text_authority
 }
 import v2.extdeps.languages.rust { rust_mvp1_source_text_authority }
@@ -75,42 +74,34 @@ import v2.std.verification {
 import v2.std.witness { Holds, Violates }
 
 
-data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
-data emit_host_transport_port: Symbol = emit_host_transport_port
-data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
-data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
-data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
-data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
-data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
-data emit_host_ts_i32_symbol: Symbol = emit_host_ts_i32_symbol
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_transport_not_wired,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_transport_not_wired,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_parse_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_parse_unsupported_target,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_parse_unsupported_target,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_run_unsupported_target,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_run_unsupported_target,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: emit_host_emit_vs_eval_deferred,
+    reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
     correction: None
   }
@@ -118,8 +109,8 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
 
 fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_exit_not_ok,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_exit_not_ok,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
@@ -135,7 +126,7 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
 
 fn emit_host_rust_i64_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^emit_host_rust_i64_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -143,7 +134,7 @@ fn emit_host_rust_i64_node() -> Node {
 
 fn emit_host_ts_i32_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_ts_i32_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^emit_host_ts_i32_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

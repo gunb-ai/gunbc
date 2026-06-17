@@ -150,7 +150,6 @@ fn coproduct_nullary_inhabitants(type_name: Symbol) -> Outcome<List<Behavior>> {
   coproduct_nullary_inhabitants(type_name: type_name)
 }
 
-data coproduct_unresolved_payload: Symbol = ^coproduct_unresolved_payload
 
 // 🟡 gated — predicate-dissolution interim — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {

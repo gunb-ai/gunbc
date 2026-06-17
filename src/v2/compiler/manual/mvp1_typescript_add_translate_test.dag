@@ -18,7 +18,6 @@ import v2.compiler.eval {
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
-  translate_target_bundle_malformed
 }
 import v2.extdeps.languages.typescript {
   ts_facts_number,
@@ -35,7 +34,6 @@ import v2.extdeps.languages.typescript {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
-import v2.std.inhabitant_bridge { std_projection_additive_numeric }
 import v2.std.compilers.target_model { TargetModel }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add_mvp {
@@ -245,7 +243,7 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: std_projection_additive_numeric) {
+  } else if node == ts_inhabitant_atom(id: ^std_projection_additive_numeric) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -430,7 +428,7 @@ data claim_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaim = Diag
   input: mvp1_ts_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
-      reason: translate_target_bundle_malformed,
+      reason: ^translate_target_bundle_malformed,
       at: node_locus(node: mvp1_ts_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

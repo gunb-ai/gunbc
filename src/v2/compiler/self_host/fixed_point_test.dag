@@ -30,7 +30,6 @@ import v2.std.node {
 import v2.compiler.self_host {
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
-  self_host_runner_not_realized,
   stage_emission_equality,
   SourceModels
 }
@@ -135,7 +134,7 @@ test fn self_host_fixed_point_fails_closed_until_substrate() -> Bool {
     source_models: SourceModels { model_corpus: [] },
     reference_stage1: stage_emission_leaf()
   ) {
-    Rejected { diagnostics: d } => d.head.reason == self_host_runner_not_realized
+    Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false
   }
 }

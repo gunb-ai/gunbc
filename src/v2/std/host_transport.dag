@@ -12,9 +12,6 @@ import v2.std.node { Symbol }
 import v2.std.text { String }
 
 
-data host_tool_npx: Symbol = host_tool_npx
-data host_tool_node: Symbol = host_tool_node
-data host_tool_tsc: Symbol = host_tool_tsc
 
 type RelPath = String
 

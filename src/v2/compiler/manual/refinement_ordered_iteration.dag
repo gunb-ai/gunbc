@@ -9,7 +9,6 @@ import v2.std.refinement {
   IterationOrdering,
   StructurallyOrdered,
   StructurallyUnordered,
-  naming_the_leak,
   refine_ordered_iteration,
 }
 import v2.std.algebra { Empty }
@@ -85,7 +84,7 @@ fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
     at: test_locus()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: diags } => diags.head.reason == naming_the_leak
+    Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
   }
 }
 

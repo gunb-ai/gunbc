@@ -6,7 +6,6 @@ import v2.compiler.compile {
   CompileLens,
   TranslateTo,
   Validated,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic,
   validate_then_compile
 }
@@ -56,7 +55,7 @@ fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
     lenses: [rejecting_lens],
     mode: TranslateTo { target: rejecting_lens_target_model_stub }
   ) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -25,7 +25,7 @@ import v2.std.algebra {
   Semigroup
 }
 import v2.std.collection { List }
-import v2.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable}
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.machine {
   MachineWidth,
@@ -127,11 +127,10 @@ type IntegerIntervalSpec {
   inclusive_max: IntegerIntervalBound
 }
 
-data integer_standard_integer_type_decode_invalid: Symbol = integer_standard_integer_type_decode_invalid
 
 fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: integer_standard_integer_type_decode_invalid,
+    reason: ^integer_standard_integer_type_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

@@ -167,29 +167,19 @@ type TokensAtPositionAcc {
 }
 
 
-data grammar_production_identity_node_projection: Symbol = grammar_production_identity_node_projection
-data grammar_production_captured_node_projection: Symbol = grammar_production_captured_node_projection
 
-data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
-data parse_grammar_not_well_formed: Symbol = parse_grammar_not_well_formed
 
-data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
 
-data parse_grammar_left_recursive: Symbol = parse_grammar_left_recursive
 
-data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonterminal
 
-data parse_grammar_duplicate_production: Symbol = parse_grammar_duplicate_production
 
-data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
 
-data parse_stage_producer: Symbol = ^parse_stage_producer
 
 
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_grammar_not_well_formed,
+    reason: ^parse_grammar_not_well_formed,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -198,7 +188,7 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 
 fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_g0_tokens_remain,
+    reason: ^parse_g0_tokens_remain,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -207,7 +197,7 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
 
 fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_grammar_left_recursive,
+    reason: ^parse_grammar_left_recursive,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -216,7 +206,7 @@ fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
 
 fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_grammar_undefined_nonterminal,
+    reason: ^parse_grammar_undefined_nonterminal,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -225,7 +215,7 @@ fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
 
 fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_grammar_duplicate_production,
+    reason: ^parse_grammar_duplicate_production,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -234,7 +224,7 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
 
 fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: parse_e1_syntax_error,
+    reason: ^parse_e1_syntax_error,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -255,7 +245,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
     Absent =>
       Violates {
         diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
-          at: port_locus(port: parse_stage_locus_port)
+          at: port_locus(port: ^parse_stage_locus_port)
         )
       }
   }
@@ -425,7 +415,7 @@ fn parse_stamp_derived_conj(
 ) -> ParseStampResult {
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [cap1, cap2])
-  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
@@ -446,7 +436,7 @@ fn parse_stamp_derived_repeat(
 ) -> ParseStampResult {
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: acc_nodes)
-  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseStampResult {
     node: parse_repeat_captured_node(
@@ -464,14 +454,14 @@ fn parse_wrap_production_captured(
 ) -> ParseStampResult {
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [captured])
-  let event = DerivedBy { producer: parse_stage_producer, from: from }
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
       children: [
-        grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-        grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+        grammar_named_edge(name: ^grammar_production_identity_node_projection, target: production.emitted),
+        grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
       ],
       occurrence_id: node_occurrence_minted(id: minted.id)
     ),
@@ -1133,7 +1123,7 @@ fn parse_production(
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
   let root = validated.root
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
       let built = build_parse_table(all_tokens: tokens, root: root)
@@ -1193,7 +1183,7 @@ fn parse_production_tree(
 
 
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if well_formed(n: grammar_node) {

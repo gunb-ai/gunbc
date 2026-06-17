@@ -78,9 +78,6 @@ import v2.std.model_core {
   FailClosedAtBoundary,
   ModelCore,
   ModelCorePrimitiveFactAxis,
-  model_core_wave1_law_field_algebra,
-  model_core_wave1_law_field_kind,
-  model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
@@ -89,10 +86,6 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth,
   primitive_fact_axis_unbound_diagnostic
-}
-import v2.std.inhabitant_bridge {
-  facts_field_std_projection,
-  std_projection_additive_numeric
 }
 import v2.std.diagnostic {
   Accepted,
@@ -132,41 +125,12 @@ import v2.std.compilers.target_model {
   TargetTypeExprVariantSlot
 }
 import v2.std.compilers.target_model {
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  serialize_source_field_source_grammar,
-  serialize_source_field_source_text,
   char_kernel_type_node,
-  symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_alias_type_expression,
   target_atom_realization_catalog_node,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules,
-  target_model_edge_serialize_source,
-  target_model_edge_atom_realizations,
-  target_model_edge_type_expression_projection,
   type_expr_projection_step_algebra,
   target_value_template_for_kind,
-  target_type_expr_field_arrow,
-  target_type_expr_field_atom,
-  target_type_expr_field_cardinality,
-  target_type_expr_field_close,
-  target_type_expr_field_codomain,
-  target_type_expr_field_conj,
-  target_type_expr_field_disj,
-  target_type_expr_field_ident_token,
-  target_type_expr_field_instantiation,
-  target_type_expr_field_field_label_separator,
-  target_type_expr_field_open,
-  target_type_expr_field_param_ident_token,
-  target_type_expr_field_param_list_separator,
-  target_type_expr_field_param_type_separator,
-  target_type_expr_field_separator,
-  target_type_expr_field_surface,
-  target_type_expr_field_variant_separator,
   ValueBoolLiteral,
   ValueStringLiteral,
   CanonicalOperation,
@@ -182,8 +146,6 @@ import v2.std.compilers.target_model {
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
-  target_model_edge_operator_realizations,
-  target_model_edge_value_expression_projection,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node
@@ -202,7 +164,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  arrow_body_edge,
   SyntheticOccurrence
 }
 import v2.std.host_transport {
@@ -213,10 +174,8 @@ import v2.std.host_transport {
   ProducedArtifact,
   SignedI32Le,
   WorkspaceFile,
-  host_tool_node,
-  host_tool_npx
 }
-import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.algebra {
   algebra_binary_fn_node,
   approximate_field_type_node,
@@ -285,7 +244,7 @@ data ts_mvp1_source_text: String = "function add(x: number, y: number): number {
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_number,
   ieee754_binary: ^ts_ieee754_binary64,
-  std_projection: std_projection_additive_numeric,
+  std_projection: ^std_projection_additive_numeric,
 }
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
@@ -360,7 +319,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -381,7 +340,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -406,7 +365,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_bool_operation_semantics_node(facts: facts)
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -522,7 +481,7 @@ fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
     ),
     ts_named_edge(
       name: ^ts_coercion_field_number_std_projection,
-      target: ts_inhabitant_atom(id: std_projection_additive_numeric)
+      target: ts_inhabitant_atom(id: ^std_projection_additive_numeric)
     )
   ]
 }
@@ -588,7 +547,7 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge {
-        label: Named { name: arrow_body_edge },
+        label: Named { name: ^arrow_body_edge },
         target: ts_mvp1_add_binary_body_node()
       }
     ],
@@ -765,7 +724,7 @@ fn ts_mvp1_serialize_source_children() -> List<Edge> {
     left: ts_mvp1_serialize_source_prefix_edges(),
     right: [
       ts_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: ts_mvp1_canonical_add_fn_tokens(),
           token_to_node: ts_concrete_token_node
@@ -850,7 +809,6 @@ fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
   }
 }
 
-data ts_relation_rule_mvp1_fn_add_with_body: Symbol = ts_relation_rule_mvp1_fn_add_with_body
 
 
 // DESIGN-1: emitted Conj positional slots = bound-terminal + nonterminal RHS occurrences only.
@@ -1067,7 +1025,7 @@ fn ts_wave2a_task_serialize_source_children() -> List<Edge> {
 }
 
 fn ts_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<Edge>> {
-  match find_named_child(root: row, name: grammar_relation_field_tokens) {
+  match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
     Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
         TypeNode { connective: Conj } => Holds { value: tokens_root.children }
@@ -1320,19 +1278,19 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
               kind: TypeNode { connective: Conj },
               children: [
                 ts_named_edge(
-                  name: target_model_edge_selection_policy,
+                  name: ^target_model_edge_selection_policy,
                   target: ts_inhabitant_number_node()
                 ),
                 ts_named_edge(
-                  name: target_model_edge_declared_inhabitants,
+                  name: ^target_model_edge_declared_inhabitants,
                   target: ts_mvp1_declared_inhabitants_root()
                 ),
                 ts_named_edge(
-                  name: target_model_edge_translation_rules,
+                  name: ^target_model_edge_translation_rules,
                   target: rules
                 ),
                 ts_named_edge(
-                  name: target_model_edge_serialize_source,
+                  name: ^target_model_edge_serialize_source,
                   target: serialize
                 )
               ],
@@ -1400,7 +1358,7 @@ fn ts_mvp1_translation_rules_node() -> Node {
         target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
       ),
       ts_named_edge(
-        name: ts_relation_rule_mvp1_fn_add_with_body,
+        name: ^ts_relation_rule_mvp1_fn_add_with_body,
         target: grammar_relation_row_attach_bodied_scaffold(
           row: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_with_body()),
           scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
@@ -1439,29 +1397,29 @@ fn ts_mvp1_target_model_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       ts_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: ts_mvp1_selection_policy_node()
       ),
       ts_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: ts_mvp1_declared_inhabitants_root()
       ),
       ts_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: ts_mvp1_translation_rules_node()
       ),
       ts_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: ts_mvp1_serialize_source_node()
       ),
       ts_named_edge(
-        name: target_model_edge_value_expression_projection,
+        name: ^target_model_edge_value_expression_projection,
         target: value_expr_projection_bundle_node(
           projection: ts_value_expression_projection()
         )
       ),
       ts_named_edge(
-        name: target_model_edge_operator_realizations,
+        name: ^target_model_edge_operator_realizations,
         target: ts_operator_realizations_catalog_node()
       )
     ],
@@ -1523,7 +1481,6 @@ fn ts_mvp1_target_model() -> TargetModel {
 }
 
 // B3 omni-emission — MVP-1 add-fn Node host transport (tsc → node; SignedI32Le stdout).
-data ts_host_transport_mvp1_identity: Symbol = ts_host_transport_mvp1_identity
 
 data ts_host_transport_mvp1_harness_suffix: String = "
 const __gunbc_r = add(2, 3);
@@ -1534,7 +1491,7 @@ process.stdout.write(__gunbc_b);
 
 fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
-    identity: ts_host_transport_mvp1_identity,
+    identity: ^ts_host_transport_mvp1_identity,
     workspace: [
       WorkspaceFile {
         path: "fixture.ts",
@@ -1543,7 +1500,7 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        tool: host_tool_npx,
+        tool: ^host_tool_npx,
         args: [
           LiteralArg { text: "-y" },
           LiteralArg { text: "typescript@5.9.2" },
@@ -1559,7 +1516,7 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
       }
     ],
     run: ProcessInvocation {
-      tool: host_tool_node,
+      tool: ^host_tool_node,
       args: [ProducedArtifact { path: "fixture.js" }]
     },
     runtime_value_codec: SignedI32Le
@@ -1639,7 +1596,7 @@ data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_boolean),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
-  display_name: bool_node_symbol
+  display_name: ^bool_node_symbol
 }
 
 fn ts_std_text_string_type_node() -> Node {
@@ -1694,7 +1651,7 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
     children: list_snoc_item(
       xs: ts_mvp1_target_model_node().children,
       item: ts_named_edge(
-        name: target_model_edge_type_expression_projection,
+        name: ^target_model_edge_type_expression_projection,
         target: ts_type_expression_projection_bundle_node()
       )
     ),
@@ -1708,7 +1665,7 @@ fn ts_target_atom_realization_target_model_node() -> Node {
     children: list_snoc_item(
       xs: ts_sg2_type_expr_target_model_node().children,
       item: ts_named_edge(
-        name: target_model_edge_atom_realizations,
+        name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
           rows: ts_target_atom_realization_catalog,
           host_bundle: ts_sg2_type_expr_target_model_node()
@@ -1862,7 +1819,7 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
     children: list_snoc_item(
       xs: golden.children,
       item: ts_named_edge(
-        name: target_type_expr_field_codomain,
+        name: ^target_type_expr_field_codomain,
         target: target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_y
@@ -1977,19 +1934,19 @@ fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
               kind: TypeNode { connective: Conj },
               children: [
                 ts_named_edge(
-                  name: target_model_edge_selection_policy,
+                  name: ^target_model_edge_selection_policy,
                   target: ts_inhabitant_number_node()
                 ),
                 ts_named_edge(
-                  name: target_model_edge_declared_inhabitants,
+                  name: ^target_model_edge_declared_inhabitants,
                   target: ts_mvp1_declared_inhabitants_root()
                 ),
                 ts_named_edge(
-                  name: target_model_edge_translation_rules,
+                  name: ^target_model_edge_translation_rules,
                   target: rules
                 ),
                 ts_named_edge(
-                  name: target_model_edge_serialize_source,
+                  name: ^target_model_edge_serialize_source,
                   target: serialize
                 )
               ],
@@ -2252,7 +2209,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2273,7 +2230,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2351,7 +2308,7 @@ data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealiz
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_symbol),
   value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
   constructor_form: optional_absent(),
-  display_name: symbol_kernel_type_atom
+  display_name: ^symbol_kernel_type_atom
 }
 
 fn ts_numeric_algebra_inhabitance_step(
@@ -3177,7 +3134,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3213,7 +3170,7 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: facts_field_std_projection,
+        name: ^facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3427,10 +3384,10 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ts_named_edge(name: model_core_wave1_law_field_subject, target: witness),
-      ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      ts_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
+      ts_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
       ts_named_edge(
-        name: model_core_wave1_law_field_kind,
+        name: ^model_core_wave1_law_field_kind,
         target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ],

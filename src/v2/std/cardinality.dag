@@ -38,7 +38,6 @@ import v2.std.node {
   fold_node,
   loop_behavior_edges_conform,
   loop_bound_measure_target,
-  loop_bound_edge,
   name_occurrences
 }
 import v2.std.witness { Holds, Violates, Witness }
@@ -132,10 +131,6 @@ type LoopBound {
   termination: Witness<TerminationProof>
 }
 
-data cardinality_loop_bound_undeclared: Symbol = cardinality_loop_bound_undeclared
-data cardinality_loop_bound_ambiguous: Symbol = cardinality_loop_bound_ambiguous
-data cardinality_loop_bound_malformed: Symbol = cardinality_loop_bound_malformed
-data cardinality_loop_bound_not_loop: Symbol = cardinality_loop_bound_not_loop
 
 fn loop_bound_measure(bound: LoopBound) -> Node {
   bound.measure
@@ -143,7 +138,7 @@ fn loop_bound_measure(bound: LoopBound) -> Node {
 
 fn loop_bound_undeclared_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: cardinality_loop_bound_undeclared,
+    reason: ^cardinality_loop_bound_undeclared,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -151,7 +146,7 @@ fn loop_bound_undeclared_diagnostic(n: Node) -> Diagnostic {
 
 fn loop_bound_ambiguous_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: cardinality_loop_bound_ambiguous,
+    reason: ^cardinality_loop_bound_ambiguous,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -159,7 +154,7 @@ fn loop_bound_ambiguous_diagnostic(n: Node) -> Diagnostic {
 
 fn loop_bound_malformed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: cardinality_loop_bound_malformed,
+    reason: ^cardinality_loop_bound_malformed,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -167,7 +162,7 @@ fn loop_bound_malformed_diagnostic(n: Node) -> Diagnostic {
 
 fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: cardinality_loop_bound_not_loop,
+    reason: ^cardinality_loop_bound_not_loop,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -177,7 +172,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
-      let bound_count = name_occurrences(name: loop_bound_edge, children: n.children)
+      let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
       if bound_count == 0 {
         Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
       } else if bound_count > 1 {
@@ -202,11 +197,9 @@ type Multiplicity
   | RequiresTerminationProof
   | ProvenTermination { proof: TerminationProof }
 
-data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
-data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
 
 fn structural_node_size_dimension() -> RankingDimension {
-  RankingDimension { measured: cardinality_structural_node_size }
+  RankingDimension { measured: ^cardinality_structural_node_size }
 }
 
 fn structural_node_size_termination_proof() -> TerminationProof {
@@ -255,7 +248,7 @@ fn node_multiplicity(n: Node) -> Multiplicity {
 
 fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: cardinality_descent_not_proven,
+    reason: ^cardinality_descent_not_proven,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

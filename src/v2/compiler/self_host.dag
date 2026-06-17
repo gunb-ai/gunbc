@@ -30,7 +30,6 @@ import v2.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
-  preservation_rule_exact_structural_equality_zip_fold
 }
 import v2.std.node { content_hash, Node, Symbol }
 import v2.std.witness {
@@ -84,17 +83,12 @@ type PromotionWitness {
 }
 
 
-data self_host_runner_not_realized: Symbol = self_host_runner_not_realized
-data self_host_runner_port: Symbol = self_host_runner_port
-data stage_emission_equality_closed_candidates: Symbol = stage_emission_equality_closed_candidates
-data bootstrap_roundtrip_not_realized: Symbol = bootstrap_roundtrip_not_realized
-data fixed_point_not_realized: Symbol = fixed_point_not_realized
 
 
 fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: self_host_runner_not_realized,
-    at: port_locus(port: self_host_runner_port),
+    reason: ^self_host_runner_not_realized,
+    at: port_locus(port: ^self_host_runner_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -125,7 +119,7 @@ fn bootstrap_roundtrip_scaffold(
 ) -> BootstrapRoundtripCheck {
   Violates {
     diagnostic: Diagnostic {
-      reason: bootstrap_roundtrip_not_realized,
+      reason: ^bootstrap_roundtrip_not_realized,
       at: node_locus(node: expected_stage),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
@@ -139,7 +133,7 @@ fn fixed_point_scaffold(
 ) -> FixedPointCheck {
   Violates {
     diagnostic: Diagnostic {
-      reason: fixed_point_not_realized,
+      reason: ^fixed_point_not_realized,
       at: node_locus(node: reference_stage),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
@@ -149,7 +143,7 @@ fn fixed_point_scaffold(
 
 fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: stage_emission_equality_closed_candidates,
+    property: ^stage_emission_equality_closed_candidates,
     evidence: reference_stage1
   }
 }
@@ -187,7 +181,7 @@ fn stage_emission_equality(
     },
     predicate: PreservationPredicate {
       algebra: reference_stage1,
-      preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
     multiplicity_policy: UniqueOnly
   ) {

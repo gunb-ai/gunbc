@@ -43,16 +43,14 @@ import v2.extdeps.languages.typescript {
 
 // Operand binding sites for the emitted host-shim calls. The Rust receipt defines these as
 // `const ioPath = <tmpfile>` / `const ioContent = <marker>` before the emitted expressions run.
-data effect_io_binding_path: Symbol = effect_io_binding_path
-data effect_io_binding_content: Symbol = effect_io_binding_content
 
 // Binding spellings for the two operand sites; lex authority is the shared ts wave-1 lex set
 // (which spells ^ts_token_effect_read_callee / ^ts_token_effect_write_callee and the call
 // punctuation). bundle/authority_source_text are inert for token serialization.
 fn effect_io_binding_spellings() -> Map<Symbol, String> {
   map_insert(
-    map_insert(empty_map(), effect_io_binding_path, "ioPath"),
-    effect_io_binding_content,
+    map_insert(empty_map(), ^effect_io_binding_path, "ioPath"),
+    ^effect_io_binding_content,
     "ioContent"
   )
 }
@@ -71,8 +69,8 @@ fn ts_effect_write_call_expr() -> TargetValueExpression {
   target_value_expression_effect_apply(
     effect_kind_discriminant: ^WriteResource,
     operands: [
-      target_value_expression_binding_ref(binding: effect_io_binding_path),
-      target_value_expression_binding_ref(binding: effect_io_binding_content)
+      target_value_expression_binding_ref(binding: ^effect_io_binding_path),
+      target_value_expression_binding_ref(binding: ^effect_io_binding_content)
     ]
   )
 }
@@ -82,7 +80,7 @@ fn ts_effect_read_call_expr() -> TargetValueExpression {
   target_value_expression_effect_apply(
     effect_kind_discriminant: ^ReadResource,
     operands: [
-      target_value_expression_binding_ref(binding: effect_io_binding_path)
+      target_value_expression_binding_ref(binding: ^effect_io_binding_path)
     ]
   )
 }

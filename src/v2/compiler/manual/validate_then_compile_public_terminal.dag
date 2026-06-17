@@ -12,7 +12,6 @@ import v2.compiler.compile {
   TranslateResult,
   TranslateTo,
   Validated,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic,
   validate_then_compile
 }
@@ -106,7 +105,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
-      r.head.reason != compile_lens_gate_rejected
+      r.head.reason != ^compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
       _ => false
@@ -120,7 +119,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
-      r.head.reason == compile_lens_gate_rejected
+      r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

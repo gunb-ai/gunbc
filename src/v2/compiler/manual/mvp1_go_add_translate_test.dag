@@ -18,7 +18,6 @@ import v2.compiler.eval {
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
-  translate_target_bundle_malformed
 }
 import v2.extdeps.languages.go {
   Signed,
@@ -438,7 +437,7 @@ data claim_mvp1_go_serialize_rejects_missing_translation_rules: TestClaim = Diag
   input: mvp1_go_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
-      reason: translate_target_bundle_malformed,
+      reason: ^translate_target_bundle_malformed,
       at: node_locus(node: mvp1_go_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
