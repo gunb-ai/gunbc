@@ -3479,18 +3479,31 @@ struct ShellResult {
     stderr: String,
 }
 
+fn push_shell_argv_tokens(val: &Value, argv: &mut Vec<String>) -> InterpResult<()> {
+    match val {
+        Value::List(items) => {
+            for item in items.iter() {
+                push_shell_argv_tokens(item, argv)?;
+            }
+        }
+        Value::Str(s) => argv.push(s.clone()),
+        other => argv.push(format!("{}", other)),
+    }
+    Ok(())
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<ShellResult> {
-    // Evaluate argv elements as expressions
+    // Evaluate argv elements as expressions; List<String> params splice into argv.
     let argv_nodes = &transport.children;
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = eval_expr(node, param_env, ctx)?;
-        argv.push(format!("{}", val));
+        push_shell_argv_tokens(&val, &mut argv)?;
     }
 
     if argv.is_empty() {

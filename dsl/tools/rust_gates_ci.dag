@@ -22,8 +22,8 @@ import tools.rust_stage0_gates { should_run_gates }
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt()
   clippy = cargo.Build.Clippy(
-    scope_args: "--all-targets",
-    lint_args: "-D warnings"
+    scope_args: ["--all-targets"],
+    lint_args: ["-D", "warnings"]
   )
   return if fmt.success && clippy.success {
     ExitSuccess

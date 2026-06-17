@@ -16,13 +16,13 @@ import shared.dag_util { aggregate_results, format_report, stage_from_output }
 
 func build_all() -> { overall_success: Bool, summary: Summary, report: String, build_stderr: String, test_stderr: String, clippy_stderr: String } {
   // Phase 1: Build (must succeed before test/clippy)
-  build = cargo.Build.Build(scope_args: "--all-targets")
+  build = cargo.Build.Build(scope_args: ["--all-targets"])
 
   // Phase 2: Test and clippy in parallel (both depend on build)
-  test = cargo.Build.Test(scope_args: "--workspace") [after build, when build.success]
+  test = cargo.Build.Test(scope_args: ["--workspace"]) [after build, when build.success]
   clippy = cargo.Build.Clippy(
-    scope_args: "--all-targets",
-    lint_args: "-D warnings"
+    scope_args: ["--all-targets"],
+    lint_args: ["-D", "warnings"]
   ) [after build, when build.success]
 
   // Phase 3: Aggregate using shared helper

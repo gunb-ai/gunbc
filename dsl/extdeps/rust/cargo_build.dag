@@ -6,8 +6,8 @@
 // cargo (e.g. tools/build.dag) import this module.
 //
 // §3 shape/transport/policy: argv models faithful `cargo` primitives only;
-// scope/lint flags are caller-supplied parameters (workflow policy), not
-// hardcoded literals.
+// scope/lint flags are caller-supplied List<String> parameters (workflow policy),
+// spliced into argv by the shell transport — not hardcoded literals.
 
 module extdeps.cargo_build
 
@@ -21,13 +21,13 @@ data cargo_compile_env: Map<String, String> = empty_map()
 
 service cargo.Build {
   operation Build {
-    input { scope_args: String = "", env: Map<String, String> = cargo_compile_env }
+    input { scope_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["sh", "-c", "cargo build {scope_args}"] }
+    transport shell { argv: ["cargo", "build", scope_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
@@ -35,13 +35,13 @@ service cargo.Build {
   }
 
   operation Test {
-    input { scope_args: String = "", env: Map<String, String> = cargo_compile_env }
+    input { scope_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["sh", "-c", "cargo test {scope_args}"] }
+    transport shell { argv: ["cargo", "test", scope_args] }
     exit {
       0 => Unit
       101 => String "Tests failed"
@@ -49,13 +49,13 @@ service cargo.Build {
   }
 
   operation Clippy {
-    input { scope_args: String = "", lint_args: String = "", env: Map<String, String> = cargo_compile_env }
+    input { scope_args: List<String> = [], lint_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["sh", "-c", "cargo clippy {scope_args} -- {lint_args}"] }
+    transport shell { argv: ["cargo", "clippy", scope_args, "--", lint_args] }
     exit {
       0 => Unit
       101 => String "Clippy warnings or errors"
