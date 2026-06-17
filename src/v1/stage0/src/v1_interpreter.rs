@@ -3245,6 +3245,11 @@ fn eval_service_call(
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
+    let inputs_json =
+        crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
+            .map_err(|e| InterpError::TypeError {
+                msg: e.to_string(),
+            })?;
 
     // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
@@ -3254,12 +3259,10 @@ fn eval_service_call(
                 service_name, op_name, inputs_hash
             );
             let fixture = store
-                .lookup(&key, &inputs_hash)
+                .lookup(&key, &inputs_hash, &inputs_json)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
-            return Ok(crate::recorded_fixture::value_from_fixture_json(
-                &fixture.response,
-                ctx,
-            ));
+            return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
+                .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
         eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
@@ -3275,7 +3278,7 @@ fn eval_service_call(
                 msg: "--record requires --fixture-store".to_string(),
             })?;
         store
-            .record(&key, &inputs_hash, &result, ctx)
+            .record(&key, &inputs_hash, &inputs_json, &result, ctx)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
         eprintln!(
             "[record] {}.{} inputs_hash={}",

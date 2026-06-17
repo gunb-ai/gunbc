@@ -2,9 +2,8 @@
 //
 // Phase 2 hermetic rollout: fixtures are keyed by (operation, content_hash(inputs)).
 // `--record` captures wet dispatch results; `--hermetic --fixture-store` replays them.
-// Staleness is fail-closed: expired fixtures or input_hash mismatch return a loud
-// diagnostic — never a stale value. Re-record with the same input_hash but a
-// different response is also fail-closed (cache-purity oracle shape).
+// Staleness is fail-closed: expired fixtures, input_hash mismatch, or stored inputs !=
+// current inputs all return loud typed diagnostics — never a stale or collided value.
 //
 // 🟡 gated — feature:fixture-input-hash-v2-content-hash — bind Phase-2-hermetic —
 // dissolve-on-arrival: v2.std.node content_hash over reified operation-input Nodes;
@@ -18,6 +17,7 @@ use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::v1_interpreter::{InterpContext, Value};
 use crate::v1_rt;
@@ -31,6 +31,8 @@ pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
 pub struct RecordedFixture {
     pub operation: String,
     pub input_hash: String,
+    /// Faithful serialized operation inputs — verified on lookup (collision safety).
+    pub inputs: serde_json::Value,
     pub response: serde_json::Value,
     pub recorded_at: u64,
 }
@@ -46,6 +48,10 @@ pub enum FixtureError {
         stored_hash: String,
         current_hash: String,
     },
+    InputMismatch {
+        operation: String,
+        input_hash: String,
+    },
     Expired {
         operation: String,
         input_hash: String,
@@ -57,6 +63,16 @@ pub enum FixtureError {
         operation: String,
         input_hash: String,
     },
+    DeserializationMismatch {
+        reason: String,
+    },
+    UnknownTag {
+        tag: String,
+    },
+    UnreplayableValue {
+        kind: String,
+    },
+    ClockUnavailable,
     Io {
         path: PathBuf,
         source: std::io::Error,
@@ -90,6 +106,14 @@ impl fmt::Display for FixtureError {
                 "stale recorded fixture for {}: stored input_hash={} but current input_hash={} — refusing to replay stale value",
                 operation, stored_hash, current_hash
             ),
+            FixtureError::InputMismatch {
+                operation,
+                input_hash,
+            } => write!(
+                f,
+                "recorded fixture input mismatch for {} (input_hash={}): stored inputs do not match current call — refusing to replay (possible hash collision)",
+                operation, input_hash
+            ),
             FixtureError::Expired {
                 operation,
                 input_hash,
@@ -109,6 +133,21 @@ impl fmt::Display for FixtureError {
                 "recorded fixture response drift for {} (input_hash={}): wet capture returned a different response for the same input_hash — refusing to overwrite (cache-purity oracle)",
                 operation, input_hash
             ),
+            FixtureError::DeserializationMismatch { reason } => {
+                write!(f, "fixture deserialization mismatch: {reason}")
+            }
+            FixtureError::UnknownTag { tag } => {
+                write!(f, "fixture unknown tag {:?} — refusing to fabricate a value", tag)
+            }
+            FixtureError::UnreplayableValue { kind } => {
+                write!(
+                    f,
+                    "fixture cannot record unreplayable value kind {kind:?} — refusing to write an unfaithful fixture"
+                )
+            }
+            FixtureError::ClockUnavailable => {
+                write!(f, "fixture clock unavailable — refusing to guess recorded_at or freshness")
+            }
             FixtureError::Io { path, source } => {
                 write!(f, "fixture I/O error at {}: {}", path.display(), source)
             }
@@ -124,7 +163,7 @@ impl fmt::Display for FixtureError {
 
 impl std::error::Error for FixtureError {}
 
-/// Append-only-on-record directory store: `{root}/{operation_slug}/{inputs_hash}.json`.
+/// Append-only-on-record directory store: `{root}/{operation_slug}/{input_hash}.json`.
 #[derive(Debug, Clone)]
 pub struct RecordedFixtureStore {
     root: PathBuf,
@@ -161,7 +200,7 @@ impl RecordedFixtureStore {
         operation: &str,
         input_hash: &str,
     ) -> Result<(), FixtureError> {
-        let now = unix_now_secs();
+        let now = unix_now_secs()?;
         let age = now.saturating_sub(fixture.recorded_at);
         if age > FIXTURE_FRESHNESS_SECS {
             return Err(FixtureError::Expired {
@@ -179,6 +218,7 @@ impl RecordedFixtureStore {
         &self,
         operation: &str,
         input_hash: &str,
+        inputs: &serde_json::Value,
     ) -> Result<RecordedFixture, FixtureError> {
         expect_hash_digest(input_hash)?;
         let path = self.fixture_path(operation, input_hash);
@@ -203,6 +243,12 @@ impl RecordedFixtureStore {
                 current_hash: input_hash.to_string(),
             });
         }
+        if fixture.inputs != *inputs {
+            return Err(FixtureError::InputMismatch {
+                operation: operation.to_string(),
+                input_hash: input_hash.to_string(),
+            });
+        }
         Self::assert_fresh(&fixture, operation, input_hash)?;
         Ok(fixture)
     }
@@ -211,11 +257,12 @@ impl RecordedFixtureStore {
         &self,
         operation: &str,
         input_hash: &str,
+        inputs: &serde_json::Value,
         response: &Value,
         ctx: &InterpContext,
     ) -> Result<(), FixtureError> {
         expect_hash_digest(input_hash)?;
-        let response_json = value_to_fixture_json(response, ctx);
+        let response_json = value_to_fixture_json(response, ctx)?;
         let path = self.fixture_path(operation, input_hash);
         if path.is_file() {
             let existing = self.read_fixture_file(&path)?;
@@ -229,8 +276,9 @@ impl RecordedFixtureStore {
         let fixture = RecordedFixture {
             operation: operation.to_string(),
             input_hash: input_hash.to_string(),
+            inputs: inputs.clone(),
             response: response_json,
-            recorded_at: unix_now_secs(),
+            recorded_at: unix_now_secs()?,
         };
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| FixtureError::Io {
@@ -246,11 +294,31 @@ impl RecordedFixtureStore {
     }
 }
 
-fn unix_now_secs() -> u64 {
+fn unix_now_secs() -> Result<u64, FixtureError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .map_err(|_| FixtureError::ClockUnavailable)
+}
+
+/// Faithful JSON snapshot of bound service-operation inputs (param declaration order).
+pub fn service_inputs_fixture_json(
+    op_node: &Rc<Node>,
+    param_env: &crate::v1_interpreter::Env,
+    ctx: &InterpContext,
+) -> Result<serde_json::Value, FixtureError> {
+    let si = ctx.source_indices();
+    let mut rows = Vec::new();
+    for param in op_node.params.iter() {
+        let name = param_node_name_at(param.clone(), si.clone());
+        let key = ctx.sym(&name);
+        let value = match param_env.lookup(key) {
+            Some(val) => value_to_fixture_json(val, ctx)?,
+            None => serde_json::Value::Null,
+        };
+        rows.push(json!({ "name": name, "value": value }));
+    }
+    Ok(serde_json::Value::Array(rows))
 }
 
 /// Structural input_hash of a service operation's bound inputs (param order).
@@ -289,32 +357,88 @@ fn operation_slug(operation: &str) -> String {
     operation.replace('.', "__")
 }
 
-pub fn value_to_fixture_json(val: &Value, ctx: &InterpContext) -> serde_json::Value {
-    use serde_json::json;
+fn require_object(json: &serde_json::Value) -> Result<&serde_json::Map<String, serde_json::Value>, FixtureError> {
+    json.as_object().ok_or_else(|| FixtureError::DeserializationMismatch {
+        reason: "expected tagged object".to_string(),
+    })
+}
+
+fn require_tag(obj: &serde_json::Map<String, serde_json::Value>) -> Result<&str, FixtureError> {
+    obj.get("__tag")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: "missing __tag".to_string(),
+        })
+}
+
+fn require_bool(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<bool, FixtureError> {
+    obj.get(key)
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: format!("missing or ill-typed bool field {key}"),
+        })
+}
+
+fn require_i64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<i64, FixtureError> {
+    obj.get(key)
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: format!("missing or ill-typed int field {key}"),
+        })
+}
+
+fn require_f64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<f64, FixtureError> {
+    obj.get(key)
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: format!("missing or ill-typed float field {key}"),
+        })
+}
+
+fn require_str(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<String, FixtureError> {
+    obj.get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: format!("missing or ill-typed string field {key}"),
+        })
+}
+
+fn require_fields_obj(
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<&serde_json::Map<String, serde_json::Value>, FixtureError> {
+    obj.get("fields")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| FixtureError::DeserializationMismatch {
+            reason: "missing or ill-typed fields object".to_string(),
+        })
+}
+
+pub fn value_to_fixture_json(val: &Value, ctx: &InterpContext) -> Result<serde_json::Value, FixtureError> {
     match val {
-        Value::Null => serde_json::Value::Null,
-        Value::Unit => json!({ "__tag": "Unit" }),
-        Value::Bool(b) => json!({ "__tag": "Bool", "value": b }),
-        Value::Int(n) => json!({ "__tag": "Int", "value": n }),
-        Value::Float(f) => json!({ "__tag": "Float", "value": f }),
-        Value::Str(s) => json!({ "__tag": "Str", "value": s }),
+        Value::Null => Ok(serde_json::Value::Null),
+        Value::Unit => Ok(json!({ "__tag": "Unit" })),
+        Value::Bool(b) => Ok(json!({ "__tag": "Bool", "value": b })),
+        Value::Int(n) => Ok(json!({ "__tag": "Int", "value": n })),
+        Value::Float(f) => Ok(json!({ "__tag": "Float", "value": f })),
+        Value::Str(s) => Ok(json!({ "__tag": "Str", "value": s })),
         Value::List(items) => {
-            let arr: Vec<_> = items
+            let arr: Result<Vec<_>, _> = items
                 .iter()
                 .map(|v| value_to_fixture_json(v, ctx))
                 .collect();
-            json!({ "__tag": "List", "items": arr })
+            Ok(json!({ "__tag": "List", "items": arr? }))
         }
         Value::Record { type_name, fields } => {
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
-                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx));
+                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx)?);
             }
-            json!({
+            Ok(json!({
                 "__tag": "Record",
                 "__type": ctx.resolve(*type_name),
                 "fields": obj,
-            })
+            }))
         }
         Value::Variant {
             type_name,
@@ -323,92 +447,83 @@ pub fn value_to_fixture_json(val: &Value, ctx: &InterpContext) -> serde_json::Va
         } => {
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
-                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx));
+                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx)?);
             }
-            json!({
+            Ok(json!({
                 "__tag": "Variant",
                 "__type": ctx.resolve(*type_name),
                 "__variant": ctx.resolve(*variant_name),
                 "fields": obj,
+            }))
+        }
+        Value::Map(_) | Value::Set(_) | Value::Closure { .. } | Value::Fn { .. } => {
+            Err(FixtureError::UnreplayableValue {
+                kind: val.type_label_public().to_string(),
             })
         }
-        other => json!({
-            "__tag": "Opaque",
-            "repr": format!("{:?}", other),
-        }),
     }
 }
 
-pub fn value_from_fixture_json(json: &serde_json::Value, ctx: &InterpContext) -> Value {
+pub fn value_from_fixture_json(
+    json: &serde_json::Value,
+    ctx: &InterpContext,
+) -> Result<Value, FixtureError> {
     use crate::v1_interpreter::list_value;
-    let Some(obj) = json.as_object() else {
-        return Value::Null;
-    };
-    let tag = obj.get("__tag").and_then(|v| v.as_str()).unwrap_or("Null");
+
+    if json.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let obj = require_object(json)?;
+    let tag = require_tag(obj)?;
     match tag {
-        "Unit" => Value::Unit,
-        "Bool" => Value::Bool(obj.get("value").and_then(|v| v.as_bool()).unwrap_or(false)),
-        "Int" => Value::Int(obj.get("value").and_then(|v| v.as_i64()).unwrap_or(0)),
-        "Float" => Value::Float(obj.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0)),
-        "Str" => Value::Str(
-            obj.get("value")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        ),
+        "Unit" => Ok(Value::Unit),
+        "Bool" => Ok(Value::Bool(require_bool(obj, "value")?)),
+        "Int" => Ok(Value::Int(require_i64(obj, "value")?)),
+        "Float" => Ok(Value::Float(require_f64(obj, "value")?)),
+        "Str" => Ok(Value::Str(require_str(obj, "value")?)),
         "List" => {
             let items = obj
                 .get("items")
                 .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .map(|v| value_from_fixture_json(v, ctx))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            list_value(items)
+                .ok_or_else(|| FixtureError::DeserializationMismatch {
+                    reason: "List missing items array".to_string(),
+                })?;
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                out.push(value_from_fixture_json(item, ctx)?);
+            }
+            Ok(list_value(out))
         }
         "Record" => {
-            let type_name = ctx.sym(
-                obj.get("__type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Record"),
-            );
+            let type_name = ctx.sym(require_str(obj, "__type")?.as_str());
+            let fields_obj = require_fields_obj(obj)?;
             let mut fields = HashMap::new();
-            if let Some(fields_obj) = obj.get("fields").and_then(|v| v.as_object()) {
-                for (k, v) in fields_obj {
-                    fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx));
-                }
+            for (k, v) in fields_obj {
+                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
             }
-            Value::Record {
+            Ok(Value::Record {
                 type_name,
                 fields: Rc::new(fields),
-            }
+            })
         }
         "Variant" => {
-            let type_name = ctx.sym(
-                obj.get("__type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Variant"),
-            );
-            let variant_name = ctx.sym(
-                obj.get("__variant")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown"),
-            );
+            let type_name = ctx.sym(require_str(obj, "__type")?.as_str());
+            let variant_name = ctx.sym(require_str(obj, "__variant")?.as_str());
+            let fields_obj = require_fields_obj(obj)?;
             let mut fields = HashMap::new();
-            if let Some(fields_obj) = obj.get("fields").and_then(|v| v.as_object()) {
-                for (k, v) in fields_obj {
-                    fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx));
-                }
+            for (k, v) in fields_obj {
+                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
             }
-            Value::Variant {
+            Ok(Value::Variant {
                 type_name,
                 variant_name,
                 fields: Rc::new(fields),
-            }
+            })
         }
-        _ => Value::Null,
+        "Opaque" | other => Err(FixtureError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
