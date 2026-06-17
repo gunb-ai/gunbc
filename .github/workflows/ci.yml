@@ -33,7 +33,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 1
+          # 0 (not 1): full history so `origin/main...HEAD` merge-base resolves for the
+          # Rust-gate affected-set below. rust_gate_runner fail-closes (runs the gates) if
+          # the base is unavailable, so safety holds regardless. Revert to 1 if clone slows.
+          fetch-depth: 0
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
@@ -57,3 +60,13 @@ jobs:
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: CI floor (.dag claim gate)
         run: cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+      # Rust gates (clippy + fmt), conditional on the diff touching the Rust monolith.
+      # WHICH gates run is decided by the v2.workflow.rust_stage0_gates `.dag` selector
+      # (path_is_rust_monolith), consulted per changed path by rust_gate_runner — the
+      # `.dag` is the authority, this binary is the realizer. The witness gate above is
+      # the always-on floor; this adds the two Rust-only dependents. A `.dag`-only diff
+      # selects neither. SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7).
+      - name: Rust gates (clippy/fmt on Rust-touching diffs)
+        run: |
+          git fetch --no-tags origin main 2>/dev/null || true
+          cargo run -p rust_gate_runner --release -- --source-root src/v2 --changed-paths-from-git --base origin/main
