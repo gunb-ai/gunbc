@@ -1,7 +1,7 @@
 //! Regression: v2 `parse` / `parse_module` must terminate under the v2 interpreter.
 //!
-//! Bisect authority: `validate_ingest_staging_stage_bisect.dag` (tokenize ok; parse hung on
-//! interpreted `fold_list`/`fold_list_right` recursion before native fast paths).
+//! Bisect authority: `validate_ingest_staging_stage_bisect.dag` — termination witnesses plus
+//! `witness_bisect_wave1_parse_module_add_correctness_holds` (binding fidelity + truncated RED).
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -75,6 +75,11 @@ fn interpreted_parse_bisect_tokenize_terminates() {
 #[test]
 fn interpreted_parse_bisect_parse_terminates() {
     assert_witness_terminates("bisect_parse_terminates", Duration::from_secs(60));
+}
+
+#[test]
+fn interpreted_parse_bisect_wave1_add_correctness_holds() {
+    assert_witness_terminates("witness_bisect_wave1_parse_module_add_correctness_holds", Duration::from_secs(90));
 }
 
 #[test]
