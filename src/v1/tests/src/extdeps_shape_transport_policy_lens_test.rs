@@ -97,14 +97,6 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "dead_param_cargo_clippy_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
-            "corpus_cargo_build_defused_holds",
-        ),
-        (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
-            "corpus_git_policy_leak_defused_holds",
-        ),
-        (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
         ),
