@@ -1,8 +1,9 @@
 // extdeps/llm/llm.dag — cross-provider LLM facts only.
 //
 // Provider-shaped types live in discrete homes:
-//   extdeps/llm/anthropic.dag      — Anthropic Messages API protocol
-//   extdeps/llm/anthropic_rest.dag — Anthropic REST transport
+//   extdeps/llm/anthropic.dag      — Anthropic protocol (types + wire contracts)
+//   extdeps/llm/anthropic_rest.dag — Anthropic handlers (REST Messages + CLI CliPrompt)
+//   extdeps/llm/cli.dag            — Codex / Gemini CLI only (Anthropic → anthropic_rest)
 //   extdeps/llm/openai.dag         — OpenAI protocol
 //   extdeps/llm/openai_rest.dag    — OpenAI REST transport
 //

@@ -1,16 +1,18 @@
-// extdeps/llm/cli.dag -- CLI LLM backends (shell transport)
+// extdeps/llm/cli.dag — non-Anthropic CLI LLM backends (shell transport).
 //
 // Spec: https://github.com/openai/codex (Codex CLI)
-// Spec: https://docs.anthropic.com/en/docs/claude-code (Claude CLI)
 // Spec: https://github.com/google-gemini/gemini-cli (Gemini CLI)
 //
-// Each CLI tool has different argument conventions but the same
-// fundamental pattern: prompt in, review text out. These are modeled
-// as separate services (not a unified interface) because the argument
-// shapes, auth mechanisms, and output formats differ.
+// Anthropic (Claude Code CLI) lives on `llm.Anthropic.CliPrompt` in
+// `anthropic_rest.dag` — one interface for REST + shell, not a forked `llm.Claude`.
+//
+// HONEST-MODELING DEBT (DESIGN.md §3, #5059 pattern): Gemini `CliPrompt` fuses
+// `--output-format text` and `--approval-mode plan` as argv literals. The grammar
+// supports `{var}` interpolation but not omitting flags when a value would disable
+// them — parameterize when conditional argv lands (A1 transport-shape de-fusion).
 //
 // Consumers:
-//   gunbc/tools/review.dag -- PR review workflow
+//   gunbc/tools/review_codex.dag — Codex CLI PR review workflow
 
 module extdeps.llm.cli
 
@@ -52,50 +54,12 @@ service llm.Codex {
   }
 }
 
-// -- Claude CLI -------------------------------------------------------
-//
-// Claude accepts prompt as a positional argument. Uses Anthropic auth
-// (ANTHROPIC_API_KEY env var). Plan mode prevents file modifications.
-
-service llm.Claude {
-  operation Review {
-    input {
-      prompt: String
-      model: String = "opus"
-      effort: String = "max"
-    }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell {
-      argv: [
-        "claude", "-p",
-        "--output-format", "text",
-        "--permission-mode", "plan",
-        "--model", "{model}",
-        "--effort", "{effort}",
-        "{prompt}"
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "Claude CLI failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "Code review complete.\n\nPR-COMMENT: Clean changes, no issues found.", stderr: "" } "Successful review"
-    }
-  }
-}
-
 // -- Gemini CLI -------------------------------------------------------
 //
 // Gemini accepts prompt as a positional argument. Uses Google auth.
-// Plan mode (approval-mode plan) prevents file modifications.
 
 service llm.Gemini {
-  operation Review {
+  operation CliPrompt {
     input {
       prompt: String
     }
@@ -116,7 +80,7 @@ service llm.Gemini {
       nonzero => String "Gemini CLI failed"
     }
     mock_response {
-      0 => { success: true, stdout: "Review summary.\n\nPR-COMMENT: Looks good.", stderr: "" } "Successful review"
+      0 => { success: true, stdout: "Review summary.\n\nPR-COMMENT: Looks good.", stderr: "" } "Successful CLI prompt"
     }
   }
 }

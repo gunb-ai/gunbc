@@ -1,7 +1,8 @@
-// extdeps/llm/anthropic_rest.dag — Anthropic Messages API REST transport.
+// extdeps/llm/anthropic_rest.dag — `llm.Anthropic` realization handlers (REST + Claude CLI).
 //
 // Protocol types and wire contracts live in `anthropic.dag` (`module extdeps.llm.anthropic`).
-// This file binds the REST handler only (DESIGN.md §3: one shape, N realization handlers).
+// One dependency interface (`llm.Anthropic`), multiple transports (DESIGN.md §3) — not a
+// forked `llm.Claude` service in `cli.dag`.
 
 module extdeps.llm.anthropic_rest
 
@@ -64,6 +65,41 @@ service llm.Anthropic {
       401 => { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } "Invalid API key",
       429 => { type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } } "Rate limited",
       529 => { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } "Server overloaded"
+    }
+  }
+
+  // Claude Code CLI — shell realization of the same Anthropic dependency.
+  // Spec: https://docs.anthropic.com/en/docs/claude-code
+  // Auth: ANTHROPIC_API_KEY (CLI reads env; not wired through service config).
+  operation CliPrompt {
+    input {
+      prompt: String
+      model: String = "opus"
+      effort: String = "max"
+      output_format: String = "text"
+      permission_mode: String = "plan"
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", "-p",
+        "--output-format", "{output_format}",
+        "--permission-mode", "{permission_mode}",
+        "--model", "{model}",
+        "--effort", "{effort}",
+        "{prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "Code review complete.\n\nPR-COMMENT: Clean changes, no issues found.", stderr: "" } "Successful CLI prompt"
     }
   }
 }

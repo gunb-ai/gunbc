@@ -1,6 +1,6 @@
 // extdeps/llm/anthropic.dag — Anthropic Messages API protocol (types + wire contracts).
 //
-// REST transport binding: `anthropic_rest.dag` (`module extdeps.llm.anthropic_rest`).
+// Handlers (REST + Claude CLI): `anthropic_rest.dag` (`module extdeps.llm.anthropic_rest`).
 // Cross-provider facts: `llm.dag` (`module extdeps.llm.llm`).
 // Error envelope: `anthropic_errors.dag`.
 //
