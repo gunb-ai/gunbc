@@ -1,5 +1,5 @@
 // Scope: ProbeSelector keystone claims — ONE select kernel + availability conditioning.
-// Host gate: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv) (v2_lens_ci, --perturb-check).
+// Host gate: the claim_batch host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv) (v2_lens_ci, --perturb-check).
 
 module v2.test.workflow.probe_selector_ci_runner
 
@@ -39,7 +39,7 @@ fn probe_selector_srv2_walkthrough_spine_holds() -> Bool {
   length(xs: selected) == 1
 }
 
-// ── probe-selector keystone claim-run gate authority (host: the ci-claim-gate host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv)) ──
+// ── probe-selector keystone claim-run gate authority (host: the claim_batch host (gate-3, rows-fn probe_selector_ci_runner_rows_tsv)) ──
 type ProbeSelectorKeystoneClaimRunRow {
   label: String
   entry: String

@@ -122,6 +122,7 @@ import v2.std.compilers.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetClosureShape,
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetPrimitiveApplyShape,
@@ -4269,6 +4270,15 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^dag_token_lparen,
       separator: ^dag_token_comma,
       close: ^dag_token_rparen
+    },
+    closure_form: TargetClosureShape {
+      fn_token: ^dag_token_kw_fn,
+      open: ^dag_token_lparen,
+      separator: ^dag_token_comma,
+      close: ^dag_token_rparen,
+      body_open: ^dag_token_lbrace,
+      body_close: ^dag_token_rbrace,
+      param_ident_token: ^dag_token_ident
     },
     effect_apply_form: TargetEffectApplyShape {
       callees: [],
