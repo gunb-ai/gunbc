@@ -14,7 +14,6 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.find_witness { preservation_rule_constraint_satisfaction }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.test.manual.infer_ground_add_mvp {
   fixture_add_resolved_node,
@@ -45,7 +44,7 @@ fn anchor_solve_constraints_add_mvp() -> Outcome<CanonicalGrounding> {
 data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add_mvp() {
   Accepted { value: g, diagnostics: d } =>
     (g.node == fixture_add_resolved_tree())
-      && (g.witness.structural.property == preservation_rule_constraint_satisfaction)
+      && (g.witness.structural.property == ^preservation_rule_constraint_satisfaction)
       && (g.witness.structural.evidence == fixture_add_resolved_tree())
       && (g.witness.closedness.property == ^constraint_property_candidate_set_closedness)
       && (d == None)

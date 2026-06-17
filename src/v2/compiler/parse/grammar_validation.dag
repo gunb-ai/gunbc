@@ -26,7 +26,6 @@ import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
   parse_skip_to_sync,
-  parse_stage_locus_port
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
@@ -196,7 +195,7 @@ data validation_two_token_list: List<Token> = Cons {
 
 
 fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>

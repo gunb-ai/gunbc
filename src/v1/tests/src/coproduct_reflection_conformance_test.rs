@@ -5,7 +5,7 @@ use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::coproduct_reflection;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
-use v1_compiler::v1_interpreter::{self, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -142,7 +142,8 @@ fn coproduct_reflection_connective_reflection_pairs_match_syntactic() {
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let connective = (None, Value::Str("Connective".to_string()));
     let node =
         coproduct_reflection::eval_resolve_type_node(&ctx, std::slice::from_ref(&connective))
@@ -183,7 +184,8 @@ fn coproduct_reflection_path3_pair_witness_fails_on_perturbed_atom_payload_type(
     let resolved = compile_to_resolved(Rc::new(cert_sources()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let connective = (None, Value::Str("Connective".to_string()));
     let node =
         coproduct_reflection::eval_resolve_type_node(&ctx, std::slice::from_ref(&connective))
@@ -232,7 +234,8 @@ fn coproduct_reflection_path3_witness_fails_on_dropped_disj_arm() {
         .graph
         .as_ref()
         .expect("graph after successful resolve");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone());
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let connective = (None, Value::Str("Connective".to_string()));
 
     let reflection_node =

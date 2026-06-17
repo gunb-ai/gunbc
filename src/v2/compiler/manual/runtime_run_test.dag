@@ -60,19 +60,17 @@ import v2.workflow.scheduler { RunnableFrontier }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.runtimes.v2_effect_io_pure { effect_io_pure_unit_type_node }
 
-data runtime_run_node_a_symbol: Symbol = runtime_run_node_a_symbol
-data runtime_run_node_b_symbol: Symbol = runtime_run_node_b_symbol
 
 // Two independent nodes — structurally distinct symbols, no dependencies, both runnable
 // from the initial frontier (mirrors scheduler_runnable_frontier identity pattern).
 data runtime_run_node_a: Node = Node {
-  kind: TypeNode { connective: Atom { identity: runtime_run_node_a_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^runtime_run_node_a_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data runtime_run_node_b: Node = Node {
-  kind: TypeNode { connective: Atom { identity: runtime_run_node_b_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^runtime_run_node_b_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

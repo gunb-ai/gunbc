@@ -27,8 +27,6 @@ import v2.std.find_witness {
   TargetDeclaredPriority,
   UniqueOnly,
   find_witness,
-  find_witness_reason_no_candidate,
-  preservation_rule_exact_structural_equality_zip_fold,
   verify_witness
 }
 import v2.std.node {
@@ -152,7 +150,7 @@ fn distinct_closedness() -> StructuralPropertyWitness {
 fn distinct_exact_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: distinct_source_add_node(),
-    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
 fn distinct_candidate_set() -> CandidateSet {
@@ -176,7 +174,7 @@ fn distinct_wrong_subtree_candidate_set() -> CandidateSet {
 fn distinct_nested_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: distinct_source_nested_node(),
-    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
 fn distinct_nested_candidate_set() -> CandidateSet {
@@ -187,14 +185,14 @@ fn distinct_nested_candidate_set() -> CandidateSet {
 }
 fn distinct_valid_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: preservation_rule_exact_structural_equality_zip_fold,
+    property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: distinct_target_add_node()
   }
 }
 fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_no_candidate
+    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
 fn quality_is_exact(q: CoercionQuality) -> Bool {

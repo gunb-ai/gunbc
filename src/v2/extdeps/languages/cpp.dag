@@ -5,6 +5,7 @@
 
 module v2.extdeps.languages.cpp
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
@@ -38,12 +39,9 @@ import v2.std.algebra {
   commutative_semiring_node,
   Empty,
   fold_list,
-  group_field_inverse,
   list_append,
   list_snoc_item,
   ordered_ring_node,
-  ring_field_add,
-  ring_field_mul
 }
 import v2.std.collection { List, Map, Set, empty_map, map_insert }
 import v2.std.model_core {
@@ -63,17 +61,6 @@ import v2.std.model_core {
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model {
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  serialize_source_field_source_grammar,
-  serialize_source_field_source_text,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules,
-  target_model_edge_serialize_source
-}
 import v2.extdeps.cpp_abi { CppTargetProfile }
 import v2.std.text { String }
 
@@ -920,17 +907,17 @@ fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       cpp_fail_closed_partial_operation(
-        operation: cpp_algebra_operation_node(operation: ring_field_add),
+        operation: cpp_algebra_operation_node(operation: ^ring_field_add),
         precondition: ^cpp_precondition_signed_integer_result_representable,
         reason: ^cpp_partial_signed_integer_result_not_representable
       ),
       cpp_fail_closed_partial_operation(
-        operation: cpp_algebra_operation_node(operation: ring_field_mul),
+        operation: cpp_algebra_operation_node(operation: ^ring_field_mul),
         precondition: ^cpp_precondition_signed_integer_result_representable,
         reason: ^cpp_partial_signed_integer_result_not_representable
       ),
       cpp_fail_closed_partial_operation(
-        operation: cpp_algebra_operation_node(operation: group_field_inverse),
+        operation: cpp_algebra_operation_node(operation: ^group_field_inverse),
         precondition: ^cpp_precondition_signed_integer_result_representable,
         reason: ^cpp_partial_signed_integer_result_not_representable
       )
@@ -1093,7 +1080,7 @@ fn cpp_mvp1_serialize_source_children() -> List<Edge> {
     ],
     right: [
       cpp_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: cpp_mvp1_concrete_tokens(),
           token_to_node: cpp_concrete_token_node
@@ -1189,10 +1176,10 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
-      cpp_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      cpp_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      cpp_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       cpp_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: cpp_concrete_token_node
@@ -1217,10 +1204,10 @@ fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: target_model_edge_selection_policy, target: cpp_mvp1_selection_policy_node(target_profile: target_profile)),
-      cpp_named_edge(name: target_model_edge_declared_inhabitants, target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)),
-      cpp_named_edge(name: target_model_edge_translation_rules, target: cpp_mvp1_translation_rules_node(target_profile: target_profile)),
-      cpp_named_edge(name: target_model_edge_serialize_source, target: cpp_mvp1_serialize_source_node())
+      cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_mvp1_selection_policy_node(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_mvp1_translation_rules_node(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_mvp1_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1252,7 +1239,8 @@ fn cpp_mvp1_target_model_for_profile(target_profile: Node) -> TargetModel {
     bundle: cpp_mvp1_target_model_node(target_profile: target_profile),
     lex: cpp_wave1_lex(),
     binding_spellings: cpp_mvp1_binding_spellings(),
-    authority_source_text: cpp_mvp1_source_text
+    authority_source_text: cpp_mvp1_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 

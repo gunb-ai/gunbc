@@ -53,7 +53,11 @@ fn witness() -> List<AnthropicChatMessage> {
     let resolved = compile_to_resolved(Rc::new(sources));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(graph, resolved.source_indices.clone(), false);
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
 
     let val = v1_interpreter::run_in_context(&ctx, "witness", false).expect("witness runs");
     let Value::List(items) = val else {

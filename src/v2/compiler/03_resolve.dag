@@ -63,8 +63,6 @@ import v2.std.node {
 type ResolvedTree = Node
 
 
-data resolve_reason_malformed_tree: Symbol = resolve_reason_malformed_tree
-data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 
 
 type Namespace {
@@ -265,7 +263,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
 
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: resolve_reason_malformed_tree,
+    reason: ^resolve_reason_malformed_tree,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -274,7 +272,7 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
 
 fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: resolve_reason_unbound_symbol,
+    reason: ^resolve_reason_unbound_symbol,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }

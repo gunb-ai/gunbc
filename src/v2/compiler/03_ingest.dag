@@ -29,8 +29,6 @@ import v2.std.collection {
 }
 import v2.std.grammar {
   ParseTree,
-  grammar_relation_field_emitted,
-  grammar_relation_field_tokens,
   node_atom_identity_optional
 }
 import v2.std.node_query { find_named_child }
@@ -41,7 +39,6 @@ import v2.std.compilers.target_model {
   FixedToken,
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
-  target_model_edge_translation_rules
 }
 import v2.compiler.compile { CoreNode }
 import v2.compiler.infer { infer }
@@ -72,8 +69,6 @@ import v2.std.diagnostic {
 // (signed design #4821, Option A: "select on FRONTIER, not the stamp"). No row whose production
 // token-spine matches the frontier -> fail closed; >1 such row -> the grammar is not
 // forward-deterministic at this frontier (G.2) -> fail closed.
-data parse_tree_to_emitted_node_no_matching_row: Symbol = ^parse_tree_to_emitted_node_no_matching_row
-data parse_tree_to_emitted_node_ambiguous_row: Symbol = ^parse_tree_to_emitted_node_ambiguous_row
 
 // ─────────────────────────────────────────────────────────────────────────────
 // F5 Option A (signed design #4821) — operational parse tree -> formal capture frontier.
@@ -148,7 +143,7 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbo
 
 fn row_token_spine_tokens(row: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       concrete_syntax_token_list_from_node(list_node: tokens_root)
     }
@@ -211,7 +206,7 @@ fn operational_parse_tree_project_to_formal_captures(
 // is what the frontier carries). Mirrors the wire-node decode `06_translate` serialize uses.
 fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: find_named_child(root: row, name: grammar_relation_field_tokens),
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       bind_outcome(
         o: concrete_syntax_token_list_from_node(list_node: tokens_root),
@@ -242,7 +237,7 @@ fn forward_row_select_step(acc: ForwardRowSelection, frontier: List<Symbol>, row
     Rejected { diagnostics: _ } => acc
     Accepted { value: spine, diagnostics: _ } =>
       if zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y }) {
-        match find_named_child(root: row, name: grammar_relation_field_emitted) {
+        match find_named_child(root: row, name: ^grammar_relation_field_emitted) {
           Rejected { diagnostics: _ } => acc
           Accepted { value: row_emitted, diagnostics: _ } =>
             match acc {
@@ -276,20 +271,20 @@ fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -
         ForwardRowOne { emitted: emitted } => outcome_accepted(value: emitted)
         ForwardRowMany =>
           outcome_rejected(d: Diagnostic {
-            reason: parse_tree_to_emitted_node_ambiguous_row,
+            reason: ^parse_tree_to_emitted_node_ambiguous_row,
             at: node_locus(node: rules),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
         ForwardRowNone =>
           outcome_rejected(d: Diagnostic {
-            reason: parse_tree_to_emitted_node_no_matching_row,
+            reason: ^parse_tree_to_emitted_node_no_matching_row,
             at: node_locus(node: rules),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
     _ =>
       outcome_rejected(d: Diagnostic {
-        reason: parse_tree_to_emitted_node_no_matching_row,
+        reason: ^parse_tree_to_emitted_node_no_matching_row,
         at: node_locus(node: rules),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
@@ -315,7 +310,7 @@ fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -
 // the signed design, build-from-captures applies only where the source carries the slot tokens.
 fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
   bind_outcome(
-    o: target_bundle_child(target: source_model, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       let binding_to_class = grammar_relation_binding_to_token_class_map(rules: rules)
       let frontier = operational_parse_tree_project_to_formal_captures(

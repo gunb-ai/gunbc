@@ -19,12 +19,6 @@ import v2.std.algebra {
   MissingMeet,
   MissingLatticeField,
   NotBoundedLatticeInstance,
-  bounded_lattice_field_bottom,
-  bounded_lattice_field_lattice,
-  bounded_lattice_field_top,
-  inhabitant_edge,
-  lattice_field_join,
-  lattice_field_meet,
   length
 }
 import v2.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
@@ -67,8 +61,8 @@ fn anchor_complete_lattice_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      anchor_named_edge(name: lattice_field_meet, target: anchor_fn_node()),
-      anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
+      anchor_named_edge(name: ^lattice_field_meet, target: anchor_fn_node()),
+      anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -79,7 +73,7 @@ fn anchor_lattice_missing_meet_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
+      anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -89,9 +83,9 @@ fn anchor_lattice_missing_meet_node() -> Node {
 data anchor_complete_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    anchor_named_edge(name: ^bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
+    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -100,9 +94,9 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
 data anchor_partial_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    anchor_named_edge(name: ^bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
+    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -111,8 +105,8 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
 data anchor_partial_missing_lattice_field_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
+    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -122,7 +116,7 @@ data anchor_consumer_of_partial: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(
-      name: inhabitant_edge,
+      name: ^inhabitant_edge,
       target: anchor_partial_bounded_lattice_instance
     )
   ],

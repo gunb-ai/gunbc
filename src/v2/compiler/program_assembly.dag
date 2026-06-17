@@ -1,0 +1,161 @@
+// src/v2/compiler/program_assembly.dag
+// Scope: Stage C Lane 3 — whole source-root ingest → module roots → admitted resolved program.
+//   Wires v2.compiler.source_authority.SourceRootIngest (the source-file enumeration
+//   authority, sibling to discovery_enumeration.dag's owned-decl enumeration) through
+//   validate_module_roots + resolve_with_admission so the compile pipeline ingests MANY
+//   DagSourceReadWitness rows, not a single Source string.
+// Status: producing fold landed — module_roots_from_source_root_ingest +
+//   assemble_program_from_module_roots / assemble_program_from_ingest;
+//   compile_source_root_ingest_with_admission in 00_compile.dag.
+// Anchor: stage C multi-file ingestion (merry-crab-687 Lane 3).
+
+module v2.compiler.program_assembly
+
+import v2.compiler.name_resolve {
+  Admission,
+  resolve_with_admission,
+  validate_module_roots
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_authority_diagnostic,
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { DagLanguageModel }
+import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
+import v2.std.artifact { SourceFile }
+import v2.std.diagnostic {
+  Accepted,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node }
+
+
+type ProgramAssemblyFoldState
+  = ProgramAssemblyFoldOk {
+      roots: FreeMonoid<Node>
+    }
+  | ProgramAssemblyFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+
+
+fn program_assembly_empty_roots() -> FreeMonoid<Node> {
+  Empty
+}
+
+
+fn program_assembly_read_to_normalized_root(
+  read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> Outcome<Node> {
+  match read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: read.source,
+          file: read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module(tokens: token_stream, grammar: lm.grammar),
+            f: fn(artifact) {
+              normalize(parse_tree: artifact.tree)
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
+      )
+  }
+}
+
+
+fn program_assembly_fold_step(
+  state: ProgramAssemblyFoldState,
+  read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> ProgramAssemblyFoldState {
+  match state {
+    ProgramAssemblyFoldFailed { diagnostics: d } =>
+      ProgramAssemblyFoldFailed { diagnostics: d }
+    ProgramAssemblyFoldOk { roots: acc } =>
+      match program_assembly_read_to_normalized_root(read: read, lm: lm) {
+        Accepted { value: root, diagnostics: _ } =>
+          ProgramAssemblyFoldOk {
+            roots: list_snoc_item(xs: acc, item: root)
+          }
+        Rejected { diagnostics: d } =>
+          ProgramAssemblyFoldFailed { diagnostics: d }
+      }
+  }
+}
+
+
+// Whole-ingest fold: per-read tokenize → parse_module → normalize; first Rejected short-circuits.
+fn module_roots_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: DagLanguageModel
+) -> Outcome<FreeMonoid<Node>> {
+  match fold_list(
+    xs: ingest,
+    empty: ProgramAssemblyFoldOk { roots: program_assembly_empty_roots() },
+    cons: fn(state, read) {
+      program_assembly_fold_step(state: state, read: read, lm: lm)
+    }
+  ) {
+    ProgramAssemblyFoldOk { roots: roots } =>
+      outcome_accepted(value: roots)
+    ProgramAssemblyFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
+// Validated module roots + cross-file admission → single resolved program CoreNode.
+fn assemble_program_from_module_roots(
+  roots: FreeMonoid<Node>,
+  admission: Admission,
+  lm: DagLanguageModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: validate_module_roots(roots: roots),
+    f: fn(validated_roots) {
+      resolve_with_admission(
+        lm: lm,
+        roots: validated_roots,
+        admission: admission
+      )
+    }
+  )
+}
+
+
+// Program assembly: whole ingest monoid → validated roots → admitted resolved program.
+fn assemble_program_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: DagLanguageModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
+    f: fn(roots) {
+      assemble_program_from_module_roots(
+        roots: roots,
+        admission: admission,
+        lm: lm
+      )
+    }
+  )
+}

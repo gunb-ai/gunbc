@@ -3,6 +3,7 @@
 
 module v2.test.manual.comprep_value_expression_fold_typescript
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.body_producer {
   produce_mvp1_add_arrow_with_body,
   produce_mvp1_add_arrow_with_body_swapped_operands
@@ -50,19 +51,12 @@ import v2.std.compilers.target_model {
   TargetModel,
   canonical_operation_op_add,
   concrete_syntax_token_list_to_node,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_operator_realizations,
-  target_model_edge_selection_policy,
-  target_model_edge_serialize_source,
-  target_model_edge_translation_rules,
-  target_model_edge_value_expression_projection,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   target_project_arrow_body_to_value_expression,
   target_value_expression_projection_from_target,
   target_value_expression_tokens_from_target,
-  value_expr_projection_bundle_node
-}
+  value_expr_projection_bundle_node}
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -93,29 +87,29 @@ fn comprep_fold_target_model_bundle(operator_catalog: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       comprep_fold_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: ts_mvp1_selection_policy_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: ts_mvp1_declared_inhabitants_root()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: ts_mvp1_translation_rules_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: ts_mvp1_serialize_source_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_value_expression_projection,
+        name: ^target_model_edge_value_expression_projection,
         target: value_expr_projection_bundle_node(
           projection: ts_value_expression_projection()
         )
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_operator_realizations,
+        name: ^target_model_edge_operator_realizations,
         target: operator_catalog
       )
     ]
@@ -129,7 +123,8 @@ fn comprep_fold_target_model_minus_catalog() -> TargetModel {
     ),
     lex: ts_wave1_lex_rules(),
     binding_spellings: ts_mvp1_binding_spellings(),
-    authority_source_text: ts_mvp1_source_text_authority()
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -140,7 +135,8 @@ fn comprep_fold_target_model_missing_operator_catalog() -> TargetModel {
     ),
     lex: ts_wave1_lex_rules(),
     binding_spellings: ts_mvp1_binding_spellings(),
-    authority_source_text: ts_mvp1_source_text_authority()
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
