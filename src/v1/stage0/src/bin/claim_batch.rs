@@ -48,10 +48,17 @@
 //!    `ci_claim_gate` carried was flag-gated (`--perturb-check`) and never run
 //!    in CI, so it is intentionally dropped with that binary.
 //!
+//! 4. **Discovery + explicit append** (consolidated CI floor witnesses):
+//!    `--roster-from-discovery` may be combined with explicit `--entry`/
+//!    `--function` rows. Discovered rows run first; explicit rows are appended
+//!    with (entry, function) dedup. `--scan-dir` is optional when explicit rows
+//!    are given (the `test fn` walk still runs over all `--source-root`s).
+//!
 //! Usage (discovery — the CI floor shape):
 //!   claim_batch --source-root <dir> [--source-root <dir> ...] \
 //!               --roster-from-discovery \
-//!               --scan-dir <dir> [--scan-dir <dir> ...] \
+//!               [--scan-dir <dir> ...] \
+//!               [--entry <file.dag> --function <fn> ...] \
 //!               [--notice-title <title>] [--wet] [--hermetic]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
@@ -484,14 +491,10 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     }
 
     let discovery = if roster_from_discovery {
-        if !entry_groups.is_empty() {
+        if scan_dirs.is_empty() && entry_groups.is_empty() {
             eprintln!(
-                "claim_batch: --roster-from-discovery is exclusive with --entry/--function/--functions"
+                "claim_batch: --roster-from-discovery requires at least one --scan-dir and/or explicit --entry row"
             );
-            return Err(ExitCode::from(2));
-        }
-        if scan_dirs.is_empty() {
-            eprintln!("claim_batch: --roster-from-discovery requires at least one --scan-dir");
             return Err(ExitCode::from(2));
         }
         Some(DiscoveryConfig {
@@ -694,8 +697,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    // Discovery mode: reflect over the scan dirs for the roster, group by entry,
-    // and run through the SAME batch loop the explicit path uses.
+    // Discovery mode: reflect over the scan dirs for the roster, optionally append
+    // explicit `--entry` rows, group by entry, and run through the SAME batch
+    // loop the explicit-only path uses.
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
         // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
@@ -704,17 +708,37 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let rows = match discover_roster(&source_roots, &disc.scan_dirs) {
+        let mut rows = match discover_roster(&source_roots, &disc.scan_dirs) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("claim_batch: discovery roster failed: {e}");
                 return Err(ExitCode::from(2));
             }
         };
+        let mut seen: std::collections::BTreeSet<(String, String)> = rows
+            .iter()
+            .map(|r| (r.entry.clone(), r.function.clone()))
+            .collect();
+        for group in &parsed.entry_groups {
+            for function in &group.functions {
+                if seen.insert((group.entry.clone(), function.clone())) {
+                    rows.push(GateRow {
+                        label: function.clone(),
+                        entry: group.entry.clone(),
+                        function: function.clone(),
+                    });
+                }
+            }
+        }
         if rows.is_empty() {
             eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
             return Err(ExitCode::from(2));
         }
+        rows.sort_by(|a, b| {
+            a.entry
+                .cmp(&b.entry)
+                .then_with(|| a.function.cmp(&b.function))
+        });
         (group_discovered_rows(rows), Some(disc.notice_title))
     } else {
         (parsed.entry_groups, None)
