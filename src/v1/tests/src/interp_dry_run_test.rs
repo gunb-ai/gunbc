@@ -124,15 +124,17 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
     ensure_claim_batch_built();
     let root = hermetic_witness_temp_root();
     fs::create_dir_all(&root).expect("temp source root");
-    fs::write(root.join("hermetic_witness.dag"), HERMETIC_WITNESS_DAG).expect("write witness");
+    let dag_path = root.join("hermetic_witness.dag");
+    fs::write(&dag_path, HERMETIC_WITNESS_DAG).expect("write witness");
 
     let root_s = root.to_string_lossy();
+    let entry_s = dag_path.to_string_lossy();
     let wet = {
         let mut cmd = Command::new(claim_batch_exe());
         cmd.arg("--source-root")
             .arg(root_s.as_ref())
             .arg("--entry")
-            .arg("hermetic_witness.dag")
+            .arg(entry_s.as_ref())
             .arg("--function")
             .arg("hermetic_witness_holds");
         cmd.output().expect("claim_batch wet (default)")
@@ -148,7 +150,7 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
         cmd.arg("--source-root")
             .arg(root_s.as_ref())
             .arg("--entry")
-            .arg("hermetic_witness.dag")
+            .arg(entry_s.as_ref())
             .arg("--function")
             .arg("hermetic_witness_holds")
             .arg("--hermetic");
