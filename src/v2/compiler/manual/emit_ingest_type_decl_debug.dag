@@ -1,0 +1,125 @@
+module v2.test.manual.emit_ingest_type_decl_debug
+
+import v2.compiler.translate { grammar_relation_row_for_emitted, serialize_concrete_syntax_tokens_to_source, grammar_relation_row_tokens_root }
+import v2.extdeps.languages.dag {
+  dag_inhabitant_atom,
+  dag_type_decl_productions_only_translation_rules,
+  dag_type_decl_structural_target_model
+}
+import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+
+fn type_decl_qualified_name_emitted(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: name) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_type_expr_emitted(type_name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: type_decl_qualified_name_emitted(name: type_name)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_field_list_suffix_empty() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_two_field_list_emitted(
+  f1: Symbol,
+  t1: Symbol,
+  f2: Symbol,
+  t2: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: f1) },
+      Edge { label: Positional, target: type_decl_type_expr_emitted(type_name: t1) },
+      Edge { label: Positional, target: dag_inhabitant_atom(id: f2) },
+      Edge { label: Positional, target: type_decl_type_expr_emitted(type_name: t2) },
+      Edge { label: Positional, target: type_decl_field_list_suffix_empty() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_field_block_emitted(fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: fields }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_record_emitted(name: Symbol, fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: dag_inhabitant_atom(id: name) },
+      Edge { label: Positional, target: type_decl_field_block_emitted(fields: fields) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_decl_point_emitted() -> Node {
+  type_decl_record_emitted(
+    name: ^Point,
+    fields: type_decl_two_field_list_emitted(f1: ^x, t1: ^Int, f2: ^y, t2: ^Int)
+  )
+}
+
+test fn type_decl_full_row_derive_accepts_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: dag_type_decl_productions_only_translation_rules(),
+    emitted: type_decl_point_emitted()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn type_decl_emit_text_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: dag_type_decl_productions_only_translation_rules(),
+    emitted: type_decl_point_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      match grammar_relation_row_tokens_root(row: row) {
+        Accepted { value: tokens_root, diagnostics: _ } =>
+          match concrete_syntax_token_list_from_node(list_node: tokens_root) {
+            Accepted { value: tokens, diagnostics: _ } =>
+              match serialize_concrete_syntax_tokens_to_source(
+                target: dag_type_decl_structural_target_model(),
+                tokens: tokens
+              ) {
+                Accepted { value: text, diagnostics: _ } => text == "type Point { x: Int, y: Int }"
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
