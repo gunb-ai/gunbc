@@ -11,40 +11,13 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{read_v2_file, resolve_imports_transitively, workspace_root};
 
-fn cargo_binary() -> &'static str {
-    if std::path::Path::new("/opt/cargo/bin/cargo").exists() {
-        "/opt/cargo/bin/cargo"
-    } else {
-        "cargo"
-    }
-}
-
 fn claim_batch_exe() -> std::path::PathBuf {
-    workspace_root().join("target/debug/claim_batch")
-}
-
-fn ensure_claim_batch_built() {
-    let exe = claim_batch_exe();
-    if exe.exists() {
-        return;
+    let ws = workspace_root();
+    let release = ws.join("target/release/claim_batch");
+    if release.is_file() {
+        return release;
     }
-    let output = Command::new(cargo_binary())
-        .args([
-            "build",
-            "-p",
-            "v1-compiler",
-            "--bin",
-            "claim_batch",
-            "--quiet",
-        ])
-        .current_dir(workspace_root())
-        .output()
-        .expect("spawn cargo build claim_batch");
-    assert!(
-        output.status.success(),
-        "failed to build claim_batch: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    ws.join("target/debug/claim_batch")
 }
 
 fn hermetic_witness_temp_root() -> std::path::PathBuf {
@@ -121,7 +94,12 @@ fn run_subcommand_wires_cli_dry_run_flag() {
 
 #[test]
 fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
-    ensure_claim_batch_built();
+    let exe = claim_batch_exe();
+    assert!(
+        exe.is_file(),
+        "claim_batch binary missing at {}; build with `cargo build -p v1-compiler --bin claim_batch`",
+        exe.display()
+    );
     let root = hermetic_witness_temp_root();
     fs::create_dir_all(&root).expect("temp source root");
     let dag_path = root.join("hermetic_witness.dag");
@@ -130,7 +108,7 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
     let root_s = root.to_string_lossy();
     let entry_s = dag_path.to_string_lossy();
     let wet = {
-        let mut cmd = Command::new(claim_batch_exe());
+        let mut cmd = Command::new(&exe);
         cmd.arg("--source-root")
             .arg(root_s.as_ref())
             .arg("--entry")
@@ -146,7 +124,7 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
     );
 
     let hermetic = {
-        let mut cmd = Command::new(claim_batch_exe());
+        let mut cmd = Command::new(&exe);
         cmd.arg("--source-root")
             .arg(root_s.as_ref())
             .arg("--entry")

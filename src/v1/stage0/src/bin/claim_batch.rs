@@ -408,7 +408,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut notice_title = "v2 CI claim gate".to_string();
     // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
     // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
-    let mut wet = true;
+    let mut execution_mode = ExecutionMode::Wet;
 
     let mut i = 1;
     while i < args.len() {
@@ -464,8 +464,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             // Accepted for call-site parity with `gunbc run`; this bin is always
             // claim-run (Bool witnesses).
             "--claim-run" => {}
-            "--wet" => wet = true,
-            "--hermetic" => wet = false,
+            "--wet" => execution_mode = ExecutionMode::Wet,
+            "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -497,7 +497,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         source_roots,
         entry_groups,
         discovery,
-        wet,
+        execution_mode,
     })
 }
 
@@ -656,11 +656,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
     let source_roots = parsed.source_roots;
-    let execution_mode = if parsed.wet {
-        ExecutionMode::Wet
-    } else {
-        ExecutionMode::Hermetic
-    };
+    let execution_mode = parsed.execution_mode;
 
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
