@@ -1,76 +1,178 @@
 // src/v2/lens/synthesis/family_corpus.dag
 //
-// Scope: synthesis-lens compiler-wide subject roster — the synthesis lens
-//        (lens/synthesis.dag) read over REAL compiler-produced I/O relations,
-//        not only synthetic Node fixtures. Each verdict is a discriminating
-//        Bool: the gate (workflow/lens_synthesis_family_eval_test.dag) folds
-//        them fail-closed.
+// Scope: synthesis-lens compiler-wide ADVISORY subject roster — the synthesis lens
+//        (lens/synthesis.dag) read over the REAL compiler I/O relations of the COMPREP
+//        wave-1 corpus (add / bind / branch / loop), each with a declared
+//        LowerBoundTechnique, surfacing optimality-gap advisory Reports. Distinct from
+//        synthetic Node fixtures: these are real arrows produced by the actual pipeline
+//        (tokenize→parse→normalize→resolve→body), reused from the complexity_gate
+//        subject producers (single subject-supply authority — no second pipeline path).
 //
-// Subjects:
-//   A (real): the source-bridged `add` body — tokenize→parse→normalize→resolve→body,
-//             reused from the complexity_gate producer (single subject-supply authority,
-//             no second pipeline path). Constant realization cost is OPTIMAL against the
-//             DecisionTree Θ(n log n) lower bound → no optimality gap (empty reports).
-//   B (real): the same `add` body under InformationTheoretic — a sub-linear realization
-//             has no lower-bound comparison for that technique → SynthesisNoTechnique
-//             diagnostic (honest no-engine channel, not a fabricated gap).
-//   C (synthetic control): the polynomial gap node (reused from synthesis_gap_polynomial.dag,
-//             single authority) whose realization EXCEEDS the DecisionTree lower bound →
-//             the gap FIRES (non-empty reports). Proves the lens is not vacuously green.
+// Posture (confirmed by jolly-bear-882, 2026-06-17): ADVISORY only. Synthesis stays on
+// the AdvisoryLens/Report carrier, never CompileLens — feedback_no_engine (synthesis.dag:6-9)
+// forbids constructing the faster program, and an existence-style lower bound yields no
+// constructive patch, so a diagnose-only optimality HARD gate would violate DESIGN §5
+// (correct ≠ optimal). Hard-gate-with-patch is operator-pending. LowerBoundTechnique is a
+// closed 5-set; STOP-and-escalate before a 6th.
+//
+// Advisory result today: every wave-1 body is CONSTANT cost, hence OPTIMAL against the
+// DecisionTree Θ(n log n) lower bound → the corpus surfaces ZERO gaps (no false positives).
+// The synthetic polynomial control (reused from synthesis_gap_polynomial.dag) proves the
+// lens is not vacuously green — its realization EXCEEDS the bound, so the gap FIRES.
+// A real relation with a provable gap would be fabrication (feedback_no_engine), so the
+// firing control stays synthetic by design.
 
 module v2.test.lens_synthesis.family_corpus
 
 import v2.lens.synthesis {
   DecisionTree,
   InformationTheoretic,
+  LowerBoundTechnique,
   synthesis_lens,
   synthesis_lens_diagnostics
 }
-import v2.std.algebra { is_empty, non_empty }
+import v2.std.algebra { Empty, fold_list, is_empty, non_empty }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
-import v2.test.complexity_gate.lens_subject_body_supply {
-  lens_subject_arrow_body_for_budget_row
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.report { Report }
+import v2.test.complexity_gate.comprep_wave1_add_subject_producer {
+  comprep_source_bridged_add_arrow_with_body
 }
-import v2.test.complexity_gate.subject_complexity_budget_roster {
-  complexity_budget_row_comprep_source_bridged_add
+import v2.test.complexity_gate.comprep_wave1_bind_subject_producer {
+  comprep_source_bridged_bind_arrow_with_body
+}
+import v2.test.complexity_gate.comprep_wave1_branch_subject_producer {
+  comprep_source_bridged_pick_if_arrow_with_body
+}
+import v2.test.complexity_gate.comprep_wave1_loop_subject_producer {
+  comprep_source_bridged_loop_arrow_with_body
 }
 import v2.test.lens_synthesis.synthesis_gap_polynomial {
   synthesis_gap_poly_input
 }
 
-// Acquire the real source-bridged `add` body and apply a structural check; a producer
-// failure is a fail-closed false (the gate must not pass on an unavailable subject).
-fn source_bridged_add_body_verdict(check: fn(Node) -> Bool) -> Bool {
-  match lens_subject_arrow_body_for_budget_row(row: complexity_budget_row_comprep_source_bridged_add) {
-    Accepted { value: body, diagnostics: _ } => check(body)
+// Extract the arrow's body (the lens subject) from a produced arrow, threading producer
+// failure through. The producer is invoked at row-construction (pure) — the row stores the
+// acquired body Outcome, not a fn handle (zero-arg fn-field invocation is not v2 surface).
+fn acquire_arrow_body(arrow_outcome: Outcome<Node>) -> Outcome<Node> {
+  match arrow_outcome {
+    Accepted { value: arrow, diagnostics: _ } => find_arrow_body_child(root: arrow)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+// 🟢 product — a real compiler I/O relation (its acquired arrow body) paired with the
+// lower-bound technique its declared relation class is subject to. The bound itself is
+// DERIVED inside synthesis_lens (decision_tree_declared_bound /
+// information_theoretic_declared_bound) — the row carries only what the caller DECLARES
+// (the technique), never a duplicate bound (single authority).
+type SynthesisSubjectRow {
+  body: Outcome<Node>
+  declared_technique: LowerBoundTechnique
+}
+
+data synthesis_subject_row_add: SynthesisSubjectRow = SynthesisSubjectRow {
+  body: acquire_arrow_body(arrow_outcome: comprep_source_bridged_add_arrow_with_body()),
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_bind: SynthesisSubjectRow = SynthesisSubjectRow {
+  body: acquire_arrow_body(arrow_outcome: comprep_source_bridged_bind_arrow_with_body()),
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_branch: SynthesisSubjectRow = SynthesisSubjectRow {
+  body: acquire_arrow_body(arrow_outcome: comprep_source_bridged_pick_if_arrow_with_body()),
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_loop: SynthesisSubjectRow = SynthesisSubjectRow {
+  body: acquire_arrow_body(arrow_outcome: comprep_source_bridged_loop_arrow_with_body()),
+  declared_technique: DecisionTree
+}
+
+// COMPREP wave-1 corpus — the real subjects the synthesis lens reads compiler-wide.
+data synthesis_real_subject_rows: List<SynthesisSubjectRow> = [
+  synthesis_subject_row_add,
+  synthesis_subject_row_bind,
+  synthesis_subject_row_branch,
+  synthesis_subject_row_loop
+]
+
+// The row's acquired arrow body (the lens subject), produced through the real pipeline.
+fn synthesis_row_body(row: SynthesisSubjectRow) -> Outcome<Node> {
+  row.body
+}
+
+// True iff the row's body is acquirable (the real pipeline produced a subject). The gate
+// requires this for every row — a broken pipeline is fail-closed RED, not a silent pass.
+fn synthesis_row_acquired(row: SynthesisSubjectRow) -> Bool {
+  match synthesis_row_body(row: row) {
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-// Subject A (real): constant `add` is OPTIMAL vs the DecisionTree Θ(n log n) lower bound → no gap.
-fn add_decision_tree_optimal() -> Bool {
-  source_bridged_add_body_verdict(check: fn(body) {
-    is_empty(xs: synthesis_lens(n: body, declared_technique: DecisionTree))
-  })
+fn synthesis_real_rows_all_acquired() -> Bool {
+  fold_list(
+    xs: synthesis_real_subject_rows,
+    empty: true,
+    cons: fn(acc, row) {
+      match acc {
+        true => synthesis_row_acquired(row: row)
+        false => false
+      }
+    }
+  )
 }
 
-// Subject B (real): InformationTheoretic over a sub-linear realization → no-technique diagnostic.
-fn add_information_theoretic_no_technique() -> Bool {
-  source_bridged_add_body_verdict(check: fn(body) {
-    non_empty(synthesis_lens_diagnostics(n: body, declared_technique: InformationTheoretic))
-  })
+// Advisory Reports the synthesis lens surfaces for one real subject under its declared
+// technique. An unacquirable body contributes no reports (acquisition is gated separately
+// by synthesis_real_rows_all_acquired — fail-closed there, not here).
+fn synthesis_row_reports(row: SynthesisSubjectRow) -> List<Report> {
+  match synthesis_row_body(row: row) {
+    Accepted { value: body, diagnostics: _ } =>
+      synthesis_lens(n: body, declared_technique: row.declared_technique)
+    Rejected { diagnostics: _ } => Empty
+  }
 }
 
-// Subject C (synthetic control): polynomial realization EXCEEDS the DecisionTree lower bound → gap fires.
-fn polynomial_gap_fires() -> Bool {
+// THE advisory artifact: every optimality-gap Report across the real wave-1 corpus.
+fn synthesis_corpus_reports() -> List<Report> {
+  fold_list(
+    xs: synthesis_real_subject_rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      concat(acc, synthesis_row_reports(row: row))
+    }
+  )
+}
+
+// Real corpus is OPTIMAL: bodies acquire AND no gap fires (no false positives compiler-wide).
+fn synthesis_real_corpus_optimal() -> Bool {
+  synthesis_real_rows_all_acquired() && is_empty(xs: synthesis_corpus_reports())
+}
+
+// InformationTheoretic over a real (sub-linear) subject routes through the honest no-engine
+// diagnostic channel — SynthesisNoTechnique, never a fabricated gap.
+fn synthesis_real_information_theoretic_no_technique() -> Bool {
+  match synthesis_row_body(row: synthesis_subject_row_add) {
+    Accepted { value: body, diagnostics: _ } =>
+      non_empty(synthesis_lens_diagnostics(n: body, declared_technique: InformationTheoretic))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Synthetic control: a realization that EXCEEDS the DecisionTree lower bound → gap FIRES.
+fn synthesis_synthetic_gap_fires() -> Bool {
   non_empty(synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree))
 }
 
 data lens_synthesis_family_verdicts: List<Bool> = [
-  add_decision_tree_optimal(),
-  add_information_theoretic_no_technique(),
-  polynomial_gap_fires()
+  synthesis_real_corpus_optimal(),
+  synthesis_real_information_theoretic_no_technique(),
+  synthesis_synthetic_gap_fires()
 ]
