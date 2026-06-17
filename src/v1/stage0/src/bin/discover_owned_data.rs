@@ -52,6 +52,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         "glob_discovery.dag".to_string(),
         "glob_discovery_law.dag".to_string(),
         "host_discovered_owned_data_manifest.dag".to_string(),
+        "host_source_root_ingest_manifest.dag".to_string(),
         "unified_test_claim_substrate_equivalence.dag".to_string(),
     ];
     let mut format = "json".to_string();

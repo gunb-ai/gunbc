@@ -10,6 +10,7 @@ type Gate
   | LayeringImportsGate
   | DslCompileCleanGate
   | CiYamlGate
+  | SourceRootIngestGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -25,14 +26,12 @@ type CiSpec {
   notice_title: String
 }
 
-// Single authority for CI witness layer roots (§3 — replaces triple-fork in ci.yml / transport scripts).
+// Single authority for CI witness layer roots (§3 — replaces the former triple-fork across
+// ci.yml / the transport scripts / a hand-listed witness_entries). Discovery walks these roots
+// WHOLE (no --scan-dir narrowing): `claim_batch --roster-from-discovery` finds every
+// unified_claim_* / *_test.dag witness in the closure, so adding a witness needs no edit here —
+// that is the anti-rot point (reference-by-path dissolved to discovery-by-predicate).
 data witness_layer_roots: List<String> = ["src/v2", "dsl"]
-
-// Narrow discovery scan dirs for unified_claim_* markers (not whole layer trees).
-data witness_discovery_scan_dirs: List<String> = [
-  "dsl/test/claim",
-  "src/v2/test/claim/layering_imports"
-]
 
 // 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
 // dissolve-on-arrival: generic Symbol→inhabitant replaces this exhaustive match roster.
@@ -47,7 +46,8 @@ data gunbc_ci_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   DslCompileCleanGate,
-  CiYamlGate
+  CiYamlGate,
+  SourceRootIngestGate
 ]
 
 data gunbc_ci_spec: CiSpec = {
@@ -78,10 +78,8 @@ fn witness_layer_source_flags(roots: List<String>) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
 }
 
-fn witness_layer_scan_flags() -> String {
-  fold(witness_discovery_scan_dirs, init: "", f: (acc, d) => concat(acc, concat(" --scan-dir ", d)))
-}
-
+// Shared by dsl/tools/layering_imports_transport.dag so the transport reads the SAME
+// witness_layer_roots authority instead of re-forking the src/v2 + dsl pair (§3).
 fn witness_layer_source_shell_flags(roots: List<String>) -> String {
   witness_layer_source_flags(roots: roots)
 }
@@ -89,14 +87,8 @@ fn witness_layer_source_shell_flags(roots: List<String>) -> String {
 fn claim_batch_script(spec: CiSpec) -> String {
   concat(
     concat(
-      concat(
-        concat(
-          concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
-          witness_layer_scan_flags()
-        ),
-        " --roster-from-discovery"
-      ),
-      ""
+      concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_layer_source_flags(roots: witness_layer_roots)),
+      " --roster-from-discovery"
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")
   )
