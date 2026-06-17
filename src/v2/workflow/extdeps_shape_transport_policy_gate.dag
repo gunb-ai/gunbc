@@ -68,7 +68,7 @@ data row_corpus_cargo_clippy_dead_param: ExtdepsShapeTransportPolicyClaimRunRow 
 data row_corpus_gcp_login_dead_param: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
   label: "extdeps_shape_transport_policy/corpus/gcp_login_dead_param",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
-  function: "corpus_gcp_login_dead_param_is_red_holds"
+  function: "corpus_gcp_login_dead_param_defused_holds"
 }
 
 data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {

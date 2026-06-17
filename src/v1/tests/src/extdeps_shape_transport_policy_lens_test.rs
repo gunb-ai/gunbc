@@ -52,15 +52,6 @@ fn extdeps_argv_projection_catches_main_seam_a_sites() {
     let root = workspace_root();
     assert!(
         extdeps_shape_transport_policy_project::dead_param_count_for_operation(
-            root.join("dsl/extdeps/cloud/gcp/gcp.dag")
-                .to_string_lossy()
-                .into_owned(),
-            "gcloud.Auth".to_string(),
-            "Login".to_string(),
-        ) == 1
-    );
-    assert!(
-        extdeps_shape_transport_policy_project::dead_param_count_for_operation(
             root.join("dsl/extdeps/rust/cargo_build.dag")
                 .to_string_lossy()
                 .into_owned(),
@@ -110,7 +101,7 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
-            "corpus_gcp_login_dead_param_is_red_holds",
+            "corpus_gcp_login_dead_param_defused_holds",
         ),
     ] {
         assert_witness_true(entry, witness_fn);

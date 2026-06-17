@@ -46,6 +46,13 @@ data receipt_clean_gist_create: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsS
   function: "clean_gist_create_is_green_holds"
 }
 
+data receipt_gist_create_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gist create de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
+  function: "corpus_gist_create_defused_holds"
+}
+
 data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit gcp oauth fusion",
   violation_kind: violation_kind_transport_fusion,
@@ -58,13 +65,6 @@ data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = Ex
   violation_kind: violation_kind_transport_fusion,
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
   function: "corpus_gcp_oauth_defused_holds"
-}
-
-data receipt_gist_create_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus gist create de-fused (regression guard)",
-  violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
-  function: "corpus_gist_create_defused_holds"
 }
 
 data receipt_dead_param_cargo_build_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
@@ -96,19 +96,19 @@ data receipt_dead_param_cargo_clippy_corpus: ExtdepsShapeTransportPolicyReceiptR
 }
 
 data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus gcp login dead param",
+  label: "corpus gcp login dead param de-fused (regression guard)",
   violation_kind: violation_kind_dead_param,
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
-  function: "corpus_gcp_login_dead_param_is_red_holds"
+  function: "corpus_gcp_login_dead_param_defused_holds"
 }
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
   receipt_policy_leak_lens_unit,
   receipt_clean_git_diff,
   receipt_clean_gist_create,
+  receipt_gist_create_corpus,
   receipt_transport_fusion_lens_unit,
   receipt_transport_fusion_corpus,
-  receipt_gist_create_corpus,
   receipt_dead_param_cargo_build_lens_unit,
   receipt_dead_param_gcp_login_lens_unit,
   receipt_dead_param_cargo_clippy_lens_unit,
