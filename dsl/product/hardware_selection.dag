@@ -25,7 +25,7 @@
 // a SKU's power coefficient (W/chip) and the board downclock thresholds — are marked 🟡.
 //
 // Authority: this module (the decision model). Component catalog SHAPES: std.cpu / std.memory.
-// Measure carriers: std.measure (ByteSize, Watt, MoneyMicros) + product.compute_fabric
+// Measure carriers: std.measure (ByteSize, Watt, Milliwatt, MoneyMicros) + product.compute_fabric
 // (Bandwidth — reused, NOT a forked rate carrier).
 
 module product.hardware_selection

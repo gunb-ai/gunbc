@@ -112,7 +112,7 @@ data psu_gold_550: PsuModel = PsuModel {
   label: "GENERIC-550W-GOLD",
   max_output: watt(count: 550),
   efficiency: Gold,
-  price_micros: 90000000
+  price: money_micros(count: 90000000)
 }
 
 // --- Full configs --------------------------------------------------------
