@@ -1928,7 +1928,9 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
 /// are skipped by BOTH the `unified_claim_*` scan and the `test fn`/`test data`
 /// scan — gate-only / manifest / manual-lane witnesses must not enter the floor.
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
-    FLOOR_DISCOVERY_EXCLUDES.iter().any(|sub| path.contains(sub))
+    FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .any(|sub| path.contains(sub))
 }
 
 /// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
@@ -2308,10 +2310,8 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
 }
 
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
-    let mut witness_nodes: Vec<String> = records
-        .iter()
-        .map(emit_source_root_read_witness)
-        .collect();
+    let mut witness_nodes: Vec<String> =
+        records.iter().map(emit_source_root_read_witness).collect();
     let mut out = String::from("Empty");
     while let Some(head) = witness_nodes.pop() {
         out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
