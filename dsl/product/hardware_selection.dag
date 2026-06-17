@@ -63,13 +63,23 @@ import std.pareto {
   on_pareto_front
 }
 
-// === The decision point: four grounded axes ==============================
+// === The decision point: five grounded axes ==============================
 //
-// Every candidate config is scored on the SAME four axes — the `Cost = Time|Space|Energy`
-// pattern (DESIGN §2): one record, every config carries all of them. Two are
-// HigherIsBetter (capacity, bandwidth), two LowerIsBetter (power draw, cost). The axes are
-// dimensioned Measures, never bare Ints (the anemic-leaf trap).
+// Every candidate config is scored on the SAME five axes — the `Cost = Time|Space|Energy`
+// pattern (DESIGN §2): one record, every config carries all of them. Three are
+// HigherIsBetter (throughput, capacity, bandwidth), two LowerIsBetter (power draw, cost).
+//
+// `throughput` is the reason a CI node is BOUGHT — how much compute work the CPU does — and
+// it is NOT derivable from the other four (memory bandwidth ≠ compute throughput; a slow
+// 128-core part and a fast 64-core part can match on RAM/bandwidth/power/cost yet differ
+// hugely on work done). Without this axis the front is blind to per-core/aggregate compute,
+// the thing customers actually pay for. It is a measured 🟡 input (see CpuCandidate), carried
+// as a dimensionless relative index (a SPECrate-style aggregate score) — deliberately NOT a
+// std.measure carrier: a benchmark score has no SI dimension to ground (it is a ratio to a
+// reference machine), so forcing a Measure would be FALSE grounding, not the anemic-leaf trap
+// (there is no hidden unit). HigherIsBetter.
 type HardwareAxes {
+  throughput: Int          // 🟡 aggregate compute (relative index; HigherIsBetter, dimensionless)
   capacity: ByteSize       // total usable RAM
   bandwidth: Bandwidth     // aggregate memory bandwidth (bytes/s)
   power: Watt              // total system draw at the wall
