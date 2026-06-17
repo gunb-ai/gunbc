@@ -14,17 +14,37 @@ import v2.std.collection {
   map_get,
   map_insert
 }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
-import v2.std.node { Node }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.node { Node, content_hash }
 
 // Substitution map: generic name → concrete type node at a call site.
 type GenericSubstitution = Map<String, Node>
+
+data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port
+data generic_substitution_bind_conflict: Symbol = generic_substitution_bind_conflict
 
 fn empty_generic_substitution() -> GenericSubstitution {
   empty_map()
 }
 
-// Fail-closed: bind a generic name once (first wins); never silently overwrite.
+fn generic_substitution_bind_conflict_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^generic_substitution_bind_conflict,
+    at: port_locus(port: ^generic_substitution_bind_once_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Fail-closed: bind a generic name once (first wins); reject conflicting re-bind.
 fn generic_substitution_bind_once(
   subst: GenericSubstitution,
   name: String,
@@ -33,8 +53,12 @@ fn generic_substitution_bind_once(
   match map_get(subst, name) {
     Accepted { value: Absent, diagnostics: _ } =>
       outcome_accepted(value: map_insert(subst, name, concrete))
-    Accepted { value: Present { value: _ }, diagnostics: _ } =>
-      outcome_accepted(value: subst)
+    Accepted { value: Present { value: bound }, diagnostics: _ } =>
+      if content_hash(n: bound) == content_hash(n: concrete) {
+        outcome_accepted(value: subst)
+      } else {
+        outcome_rejected(d: generic_substitution_bind_conflict_diagnostic())
+      }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }

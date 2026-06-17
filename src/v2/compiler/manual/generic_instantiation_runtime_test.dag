@@ -41,31 +41,10 @@ fn use_chained() -> Int {
   chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
-// Infer-local self-named generic decl check (T: T vs x: T) — witness-only until 04_infer wire.
-fn witness_self_named_generic_decl(
-  param_name: String,
-  type_name: String,
-  type_is_bare_leaf: Bool,
-) -> Bool {
-  type_is_bare_leaf && param_name != "" && param_name == type_name
-}
-
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
   fold_list_generic_instantiation_holds()
 }
 
 test fn generic_instantiation_chained_field_runtime_holds() -> Bool {
   use_chained() == 9
-}
-
-test fn generic_instantiation_substrate_self_named_generic_decl() -> Bool {
-  witness_self_named_generic_decl(
-    param_name: "T",
-    type_name: "T",
-    type_is_bare_leaf: true
-  ) && !witness_self_named_generic_decl(
-    param_name: "x",
-    type_name: "T",
-    type_is_bare_leaf: true
-  )
 }
