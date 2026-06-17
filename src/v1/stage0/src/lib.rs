@@ -12,7 +12,6 @@
     clippy::all
 )]
 
-pub mod extdeps_shape_transport_policy_project;
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
@@ -28,6 +27,7 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
+pub mod extdeps_shape_transport_policy_project;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;

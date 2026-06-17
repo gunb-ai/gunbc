@@ -8,9 +8,7 @@ use std::rc::Rc;
 use crate::v1_compiler_emit::effective_operation_transport;
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
-use crate::v1_std_core::{
-    build_newline_index, param_node_name_at, ExprData, LiteralValue, Node,
-};
+use crate::v1_std_core::{build_newline_index, param_node_name_at, ExprData, LiteralValue, Node};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -32,7 +30,10 @@ fn resolve_extdeps_path(path: &str) -> PathBuf {
     panic!("extdeps argv projection: file not found: {path}");
 }
 
-fn argv_expr_token(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>) -> String {
+fn argv_expr_token(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => value.clone(),
@@ -47,7 +48,8 @@ fn argv_expr_token(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<crate
                     _ => String::new(),
                 },
                 ExprData::ExprVar { .. } => {
-                    let name = crate::v1_std_core::expr_var_name_at(child.clone(), source_indices.clone());
+                    let name =
+                        crate::v1_std_core::expr_var_name_at(child.clone(), source_indices.clone());
                     format!("{{{name}}}")
                 }
                 _ => String::new(),
@@ -146,9 +148,7 @@ pub fn dead_param_count_for_operation(path: String, service: String, operation: 
             return dead_param_count_for_operation_node(op, &fallback_transport, &source_indices);
         }
     }
-    panic!(
-        "extdeps argv projection: operation {service}.{operation} not found in {path}"
-    );
+    panic!("extdeps argv projection: operation {service}.{operation} not found in {path}");
 }
 
 /// Whole-file dead-param count across all service operations with shell argv.
