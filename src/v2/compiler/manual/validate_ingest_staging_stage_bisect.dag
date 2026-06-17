@@ -11,7 +11,13 @@ import v2.compiler.compile {
 }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse, ParseTree }
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse,
+  parse_production_tree,
+  parse_stage_locus_port,
+  ParseTree
+}
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize, TokenStream }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -20,8 +26,10 @@ import v2.std.diagnostic {
   Accepted,
   Outcome,
   Rejected,
-  bind_outcome
+  bind_outcome,
+  port_locus
 }
+import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 
@@ -78,6 +86,58 @@ fn bisect_tokenize_terminates() -> Bool {
 
 fn bisect_parse_terminates() -> Bool {
   match bisect_through_parse() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
+  let lm = dag_language_model_wave1()
+  match lm.grammar {
+    ModeledGrammar { root: root } =>
+      grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port))
+    _ =>
+      Rejected { diagnostics: None }
+  }
+}
+
+fn bisect_grammar_validate_terminates() -> Bool {
+  match bisect_through_grammar_validate() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_through_parse_production() -> Outcome<ParseTree> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: bisect_empty_source,
+      file: compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: bisect_through_grammar_validate(),
+        f: fn(validated) {
+          match lm.grammar {
+            ModeledGrammar { root: root } =>
+              parse_production_tree(
+                tokens: token_stream.tokens,
+                validated: validated,
+                production_name: root.start
+              )
+            _ =>
+              Rejected { diagnostics: None }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn bisect_parse_production_terminates() -> Bool {
+  match bisect_through_parse_production() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
   }
