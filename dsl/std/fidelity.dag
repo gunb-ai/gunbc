@@ -55,25 +55,15 @@ fn transport_hermetic_with_recorded_coverage(
   tc: TransportClass,
   has_recorded_fixture_coverage: Bool
 ) -> Bool {
-  match tc {
-    LocalDirect =>
-      true
-    InterfaceStub =>
-      true
-    ShellLocal =>
-      true
-    FileBoundary =>
-      true
-    RestNetwork =>
-      has_recorded_fixture_coverage
-    Unknown =>
-      false
-  }
+  transport_hermetic(tc: tc)
+    || (tc == RestNetwork && has_recorded_fixture_coverage)
 }
 
-// Published-mock corpus membership is evidence of structural coverage intent;
-// RecordedFixture replay is the payload authority. Produces HermeticRealization
-// for fidelity witnesses to fold directly (no Bool predicate dissolution).
+// M0 substrate-target: per-op hermetic realization truth table (not yet folded by
+// production eval_service_call — see std.hermetic_replay.HermeticRealization).
+// 🟡 gated — feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on-arrival:
+// M4 migrates eval_service_call to fold this coproduct instead of deciding from
+// ExecutionMode+fixture_store alone.
 fn operation_hermetic_realization(
   tc: TransportClass,
   in_published_corpus: Bool,

@@ -15,7 +15,11 @@ type PublishedMockCase {
   case_id: Int
 }
 
-// Hermetic realization source for a service operation (dissolution axis).
+// M0 substrate-target authority for per-op hermetic realization (dissolution axis).
+// Production gate eval_service_call (v1_interpreter.rs) decides independently today
+// and does NOT yet fold this coproduct.
+// 🟡 gated — feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on-arrival:
+// M4 migrates eval_service_call to fold HermeticRealization.
 type HermeticRealization
   = RecordedFixtureReplay
   | InlineMockScaffold

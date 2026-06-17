@@ -16,6 +16,7 @@ import std.hermetic_replay {
   InlineMockScaffold,
   RecordedFixtureReplay
 }
+import extdeps.test.mock_corpus { http_pilot_get_post_in_published_corpus }
 
 fn rest_coverage_grants_hermetic_holds() -> Bool {
   transport_hermetic_with_recorded_coverage(
@@ -31,10 +32,11 @@ fn rest_without_coverage_fails_closed_holds() -> Bool {
   )
 }
 
-fn http_pilot_operation_hermetic_capable_holds() -> Bool {
+// Truth-table witness: folds published-corpus membership (not a literal Bool).
+fn operation_hermetic_realization_truth_table_covered_holds() -> Bool {
   match operation_hermetic_realization(
     tc: RestNetwork,
-    in_published_corpus: true,
+    in_published_corpus: http_pilot_get_post_in_published_corpus(),
     has_recorded_fixture_coverage: true
   ) {
     RecordedFixtureReplay => true

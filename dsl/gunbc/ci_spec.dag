@@ -51,7 +51,7 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_coverage_grants_hermetic_holds" },
     { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_without_coverage_fails_closed_holds" },
-    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "http_pilot_operation_hermetic_capable_holds" },
+    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "operation_hermetic_realization_truth_table_covered_holds" },
     { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "http_pilot_without_corpus_fails_closed_holds" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
     { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },

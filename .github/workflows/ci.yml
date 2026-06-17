@@ -82,7 +82,7 @@ jobs:
             --entry dsl/test/claim/http_pilot_rest_witness.dag \
             --function http_pilot_rest_keystone_holds \
             --record --fixture-store "$HTTP_PILOT_FIXTURES"
-          echo "Captured fixtures under $HTTP_PILOT_FIXTURES — copy into dsl/extdeps/test/fixtures/http_pilot/ to refresh committed seed"
+          echo '(local recapture only — see http_pilot_rest_witness.dag header)'
           find "$HTTP_PILOT_FIXTURES" -type f
           rm -rf "$HTTP_PILOT_FIXTURES"
     if: github.event_name == 'workflow_dispatch'

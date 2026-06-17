@@ -10,7 +10,8 @@ module test.claim.ci_spec_witness
 import gunbc.ci_spec {
   CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase,
   gunbc_ci_spec,
-  scheduler_invoke, gunbc_ci_run_script, git_fetch_script
+  scheduler_invoke, gunbc_ci_run_script, git_fetch_script,
+  http_pilot_hermetic_floor_script
 }
 
 data spec_alternate_root: CiSpec = {
@@ -75,6 +76,15 @@ fn witness_notice_title_from_spec() -> Bool {
   )
 }
 
+// P4b hermetic pilot lives in `gunbc.ci_workflow` (needs claim_batch fixture flags),
+// not in `gunbc_ci_run_script` — the default runtime is scheduler-only (#5122).
+fn witness_http_pilot_hermetic_floor_script_exported() -> Bool {
+  let script = http_pilot_hermetic_floor_script()
+  string_contains(s: script, pattern: "--hermetic --fixture-store") &&
+    string_contains(s: script, pattern: "dsl/extdeps/test/fixtures/http_pilot") &&
+    string_contains(s: script, pattern: "--fixture-no-expiry")
+}
+
 // The run script invokes the scheduler over the floor plan — and does NOT
 // flat-invoke claim_batch (the parallel lane is gone, not shadowed).
 fn witness_run_script_invokes_scheduler() -> Bool {
@@ -91,5 +101,6 @@ fn ci_spec_witnesses() -> Bool {
     witness_scan_subtree_not_in_scheduler_argv() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
+    witness_http_pilot_hermetic_floor_script_exported() &&
     witness_run_script_invokes_scheduler()
 }

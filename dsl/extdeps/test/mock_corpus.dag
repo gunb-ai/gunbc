@@ -16,3 +16,21 @@ data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
 data http_pilot_published_mock_corpus: List<PublishedMockCase> = [
   http_pilot_mock_case_get_post
 ]
+
+data http_pilot_get_post_operation_key: String = "test.HttpPilot.GetPost"
+
+fn published_mock_corpus_contains_operation(
+  corpus: List<PublishedMockCase>,
+  operation_key: String
+) -> Bool {
+  fold(corpus, init: false, f: (found, row) =>
+    found || (row.operation_key == operation_key)
+  )
+}
+
+fn http_pilot_get_post_in_published_corpus() -> Bool {
+  published_mock_corpus_contains_operation(
+    corpus: http_pilot_published_mock_corpus,
+    operation_key: http_pilot_get_post_operation_key
+  )
+}

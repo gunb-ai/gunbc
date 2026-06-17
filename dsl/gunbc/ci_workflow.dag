@@ -266,7 +266,7 @@ data ci_workflow: Workflow = {
               )
             ),
             concat(
-              "echo \"Captured fixtures under $HTTP_PILOT_FIXTURES — copy into dsl/extdeps/test/fixtures/http_pilot/ to refresh committed seed\"\n",
+              "echo '(local recapture only — see http_pilot_rest_witness.dag header)'\n",
               "find \"$HTTP_PILOT_FIXTURES\" -type f\nrm -rf \"$HTTP_PILOT_FIXTURES\""
             )
           ),
