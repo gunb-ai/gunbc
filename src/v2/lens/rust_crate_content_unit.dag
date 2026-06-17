@@ -28,8 +28,12 @@ import std.types { FilePathParts }
 // `FilePathParts` is the authority (from the cargo rule); this flattens it to the scalar the
 // content-unit node keys on. Separator is the cargo/posix "/".
 fn render_path(parts: FilePathParts) -> String {
+  // Each `seg` is a branded `PathSegment` (NonEmptyStr); it widens to `String` in `concat`'s
+  // argument position. Both branches return a `concat` result (String) so the fold's
+  // accumulator type stays `String` — never returning a bare branded `seg`, which would force a
+  // brand-vs-String join the checker does not compute an LUB for.
   fold(parts.segments, init: "", f: fn(acc, seg) {
-    if acc == "" { seg } else { concat(acc, concat("/", seg)) }
+    if acc == "" { concat(acc, seg) } else { concat(acc, concat("/", seg)) }
   })
 }
 
