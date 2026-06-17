@@ -30,11 +30,15 @@ func run_gates() -> ProcessExit {
 }
 
 // Entry: consult the diff, fire the gates only when the Rust monolith is touched.
-func main() -> ProcessExit {
+func run_rust_monolith_gate() -> ProcessExit {
   changed = git.Core.ChangedFiles()
   return if should_run_gates(paths: changed.paths, git_success: changed.success) {
     run_gates()
   } else {
     ExitSuccess
   }
+}
+
+func main() -> ProcessExit {
+  run_rust_monolith_gate()
 }
