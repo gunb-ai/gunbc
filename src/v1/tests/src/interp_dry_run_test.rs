@@ -1,5 +1,6 @@
 //! Regression: `gunbc --dry-run run` must pass `cli.dry_run` into the interpreter
 //! so REST service calls return modeled `mock_response` data instead of live HTTP.
+//! Hermetic `ExecutionMode` is the interpreter-side generalization of dry-run.
 
 use std::rc::Rc;
 
@@ -72,7 +73,11 @@ fn witness() -> String {
 "#;
     let resolved = resolve(src);
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(graph, resolved.source_indices.clone(), true);
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
 
     match v1_interpreter::run_in_context(&ctx, "witness", false) {
         Ok(Value::Str(s)) => assert_eq!(s, "dry-run-mock"),
