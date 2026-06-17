@@ -44,7 +44,7 @@ fn normalize_decl_body(source: &str) -> String {
 }
 
 fn decl_body_hash(body: &str) -> String {
-    v1_rt::atom_identity_hash(normalize_decl_body(body))
+    crate::v1_rt::atom_identity_hash(normalize_decl_body(body))
 }
 
 fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
