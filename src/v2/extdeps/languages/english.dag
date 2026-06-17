@@ -16,8 +16,8 @@ import v2.std.compilers.target_model {
   FixedToken,
   TargetModel,
   concrete_syntax_token_class,
-  concrete_syntax_token_to_node,
-  target_model_edge_translation_rules}
+  concrete_syntax_token_to_node
+}
 import v2.std.node {
   Arrow,
   Atom,

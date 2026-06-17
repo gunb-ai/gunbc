@@ -91,8 +91,8 @@ import v2.std.host_transport {
   ProcessInvocation,
   WorkspaceContent,
   WorkspaceFile,
-  WorkspacePath,
-  host_tool_go}
+  WorkspacePath
+}
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v2.std.witness { Holds, Violates }

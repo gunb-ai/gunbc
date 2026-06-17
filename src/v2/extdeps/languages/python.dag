@@ -66,8 +66,8 @@ import v2.std.host_transport {
   ProcessInvocation,
   WorkspaceContent,
   WorkspaceFile,
-  WorkspacePath,
-  host_tool_python3}
+  WorkspacePath
+}
 import v2.std.grounding {
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
