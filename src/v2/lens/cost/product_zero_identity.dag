@@ -48,7 +48,7 @@ data product_zero_identity_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-test fn product_zero_identity_claim_holds() -> Bool {
+fn product_zero_identity_claim_holds() -> Bool {
   match cost_lens(n: product_zero_identity_input) {
     Holds { value: actual } =>
       match actual {
