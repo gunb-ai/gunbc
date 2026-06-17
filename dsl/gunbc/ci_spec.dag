@@ -123,20 +123,10 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   )
 }
 
-<<<<<<< HEAD
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-    scheduler_invoke(spec: spec)
-=======
-fn ci_gates_invoke(spec: CiSpec) -> String {
-  concat(
-    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
-    " --entry dsl/tools/ci_gates.dag --function main"
-  )
-}
-
 // P4b REST hermetic pilot: replay from committed fixture seed (no live jsonplaceholder).
+// Invoked from `gunbc.ci_workflow` (not `gunbc_ci_run_script`) — the default CI
+// runtime is the dependency-ordered scheduler (#5122); this claim_batch slice
+// needs hermetic/fixture-store flags claim_executor does not carry yet.
 fn http_pilot_hermetic_floor_script() -> String {
   concat(
     concat(
@@ -152,7 +142,7 @@ fn http_pilot_hermetic_floor_script() -> String {
             "  --entry dsl/test/claim/http_pilot_rest_witness.dag \\\n",
             concat(
               "  --function http_pilot_rest_keystone_holds \\\n",
-              "  --hermetic --fixture-store \"$HTTP_PILOT_FIXTURES\" \\\n  --claim-run\n"
+              "  --hermetic --fixture-store \"$HTTP_PILOT_FIXTURES\" \\\n  --fixture-no-expiry --claim-run\n"
             )
           )
         )
@@ -182,15 +172,8 @@ fn http_pilot_hermetic_floor_script() -> String {
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
-    concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-      concat(claim_batch_script(spec: spec), "\n")
-    ),
-    concat(
-      concat(http_pilot_hermetic_floor_script(), "\n"),
-      ci_gates_invoke(spec: spec)
-    )
->>>>>>> a16f1359ba (P4b M0+M1: REST hermetic pilot + PublishedMockCase unification.)
+    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    scheduler_invoke(spec: spec)
   )
 }
 
