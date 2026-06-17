@@ -30,12 +30,8 @@ import v2.std.compilers.target_model {
   ReferenceLayerProbe,
   ReferenceLayerProbeNotWrapped,
   ReferenceLayerRc,
-  target_carrier_diagnostics,
   target_carrier_diagnostics_node,
-  target_carrier_node,
   target_carrier_node_node,
-  target_carrier_outcome,
-  target_carrier_probe_heap,
   target_carrier_probe_heap_node,
   target_reference_layer_apply_type_emitted,
   target_reference_layer_apply_value_expression,
@@ -114,7 +110,7 @@ fn sg_rc_target() -> TargetModel {
 fn sg_rc_diagnostics_inner_emitted() -> Node {
   target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
-    identity: target_carrier_diagnostics
+    identity: ^target_carrier_diagnostics
   )
 }
 
@@ -141,7 +137,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
+          kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -149,7 +145,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: target_carrier_node } },
+          kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -197,7 +193,7 @@ fn sg_rc_f1_owned_type_text() -> String {
 }
 
 fn sg_rc_diagnostics_identity_value() -> TargetValueExpression {
-  target_value_expression_symbol_identity(identity: target_carrier_diagnostics)
+  target_value_expression_symbol_identity(identity: ^target_carrier_diagnostics)
 }
 
 fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {

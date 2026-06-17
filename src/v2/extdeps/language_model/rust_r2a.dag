@@ -23,7 +23,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   TargetCompileRejected,
   TargetCompileVerdict,
-  target_diagnostic_e0599_method_not_found
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -93,5 +92,5 @@ data claim_rust_r2a_verification_receipt_shape: TestClaim = EqualsClaim {
 
 
 data rust_r2a_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
-  diagnostic_code: target_diagnostic_e0599_method_not_found
+  diagnostic_code: ^target_diagnostic_e0599_method_not_found
 }

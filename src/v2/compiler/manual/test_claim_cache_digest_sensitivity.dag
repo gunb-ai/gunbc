@@ -10,7 +10,6 @@ import v2.compiler.eval {
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
   test_claim_interpretation_cache_digest,
-  test_claim_no_correction_ambiguous_intent_tag,
   test_claim_typed_input_node
 }
 import v2.extdeps.runtimes.v2_evaluator {
@@ -526,7 +525,7 @@ fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
 }
 
 fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
-  let ambiguous_tag_node = claim_atom_node(s: test_claim_no_correction_ambiguous_intent_tag)
+  let ambiguous_tag_node = claim_atom_node(s: ^test_claim_no_correction_ambiguous_intent_tag)
   test_claim_claim_hash_digest(
     c: DiagnosticClaim {
       label: "manual/test_claim_cache: suggested vs unavailable correction domain",

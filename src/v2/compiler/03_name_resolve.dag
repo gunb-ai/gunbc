@@ -113,11 +113,6 @@ type ModuleRootNameFindState
   | ModuleRootNameFoundDuplicate
 
 
-data resolve_import_not_visible: Symbol = resolve_import_not_visible
-data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
-data resolve_module_not_found: Symbol = resolve_module_not_found
-data resolve_duplicate_module_name: Symbol = resolve_duplicate_module_name
-data resolve_reason_malformed_imported_root: Symbol = resolve_reason_malformed_imported_root
 
 
 fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
@@ -156,7 +151,7 @@ fn admit_export_symbol(
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
-              diagnostics: resolve_diagnostics(reason: resolve_ambiguous_export)
+              diagnostics: resolve_diagnostics(reason: ^resolve_ambiguous_export)
             }
           Absent =>
             AdmissionAccepted {
@@ -232,7 +227,7 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
             ModuleRootsProjectionRejected {
               diagnostics: rejected_with_pending(
                 pending: acc_diag,
-                rejected: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+                rejected: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
               )
             }
           }
@@ -245,7 +240,7 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
       Rejected {
         diagnostics: rejected_with_pending(
           pending: d,
-          rejected: resolve_diagnostics(reason: resolve_duplicate_module_name)
+          rejected: resolve_diagnostics(reason: ^resolve_duplicate_module_name)
         )
       }
     ModuleRootsProjectionRejected { diagnostics: d } =>
@@ -294,11 +289,11 @@ fn module_root_find(
     Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {
         NoPassingCandidate =>
-          Rejected { diagnostics: resolve_diagnostics(reason: resolve_module_not_found) }
+          Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
         OnePassingCandidate { candidate: root } =>
           Accepted { value: root, diagnostics: None }
         ManyPassingCandidates =>
-          Rejected { diagnostics: resolve_diagnostics(reason: resolve_duplicate_module_name) }
+          Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
       }
   }
 }
@@ -410,7 +405,7 @@ fn admit_import_root_find(
         )
       } else {
         AdmissionRejected {
-          diagnostics: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+          diagnostics: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
         }
       }
   }
@@ -429,7 +424,7 @@ fn admit_import_entry(
       match import_edge.visibility {
         ImportHidden =>
           AdmissionRejected {
-            diagnostics: resolve_diagnostics(reason: resolve_import_not_visible)
+            diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
           }
         ImportVisible =>
           admit_import_root_find(
@@ -524,7 +519,7 @@ fn namespace_for_subject(
             Rejected {
               diagnostics: rejected_with_pending(
                 pending: validate_diag,
-                rejected: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+                rejected: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
               )
             }
           }

@@ -20,7 +20,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_rust_r3_external_symbol_projection,
   TargetCompileRejected,
   TargetCompileVerdict,
-  target_diagnostic_e0423_expected_value_found_type
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -86,5 +85,5 @@ data claim_rust_r3_external_verification_receipt_shape: TestClaim = EqualsClaim 
 }
 
 data rust_r3_external_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
-  diagnostic_code: target_diagnostic_e0423_expected_value_found_type
+  diagnostic_code: ^target_diagnostic_e0423_expected_value_found_type
 }

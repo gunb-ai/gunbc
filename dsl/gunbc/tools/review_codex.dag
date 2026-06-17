@@ -18,8 +18,8 @@
 
 module gunbc.tools.review_codex
 
-import extdeps.cron
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
+import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
 import extdeps.github.pulls
 import extdeps.llm.cli
 import extdeps.shell
@@ -222,8 +222,8 @@ func review_cycle(
   cycle_repo: String = repo
 ) -> { reviewed_count: Int } {
 
-  // Upsert cron — idempotent, converges on every run
-  cron.Tab.Upsert(
+  // Upsert cron — idempotent, converges on every run (tag protocol in cron_tag)
+  upsert_tagged_cron_tab(
     tag: cron_tag,
     schedule: render_cron_schedule(cron_schedule),
     command: "dag run --source-root dsl --function gunbc.tools.review_codex.review_cycle",

@@ -2,7 +2,7 @@
 
 module v2.test.manual.connective_anchors
 
-import v2.compiler.eval { eval_rejected_invalid_node, eval_diagnostic }
+import v2.compiler.eval { eval_diagnostic }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -129,7 +129,7 @@ fn arity_rejection_claim(label: String, input: Node, anchor: ManualAnchorKey) ->
     anchor: manual_claim_anchor(anchor: anchor),
     input: input,
     expected_rejection: diagnostics_singleton(
-      d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)
+      d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
     ),
     classification: TestClassification { tier: Tier1, layer: Unit }
   }

@@ -29,7 +29,6 @@ pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
-pub mod wire_value_serialize;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
@@ -84,6 +83,7 @@ pub mod v1_compiler_workspace_members;
 pub mod v1_interpreter;
 pub mod v1_rt;
 pub mod v1_std_core;
+pub mod wire_value_serialize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

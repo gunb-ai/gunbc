@@ -10,7 +10,6 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production_tree,
-  parse_stage_locus_port
 }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
@@ -25,7 +24,6 @@ import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.compilers.lexing { Token }
 import v2.std.node { Node, Symbol }
 
-data comprep_wave1_add_subject_source_file: Symbol = comprep_wave1_add_subject_source_file
 
 fn comprep_wave1_add_parse_root() -> GrammarRoot {
   GrammarRoot {
@@ -41,7 +39,7 @@ fn comprep_wave1_add_parse_root() -> GrammarRoot {
 
 fn comprep_wave1_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   let root = comprep_wave1_add_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
         tokens: tokens,
@@ -57,7 +55,7 @@ fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
   bind_outcome(
     o: tokenize(
       text: dag_mvp1_source_text,
-      file: comprep_wave1_add_subject_source_file,
+      file: ^comprep_wave1_add_subject_source_file,
       rules: lm.lex
     ),
     f: fn(tokens) {

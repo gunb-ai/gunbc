@@ -11,17 +11,11 @@ import v2.std.algebra {
   FreeMonoid,
   fold_list,
   fold_list_node,
-  fold_list_node_head,
-  fold_list_node_tail,
-  free_monoid_field_head,
-  free_monoid_field_tail,
-  free_monoid_variant_empty,
   is_empty,
   list_snoc_item,
   length,
   list_append,
   fold_list_right,
-  ring_field_add
 }
 import v2.std.collection {
   Absent,
@@ -67,8 +61,6 @@ import v2.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
-  preservation_rule_exact_structural_equality_zip_fold,
-  preservation_rule_type_expr_projection_discipline_zip_fold
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -109,13 +101,6 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.witness { StructuralPropertyWitness }
-import v2.std.type_expr_projection_row_schema {
-  target_type_expr_discipline_labeled,
-  target_type_expr_discipline_no_edges,
-  target_type_expr_discipline_positional,
-  target_type_expr_field_child_slot_discipline,
-  target_type_expr_field_child_slots
-}
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
@@ -125,6 +110,11 @@ import v2.std.node_query {
 }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  TargetEmitHostRuntimeRow,
+  configured_emit_host_runtime_row_from_target_row
+}
 
 // NEGATIVE TRIPWIRE — do NOT add `import v2.std.runtime` (or any closure-widening import:
 // machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
@@ -141,33 +131,21 @@ type TargetModel {
   lex: LexRules
   binding_spellings: Map<Symbol, String>
   authority_source_text: String
+  runtime_row: TargetEmitHostRuntimeRow
 }
 type TargetModelBundle = TargetModel
 
-data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
-data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
-data target_model_edge_translation_rules: Symbol = target_model_edge_translation_rules
-data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
+fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
+  configured_emit_host_runtime_row_from_target_row(row: target.runtime_row)
+}
+
 // #g-bidir Q-G2 — per-target C5 quotient: Conj of per-feature FidelityDisposition inhabitants.
-data target_model_edge_fidelity_quotient: Symbol = target_model_edge_fidelity_quotient
-data grammar_relation_field_production: Symbol = grammar_relation_field_production
-data grammar_relation_field_emitted: Symbol = grammar_relation_field_emitted
-data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
-data grammar_relation_field_bodied_scaffold: Symbol = grammar_relation_field_bodied_scaffold
-data grammar_relation_bodied_scaffold_missing: Symbol = grammar_relation_bodied_scaffold_missing
-data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
-data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
-data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
 // T-11: the typed ConcreteSyntaxToken coproduct below is the single concrete-syntax-token
 // authority. Per-language `*ConcreteSyntaxToken` coproducts dissolve into this carrier
 // (src/v2/extdeps/languages/*.dag), dag.dag's emit_fixed_token/emit_bound_token construct it,
 // and 06_translate matches it structurally. The `concrete_syntax_token_kind_{fixed,bound}`
 // Symbols persist only as the serialized wire-form tags written by `concrete_syntax_token_to_node`
 // and read back by the translate-side decoder — they are no longer dispatch discriminators.
-data concrete_syntax_token_kind_fixed: Symbol = concrete_syntax_token_kind_fixed
-data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
-data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
-data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
 
 // T-11 shared concrete-syntax-token carrier (single authority, DESIGN.md §3).
 // FixedToken: a terminal whose spelling is the token class' literal lexeme.
@@ -193,15 +171,15 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: concrete_syntax_token_field_kind },
+            label: Named { name: ^concrete_syntax_token_field_kind },
             target: Node {
-              kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_fixed } },
+              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
           },
           Edge {
-            label: Named { name: concrete_syntax_token_field_class },
+            label: Named { name: ^concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
@@ -216,15 +194,15 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: concrete_syntax_token_field_kind },
+            label: Named { name: ^concrete_syntax_token_field_kind },
             target: Node {
-              kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_bound } },
+              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
           },
           Edge {
-            label: Named { name: concrete_syntax_token_field_class },
+            label: Named { name: ^concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
@@ -232,7 +210,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
 }
           },
           Edge {
-            label: Named { name: concrete_syntax_token_field_binding },
+            label: Named { name: ^concrete_syntax_token_field_binding },
             target: Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
@@ -253,15 +231,10 @@ fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
 }
 
 // Per-target lex + binding-spelling lookup (tokens/layout authority for translate serialize).
-data target_lex_rule_literal_not_found: Symbol = target_lex_rule_literal_not_found
-data target_binding_spelling_not_found: Symbol = target_binding_spelling_not_found
-data target_concrete_token_kind_invalid: Symbol = target_concrete_token_kind_invalid
-data target_type_expr_projection_bundle_malformed: Symbol = target_type_expr_projection_bundle_malformed
-data target_collection_shape_malformed: Symbol = target_collection_shape_malformed
 
 fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: target_lex_rule_literal_not_found,
+    reason: ^target_lex_rule_literal_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
@@ -273,7 +246,7 @@ fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnost
 
 fn target_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: target_binding_spelling_not_found,
+    reason: ^target_binding_spelling_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
@@ -285,7 +258,7 @@ fn target_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
 
 fn target_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_concrete_token_kind_invalid,
+    reason: ^target_concrete_token_kind_invalid,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -309,13 +282,13 @@ fn target_node_atom_identity(node: Node) -> Outcome<Symbol> {
 // Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11).
 fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
   bind_outcome(
-    o: find_named_child(root: token, name: concrete_syntax_token_field_kind),
+    o: find_named_child(root: token, name: ^concrete_syntax_token_field_kind),
     f: fn(kind_node) {
       bind_outcome(
         o: target_node_atom_identity(node: kind_node),
         f: fn(kind) {
           bind_outcome(
-            o: find_named_child(root: token, name: concrete_syntax_token_field_class),
+            o: find_named_child(root: token, name: ^concrete_syntax_token_field_class),
             f: fn(class_node) {
               bind_outcome(
                 o: target_node_atom_identity(node: class_node),
@@ -323,10 +296,10 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
                   bind_outcome(
                     o: target_optional_named_child(
                       root: token,
-                      name: concrete_syntax_token_field_binding
+                      name: ^concrete_syntax_token_field_binding
                     ),
                     f: fn(binding_node) {
-                      if kind == concrete_syntax_token_kind_fixed {
+                      if kind == ^concrete_syntax_token_kind_fixed {
                         match binding_node {
                           Present { value: _ } =>
                             outcome_rejected(
@@ -338,7 +311,7 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
                             )
                         }
                       } else {
-                        if kind == concrete_syntax_token_kind_bound {
+                        if kind == ^concrete_syntax_token_kind_bound {
                           match binding_node {
                             Present { value: binding_child } =>
                               bind_outcome(
@@ -377,7 +350,7 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
 
 fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_type_expr_projection_bundle_malformed,
+    reason: ^target_type_expr_projection_bundle_malformed,
     at: node_locus(node: bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -385,7 +358,7 @@ fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> Diag
 
 fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_collection_shape_malformed,
+    reason: ^target_collection_shape_malformed,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -489,10 +462,8 @@ fn serialize_type_expr_arrow_param_spelling(
   target_binding_spelling_lookup(target: target, binding: label)
 }
 
-data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
 
 // SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
-data target_model_edge_signature_realizations: Symbol = target_model_edge_signature_realizations
 
 // --- SG-1 atom realization vocabulary (M6 coproduct carriers with variant payloads) ---
 
@@ -526,6 +497,15 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
+  // Lane 2c — value-level function application `callee(arg, ...)` (positional). The head of a
+  // Transform body that does NOT canonicalize to an operator is a callee reference (eval treats a
+  // Transform with a non-operator Atom/Arrow head as a call, 05_eval eval_node_is_callee_reference);
+  // args are arbitrary value-expressions, so a closure argument recurses through the same projector.
+  | TargetValueExprCallableApply
+  // Lane 2c — anonymous function value `fn(params) { body }`. Appears as an argument to a callable
+  // apply (the fold-family `cons`/`f`/`step` closures); the body recurses through the value-expr
+  // projector with the closure's own param domain as scope (nested-closure scoping).
+  | TargetValueExprClosure
   | TargetValueExprConditional
   | TargetValueExprBindLet
   | TargetValueExprLoop
@@ -562,7 +542,7 @@ type CanonicalOperation
   = OpAdd { algebra_field: Symbol }
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ring_field_add }
+  OpAdd { algebra_field: ^ring_field_add }
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -627,6 +607,20 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
+// Lane 2c — per-language anonymous-function spelling. `fn ( p, ... ) { body }` for .dag; a target
+// whose closures read `(p, ...) => body` supplies the same single-token framing fields with its own
+// token classes. param_ident_token spells each param binding (via binding_spellings, like a
+// binding-ref). Single-token fields keep the wire bundle flat (no token-list round-trip).
+type TargetClosureShape {
+  fn_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+  body_open: Symbol
+  body_close: Symbol
+  param_ident_token: Symbol
+}
+
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
@@ -647,6 +641,7 @@ type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
   callable_apply_form: TargetCallApplyShape
+  closure_form: TargetClosureShape
   effect_apply_form: TargetEffectApplyShape
   conditional_form: TargetConditionalShape
   let_form: TargetBindLetShape
@@ -659,58 +654,8 @@ type TargetBodiedArrowStatementScaffold {
   suffix: List<ConcreteSyntaxToken>
 }
 
-data target_model_edge_value_expression_projection: Symbol = target_model_edge_value_expression_projection
-data target_model_edge_bodied_arrow_statement_scaffold: Symbol = target_model_edge_bodied_arrow_statement_scaffold
-data target_bodied_arrow_scaffold_field_prefix: Symbol = target_bodied_arrow_scaffold_field_prefix
-data target_bodied_arrow_scaffold_field_suffix: Symbol = target_bodied_arrow_scaffold_field_suffix
-data target_bodied_arrow_scaffold_bundle_malformed: Symbol = target_bodied_arrow_scaffold_bundle_malformed
-data concrete_syntax_token_wire_malformed: Symbol = concrete_syntax_token_wire_malformed
-data target_model_edge_operator_realizations: Symbol = target_model_edge_operator_realizations
 
-data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
-data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
-data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
-data target_value_expr_field_effect_apply: Symbol = target_value_expr_field_effect_apply
-data target_value_expr_effect_callee_row_edge: Symbol = target_value_expr_effect_callee_row_edge
-data target_value_expr_field_effect_callee: Symbol = target_value_expr_field_effect_callee
-data target_value_expr_effect_callee_row_wire_malformed: Symbol = target_value_expr_effect_callee_row_wire_malformed
-data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
-data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
-data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
-data target_value_expr_field_effect_kind: Symbol = target_value_expr_field_effect_kind
-data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
-data target_value_expr_field_conditional: Symbol = target_value_expr_field_conditional
-data target_value_expr_field_branch_condition: Symbol = target_value_expr_field_branch_condition
-data target_value_expr_field_branch_then_arm: Symbol = target_value_expr_field_branch_then_arm
-data target_value_expr_field_branch_else_arm: Symbol = target_value_expr_field_branch_else_arm
-data target_value_expr_field_if_token: Symbol = target_value_expr_field_if_token
-data target_value_expr_field_then_token: Symbol = target_value_expr_field_then_token
-data target_value_expr_field_else_token: Symbol = target_value_expr_field_else_token
-data target_value_expr_field_bind_let: Symbol = target_value_expr_field_bind_let
-data target_value_expr_field_let_token: Symbol = target_value_expr_field_let_token
-data target_value_expr_field_assign_token: Symbol = target_value_expr_field_assign_token
-data target_value_expr_field_in_token: Symbol = target_value_expr_field_in_token
-data target_value_expr_field_bind_key: Symbol = target_value_expr_field_bind_key
-data target_value_expr_field_bind_value: Symbol = target_value_expr_field_bind_value
-data target_value_expr_field_bind_body: Symbol = target_value_expr_field_bind_body
-data target_value_expr_field_loop: Symbol = target_value_expr_field_loop
-data target_value_expr_field_loop_token: Symbol = target_value_expr_field_loop_token
-data target_value_expr_field_loop_body: Symbol = target_value_expr_field_loop_body
-data target_value_expr_field_open: Symbol = target_value_expr_field_open
-data target_value_expr_field_close: Symbol = target_value_expr_field_close
-data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
-data target_value_expr_operand_wire_malformed: Symbol = target_value_expr_operand_wire_malformed
 
-data target_operator_realization_field_operation: Symbol = target_operator_realization_field_operation
-data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
-data target_operator_shape_field_token: Symbol = target_operator_shape_field_token
-data target_canonical_operation_field_algebra_field: Symbol = target_canonical_operation_field_algebra_field
-data target_canonical_operation_wire_malformed: Symbol = target_canonical_operation_wire_malformed
-data target_operator_shape_wire_malformed: Symbol = target_operator_shape_wire_malformed
-data target_operator_realization_wire_malformed: Symbol = target_operator_realization_wire_malformed
-data target_operator_realizations_catalog_wire_malformed: Symbol = target_operator_realizations_catalog_wire_malformed
-data target_operator_realization_catalog_miss: Symbol = target_operator_realization_catalog_miss
-data target_operator_realization_catalog_ambiguous: Symbol = target_operator_realization_catalog_ambiguous
 
 fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {
@@ -730,7 +675,7 @@ fn target_model_type_conj_node(children: List<Edge>) -> Node {
 
 fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_canonical_operation_wire_malformed,
+    reason: ^target_canonical_operation_wire_malformed,
     at: node_locus(node: wire),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -746,7 +691,7 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == target_canonical_operation_field_algebra_field {
+              if n == ^target_canonical_operation_field_algebra_field {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -772,7 +717,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
         kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
         children: [
           target_model_named_edge(
-            name: target_canonical_operation_field_algebra_field,
+            name: ^target_canonical_operation_field_algebra_field,
             target: target_model_type_atom_node(identity: f)
           )
         ],
@@ -840,7 +785,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
         children: [
           target_model_named_edge(
-            name: target_operator_shape_field_token,
+            name: ^target_operator_shape_field_token,
             target: target_model_type_atom_node(identity: t)
           )
         ],
@@ -851,7 +796,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
         children: [
           target_model_named_edge(
-            name: target_operator_shape_field_token,
+            name: ^target_operator_shape_field_token,
             target: target_model_type_atom_node(identity: t)
           )
         ],
@@ -862,7 +807,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
         children: [
           target_model_named_edge(
-            name: target_operator_shape_field_token,
+            name: ^target_operator_shape_field_token,
             target: target_model_type_atom_node(identity: i)
           )
         ],
@@ -873,7 +818,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
         children: [
           target_model_named_edge(
-            name: target_operator_shape_field_token,
+            name: ^target_operator_shape_field_token,
             target: target_model_type_atom_node(identity: i)
           )
         ],
@@ -884,7 +829,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
 
 fn target_operator_shape_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_operator_shape_wire_malformed,
+    reason: ^target_operator_shape_wire_malformed,
     at: node_locus(node: wire),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -894,7 +839,7 @@ fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   match wire.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       if name_occurrences(
-        name: target_operator_shape_field_token,
+        name: ^target_operator_shape_field_token,
         children: wire.children
       ) != 1 {
         outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
@@ -905,7 +850,7 @@ fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } => n == target_operator_shape_field_token
+                Named { name: n } => n == ^target_operator_shape_field_token
                 Positional => false
               }
             } else {
@@ -933,7 +878,7 @@ fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == target_operator_shape_field_token {
+              if n == ^target_operator_shape_field_token {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: token } } =>
                     optional_present(value: token)
@@ -986,7 +931,7 @@ fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorSha
 
 fn target_operator_realization_wire_malformed_diagnostic(row: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_operator_realization_wire_malformed,
+    reason: ^target_operator_realization_wire_malformed,
     at: node_locus(node: row),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -996,12 +941,12 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
   match row.kind {
     TypeNode { connective: Conj } =>
       if name_occurrences(
-        name: target_operator_realization_field_operation,
+        name: ^target_operator_realization_field_operation,
         children: row.children
       ) != 1 {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
       } else if name_occurrences(
-        name: target_operator_realization_field_shape,
+        name: ^target_operator_realization_field_shape,
         children: row.children
       ) != 1 {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
@@ -1013,8 +958,8 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
             if acc {
               match edge.label {
                 Named { name: n } =>
-                  n == target_operator_realization_field_operation
-                  || n == target_operator_realization_field_shape
+                  n == ^target_operator_realization_field_operation
+                  || n == ^target_operator_realization_field_shape
                 Positional => false
               }
             } else {
@@ -1037,13 +982,13 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
     o: target_operator_realization_row_wire_schema_valid(row: row),
     f: fn(_) {
       bind_outcome(
-        o: find_named_child(root: row, name: target_operator_realization_field_operation),
+        o: find_named_child(root: row, name: ^target_operator_realization_field_operation),
         f: fn(operation_wire) {
           bind_outcome(
             o: canonical_operation_from_wire_node(wire: operation_wire),
             f: fn(canonical_op) {
               bind_outcome(
-                o: find_named_child(root: row, name: target_operator_realization_field_shape),
+                o: find_named_child(root: row, name: ^target_operator_realization_field_shape),
                 f: fn(shape_wire) {
                   bind_outcome(
                     o: target_operator_shape_from_wire_node(wire: shape_wire),
@@ -1073,18 +1018,17 @@ fn target_operator_realization_node(
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
-        name: target_operator_realization_field_operation,
+        name: ^target_operator_realization_field_operation,
         target: target_model_canonical_operation_wire_node(operation: operation)
       ),
       target_model_named_edge(
-        name: target_operator_realization_field_shape,
+        name: ^target_operator_realization_field_shape,
         target: target_model_operator_shape_wire_node(shape: shape)
       )
     ]
   )
 }
 
-data target_operator_realization_row_edge: Symbol = target_operator_realization_row_edge
 
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   target_model_type_conj_node(
@@ -1094,7 +1038,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         Cons {
           head: target_model_named_edge(
-            name: target_operator_realization_row_edge,
+            name: ^target_operator_realization_row_edge,
             target: row
           ),
           tail: acc
@@ -1106,7 +1050,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
 
 fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: target_value_projection_field_missing,
+    reason: ^target_value_projection_field_missing,
     at: node_locus(node: bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1135,7 +1079,7 @@ fn decode_binding_ref_shape_bundle(bundle: Node) -> Outcome<TargetBindingRefShap
   bind_outcome(
     o: projection_bundle_symbol_field(
       bundle: bundle,
-      field: target_value_expr_field_ident_token
+      field: ^target_value_expr_field_ident_token
     ),
     f: fn(ident_token) {
       outcome_accepted(
@@ -1147,15 +1091,15 @@ fn decode_binding_ref_shape_bundle(bundle: Node) -> Outcome<TargetBindingRefShap
 
 fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveApplyShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
     f: fn(open) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_close),
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_close),
         f: fn(close) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: target_value_expr_field_separator
+              field: ^target_value_expr_field_separator
             ),
             f: fn(separator) {
               outcome_accepted(
@@ -1175,18 +1119,18 @@ fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveA
 
 fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_if_token),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_if_token),
     f: fn(if_token) {
       bind_outcome(
         o: projection_bundle_symbol_field(
           bundle: bundle,
-          field: target_value_expr_field_then_token
+          field: ^target_value_expr_field_then_token
         ),
         f: fn(then_token) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: target_value_expr_field_else_token
+              field: ^target_value_expr_field_else_token
             ),
             f: fn(else_token) {
               outcome_accepted(
@@ -1206,16 +1150,16 @@ fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalSha
 
 fn decode_bind_let_shape_bundle(bundle: Node) -> Outcome<TargetBindLetShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_let_token),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_let_token),
     f: fn(let_token) {
       bind_outcome(
         o: projection_bundle_symbol_field(
           bundle: bundle,
-          field: target_value_expr_field_assign_token
+          field: ^target_value_expr_field_assign_token
         ),
         f: fn(assign_token) {
           bind_outcome(
-            o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_in_token),
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_in_token),
             f: fn(in_token) {
               outcome_accepted(
                 TargetBindLetShape {
@@ -1234,7 +1178,7 @@ fn decode_bind_let_shape_bundle(bundle: Node) -> Outcome<TargetBindLetShape> {
 
 fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_loop_token),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_loop_token),
     f: fn(loop_token) {
       outcome_accepted(
         TargetLoopShape {
@@ -1249,22 +1193,22 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   bind_outcome(
     o: projection_bundle_symbol_field(
       bundle: bundle,
-      field: target_value_expr_field_ident_token
+      field: ^target_value_expr_field_ident_token
     ),
     f: fn(callee_ident_token) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
         f: fn(open) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: target_value_expr_field_separator
+              field: ^target_value_expr_field_separator
             ),
             f: fn(separator) {
               bind_outcome(
                 o: projection_bundle_symbol_field(
                   bundle: bundle,
-                  field: target_value_expr_field_close
+                  field: ^target_value_expr_field_close
                 ),
                 f: fn(close) {
                   outcome_accepted(
@@ -1285,16 +1229,81 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   )
 }
 
+// Lane 2c — decode the closure spelling shape (fn / param framing / body framing).
+fn decode_closure_shape_bundle(bundle: Node) -> Outcome<TargetClosureShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_fn_token),
+    f: fn(fn_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: ^target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^target_value_expr_field_close
+                ),
+                f: fn(close) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_body_open
+                    ),
+                    f: fn(body_open) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(
+                          bundle: bundle,
+                          field: ^target_value_expr_field_body_close
+                        ),
+                        f: fn(body_close) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(
+                              bundle: bundle,
+                              field: ^target_value_expr_field_ident_token
+                            ),
+                            f: fn(param_ident_token) {
+                              outcome_accepted(
+                                TargetClosureShape {
+                                  fn_token: fn_token,
+                                  open: open,
+                                  separator: separator,
+                                  close: close,
+                                  body_open: body_open,
+                                  body_close: body_close,
+                                  param_ident_token: param_ident_token
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 // Serialize one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
 fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
-        name: target_value_expr_field_effect_kind,
+        name: ^target_value_expr_field_effect_kind,
         target: target_model_type_atom_node(identity: row.effect_kind)
       ),
       target_model_named_edge(
-        name: target_value_expr_field_effect_callee,
+        name: ^target_value_expr_field_effect_callee,
         target: target_model_type_atom_node(identity: row.callee)
       )
     ]
@@ -1304,10 +1313,10 @@ fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node 
 // Decode one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
 fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEffectCalleeRow> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_kind),
+    o: projection_bundle_symbol_field(bundle: row, field: ^target_value_expr_field_effect_kind),
     f: fn(effect_kind) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: row, field: target_value_expr_field_effect_callee),
+        o: projection_bundle_symbol_field(bundle: row, field: ^target_value_expr_field_effect_callee),
         f: fn(callee) {
           outcome_accepted(
             TargetEffectCalleeRow { effect_kind: effect_kind, callee: callee }
@@ -1332,7 +1341,7 @@ fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCal
         Accepted { value: rows, diagnostics: d } =>
           match edge.label {
             Named { name: n } =>
-              if n == target_value_expr_effect_callee_row_edge {
+              if n == ^target_value_expr_effect_callee_row_edge {
                 bind_outcome(
                   o: target_value_expr_effect_callee_row_from_wire(row: edge.target),
                   f: fn(row) {
@@ -1357,18 +1366,18 @@ fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplySh
     o: decode_effect_apply_callee_rows(bundle: bundle),
     f: fn(callees) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
         f: fn(open) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: target_value_expr_field_close
+              field: ^target_value_expr_field_close
             ),
             f: fn(close) {
               bind_outcome(
                 o: projection_bundle_symbol_field(
                   bundle: bundle,
-                  field: target_value_expr_field_separator
+                  field: ^target_value_expr_field_separator
                 ),
                 f: fn(separator) {
                   outcome_accepted(
@@ -1397,7 +1406,7 @@ fn decode_value_expression_projection_bundle(
       bind_outcome(
         o: projection_bundle_child(
           bundle: bundle,
-          name: target_value_expr_field_binding_ref
+          name: ^target_value_expr_field_binding_ref
         ),
         f: fn(binding_ref_bundle) {
           bind_outcome(
@@ -1406,7 +1415,7 @@ fn decode_value_expression_projection_bundle(
               bind_outcome(
                 o: projection_bundle_child(
                   bundle: bundle,
-                  name: target_value_expr_field_primitive_apply
+                  name: ^target_value_expr_field_primitive_apply
                 ),
                 f: fn(primitive_bundle) {
                   bind_outcome(
@@ -1415,7 +1424,7 @@ fn decode_value_expression_projection_bundle(
                       bind_outcome(
                         o: projection_bundle_child(
                           bundle: bundle,
-                          name: target_value_expr_field_callable_apply
+                          name: ^target_value_expr_field_callable_apply
                         ),
                         f: fn(callable_bundle) {
                           bind_outcome(
@@ -1424,7 +1433,16 @@ fn decode_value_expression_projection_bundle(
                               bind_outcome(
                                 o: projection_bundle_child(
                                   bundle: bundle,
-                                  name: target_value_expr_field_effect_apply
+                                  name: ^target_value_expr_field_closure
+                                ),
+                                f: fn(closure_bundle) {
+                              bind_outcome(
+                                o: decode_closure_shape_bundle(bundle: closure_bundle),
+                                f: fn(closure_form) {
+                              bind_outcome(
+                                o: projection_bundle_child(
+                                  bundle: bundle,
+                                  name: ^target_value_expr_field_effect_apply
                                 ),
                                 f: fn(effect_bundle) {
                                   bind_outcome(
@@ -1433,7 +1451,7 @@ fn decode_value_expression_projection_bundle(
                                       bind_outcome(
                                         o: projection_bundle_child(
                                           bundle: bundle,
-                                          name: target_value_expr_field_conditional
+                                          name: ^target_value_expr_field_conditional
                                         ),
                                         f: fn(conditional_bundle) {
                                           bind_outcome(
@@ -1444,7 +1462,7 @@ fn decode_value_expression_projection_bundle(
                                               bind_outcome(
                                                 o: projection_bundle_child(
                                                   bundle: bundle,
-                                                  name: target_value_expr_field_bind_let
+                                                  name: ^target_value_expr_field_bind_let
                                                 ),
                                                 f: fn(bind_let_bundle) {
                                                   bind_outcome(
@@ -1455,7 +1473,7 @@ fn decode_value_expression_projection_bundle(
                                                       bind_outcome(
                                                         o: projection_bundle_child(
                                                           bundle: bundle,
-                                                          name: target_value_expr_field_loop
+                                                          name: ^target_value_expr_field_loop
                                                         ),
                                                         f: fn(loop_bundle) {
                                                           bind_outcome(
@@ -1468,6 +1486,7 @@ fn decode_value_expression_projection_bundle(
                                                                   binding_ref_form: binding_ref_form,
                                                                   primitive_apply_form: primitive_apply_form,
                                                                   callable_apply_form: callable_apply_form,
+                                                                  closure_form: closure_form,
                                                                   effect_apply_form: effect_apply_form,
                                                                   conditional_form: conditional_form,
                                                                   let_form: let_form,
@@ -1488,6 +1507,10 @@ fn decode_value_expression_projection_bundle(
                                       )
                                     }
                                   )
+                                }
+                              )
+                            }
+                          )
                                 }
                               )
                             }
@@ -1529,12 +1552,12 @@ fn decode_optional_projection_bundle_symbol_field(
 
 fn decode_atom_type_shape_bundle(bundle: Node) -> Outcome<TargetAtomTypeShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
     f: fn(surface) {
       bind_outcome(
         o: projection_bundle_symbol_field(
           bundle: bundle,
-          field: target_type_expr_field_ident_token
+          field: ^target_type_expr_field_ident_token
         ),
         f: fn(ident_token) {
           outcome_accepted(
@@ -1548,27 +1571,27 @@ fn decode_atom_type_shape_bundle(bundle: Node) -> Outcome<TargetAtomTypeShape> {
 
 fn decode_generic_apply_shape_bundle(bundle: Node) -> Outcome<TargetGenericApply> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
     f: fn(surface) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_open),
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_open),
         f: fn(open) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: target_type_expr_field_separator
+              field: ^target_type_expr_field_separator
             ),
             f: fn(separator) {
               bind_outcome(
                 o: projection_bundle_symbol_field(
                   bundle: bundle,
-                  field: target_type_expr_field_close
+                  field: ^target_type_expr_field_close
                 ),
                 f: fn(close) {
                   bind_outcome(
                     o: decode_optional_projection_bundle_symbol_field(
                       bundle: bundle,
-                      field: target_type_expr_field_field_label_separator
+                      field: ^target_type_expr_field_field_label_separator
                     ),
                     f: fn(field_label_separator) {
                       outcome_accepted(
@@ -1594,12 +1617,12 @@ fn decode_generic_apply_shape_bundle(bundle: Node) -> Outcome<TargetGenericApply
 
 fn decode_sum_type_shape_bundle(bundle: Node) -> Outcome<TargetSumTypeShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
     f: fn(surface) {
       bind_outcome(
         o: projection_bundle_symbol_field(
           bundle: bundle,
-          field: target_type_expr_field_variant_separator
+          field: ^target_type_expr_field_variant_separator
         ),
         f: fn(variant_separator) {
           outcome_accepted(
@@ -1616,33 +1639,33 @@ fn decode_sum_type_shape_bundle(bundle: Node) -> Outcome<TargetSumTypeShape> {
 
 fn decode_function_type_shape_bundle(bundle: Node) -> Outcome<TargetFunctionTypeShape> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
     f: fn(surface) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_open),
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_open),
         f: fn(open) {
           bind_outcome(
-            o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_close),
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_close),
             f: fn(close) {
               bind_outcome(
-                o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_arrow),
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_arrow),
                 f: fn(arrow) {
                   bind_outcome(
                     o: projection_bundle_symbol_field(
                       bundle: bundle,
-                      field: target_type_expr_field_param_ident_token
+                      field: ^target_type_expr_field_param_ident_token
                     ),
                     f: fn(param_ident_token) {
                       bind_outcome(
                         o: projection_bundle_symbol_field(
                           bundle: bundle,
-                          field: target_type_expr_field_param_type_separator
+                          field: ^target_type_expr_field_param_type_separator
                         ),
                         f: fn(param_type_separator) {
                           bind_outcome(
                             o: projection_bundle_symbol_field(
                               bundle: bundle,
-                              field: target_type_expr_field_param_list_separator
+                              field: ^target_type_expr_field_param_list_separator
                             ),
                             f: fn(param_list_separator) {
                               outcome_accepted(
@@ -1678,19 +1701,19 @@ fn decode_type_expression_projection_bundle(
   match bundle.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
-        o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_atom),
+        o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_atom),
         f: fn(atom_bundle) {
           bind_outcome(
             o: decode_atom_type_shape_bundle(bundle: atom_bundle),
             f: fn(atom_form) {
               bind_outcome(
-                o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_conj),
+                o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_conj),
                 f: fn(conj_bundle) {
                   bind_outcome(
                     o: decode_generic_apply_shape_bundle(bundle: conj_bundle),
                     f: fn(conj_form) {
                       bind_outcome(
-                        o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_disj),
+                        o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_disj),
                         f: fn(disj_bundle) {
                           bind_outcome(
                             o: decode_sum_type_shape_bundle(bundle: disj_bundle),
@@ -1698,7 +1721,7 @@ fn decode_type_expression_projection_bundle(
                               bind_outcome(
                                 o: projection_bundle_child(
                                   bundle: bundle,
-                                  name: target_type_expr_field_arrow
+                                  name: ^target_type_expr_field_arrow
                                 ),
                                 f: fn(arrow_bundle) {
                                   bind_outcome(
@@ -1707,7 +1730,7 @@ fn decode_type_expression_projection_bundle(
                                       bind_outcome(
                                         o: projection_bundle_child(
                                           bundle: bundle,
-                                          name: target_type_expr_field_cardinality
+                                          name: ^target_type_expr_field_cardinality
                                         ),
                                         f: fn(card_bundle) {
                                           bind_outcome(
@@ -1716,7 +1739,7 @@ fn decode_type_expression_projection_bundle(
                                               bind_outcome(
                                                 o: projection_bundle_child(
                                                   bundle: bundle,
-                                                  name: target_type_expr_field_instantiation
+                                                  name: ^target_type_expr_field_instantiation
                                                 ),
                                                 f: fn(inst_bundle) {
                                                   bind_outcome(
@@ -1771,7 +1794,7 @@ fn type_expression_projection_from_target(
   bind_outcome(
     o: find_named_child(
       root: target.bundle,
-      name: target_model_edge_type_expression_projection
+      name: ^target_model_edge_type_expression_projection
     ),
     f: fn(bundle) {
       decode_type_expression_projection_bundle(bundle: bundle)
@@ -1792,7 +1815,7 @@ fn grammar_relation_row_attach_bodied_scaffold(
       left: row.children,
       right: Cons {
         head: target_model_named_edge(
-          name: grammar_relation_field_bodied_scaffold,
+          name: ^grammar_relation_field_bodied_scaffold,
           target: bodied_arrow_statement_scaffold_bundle_node(scaffold: scaffold)
         ),
         tail: Empty
@@ -1807,11 +1830,11 @@ fn bodied_arrow_statement_scaffold_bundle_node(
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
-        name: target_bodied_arrow_scaffold_field_prefix,
+        name: ^target_bodied_arrow_scaffold_field_prefix,
         target: concrete_syntax_token_list_to_node(tokens: scaffold.prefix)
       ),
       target_model_named_edge(
-        name: target_bodied_arrow_scaffold_field_suffix,
+        name: ^target_bodied_arrow_scaffold_field_suffix,
         target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
       )
     ]
@@ -1820,7 +1843,7 @@ fn bodied_arrow_statement_scaffold_bundle_node(
 
 fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic {
   Diagnostic {
-    reason: grammar_relation_bodied_scaffold_missing,
+    reason: ^grammar_relation_bodied_scaffold_missing,
     at: node_locus(node: row),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1828,7 +1851,7 @@ fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic 
 
 fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_bodied_arrow_scaffold_bundle_malformed,
+    reason: ^target_bodied_arrow_scaffold_bundle_malformed,
     at: node_locus(node: bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1837,7 +1860,7 @@ fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Dia
 fn bodied_arrow_scaffold_from_grammar_relation_row(
   row: Node
 ) -> Outcome<TargetBodiedArrowStatementScaffold> {
-  match find_named_child(root: row, name: grammar_relation_field_bodied_scaffold) {
+  match find_named_child(root: row, name: ^grammar_relation_field_bodied_scaffold) {
     Accepted { value: scaffold_bundle, diagnostics: d } =>
       bind_outcome(
         o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
@@ -1867,10 +1890,10 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
         outcome_accepted(Empty)
       } else {
         bind_outcome(
-          o: find_named_child(root: node, name: fold_list_node_head),
+          o: find_named_child(root: node, name: ^fold_list_node_head),
           f: fn(head) {
             bind_outcome(
-              o: find_named_child(root: node, name: fold_list_node_tail),
+              o: find_named_child(root: node, name: ^fold_list_node_tail),
               f: fn(tail) {
                 bind_outcome(
                   o: concrete_syntax_token_node_targets_from_list_node(node: tail),
@@ -1924,7 +1947,7 @@ fn decode_bodied_arrow_statement_scaffold_bundle(
       bind_outcome(
         o: projection_bundle_child(
           bundle: bundle,
-          name: target_bodied_arrow_scaffold_field_prefix
+          name: ^target_bodied_arrow_scaffold_field_prefix
         ),
         f: fn(prefix_node) {
           bind_outcome(
@@ -1933,7 +1956,7 @@ fn decode_bodied_arrow_statement_scaffold_bundle(
               bind_outcome(
                 o: projection_bundle_child(
                   bundle: bundle,
-                  name: target_bodied_arrow_scaffold_field_suffix
+                  name: ^target_bodied_arrow_scaffold_field_suffix
                 ),
                 f: fn(suffix_node) {
                   bind_outcome(
@@ -1962,7 +1985,7 @@ fn decode_bodied_arrow_statement_scaffold_bundle(
 
 fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
   bind_outcome(
-    o: find_named_child(root: parent, name: concrete_syntax_token_field_binding),
+    o: find_named_child(root: parent, name: ^concrete_syntax_token_field_binding),
     f: fn(binding_node) {
       match binding_node.kind {
         TypeNode { connective: Atom { identity: binding } } =>
@@ -1976,7 +1999,7 @@ fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
 
 fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
   Diagnostic {
-    reason: concrete_syntax_token_wire_malformed,
+    reason: ^concrete_syntax_token_wire_malformed,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1986,12 +2009,12 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
   match token.kind {
     TypeNode { connective: Conj } =>
       if name_occurrences(
-        name: concrete_syntax_token_field_kind,
+        name: ^concrete_syntax_token_field_kind,
         children: token.children
       ) != 1 {
         outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
       } else if name_occurrences(
-        name: concrete_syntax_token_field_class,
+        name: ^concrete_syntax_token_field_class,
         children: token.children
       ) != 1 {
         outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
@@ -2003,9 +2026,9 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
             if acc {
               match edge.label {
                 Named { name: n } =>
-                  n == concrete_syntax_token_field_kind
-                  || n == concrete_syntax_token_field_class
-                  || n == concrete_syntax_token_field_binding
+                  n == ^concrete_syntax_token_field_kind
+                  || n == ^concrete_syntax_token_field_class
+                  || n == ^concrete_syntax_token_field_binding
                 Positional => false
               }
             } else {
@@ -2017,13 +2040,13 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
             outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
           true =>
             bind_outcome(
-              o: find_named_child(root: token, name: concrete_syntax_token_field_kind),
+              o: find_named_child(root: token, name: ^concrete_syntax_token_field_kind),
               f: fn(kind_node) {
                 match kind_node.kind {
                   TypeNode { connective: Atom { identity: kind } } =>
-                    if kind == concrete_syntax_token_kind_fixed {
+                    if kind == ^concrete_syntax_token_kind_fixed {
                       if name_occurrences(
-                        name: concrete_syntax_token_field_binding,
+                        name: ^concrete_syntax_token_field_binding,
                         children: token.children
                       ) == 0 {
                         outcome_accepted(true)
@@ -2032,9 +2055,9 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
                           concrete_syntax_token_wire_malformed_diagnostic(token: token)
                         )
                       }
-                    } else if kind == concrete_syntax_token_kind_bound {
+                    } else if kind == ^concrete_syntax_token_kind_bound {
                       if name_occurrences(
-                        name: concrete_syntax_token_field_binding,
+                        name: ^concrete_syntax_token_field_binding,
                         children: token.children
                       ) == 1 {
                         outcome_accepted(true)
@@ -2067,21 +2090,21 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
     o: concrete_syntax_token_wire_schema_valid(token: token),
     f: fn(_) {
       bind_outcome(
-        o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
+        o: projection_bundle_child(bundle: token, name: ^concrete_syntax_token_field_kind),
         f: fn(kind_node) {
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: token,
-              field: concrete_syntax_token_field_class
+              field: ^concrete_syntax_token_field_class
             ),
             f: fn(token_class) {
               match kind_node.kind {
                 TypeNode { connective: Atom { identity: kind } } =>
-                  if kind == concrete_syntax_token_kind_fixed {
+                  if kind == ^concrete_syntax_token_kind_fixed {
                     outcome_accepted(
                       FixedToken { token_class: token_class }
                     )
-                  } else if kind == concrete_syntax_token_kind_bound {
+                  } else if kind == ^concrete_syntax_token_kind_bound {
                     bind_outcome(
                       o: wire_conj_named_binding_atom(parent: token),
                       f: fn(binding) {
@@ -2111,12 +2134,10 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
   )
 }
 
-data target_value_projection_field_missing: Symbol = target_value_projection_field_missing
-data target_value_projection_bundle_malformed: Symbol = target_value_projection_bundle_malformed
 
 fn target_value_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_value_projection_bundle_malformed,
+    reason: ^target_value_projection_bundle_malformed,
     at: node_locus(node: bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -2134,18 +2155,13 @@ type TargetAtomRealization {
   display_name: Symbol
 }
 
-data target_atom_realization_lookup_miss: Symbol = target_atom_realization_lookup_miss
-data target_atom_realization_catalog_row_decode_invalid: Symbol = target_atom_realization_catalog_row_decode_invalid
 
-data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
 
 // Kernel-ambient type carriers (Node-keyed authority; not spelling-keyed tables).
-data symbol_kernel_type_atom: Symbol = symbol_kernel_type_atom
-data char_kernel_type_atom: Symbol = char_kernel_type_atom
 
 fn symbol_kernel_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: symbol_kernel_type_atom } },
+    kind: TypeNode { connective: Atom { identity: ^symbol_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -2153,7 +2169,7 @@ fn symbol_kernel_type_node() -> Node {
 
 fn char_kernel_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: char_kernel_type_atom } },
+    kind: TypeNode { connective: Atom { identity: ^char_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -2174,7 +2190,7 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
 fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: c } } =>
-      if c == char_kernel_type_atom {
+      if c == ^char_kernel_type_atom {
         optional_absent()
       } else {
         optional_present(source_atom_char(codepoint: c))
@@ -2210,7 +2226,7 @@ fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> O
   } else {
     match source.kind {
       TypeNode { connective: Atom { identity: id } } =>
-        if id == free_monoid_variant_empty {
+        if id == ^free_monoid_variant_empty {
           optional_present(source_atom_string(value: source))
         } else {
           optional_absent()
@@ -2219,9 +2235,9 @@ fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> O
         if (source.children |> count) != 2 {
           optional_absent()
         } else {
-          match find_named_child(root: source, name: free_monoid_field_head) {
+          match find_named_child(root: source, name: ^free_monoid_field_head) {
             Accepted { value: head } =>
-              match find_named_child(root: source, name: free_monoid_field_tail) {
+              match find_named_child(root: source, name: ^free_monoid_field_tail) {
                 Accepted { value: tail } =>
                   match source_atom_char_projection_from_node(source: head) {
                     Present { value: _ } =>
@@ -2252,7 +2268,7 @@ fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
 fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == symbol_kernel_type_atom {
+      if id == ^symbol_kernel_type_atom {
         optional_absent()
       } else {
         optional_present(source_atom_symbol(identity: id))
@@ -2466,7 +2482,7 @@ fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression
       },
       children: [
         target_model_named_edge(
-          name: target_value_expr_field_binding,
+          name: ^target_value_expr_field_binding,
           target: target_model_type_atom_node(identity: binding)
         )
       ],
@@ -2484,7 +2500,7 @@ fn target_value_expr_primitive_apply_operand_edges(
     snoc: fn(acc, operand) {
       Cons {
         head: target_model_named_edge(
-          name: target_value_expr_field_operand,
+          name: ^target_value_expr_field_operand,
           target: target_value_expression_node(expr: operand)
         ),
         tail: acc
@@ -2495,7 +2511,7 @@ fn target_value_expr_primitive_apply_operand_edges(
 
 fn target_value_expr_operand_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_value_expr_operand_wire_malformed,
+    reason: ^target_value_expr_operand_wire_malformed,
     at: node_locus(node: wire),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -2506,7 +2522,7 @@ fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> 
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_value_expression_binding_ref_atom {
         if name_occurrences(
-          name: target_value_expr_field_binding,
+          name: ^target_value_expr_field_binding,
           children: wire.children
         ) != 1 {
           outcome_rejected(
@@ -2519,7 +2535,7 @@ fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> 
             f: fn(acc, edge) {
               if acc {
                 match edge.label {
-                  Named { name: n } => n == target_value_expr_field_binding
+                  Named { name: n } => n == ^target_value_expr_field_binding
                   Positional => false
                 }
               } else {
@@ -2556,7 +2572,7 @@ fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == target_value_expr_field_binding {
+              if n == ^target_value_expr_field_binding {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -2595,7 +2611,7 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_operation,
+        name: ^target_value_expr_field_operation,
         children: wire.children
       ) != 1 {
         outcome_rejected(
@@ -2609,8 +2625,8 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
             if acc {
               match edge.label {
                 Named { name: n } =>
-                  n == target_value_expr_field_operation
-                  || n == target_value_expr_field_operand
+                  n == ^target_value_expr_field_operation
+                  || n == ^target_value_expr_field_operand
                 Positional => false
               }
             } else {
@@ -2645,9 +2661,9 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
             Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
                 Named { name: n } =>
-                  if n == target_value_expr_field_operation {
+                  if n == ^target_value_expr_field_operation {
                     acc
-                  } else if n == target_value_expr_field_operand {
+                  } else if n == ^target_value_expr_field_operand {
                     bind_outcome(
                       o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
                       f: fn(binding) {
@@ -2690,7 +2706,7 @@ fn target_value_expression_primitive_apply(
       children: list_append(
         left: [
           target_model_named_edge(
-            name: target_value_expr_field_operation,
+            name: ^target_value_expr_field_operation,
             target: target_model_canonical_operation_wire_node(operation: operation)
           )
         ],
@@ -2720,7 +2736,7 @@ fn target_value_expression_effect_apply(
       children: list_append(
         left: [
           target_model_named_edge(
-            name: target_value_expr_field_effect_kind,
+            name: ^target_value_expr_field_effect_kind,
             target: target_model_type_atom_node(identity: effect_kind_discriminant)
           )
         ],
@@ -2743,7 +2759,7 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_effect_kind,
+        name: ^target_value_expr_field_effect_kind,
         children: wire.children
       ) != 1 {
         outcome_rejected(
@@ -2757,8 +2773,8 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
             if acc {
               match edge.label {
                 Named { name: n } =>
-                  n == target_value_expr_field_effect_kind
-                  || n == target_value_expr_field_operand
+                  n == ^target_value_expr_field_effect_kind
+                  || n == ^target_value_expr_field_operand
                 Positional => false
               }
             } else {
@@ -2792,7 +2808,7 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> 
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == target_value_expr_field_effect_kind {
+              if n == ^target_value_expr_field_effect_kind {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -2830,9 +2846,9 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
             Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
                 Named { name: n } =>
-                  if n == target_value_expr_field_effect_kind {
+                  if n == ^target_value_expr_field_effect_kind {
                     acc
-                  } else if n == target_value_expr_field_operand {
+                  } else if n == ^target_value_expr_field_operand {
                     bind_outcome(
                       o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
                       f: fn(binding) {
@@ -2957,15 +2973,15 @@ fn target_value_expression_conditional(
       },
       children: [
         target_model_named_edge(
-          name: target_value_expr_field_branch_condition,
+          name: ^target_value_expr_field_branch_condition,
           target: condition.node
         ),
         target_model_named_edge(
-          name: target_value_expr_field_branch_then_arm,
+          name: ^target_value_expr_field_branch_then_arm,
           target: then_arm.node
         ),
         target_model_named_edge(
-          name: target_value_expr_field_branch_else_arm,
+          name: ^target_value_expr_field_branch_else_arm,
           target: else_arm.node
         )
       ],
@@ -2987,15 +3003,15 @@ fn target_value_expression_bind_let(
       },
       children: [
         target_model_named_edge(
-          name: target_value_expr_field_bind_key,
+          name: ^target_value_expr_field_bind_key,
           target: bind_key.node
         ),
         target_model_named_edge(
-          name: target_value_expr_field_bind_value,
+          name: ^target_value_expr_field_bind_value,
           target: bind_value.node
         ),
         target_model_named_edge(
-          name: target_value_expr_field_bind_body,
+          name: ^target_value_expr_field_bind_body,
           target: bind_body.node
         )
       ],
@@ -3013,7 +3029,7 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
       },
       children: [
         target_model_named_edge(
-          name: target_value_expr_field_loop_body,
+          name: ^target_value_expr_field_loop_body,
           target: body.node
         )
       ],
@@ -3022,13 +3038,98 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
   }
 }
 
-data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
-data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
-data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
+// Lane 2c — callable-apply wire: a `callee` atom edge followed by one `callable_arg` edge per
+// positional argument (order preserved; args extracted by an order-preserving fold, never by
+// content_hash reorder). Mirrors primitive_apply's operand-edge layout but the head is a callee
+// binding rather than a canonical-operation row.
+fn target_value_expr_callable_arg_edges(
+  args: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: args,
+    empty: Empty,
+    snoc: fn(acc, arg) {
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_value_expr_field_callable_arg,
+          target: target_value_expression_node(expr: arg)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expression_callable_apply(
+  callee: Symbol,
+  args: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprCallableApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_callable_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_callee,
+            target: target_model_type_atom_node(identity: callee)
+          )
+        ],
+        right: target_value_expr_callable_arg_edges(args: args)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+// Lane 2c — closure wire: one `closure_param` atom edge per param (order preserved) followed by a
+// single `closure_body` edge carrying the body value-expression.
+fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, param) {
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_value_expr_field_closure_param,
+          target: target_model_type_atom_node(identity: param)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expression_closure(
+  params: List<Symbol>,
+  body: TargetValueExpression
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprClosure,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_closure_atom }
+      },
+      children: list_append(
+        left: target_value_expr_closure_param_edges(params: params),
+        right: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_closure_body,
+            target: body.node
+          )
+        ]
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
 
 fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExpression) -> Diagnostic {
   Diagnostic {
-    reason: target_value_expression_emit_unsupported_kind,
+    reason: ^target_value_expression_emit_unsupported_kind,
     at: node_locus(node: expr.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3036,7 +3137,7 @@ fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExp
 
 fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: TargetValueExpression) -> Diagnostic {
   Diagnostic {
-    reason: target_value_expression_emit_operator_shape_unsupported,
+    reason: ^target_value_expression_emit_operator_shape_unsupported,
     at: node_locus(node: expr.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3044,7 +3145,7 @@ fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: Targ
 
 fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: TargetValueExpression) -> Diagnostic {
   Diagnostic {
-    reason: target_value_expression_emit_primitive_apply_arity_invalid,
+    reason: ^target_value_expression_emit_primitive_apply_arity_invalid,
     at: node_locus(node: expr.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3052,7 +3153,7 @@ fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: T
 
 fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_operator_realization_catalog_miss,
+    reason: ^target_operator_realization_catalog_miss,
     at: node_locus(node: catalog),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3060,7 +3161,7 @@ fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnos
 
 fn target_operator_realization_catalog_ambiguous_diagnostic(catalog: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_operator_realization_catalog_ambiguous,
+    reason: ^target_operator_realization_catalog_ambiguous,
     at: node_locus(node: catalog),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3070,7 +3171,7 @@ fn target_operator_realization_row_matches_canonical_op(
   row: Node,
   canonical_op: CanonicalOperation
 ) -> Bool {
-  match find_named_child(root: row, name: target_operator_realization_field_operation) {
+  match find_named_child(root: row, name: ^target_operator_realization_field_operation) {
     Accepted { value: operation_wire, diagnostics: _ } =>
       canonical_operation_wire_matches_operation(
         wire: operation_wire,
@@ -3090,7 +3191,7 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
           if acc {
             match e.label {
               Positional => false
-              Named { name: n } => n == target_operator_realization_row_edge
+              Named { name: n } => n == ^target_operator_realization_row_edge
             }
           } else {
             false
@@ -3148,7 +3249,7 @@ fn target_operator_realization_catalog_lookup(
             f: fn(acc, e) {
               match e.label {
                 Named { name: n } =>
-                  if n == target_operator_realization_row_edge {
+                  if n == ^target_operator_realization_row_edge {
                     target_operator_realization_catalog_lookup_step(
                       acc: acc,
                       row_node: e.target,
@@ -3191,7 +3292,7 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<
         Absent =>
           match e.label {
             Named { name: n } =>
-              if n == target_value_expr_field_operation {
+              if n == ^target_value_expr_field_operation {
                 match canonical_operation_from_wire_node(wire: e.target) {
                   Accepted { value: canonical_op, diagnostics: _ } =>
                     optional_present(value: canonical_op)
@@ -3491,6 +3592,20 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_callable_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprCallableApply,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_closure_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprClosure,
+            node: wire
+          }
+        )
       } else {
         outcome_rejected(
           target_value_expression_emit_unsupported_kind_diagnostic(
@@ -3521,21 +3636,21 @@ fn target_value_expr_conditional_wire_schema_valid(wire: Node) -> Outcome<Bool> 
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_branch_condition,
+        name: ^target_value_expr_field_branch_condition,
         children: wire.children
       ) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_branch_then_arm,
+        name: ^target_value_expr_field_branch_then_arm,
         children: wire.children
       ) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_branch_else_arm,
+        name: ^target_value_expr_field_branch_else_arm,
         children: wire.children
       ) != 1 {
         outcome_rejected(
@@ -3591,21 +3706,21 @@ fn target_value_expr_bind_let_wire_schema_valid(wire: Node) -> Outcome<Bool> {
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_bind_key,
+        name: ^target_value_expr_field_bind_key,
         children: wire.children
       ) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_bind_value,
+        name: ^target_value_expr_field_bind_value,
         children: wire.children
       ) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_bind_body,
+        name: ^target_value_expr_field_bind_body,
         children: wire.children
       ) != 1 {
         outcome_rejected(
@@ -3639,19 +3754,19 @@ fn target_value_expression_bind_let_to_concrete_tokens(
       bind_outcome(
         o: target_value_expr_bind_let_child_from_wire(
           wire: expr.node,
-          field: target_value_expr_field_bind_key
+          field: ^target_value_expr_field_bind_key
         ),
         f: fn(bind_key) {
           bind_outcome(
             o: target_value_expr_bind_let_child_from_wire(
               wire: expr.node,
-              field: target_value_expr_field_bind_value
+              field: ^target_value_expr_field_bind_value
             ),
             f: fn(bind_value) {
               bind_outcome(
                 o: target_value_expr_bind_let_child_from_wire(
                   wire: expr.node,
-                  field: target_value_expr_field_bind_body
+                  field: ^target_value_expr_field_bind_body
                 ),
                 f: fn(bind_body) {
                   bind_outcome(
@@ -3732,7 +3847,7 @@ fn target_value_expr_loop_wire_schema_valid(wire: Node) -> Outcome<Bool> {
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
       } else if name_occurrences(
-        name: target_value_expr_field_loop_body,
+        name: ^target_value_expr_field_loop_body,
         children: wire.children
       ) != 1 {
         outcome_rejected(
@@ -3751,7 +3866,7 @@ fn target_value_expr_loop_wire_schema_valid(wire: Node) -> Outcome<Bool> {
 fn target_value_expr_loop_child_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
   target_value_expr_conditional_child_from_wire(
     wire: wire,
-    field: target_value_expr_field_loop_body
+    field: ^target_value_expr_field_loop_body
   )
 }
 
@@ -3819,19 +3934,19 @@ fn target_value_expression_conditional_to_concrete_tokens(
       bind_outcome(
         o: target_value_expr_conditional_child_from_wire(
           wire: expr.node,
-          field: target_value_expr_field_branch_condition
+          field: ^target_value_expr_field_branch_condition
         ),
         f: fn(condition) {
           bind_outcome(
             o: target_value_expr_conditional_child_from_wire(
               wire: expr.node,
-              field: target_value_expr_field_branch_then_arm
+              field: ^target_value_expr_field_branch_then_arm
             ),
             f: fn(then_arm) {
               bind_outcome(
                 o: target_value_expr_conditional_child_from_wire(
                   wire: expr.node,
-                  field: target_value_expr_field_branch_else_arm
+                  field: ^target_value_expr_field_branch_else_arm
                 ),
                 f: fn(else_arm) {
                   bind_outcome(
@@ -3904,6 +4019,311 @@ fn target_value_expression_conditional_to_concrete_tokens(
   )
 }
 
+// ── Lane 2c: callable-apply + closure extraction and emission ──────────────────
+
+fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_callee {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: callee } => outcome_accepted(callee)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_callable_apply_args_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExpression>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: args, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_callable_arg {
+                bind_outcome(
+                  o: target_value_expression_reify_from_wire(wire: edge.target),
+                  f: fn(arg) {
+                    outcome_accepted(list_snoc_item(xs: args, item: arg))
+                  }
+                )
+              } else if n == ^target_value_expr_field_callee {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+
+// Recursively tokenize a list of value-expressions, interspersing one `separator` FixedToken
+// between adjacent members (no leading/trailing separator). Fail-closed on any member.
+fn target_value_expr_tokenize_intersperse(
+  exprs: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node,
+  separator: Symbol
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold(
+    exprs,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: toks, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: e,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(et) {
+              match toks {
+                Empty => outcome_accepted(et)
+                _ =>
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: toks,
+                        right: Cons {
+                          head: FixedToken { token_class: separator },
+                          tail: Empty
+                        }
+                      ),
+                      right: et
+                    )
+                  )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expression_callable_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
+    f: fn(callee) {
+      bind_outcome(
+        o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
+        f: fn(args) {
+          bind_outcome(
+            o: target_value_expr_tokenize_intersperse(
+              exprs: args,
+              projection: projection,
+              catalog: catalog,
+              separator: projection.callable_apply_form.separator
+            ),
+            f: fn(arg_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: Cons {
+                      head: BoundToken {
+                        token_class: projection.callable_apply_form.callee_ident_token,
+                        binding: callee
+                      },
+                      tail: Cons {
+                        head: FixedToken {
+                          token_class: projection.callable_apply_form.open
+                        },
+                        tail: Empty
+                      }
+                    },
+                    right: arg_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.callable_apply_form.close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: ps, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_closure_param {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    outcome_accepted(list_snoc_item(xs: ps, item: id))
+                  _ =>
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              } else if n == ^target_value_expr_field_closure_body {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+
+fn target_value_expr_closure_body_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: ^target_value_expr_field_closure_body
+  )
+}
+
+fn target_value_expr_closure_param_tokens(
+  params: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, p) {
+      let token = BoundToken { token_class: ident_token, binding: p }
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
+}
+
+fn target_value_expression_closure_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_closure_params_from_wire(wire: expr.node),
+    f: fn(params) {
+      bind_outcome(
+        o: target_value_expr_closure_body_from_wire(wire: expr.node),
+        f: fn(body) {
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: body,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(body_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: list_append(
+                      left: Cons {
+                        head: FixedToken {
+                          token_class: projection.closure_form.fn_token
+                        },
+                        tail: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.open
+                          },
+                          tail: Empty
+                        }
+                      },
+                      right: list_append(
+                        left: target_value_expr_closure_param_tokens(
+                          params: params,
+                          ident_token: projection.closure_form.param_ident_token,
+                          separator: projection.closure_form.separator
+                        ),
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.close
+                          },
+                          tail: Cons {
+                            head: FixedToken {
+                              token_class: projection.closure_form.body_open
+                            },
+                            tail: Empty
+                          }
+                        }
+                      )
+                    ),
+                    right: body_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.closure_form.body_close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 // Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
@@ -3926,6 +4346,18 @@ fn target_value_expression_to_concrete_tokens(
       target_value_expression_effect_apply_to_concrete_tokens(
         expr: expr,
         projection: projection
+      )
+    TargetValueExprCallableApply =>
+      target_value_expression_callable_apply_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprClosure =>
+      target_value_expression_closure_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
       )
     TargetValueExprSymbolIdentity =>
       target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
@@ -4112,11 +4544,11 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
-        name: target_value_expr_field_binding_ref,
+        name: ^target_value_expr_field_binding_ref,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_ident_token,
+              name: ^target_value_expr_field_ident_token,
               target: target_model_type_atom_node(
                 identity: projection.binding_ref_form.ident_token
               )
@@ -4125,23 +4557,23 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_primitive_apply,
+        name: ^target_value_expr_field_primitive_apply,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_open,
+              name: ^target_value_expr_field_open,
               target: target_model_type_atom_node(
                 identity: projection.primitive_apply_form.open
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_close,
+              name: ^target_value_expr_field_close,
               target: target_model_type_atom_node(
                 identity: projection.primitive_apply_form.close
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_separator,
+              name: ^target_value_expr_field_separator,
               target: target_model_type_atom_node(
                 identity: projection.primitive_apply_form.separator
               )
@@ -4150,29 +4582,29 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_callable_apply,
+        name: ^target_value_expr_field_callable_apply,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_ident_token,
+              name: ^target_value_expr_field_ident_token,
               target: target_model_type_atom_node(
                 identity: projection.callable_apply_form.callee_ident_token
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_open,
+              name: ^target_value_expr_field_open,
               target: target_model_type_atom_node(
                 identity: projection.callable_apply_form.open
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_close,
+              name: ^target_value_expr_field_close,
               target: target_model_type_atom_node(
                 identity: projection.callable_apply_form.close
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_separator,
+              name: ^target_value_expr_field_separator,
               target: target_model_type_atom_node(
                 identity: projection.callable_apply_form.separator
               )
@@ -4181,7 +4613,56 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_effect_apply,
+        name: ^target_value_expr_field_closure,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_fn_token,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.fn_token
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_open,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_separator,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.separator
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_close,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_body_open,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.body_open
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_body_close,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.body_close
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_ident_token,
+              target: target_model_type_atom_node(
+                identity: projection.closure_form.param_ident_token
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_effect_apply,
         target: target_model_type_conj_node(
           // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
           // followed by the shared open / close / separator framing. Decode inverts this in
@@ -4194,7 +4675,7 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               cons: fn(acc, row) {
                 Cons {
                   head: target_model_named_edge(
-                    name: target_value_expr_effect_callee_row_edge,
+                    name: ^target_value_expr_effect_callee_row_edge,
                     target: target_value_expr_effect_callee_row_node(row: row)
                   ),
                   tail: acc
@@ -4203,19 +4684,19 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             ),
             right: [
               target_model_named_edge(
-                name: target_value_expr_field_open,
+                name: ^target_value_expr_field_open,
                 target: target_model_type_atom_node(
                   identity: projection.effect_apply_form.open
                 )
               ),
               target_model_named_edge(
-                name: target_value_expr_field_close,
+                name: ^target_value_expr_field_close,
                 target: target_model_type_atom_node(
                   identity: projection.effect_apply_form.close
                 )
               ),
               target_model_named_edge(
-                name: target_value_expr_field_separator,
+                name: ^target_value_expr_field_separator,
                 target: target_model_type_atom_node(
                   identity: projection.effect_apply_form.separator
                 )
@@ -4225,23 +4706,23 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_conditional,
+        name: ^target_value_expr_field_conditional,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_if_token,
+              name: ^target_value_expr_field_if_token,
               target: target_model_type_atom_node(
                 identity: projection.conditional_form.if_token
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_then_token,
+              name: ^target_value_expr_field_then_token,
               target: target_model_type_atom_node(
                 identity: projection.conditional_form.then_token
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_else_token,
+              name: ^target_value_expr_field_else_token,
               target: target_model_type_atom_node(
                 identity: projection.conditional_form.else_token
               )
@@ -4250,23 +4731,23 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_bind_let,
+        name: ^target_value_expr_field_bind_let,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_let_token,
+              name: ^target_value_expr_field_let_token,
               target: target_model_type_atom_node(
                 identity: projection.let_form.let_token
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_assign_token,
+              name: ^target_value_expr_field_assign_token,
               target: target_model_type_atom_node(
                 identity: projection.let_form.assign_token
               )
             ),
             target_model_named_edge(
-              name: target_value_expr_field_in_token,
+              name: ^target_value_expr_field_in_token,
               target: target_model_type_atom_node(
                 identity: projection.let_form.in_token
               )
@@ -4275,11 +4756,11 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         )
       ),
       target_model_named_edge(
-        name: target_value_expr_field_loop,
+        name: ^target_value_expr_field_loop,
         target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
-              name: target_value_expr_field_loop_token,
+              name: ^target_value_expr_field_loop_token,
               target: target_model_type_atom_node(
                 identity: projection.loop_form.loop_token
               )
@@ -4467,7 +4948,7 @@ fn target_atom_realization_lookup_in_catalog(
 
 fn target_atom_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_atom_realization_lookup_miss,
+    reason: ^target_atom_realization_lookup_miss,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -4581,8 +5062,8 @@ fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge>
       // Strip realization-catalog edges (atom SG-1 + signature SG-1b) so a row's encoded
       // host_bundle (pre-catalog core) structurally matches core(live host) regardless of
       // which catalogs the live host carries.
-      match n == target_model_edge_atom_realizations
-        || n == target_model_edge_signature_realizations {
+      match n == ^target_model_edge_atom_realizations
+        || n == ^target_model_edge_signature_realizations {
         true => acc
         false => list_snoc_item(xs: acc, item: edge)
       }
@@ -4713,7 +5194,7 @@ fn target_atom_realization_catalog_row_decode_invalid_diagnostic(
   source_carrier: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: target_atom_realization_catalog_row_decode_invalid,
+    reason: ^target_atom_realization_catalog_row_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -4995,9 +5476,6 @@ fn target_atom_realization_lookup_in_catalog_node(
 // identical-payload coproduct.
 
 
-data target_function_signature_realization_lookup_miss: Symbol = target_function_signature_realization_lookup_miss
-data target_function_signature_realization_row_decode_invalid: Symbol = target_function_signature_realization_row_decode_invalid
-data target_function_boundary_site_decode_invalid: Symbol = target_function_boundary_site_decode_invalid
 
 // 🟢 terminal coproduct — fn entry/exit site discriminator. The Arrow connective has exactly two
 // boundary roles (domain = Param, codomain = Return); the axis is closed by Arrow's shape, so there
@@ -5033,7 +5511,7 @@ fn target_function_boundary_site_eq(a: FunctionBoundarySite, b: FunctionBoundary
 
 fn target_function_signature_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_function_signature_realization_lookup_miss,
+    reason: ^target_function_signature_realization_lookup_miss,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -5049,7 +5527,7 @@ fn target_function_signature_realization_lookup_ambiguous_diagnostic(source_carr
 
 fn target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_function_signature_realization_row_decode_invalid,
+    reason: ^target_function_signature_realization_row_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -5065,7 +5543,7 @@ fn target_function_signature_realization_target_model_bundle_mismatch_diagnostic
 
 fn target_function_boundary_site_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_function_boundary_site_decode_invalid,
+    reason: ^target_function_boundary_site_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -5305,11 +5783,8 @@ fn target_function_signature_realization_lookup_in_catalog_node(
   }
 }
 // TargetModel bundle edge — per-language TargetTypeExpressionProjection row (SG-2).
-data target_model_edge_type_expression_projection: Symbol = target_model_edge_type_expression_projection
 
 // Emitted type-expression Conj fields — declared kind coproduct tag + surface + positional slots.
-data target_type_expr_field_kind: Symbol = target_type_expr_field_kind
-data target_type_expr_field_surface: Symbol = target_type_expr_field_surface
 
 // 🟢 coproduct dissolution — SG-2 emitted type-expression wire-shape tag (six projection row forms).
 type TargetTypeExprKind
@@ -5321,22 +5796,6 @@ type TargetTypeExprKind
   | TargetTypeExprArrow
 
 // TargetTypeExpressionProjection bundle edge keys (row stored on TargetModel bundle).
-data target_type_expr_field_atom: Symbol = target_type_expr_field_atom
-data target_type_expr_field_conj: Symbol = target_type_expr_field_conj
-data target_type_expr_field_disj: Symbol = target_type_expr_field_disj
-data target_type_expr_field_arrow: Symbol = target_type_expr_field_arrow
-data target_type_expr_field_cardinality: Symbol = target_type_expr_field_cardinality
-data target_type_expr_field_instantiation: Symbol = target_type_expr_field_instantiation
-data target_type_expr_field_ident_token: Symbol = target_type_expr_field_ident_token
-data target_type_expr_field_open: Symbol = target_type_expr_field_open
-data target_type_expr_field_close: Symbol = target_type_expr_field_close
-data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
-data target_type_expr_field_field_label_separator: Symbol = target_type_expr_field_field_label_separator
-data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
-data target_type_expr_field_param_ident_token: Symbol = target_type_expr_field_param_ident_token
-data target_type_expr_field_param_type_separator: Symbol = target_type_expr_field_param_type_separator
-data target_type_expr_field_param_list_separator: Symbol = target_type_expr_field_param_list_separator
-data target_type_expr_field_codomain: Symbol = target_type_expr_field_codomain
 
 // 🟢 coproduct dissolution — SG-2 emitted arrow wire encodes positional inputs+codomain vs labeled param slots+codomain (authority: target_type_expr_arrow_wire_shape on emitted node).
 type TargetTypeExprArrowWireShape
@@ -5346,7 +5805,7 @@ type TargetTypeExprArrowWireShape
 fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowWireShape> {
   let positional = node_positional_child_targets(node: node)
   if is_empty(xs: positional) {
-    match find_named_child(root: node, name: target_type_expr_field_codomain) {
+    match find_named_child(root: node, name: ^target_type_expr_field_codomain) {
       Accepted { value: _, diagnostics: d } =>
         Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d }
       Rejected { diagnostics: _ } =>
@@ -5434,7 +5893,7 @@ type TargetTypeExpressionProjection {
 
 fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
   Edge {
-    label: Named { name: target_type_expr_field_surface },
+    label: Named { name: ^target_type_expr_field_surface },
     target: Node {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
@@ -5494,7 +5953,7 @@ type TargetTypeExprKindEdgeDecode
 fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode {
   match edge.label {
     Named { name: n } =>
-      if n == target_type_expr_field_kind {
+      if n == ^target_type_expr_field_kind {
         match edge.target.kind {
           TypeNode { connective: Atom { identity: id } } =>
             match target_type_expr_kind_from_atom(id: id) {
@@ -5542,7 +6001,7 @@ fn target_type_expr_emitted_kind(node: Node) -> TargetTypeExprKindProbe {
 
 fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
   Edge {
-    label: Named { name: target_type_expr_field_kind },
+    label: Named { name: ^target_type_expr_field_kind },
     target: Node {
       kind: TypeNode {
         connective: Atom { identity: discriminant(v: kind) }
@@ -5687,7 +6146,7 @@ fn target_type_expr_emitted_slot_type_nodes(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Named { name: n } =>
-        if n == target_type_expr_field_surface || n == target_type_expr_field_kind {
+        if n == ^target_type_expr_field_surface || n == ^target_type_expr_field_kind {
           acc
         } else {
           list_snoc_item(xs: acc, item: e.target)
@@ -5718,7 +6177,7 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
         match e.label {
           Positional => acc
           Named { name: n } =>
-            if n == target_type_expr_field_kind {
+            if n == ^target_type_expr_field_kind {
               if kind_seen {
                 NamedMetadataFoldMalformed
               } else {
@@ -5729,7 +6188,7 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
                 }
               }
             } else {
-              if n == target_type_expr_field_surface {
+              if n == ^target_type_expr_field_surface {
                 if surface_seen {
                   NamedMetadataFoldMalformed
                 } else {
@@ -5757,7 +6216,7 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
 }
 
 fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
-  match find_named_child(root: node, name: target_type_expr_field_surface) {
+  match find_named_child(root: node, name: ^target_type_expr_field_surface) {
     Accepted { value: child, diagnostics: d } =>
       match child.kind {
         TypeNode { connective: Atom { identity: id } } =>
@@ -5987,7 +6446,7 @@ fn target_type_expr_emitted_labeled_slot_edges(node: Node) -> Outcome<List<Edge>
       value: fold(node.children, init: Empty, f: fn(acc, e) {
         match e.label {
           Named { name: n } =>
-            if n == target_type_expr_field_surface || n == target_type_expr_field_kind {
+            if n == ^target_type_expr_field_surface || n == ^target_type_expr_field_kind {
               acc
             } else {
               list_snoc_item(xs: acc, item: e)
@@ -6048,7 +6507,7 @@ fn target_type_expr_arrow_emitted_named(
       left: target_type_expr_arrow_param_slot_edges(params: params),
       right: Cons {
         head: Edge {
-          label: Named { name: target_type_expr_field_codomain },
+          label: Named { name: ^target_type_expr_field_codomain },
           target: output
         },
         tail: Empty
@@ -6060,7 +6519,7 @@ fn target_type_expr_arrow_emitted_named(
 fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
-      match find_named_child(root: node, name: target_type_expr_field_codomain) {
+      match find_named_child(root: node, name: ^target_type_expr_field_codomain) {
         Accepted { value: child, diagnostics: dc } =>
           Accepted {
             value: child,
@@ -6089,9 +6548,9 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
                 f: fn(acc, e) {
                   match e.label {
                     Named { name: label } =>
-                      if label == target_type_expr_field_surface ||
-                        label == target_type_expr_field_kind ||
-                        label == target_type_expr_field_codomain {
+                      if label == ^target_type_expr_field_surface ||
+                        label == ^target_type_expr_field_kind ||
+                        label == ^target_type_expr_field_codomain {
                         acc
                       } else {
                         list_snoc_item(
@@ -6118,7 +6577,6 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
 
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
 
-data target_model_edge_collection_realization: Symbol = target_model_edge_collection_realization
 
 // 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
 type TargetCollectionReprKind
@@ -6152,27 +6610,10 @@ type TargetCollectionRealization {
   fallback_diagnostic: Diagnostic
 }
 
-data target_collection_set_carrier: Symbol = target_collection_set_carrier
-data target_collection_trait_ord: Symbol = target_collection_trait_ord
-data target_collection_trait_hash: Symbol = target_collection_trait_hash
-data target_collection_trait_eq: Symbol = target_collection_trait_eq
-data target_collection_type_param_t: Symbol = target_collection_type_param_t
-data target_collection_repr_field_kind: Symbol = target_collection_repr_field_kind
-data target_collection_repr_field_apply: Symbol = target_collection_repr_field_apply
-data target_collection_choice_field_form: Symbol = target_collection_choice_field_form
-data target_collection_choice_field_constraints: Symbol = target_collection_choice_field_constraints
-data target_collection_witness_field_trait_name: Symbol = target_collection_witness_field_trait_name
-data target_collection_witness_field_type_param: Symbol = target_collection_witness_field_type_param
-data target_collection_row_field_source_carrier: Symbol = target_collection_row_field_source_carrier
-data target_collection_row_field_primary: Symbol = target_collection_row_field_primary
-data target_collection_row_field_alternatives: Symbol = target_collection_row_field_alternatives
-data target_collection_row_field_fallback: Symbol = target_collection_row_field_fallback
-data target_collection_set_no_representation: Symbol = target_collection_set_no_representation
-data target_collection_free_monoid_no_representation: Symbol = target_collection_free_monoid_no_representation
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: target_collection_set_no_representation,
+    reason: ^target_collection_set_no_representation,
     at: port_locus(port: ^target_collection_set_no_representation_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -6180,7 +6621,7 @@ fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
 
 fn target_collection_free_monoid_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: target_collection_free_monoid_no_representation,
+    reason: ^target_collection_free_monoid_no_representation,
     at: port_locus(port: ^target_collection_free_monoid_no_representation_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -6249,7 +6690,7 @@ fn target_collection_realization_lookup_in_catalog(
 
 fn target_collection_set_carrier_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: target_collection_set_carrier } },
+    kind: TypeNode { connective: Atom { identity: ^target_collection_set_carrier } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -6280,7 +6721,7 @@ fn target_collection_node_atom_identity(node: Node) -> Outcome<Symbol> {
 
 fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation> {
   bind_outcome(
-    o: find_named_child(root: node, name: target_collection_repr_field_kind),
+    o: find_named_child(root: node, name: ^target_collection_repr_field_kind),
     f: fn(kind_node) {
       bind_outcome(
         o: target_collection_node_atom_identity(node: kind_node),
@@ -6288,7 +6729,7 @@ fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation>
           match target_collection_repr_kind_from_atom(id: kind_sym) {
             Present { value: kind } =>
               bind_outcome(
-                o: find_named_child(root: node, name: target_collection_repr_field_apply),
+                o: find_named_child(root: node, name: ^target_collection_repr_field_apply),
                 f: fn(apply_node) {
                   bind_outcome(
                     o: decode_generic_apply_shape_bundle(bundle: apply_node),
@@ -6311,28 +6752,28 @@ fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation>
 
 fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {
   bind_outcome(
-    o: find_named_child(root: node, name: target_collection_witness_field_trait_name),
+    o: find_named_child(root: node, name: ^target_collection_witness_field_trait_name),
     f: fn(trait_node) {
       bind_outcome(
         o: target_collection_node_atom_identity(node: trait_node),
         f: fn(trait_name) {
           bind_outcome(
-            o: find_named_child(root: node, name: target_collection_witness_field_type_param),
+            o: find_named_child(root: node, name: ^target_collection_witness_field_type_param),
             f: fn(param_node) {
               bind_outcome(
                 o: target_collection_node_atom_identity(node: param_node),
                 f: fn(type_param) {
-                  if trait_name == target_collection_trait_ord {
+                  if trait_name == ^target_collection_trait_ord {
                     outcome_accepted(
                       TargetCollectionWitnessOrd { type_param: type_param }
                     )
                   } else {
-                    if trait_name == target_collection_trait_hash {
+                    if trait_name == ^target_collection_trait_hash {
                       outcome_accepted(
                         TargetCollectionWitnessHash { type_param: type_param }
                       )
                     } else {
-                      if trait_name == target_collection_trait_eq {
+                      if trait_name == ^target_collection_trait_eq {
                         outcome_accepted(
                           TargetCollectionWitnessEq { type_param: type_param }
                         )
@@ -6357,10 +6798,10 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
   bind_outcome(
     o: target_collection_node_atom_identity(node: node),
     f: fn(reason) {
-      if reason == target_collection_set_no_representation {
+      if reason == ^target_collection_set_no_representation {
         outcome_accepted(target_collection_set_no_representation_diagnostic())
       } else {
-        if reason == target_collection_free_monoid_no_representation {
+        if reason == ^target_collection_free_monoid_no_representation {
           outcome_accepted(target_collection_free_monoid_no_representation_diagnostic())
         } else {
           outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
@@ -6459,7 +6900,7 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
       match target_collection_set_carrier_head(node: node) {
         Present { value: head } =>
           match head.kind {
-            TypeNode { connective: Atom { identity: id } } => id == target_collection_set_carrier
+            TypeNode { connective: Atom { identity: id } } => id == ^target_collection_set_carrier
             _ => false
           }
         Absent => false
@@ -6490,7 +6931,7 @@ fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
         Present { value: head } =>
           match head.kind {
             TypeNode { connective: Atom { identity: id } } =>
-              id == target_carrier_free_monoid
+              id == ^target_carrier_free_monoid
             _ => false
           }
         Absent => false
@@ -6510,14 +6951,11 @@ fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Op
 
 // ═══ SG-RC — TargetUseSiteOwnershipRealization (canonical home) ═══
 
-data target_model_edge_use_site_ownership_realizations: Symbol = target_model_edge_use_site_ownership_realizations
 
-data target_model_edge_reference_layer_tokens: Symbol = target_model_edge_reference_layer_tokens
 
 // Value-semantics (Copy) carrier set — the target-authored discrimination the
 // use-site-ownership lookup short-circuits on (Copy ⇒ by-value). Atom-identity
 // keyed, mirroring how the reference-ownership catalog matches carriers.
-data target_model_edge_value_semantics_carriers: Symbol = target_model_edge_value_semantics_carriers
 
 // 🟢 coproduct dissolution — SG-RC ownership boundary role axis (four use sites; not Node.kind).
 type TargetOwnershipUseSite
@@ -6574,17 +7012,8 @@ type TargetCarrierOwnership
 
 
 
-data target_use_site_ownership_lookup_miss: Symbol = target_use_site_ownership_lookup_miss
 
 // Kernel-ambient carrier keys (Node-keyed; not spelling-keyed tables).
-data target_carrier_diagnostics: Symbol = target_carrier_diagnostics
-data target_carrier_node: Symbol = target_carrier_node
-data target_carrier_test_claim: Symbol = target_carrier_test_claim
-data target_carrier_free_monoid: Symbol = target_carrier_free_monoid
-data target_carrier_outcome: Symbol = target_carrier_outcome
-data target_carrier_model_core: Symbol = target_carrier_model_core
-data target_carrier_algebra_inhabitance_decl: Symbol = target_carrier_algebra_inhabitance_decl
-data target_carrier_probe_heap: Symbol = target_carrier_probe_heap
 
 fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
@@ -6595,35 +7024,35 @@ fn target_carrier_type_node(identity: Symbol) -> Node {
 }
 
 fn target_carrier_diagnostics_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_diagnostics)
+  target_carrier_type_node(identity: ^target_carrier_diagnostics)
 }
 
 fn target_carrier_node_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_node)
+  target_carrier_type_node(identity: ^target_carrier_node)
 }
 
 fn target_carrier_test_claim_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_test_claim)
+  target_carrier_type_node(identity: ^target_carrier_test_claim)
 }
 
 fn target_carrier_free_monoid_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_free_monoid)
+  target_carrier_type_node(identity: ^target_carrier_free_monoid)
 }
 
 fn target_carrier_outcome_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_outcome)
+  target_carrier_type_node(identity: ^target_carrier_outcome)
 }
 
 fn target_carrier_model_core_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_model_core)
+  target_carrier_type_node(identity: ^target_carrier_model_core)
 }
 
 fn target_carrier_algebra_inhabitance_decl_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_algebra_inhabitance_decl)
+  target_carrier_type_node(identity: ^target_carrier_algebra_inhabitance_decl)
 }
 
 fn target_carrier_probe_heap_node() -> Node {
-  target_carrier_type_node(identity: target_carrier_probe_heap)
+  target_carrier_type_node(identity: ^target_carrier_probe_heap)
 }
 
 fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUseSite> {
@@ -6678,7 +7107,7 @@ fn target_reference_layer_from_atom(id: Symbol) -> Optional<TargetReferenceLayer
 
 fn target_use_site_ownership_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: target_use_site_ownership_lookup_miss,
+    reason: ^target_use_site_ownership_lookup_miss,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -7357,7 +7786,6 @@ fn target_reference_layer_probe_from_emitted_type(
 }
 
 // SG-2 fold — closed per-connective projection-row candidate algebra (std authority; translate consumer).
-data target_type_expr_projection_candidate_closedness: Symbol = target_type_expr_projection_candidate_closedness
 
 fn target_type_expr_symbol_atom(id: Symbol) -> Node {
   Node {
@@ -7372,11 +7800,11 @@ fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
-        name: target_type_expr_field_surface,
+        name: ^target_type_expr_field_surface,
         target: target_type_expr_symbol_atom(id: form.surface)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_ident_token,
+        name: ^target_type_expr_field_ident_token,
         target: target_type_expr_symbol_atom(id: form.ident_token)
       )
     ],
@@ -7392,43 +7820,43 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
         list_snoc_item(
           xs: [
             target_model_named_edge(
-              name: target_type_expr_field_surface,
+              name: ^target_type_expr_field_surface,
               target: target_type_expr_symbol_atom(id: form.surface)
             ),
             target_model_named_edge(
-              name: target_type_expr_field_open,
+              name: ^target_type_expr_field_open,
               target: target_type_expr_symbol_atom(id: form.open)
             ),
             target_model_named_edge(
-              name: target_type_expr_field_separator,
+              name: ^target_type_expr_field_separator,
               target: target_type_expr_symbol_atom(id: form.separator)
             ),
             target_model_named_edge(
-              name: target_type_expr_field_close,
+              name: ^target_type_expr_field_close,
               target: target_type_expr_symbol_atom(id: form.close)
             )
           ],
           item: target_model_named_edge(
-            name: target_type_expr_field_field_label_separator,
+            name: ^target_type_expr_field_field_label_separator,
             target: target_type_expr_symbol_atom(id: s)
           )
         )
       Absent =>
         [
           target_model_named_edge(
-            name: target_type_expr_field_surface,
+            name: ^target_type_expr_field_surface,
             target: target_type_expr_symbol_atom(id: form.surface)
           ),
           target_model_named_edge(
-            name: target_type_expr_field_open,
+            name: ^target_type_expr_field_open,
             target: target_type_expr_symbol_atom(id: form.open)
           ),
           target_model_named_edge(
-            name: target_type_expr_field_separator,
+            name: ^target_type_expr_field_separator,
             target: target_type_expr_symbol_atom(id: form.separator)
           ),
           target_model_named_edge(
-            name: target_type_expr_field_close,
+            name: ^target_type_expr_field_close,
             target: target_type_expr_symbol_atom(id: form.close)
           )
         ]
@@ -7442,11 +7870,11 @@ fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
-        name: target_type_expr_field_surface,
+        name: ^target_type_expr_field_surface,
         target: target_type_expr_symbol_atom(id: form.surface)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_variant_separator,
+        name: ^target_type_expr_field_variant_separator,
         target: target_type_expr_symbol_atom(id: form.variant_separator)
       )
     ],
@@ -7459,31 +7887,31 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
-        name: target_type_expr_field_surface,
+        name: ^target_type_expr_field_surface,
         target: target_type_expr_symbol_atom(id: form.surface)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_open,
+        name: ^target_type_expr_field_open,
         target: target_type_expr_symbol_atom(id: form.open)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_close,
+        name: ^target_type_expr_field_close,
         target: target_type_expr_symbol_atom(id: form.close)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_arrow,
+        name: ^target_type_expr_field_arrow,
         target: target_type_expr_symbol_atom(id: form.arrow)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_param_ident_token,
+        name: ^target_type_expr_field_param_ident_token,
         target: target_type_expr_symbol_atom(id: form.param_ident_token)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_param_type_separator,
+        name: ^target_type_expr_field_param_type_separator,
         target: target_type_expr_symbol_atom(id: form.param_type_separator)
       ),
       target_model_named_edge(
-        name: target_type_expr_field_param_list_separator,
+        name: ^target_type_expr_field_param_list_separator,
         target: target_type_expr_symbol_atom(id: form.param_list_separator)
       )
     ],
@@ -7495,11 +7923,11 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
 // TypeNode connectives never map to LoopBoundEdges (see node.dag connective_edge_discipline).
 fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
   match connective_edge_discipline(c: connective) {
-    NoEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
-    LabeledEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
-    PositionalEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
-    ArrowBodyEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
-    LoopBoundEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    NoEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_no_edges)
+    LabeledEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_labeled)
+    PositionalEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    ArrowBodyEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
 
@@ -7513,7 +7941,7 @@ fn type_expr_projection_row_shape_envelope(
       left: envelope.children,
       right: Cons {
         head: target_model_named_edge(
-          name: target_type_expr_field_child_slot_discipline,
+          name: ^target_type_expr_field_child_slot_discipline,
           target: type_expr_projection_child_slot_discipline_atom(connective: connective)
         ),
         tail: Empty
@@ -7533,7 +7961,7 @@ fn type_expr_projection_graft_child_slots_coordinate(
       left: envelope.children,
       right: Cons {
         head: target_model_named_edge(
-          name: target_type_expr_field_child_slots,
+          name: ^target_type_expr_field_child_slots,
           target: facts
         ),
         tail: Empty
@@ -7548,42 +7976,42 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
     kind: TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
-        name: target_type_expr_field_atom,
+        name: ^target_type_expr_field_atom,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
-          connective: Atom { identity: target_type_expr_field_atom }
+          connective: Atom { identity: ^target_type_expr_field_atom }
         )
       ),
       target_model_named_edge(
-        name: target_type_expr_field_conj,
+        name: ^target_type_expr_field_conj,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_generic_apply_shape_node(form: projection.conj_form),
           connective: Conj
         )
       ),
       target_model_named_edge(
-        name: target_type_expr_field_disj,
+        name: ^target_type_expr_field_disj,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_sum_shape_node(form: projection.disj_form),
           connective: Disj
         )
       ),
       target_model_named_edge(
-        name: target_type_expr_field_arrow,
+        name: ^target_type_expr_field_arrow,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
           connective: Arrow
         )
       ),
       target_model_named_edge(
-        name: target_type_expr_field_cardinality,
+        name: ^target_type_expr_field_cardinality,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
           connective: Cardinality
         )
       ),
       target_model_named_edge(
-        name: target_type_expr_field_instantiation,
+        name: ^target_type_expr_field_instantiation,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_generic_apply_shape_node(form: projection.instantiation_form),
           connective: Instantiation
@@ -7658,7 +8086,7 @@ fn type_expr_projection_candidate_for_connective(
         CandidateSet {
           candidates: [shape],
           closedness: StructuralPropertyWitness {
-            property: target_type_expr_projection_candidate_closedness,
+            property: ^target_type_expr_projection_candidate_closedness,
             evidence: shape
           }
         }
@@ -7759,7 +8187,7 @@ fn type_expr_projection_row_shape_witness_gate(
     source_facts: source_facts,
     projection: projection,
     connective: connective,
-    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   )
 }
 
@@ -7773,19 +8201,19 @@ fn type_expr_projection_graft_witness_gate(
     source_facts: source_facts,
     projection: projection,
     connective: connective,
-    preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
+    preservation_rule: ^preservation_rule_type_expr_projection_discipline_zip_fold
   )
 }
 
 // SG-2 fold — connective → step_algebra row slot field (uniform key for graft + bundle decode).
 fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
   match connective {
-    Atom { identity: _ } => target_type_expr_field_atom
-    Conj => target_type_expr_field_conj
-    Disj => target_type_expr_field_disj
-    Arrow => target_type_expr_field_arrow
-    Cardinality => target_type_expr_field_cardinality
-    Instantiation => target_type_expr_field_instantiation
+    Atom { identity: _ } => ^target_type_expr_field_atom
+    Conj => ^target_type_expr_field_conj
+    Disj => ^target_type_expr_field_disj
+    Arrow => ^target_type_expr_field_arrow
+    Cardinality => ^target_type_expr_field_cardinality
+    Instantiation => ^target_type_expr_field_instantiation
   }
 }
 
@@ -7809,7 +8237,7 @@ fn type_expr_projection_row_closedness_from_target(
   bind_outcome(
     o: find_named_child(
       root: target.bundle,
-      name: target_model_edge_type_expression_projection
+      name: ^target_model_edge_type_expression_projection
     ),
     f: fn(bundle) {
       bind_outcome(
@@ -7840,11 +8268,6 @@ fn type_expr_projection_row_closedness_from_target(
 // The true authority for the Transform arm is a composition:
 //   surface-decode (compiler/, extdep) → canonical_op → target_model apply (pre-decoded).
 
-data target_value_expr_reason_surface_op_unmapped: Symbol = target_value_expr_reason_surface_op_unmapped
-data target_value_expr_reason_operator_catalog_miss: Symbol = target_value_expr_reason_operator_catalog_miss
-data target_value_expr_reason_operator_catalog_ambiguous: Symbol = target_value_expr_reason_operator_catalog_ambiguous
-data target_value_expr_reason_transform_shape_invalid: Symbol = target_value_expr_reason_transform_shape_invalid
-data target_value_expr_reason_body_scope_binding_invalid: Symbol = target_value_expr_reason_body_scope_binding_invalid
 
 fn target_value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
@@ -7860,7 +8283,7 @@ fn target_transform_positional_operand_binding_atom(child: Node) -> Outcome<Symb
     _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_transform_shape_invalid,
           node: child
         )
       )
@@ -7873,7 +8296,7 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_transform_shape_invalid,
           node: node
         )
       )
@@ -7885,7 +8308,7 @@ fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
 }
 
 fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
-  projection_bundle_child(bundle: target.bundle, name: target_model_edge_declared_inhabitants)
+  projection_bundle_child(bundle: target.bundle, name: ^target_model_edge_declared_inhabitants)
 }
 
 // 🟡 gated — predicate-dissolution interim —
@@ -8004,7 +8427,7 @@ fn target_value_expr_arrow_body_scope_binding(
       } else {
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: target_value_expr_reason_body_scope_binding_invalid,
+            reason: ^target_value_expr_reason_body_scope_binding_invalid,
             node: body
           )
         )
@@ -8026,7 +8449,7 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
     || length(xs: node_positional_child_targets(node: body)) != 3 {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: target_value_expr_reason_transform_shape_invalid,
+        reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
@@ -8075,6 +8498,94 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
       }
     )
   }
+}
+
+// Lane 2c — project one call argument. A bare Atom argument is a binding reference (scope-checked
+// against the enclosing arrow's params, like a primitive operand); any other shape (a nested call
+// Transform, an inline closure Arrow, a branch, …) recurses through the subexpression projector.
+fn target_project_callable_arg_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  arg: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match arg.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      bind_outcome(
+        o: target_value_expr_arrow_body_scope_binding(
+          arrow: arrow,
+          body: body,
+          binding: id,
+          target: target
+        ),
+        f: fn(scoped) {
+          outcome_accepted(target_value_expression_binding_ref(binding: scoped))
+        }
+      )
+    _ =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: arg,
+        target: target,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+// Lane 2c — project a call Transform (`callee(arg, ...)`) to a callable-apply value-expression. The
+// caller (translate) routes here when the Transform head atom does NOT canonicalize to an operator;
+// the head is then the callee binding and the remaining positional children are the arguments.
+fn target_project_transform_callable_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_surface_op_atom(node: body),
+    f: fn(callee) {
+      match list_tail(xs: node_positional_child_targets(node: body)) {
+        TailAbsent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        TailFound { tail: arg_children } =>
+          bind_outcome(
+            o: fold_list(
+              xs: arg_children,
+              empty: Accepted { value: Empty, diagnostics: None },
+              cons: fn(acc, arg) {
+                match acc {
+                  Rejected { diagnostics: _ } => acc
+                  Accepted { value: args, diagnostics: _ } =>
+                    bind_outcome(
+                      o: target_project_callable_arg_in_arrow_scope(
+                        arrow: arrow,
+                        body: body,
+                        arg: arg,
+                        target: target,
+                        handle_transform: handle_transform
+                      ),
+                      f: fn(a) {
+                        outcome_accepted(list_snoc_item(xs: args, item: a))
+                      }
+                    )
+                }
+              }
+            ),
+            f: fn(args) {
+              outcome_accepted(
+                target_value_expression_callable_apply(callee: callee, args: args)
+              )
+            }
+          )
+      }
+    }
+  )
 }
 
 fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
@@ -8127,7 +8638,7 @@ fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpr
     _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_transform_shape_invalid,
           node: node
         )
       )
@@ -8148,7 +8659,7 @@ fn target_project_branch_bool_if_else(
   if !target_value_expr_branch_bool_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: target_value_expr_reason_transform_shape_invalid,
+        reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
@@ -8157,7 +8668,7 @@ fn target_project_branch_bool_if_else(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: target_value_expr_reason_transform_shape_invalid,
+            reason: ^target_value_expr_reason_transform_shape_invalid,
             node: body
           )
         )
@@ -8166,7 +8677,7 @@ fn target_project_branch_bool_if_else(
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
-                reason: target_value_expr_reason_transform_shape_invalid,
+                reason: ^target_value_expr_reason_transform_shape_invalid,
                 node: body
               )
             )
@@ -8175,7 +8686,7 @@ fn target_project_branch_bool_if_else(
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
-                    reason: target_value_expr_reason_transform_shape_invalid,
+                    reason: ^target_value_expr_reason_transform_shape_invalid,
                     node: body
                   )
                 )
@@ -8258,7 +8769,7 @@ fn target_project_bind_let(
   if !target_value_expr_bind_let_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: target_value_expr_reason_transform_shape_invalid,
+        reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
@@ -8273,7 +8784,7 @@ fn target_project_bind_let(
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
-                    reason: target_value_expr_reason_transform_shape_invalid,
+                    reason: ^target_value_expr_reason_transform_shape_invalid,
                     node: body
                   )
                 )
@@ -8317,7 +8828,7 @@ fn target_project_loop(
   if !target_value_expr_loop_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: target_value_expr_reason_transform_shape_invalid,
+        reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
@@ -8326,7 +8837,7 @@ fn target_project_loop(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: target_value_expr_reason_transform_shape_invalid,
+            reason: ^target_value_expr_reason_transform_shape_invalid,
             node: body
           )
         )
@@ -8373,16 +8884,58 @@ fn target_value_expr_project_body_subexpression(
         target: target,
         handle_transform: handle_transform
       )
+    // Lane 2c — a `TypeNode { connective: Arrow }` appearing as an operand is an inline closure
+    // (`fn(params) { body }`). Project its own param domain + body, with the closure itself as the
+    // new scope arrow so the body's binding refs resolve against the closure params (nested-closure
+    // scoping). Captures of the enclosing scope are a follow-up (only closure-local params today).
+    TypeNode { connective: Arrow } =>
+      target_project_closure_in_arrow_scope(
+        closure: node,
+        target: target,
+        handle_transform: handle_transform
+      )
     TypeNode { connective: Atom { identity: _ } } =>
       target_value_expr_project_atom_literal(node: node)
     _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_transform_shape_invalid,
           node: node
         )
       )
   }
+}
+
+// Lane 2c — project an inline closure node to a closure value-expression. The body recurses through
+// the same subexpression projector with `closure` as the scope arrow, so an operator/call inside the
+// closure resolves its binding refs against the closure's own params.
+fn target_project_closure_in_arrow_scope(
+  closure: Node,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: closure),
+    f: fn(params) {
+      match find_arrow_body_child(root: closure) {
+        Accepted { value: body, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expr_project_body_subexpression(
+              arrow: closure,
+              node: body,
+              target: target,
+              handle_transform: handle_transform
+            ),
+            f: fn(body_expr) {
+              outcome_accepted(
+                target_value_expression_closure(params: params, body: body_expr)
+              )
+            }
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
 }
 
 fn target_value_expression_projection_from_target(
@@ -8391,7 +8944,7 @@ fn target_value_expression_projection_from_target(
   bind_outcome(
     o: projection_bundle_child(
       bundle: target.bundle,
-      name: target_model_edge_value_expression_projection
+      name: ^target_model_edge_value_expression_projection
     ),
     f: fn(bundle) {
       decode_value_expression_projection_bundle(bundle: bundle)
@@ -8407,7 +8960,7 @@ fn target_value_expression_tokens_from_target(
   bind_outcome(
     o: projection_bundle_child(
       bundle: target.bundle,
-      name: target_model_edge_operator_realizations
+      name: ^target_model_edge_operator_realizations
     ),
     f: fn(catalog) {
       target_value_expression_to_concrete_tokens(
@@ -8453,7 +9006,7 @@ fn target_project_arrow_body_to_value_expression(
         _ =>
           outcome_rejected(
             target_value_expr_diagnostic(
-              reason: target_value_expr_reason_transform_shape_invalid,
+              reason: ^target_value_expr_reason_transform_shape_invalid,
               node: body
             )
           )

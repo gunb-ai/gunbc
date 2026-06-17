@@ -1,6 +1,6 @@
 // src/v2/compiler/self_host/fixed_point_test.dag
 // Scope: the ONLY live-executed self-host coverage. Discovered + run by the live CI gate
-//   (.github/workflows/ci.yml:59: ci_claim_gate --source-root src/v2 --scan-dir src/v2/test).
+//   (.github/workflows/ci.yml:79: claim_batch --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test).
 //   IMPORTANT: `test fn` discovery scans the WHOLE --source-root (src/v2) recursively — NOT just
 //   --scan-dir (that flag governs only the separate `unified_claim_*` data scan). So this file is
 //   discovered at its compiler/self_host/ path, not because it lives under src/v2/test. The gate
@@ -30,7 +30,6 @@ import v2.std.node {
 import v2.compiler.self_host {
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
-  self_host_runner_not_realized,
   stage_emission_equality,
   SourceModels
 }
@@ -135,7 +134,7 @@ test fn self_host_fixed_point_fails_closed_until_substrate() -> Bool {
     source_models: SourceModels { model_corpus: [] },
     reference_stage1: stage_emission_leaf()
   ) {
-    Rejected { diagnostics: d } => d.head.reason == self_host_runner_not_realized
+    Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false
   }
 }

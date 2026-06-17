@@ -1,0 +1,73 @@
+// gunbc/tools/cron_tag.dag — tag-scoped crontab idempotency (workflow policy).
+//
+// POSIX `crontab` has no tag primitive; gunbc review workflows stamp entries with
+// `# tag:{name}` and upsert by tag. That protocol is product policy — it composes
+// faithful `cron.Tab.List` + `cron.Tab.Replace` from extdeps, not a fused extdeps op.
+
+module gunbc.tools.cron_tag
+
+import extdeps.cron
+
+fn cron_tag_marker(tag: String) -> String {
+  "# tag:{tag}"
+}
+
+fn build_cron_entry_line(
+  schedule: String,
+  command: String,
+  log_path: String,
+  tag: String
+) -> String {
+  let marker = cron_tag_marker(tag: tag)
+  "{schedule} {command} >> {log_path} 2>&1 {marker}"
+}
+
+fn upsert_tagged_entries(current: String, tag: String, entry_line: String) -> String {
+  let marker = cron_tag_marker(tag: tag)
+  let lines = current |> split(delimiter: "\n") |> filter(line => !contains(line, marker))
+  let kept = lines |> filter(line => line != "")
+  append(kept, items: [entry_line]) |> join(separator: "\n")
+}
+
+fn witness_upsert_tagged_entries_swaps_tagged_line() -> Bool {
+  let existing = "*/15 * * * * keep # tag:other\n*/30 * * * * old >> /tmp/old.log 2>&1 # tag:review-agent\n"
+  let new_line = "0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
+  let got = upsert_tagged_entries(current: existing, tag: "review-agent", entry_line: new_line)
+  let want = "*/15 * * * * keep # tag:other\n0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
+  got == want
+}
+
+fn witness_upsert_tagged_entries_appends_when_tag_absent() -> Bool {
+  let existing = "*/15 * * * * keep # tag:other"
+  let new_line = "0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
+  let got = upsert_tagged_entries(current: existing, tag: "review-agent", entry_line: new_line)
+  let want = "*/15 * * * * keep # tag:other\n0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
+  got == want
+}
+
+fn cron_tag_upsert_protocol_keystone_holds() -> Bool {
+  witness_upsert_tagged_entries_swaps_tagged_line()
+    && witness_upsert_tagged_entries_appends_when_tag_absent()
+}
+
+func upsert_tagged_cron_tab(
+  tag: String,
+  schedule: String,
+  command: String,
+  log_path: String
+) -> { success: Bool } {
+  let listed = cron.Tab.List()
+  let entry_line = build_cron_entry_line(
+    schedule: schedule,
+    command: command,
+    log_path: log_path,
+    tag: tag
+  )
+  let updated = upsert_tagged_entries(
+    current: listed.entries,
+    tag: tag,
+    entry_line: entry_line
+  )
+  let installed = cron.Tab.Replace(entries: updated)
+  return { success: installed.success }
+}

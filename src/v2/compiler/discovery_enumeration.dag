@@ -4,9 +4,10 @@
 //   v2.test.workflow.discovery_types (Consolidation #4553 host/modeled split) to the
 //   compiler/source-authority layer so the discovery lane AND the future diff→provenance
 //   producer share ONE enumeration authority (one walk, not two).
-// Status: types only — no membership filtering or folds here (those stay in the discovery
-//   lane's glob_discovery_law). Behavior-preserving move: definitions are byte-identical to
-//   the prior discovery_types.dag; only the module path changed.
+// Status: types only for owned-decl enumeration — producing folds for the parallel
+//   source-file enumeration live in source_authority.dag (SourceRootIngest) and
+//   program_assembly.dag (module_roots_from_source_root_ingest / assemble_program_from_ingest).
+//   Membership filtering for owned decls stays in the discovery lane's glob_discovery_law.
 // Authority: attach the ingest carrier to the discovery concept family, don't fork it
 //   (snappy-crab-849 ruling 2026-06-13: promotion approved, one enumeration authority,
 //   attach-don't-mint, home = compiler/source-authority layer).
@@ -47,8 +48,6 @@ type ResolvedDeclRef {
 // Closed unified-claim arm authority pins — filters compare host facts to these symbols.
 data unified_claim_arm_bool_witness_claim_module: String = "v2.std.verification"
 data unified_claim_arm_node_corpus_module: String = "v2.std.verification"
-data unified_claim_arm_bool_witness_claim: Symbol = unified_claim_arm_bool_witness_claim
-data unified_claim_arm_node_corpus: Symbol = unified_claim_arm_node_corpus
 
 
 // 🟢 coproduct dissolution — Consolidation #4553 host/modeled boundary; dedicated arms

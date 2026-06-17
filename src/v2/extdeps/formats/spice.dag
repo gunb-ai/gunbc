@@ -348,7 +348,6 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
 
 // --- wave-1 Shape B emit/parse (extdeps-local; no v2.compiler imports) --------
 
-data spice_wave1_fixture_file: Symbol = ^spice_wave1_fixture_file
 
 fn spice_text_concat(left: String, right: String) -> String {
   list_append(left: left, right: right)
@@ -591,7 +590,7 @@ fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
   outcome_rejected(
     d: Diagnostic {
       reason: ^spice_parse_wave1_unsupported,
-      at: Textual { file: spice_wave1_fixture_file, extent: WholeFile },
+      at: Textual { file: ^spice_wave1_fixture_file, extent: WholeFile },
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   )

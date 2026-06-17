@@ -6,7 +6,7 @@
 // That ~6,300-line model was a descriptive-only CI mirror with no runtime consumer (see
 // docs/planning/thin-shim-ci-a3-runall-blocker-report-2026-06-08.md) and was deleted wholesale per
 // operator GO. The only fragment with a real consumer is this lens-CI claim-run roster: the must-pass
-// `v2_lens_gate` CI job (`the ci-claim-gate host (gate-3)` → uniform `ci-claim-gate` host) evaluates
+// `v2_lens_gate` CI job (`the claim_batch host (gate-3)` → uniform `claim_batch` host) evaluates
 // `lens_ci_claim_run_rows_tsv` via the v2 interpreter — no shell awk/grep text projection. `.github/workflows/ci.yml`
 // is the direct hand-edited CI authority; this file owns only the lens claim-run roster the gate consumes.
 
@@ -16,7 +16,7 @@ import v2.std.collection { List }
 import v2.std.algebra { fold_list_right }
 
 // M2 Lens-CI claim-run transport authority. `lens_ci_claim_run_rows` is the sole roster;
-// `lens_ci_claim_run_rows_tsv()` projects it for the `ci-claim-gate` host (no shell awk/grep).
+// `lens_ci_claim_run_rows_tsv()` projects it for the `claim_batch` host (no shell awk/grep).
 type LensCiClaimRunRow {
   label: String
   entry: String
@@ -231,7 +231,7 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
 ]
 
 // Uniform CI claim-gate transport: one TSV line per row, `label\tentry\tfunction`.
-// Consumed by `ci-claim-gate` (tools/ci_claim_gate) via the v2 interpreter — dissolves the
+// Consumed by `claim_batch` via the v2 interpreter — dissolves the
 // hand-maintained awk/grep roster projection in the shell gate scripts.
 fn lens_ci_claim_run_rows_tsv() -> String {
   fold_list_right(

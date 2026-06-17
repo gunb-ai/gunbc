@@ -14,24 +14,13 @@ import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticO
 import v2.std.witness { StructuralPropertyWitness }
 
 // Layer nicknames — distinct surface spellings (API TaskId, DB TEXT/CLOB, wire string).
-data task_id_nickname_api: Symbol = task_id_nickname_api
-data task_id_nickname_db: Symbol = task_id_nickname_db
-data task_id_nickname_wire: Symbol = task_id_nickname_wire
 
 // Shared semantic core — Encoding carries the coercion-relevant (representation, carrier) core.
 // Follow-up: carrier deserves its own declared ModelCore core axis; until then this demo keeps
 // representation+carrier together inside the existing Encoding fact value.
-data task_id_encoding_opaque_symbol: Symbol = task_id_encoding_opaque_symbol
-data task_id_carrier_symbol_identity: Symbol = task_id_carrier_symbol_identity
-data task_id_encoding_core_field_representation: Symbol = task_id_encoding_core_field_representation
-data task_id_encoding_core_field_carrier: Symbol = task_id_encoding_core_field_carrier
 
 // Wrong-concept discriminator — numeric encoding (AccountId-style hollow int alias).
-data account_id_encoding_numeric: Symbol = account_id_encoding_numeric
-data account_id_carrier_machine_int: Symbol = account_id_carrier_machine_int
-data account_id_nickname_surface: Symbol = account_id_nickname_surface
 
-data derivable_coercion_closed_candidates: Symbol = derivable_coercion_closed_candidates
 
 fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -48,8 +37,8 @@ fn task_id_semantic_core_node() -> Node {
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
-          representation: task_id_encoding_opaque_symbol,
-          carrier: task_id_carrier_symbol_identity
+          representation: ^task_id_encoding_opaque_symbol,
+          carrier: ^task_id_carrier_symbol_identity
         )
       }
     ],
@@ -62,11 +51,11 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: task_id_encoding_core_field_representation },
+        label: Named { name: ^task_id_encoding_core_field_representation },
         target: task_id_inhabitant_atom(id: representation)
       },
       Edge {
-        label: Named { name: task_id_encoding_core_field_carrier },
+        label: Named { name: ^task_id_encoding_core_field_carrier },
         target: task_id_inhabitant_atom(id: carrier)
       }
     ],
@@ -81,8 +70,8 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
-          representation: task_id_encoding_opaque_symbol,
-          carrier: task_id_carrier_symbol_identity
+          representation: ^task_id_encoding_opaque_symbol,
+          carrier: ^task_id_carrier_symbol_identity
         )
       },
       Edge {
@@ -96,17 +85,17 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
 
 // API layer — domain `TaskId { identity: Symbol }`.
 fn task_id_api_inhabitant_node() -> Node {
-  task_id_layer_inhabitant(surface_nickname: task_id_nickname_api)
+  task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_api)
 }
 
 // DB layer — SQL TEXT/CLOB column type for `tasks.id`.
 fn task_id_db_inhabitant_node() -> Node {
-  task_id_layer_inhabitant(surface_nickname: task_id_nickname_db)
+  task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_db)
 }
 
 // Wire layer — OpenAPI `type: string` task-id field.
 fn task_id_wire_inhabitant_node() -> Node {
-  task_id_layer_inhabitant(surface_nickname: task_id_nickname_wire)
+  task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_wire)
 }
 
 fn account_id_wrong_inhabitant_node() -> Node {
@@ -116,13 +105,13 @@ fn account_id_wrong_inhabitant_node() -> Node {
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
-          representation: account_id_encoding_numeric,
-          carrier: account_id_carrier_machine_int
+          representation: ^account_id_encoding_numeric,
+          carrier: ^account_id_carrier_machine_int
         )
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: task_id_inhabitant_atom(id: account_id_nickname_surface)
+        target: task_id_inhabitant_atom(id: ^account_id_nickname_surface)
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -131,7 +120,7 @@ fn account_id_wrong_inhabitant_node() -> Node {
 
 fn derivable_coercion_candidate_closedness(evidence: Node) -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: derivable_coercion_closed_candidates,
+    property: ^derivable_coercion_closed_candidates,
     evidence: evidence
   }
 }

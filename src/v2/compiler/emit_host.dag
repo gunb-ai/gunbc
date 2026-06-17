@@ -1,10 +1,9 @@
 // src/v2/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 rust/go rows — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
-//   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
-//   T-22 python row — eval intercept dispatches `run_emit_host_python` → `emit_host_runner` and
-//   hand-reifies `v2.std.host_run` in `emit_host_eval.rs` (claim-only transport pins).
-//   `emit_host_bridge.rs` remains for W3 harness until T-PB-B dissolution (SG-0 receipts).
+// Status: T-22 runtime_row on TargetModel — generic row-lookup in run_emit_host / runtime_value_parse
+//   (gunbc#4750). Substrate host bodies stay fail-closed; executable boundary:
+//   `dsl/tools/emit_host_gate.dag` (gunbc run). Eval intercept for in-corpus emit-vs-eval
+//   awaits T-22 Realization wiring.
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
@@ -12,14 +11,6 @@ module v2.compiler.emit_host
 
 
 import v2.compiler.emit { emit }
-import v2.extdeps.languages.typescript {
-  ts_host_transport_mvp1_descriptor,
-  ts_host_transport_mvp1_identity,
-  ts_mvp1_source_text_authority
-}
-import v2.extdeps.languages.rust { rust_mvp1_source_text_authority }
-import v2.extdeps.languages.python { python_mvp1_source_text }
-import v2.extdeps.languages.go { go_mvp1_source_text }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -34,7 +25,10 @@ import v2.compiler.eval {
 }
 import v2.compiler.target_carriers { TargetSource }
 import v2.std.collection { List, optional_present }
-import v2.std.host_transport { HostTransportDescriptor }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  runtime_value_parse_from_row
+}
 import v2.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -44,7 +38,8 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   port_locus,
   node_locus,
-  outcome_rejected
+  outcome_rejected,
+  bind_outcome
 }
 import v2.std.host_run {
   BuildLog,
@@ -64,8 +59,8 @@ import v2.std.test_claim_falsification {
 import v2.std.integer { Int }
 import v2.std.machine { Byte }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime { RuntimeValue, RuntimePrimitive }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.runtime { RuntimeValue }
+import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
 import v2.std.text { String }
 import v2.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
 import v2.std.verification {
@@ -76,42 +71,26 @@ import v2.std.verification {
 import v2.std.witness { Holds, Violates }
 
 
-data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
-data emit_host_transport_port: Symbol = emit_host_transport_port
-data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
-data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
-data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
-data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
-data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
-data emit_host_ts_i32_symbol: Symbol = emit_host_ts_i32_symbol
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_transport_not_wired,
-    at: port_locus(port: emit_host_transport_port),
-    correction: None
-  }
-}
-
-fn emit_host_parse_unsupported_target_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: emit_host_parse_unsupported_target,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_transport_not_wired,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_run_unsupported_target,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_run_unsupported_target,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
 fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: emit_host_emit_vs_eval_deferred,
+    reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
     correction: None
   }
@@ -119,8 +98,8 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
 
 fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: emit_host_exit_not_ok,
-    at: port_locus(port: emit_host_transport_port),
+    reason: ^emit_host_exit_not_ok,
+    at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
@@ -131,22 +110,6 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
-  }
-}
-
-fn emit_host_rust_i64_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn emit_host_ts_i32_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_ts_i32_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -168,114 +131,28 @@ fn emit_host_receipt_from_source(
   }
 }
 
-fn runtime_value_parse_rust(bytes: ByteString) -> Outcome<RuntimeValue> {
-  if count(bytes) == 5 {
-    Accepted {
-      value: RuntimePrimitive {
-        value: {
-          primitive_type: emit_host_rust_i64_node(),
-          bytes: bytes
-        }
-      },
-      diagnostics: None
-    }
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
-    }
-  }
-}
-
-fn runtime_value_parse_python(bytes: ByteString) -> Outcome<RuntimeValue> {
-  runtime_value_parse_rust(bytes: bytes)
-}
-
-fn runtime_value_parse_go(bytes: ByteString) -> Outcome<RuntimeValue> {
-  runtime_value_parse_rust(bytes: bytes)
-}
-
-fn runtime_value_parse_signed_i32_le(bytes: ByteString) -> Outcome<RuntimeValue> {
-  if count(bytes) == 4 {
-    Accepted {
-      value: RuntimePrimitive {
-        value: {
-          primitive_type: emit_host_ts_i32_node(),
-          bytes: bytes
-        }
-      },
-      diagnostics: None
-    }
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
-    }
-  }
-}
-
 fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
-  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
-  if target.authority_source_text == rust_mvp1_source_text_authority() {
-    runtime_value_parse_rust(bytes: stdout.bytes)
-  } else if target.authority_source_text == python_mvp1_source_text {
-    runtime_value_parse_python(bytes: stdout.bytes)
-  } else if target.authority_source_text == go_mvp1_source_text {
-    runtime_value_parse_go(bytes: stdout.bytes)
-  } else if target.authority_source_text == ts_mvp1_source_text_authority() {
-    runtime_value_parse_signed_i32_le(bytes: stdout.bytes)
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+  bind_outcome(
+    o: runtime_row_from_target(target: target),
+    f: fn(row) {
+      runtime_value_parse_from_row(row: row, bytes: stdout.bytes)
     }
-  }
+  )
 }
 
 // Decode SignedI32Le stdout carrier — substrate stub; eval intercept reads primitive bytes.
 fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
-  outcome_rejected(d: emit_host_parse_unsupported_target_diagnostic())
+  outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
 }
 
-// Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
-// `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
-fn run_emit_host_rust(
-  target: TargetModel,
-  source: TargetSource,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
-  Rejected {
-    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
-  }
-}
-
-// Substrate row: body stays fail-closed; T-22 eval intercept hand-reifies `v2.std.host_run`
-// in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
-// Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
-fn run_emit_host_python(
-  target: TargetModel,
-  source: TargetSource,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
-  Rejected {
-    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
-  }
-}
-
-fn run_emit_host_go(
-  target: TargetModel,
-  source: TargetSource,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
-  Rejected {
-    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
-  }
-}
-
-// B3 omni-emission — one generic primitive; eval intercept runs `emit_host_runner::run_host_process`.
+// B3 omni-emission — one generic primitive; executable boundary is `dsl/tools/emit_host_gate.dag`.
 fn run_host_process(
-  descriptor: HostTransportDescriptor,
+  row: EmitHostRuntimeRow,
   target: TargetModel,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
+  let _transport = row.transport
   Rejected {
     diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
   }
@@ -286,25 +163,17 @@ fn run_emit_host(
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
-  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority source texts (now read from extdeps/languages/* authority, no local pin copies), cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4750 (supersedes #4674; step 1 landed via #4718) — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
-  if target.authority_source_text == ts_mvp1_source_text_authority() {
-    run_host_process(
-      descriptor: ts_host_transport_mvp1_descriptor(),
-      target: target,
-      source: source,
-      fixture_inputs: fixture_inputs
-    )
-  } else if target.authority_source_text == rust_mvp1_source_text_authority() {
-    run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
-  } else if target.authority_source_text == python_mvp1_source_text {
-    run_emit_host_python(target: target, source: source, fixture_inputs: fixture_inputs)
-  } else if target.authority_source_text == go_mvp1_source_text {
-    run_emit_host_go(target: target, source: source, fixture_inputs: fixture_inputs)
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
+  bind_outcome(
+    o: runtime_row_from_target(target: target),
+    f: fn(row) {
+      run_host_process(
+        row: row,
+        target: target,
+        source: source,
+        fixture_inputs: fixture_inputs
+      )
     }
-  }
+  )
 }
 
 fn run_test_claim_emit_vs_eval_verdict(

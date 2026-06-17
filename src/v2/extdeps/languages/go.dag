@@ -58,13 +58,6 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_unbound_diagnostic
 }
-import v2.std.inhabitant_bridge {
-  facts_field_std_projection,
-  facts_field_surface_spelling,
-  facts_field_width,
-  inhabitant_field_atom,
-  std_projection_additive_numeric
-}
 import v2.std.grounding {
   empty_per_language_fact_bundle_registry,
   insert_per_language_fact_bundle_entry,
@@ -82,25 +75,25 @@ import v2.std.compilers.target_model {
   ValueBoolLiteral,
   ValueCharUnicodeScalar,
   ValueSymbolToOwnedString,
-  char_kernel_type_atom,
   char_kernel_type_node,
-  grammar_relation_field_emitted,
-  grammar_relation_field_production,
-  grammar_relation_field_tokens,
-  serialize_source_field_source_grammar,
-  serialize_source_field_source_text,
-  symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_alias_type_expression,
   target_atom_realization_catalog_node,
-  target_model_edge_atom_realizations,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_translation_rules,
-  target_model_edge_serialize_source,
   target_value_template_for_kind
 }
-import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  HostRuntimeRowPresent,
+  TargetEmitHostRuntimeRow,
+  FixedWidthBytes,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  WorkspaceContent,
+  WorkspaceFile,
+  WorkspacePath
+}
+import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v2.std.witness { Holds, Violates }
 import v2.std.algebra {
@@ -315,7 +308,7 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int64,
   width: SignedBits64,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: std_projection_additive_numeric,
+  std_projection: ^std_projection_additive_numeric,
 }
 
 data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
@@ -330,7 +323,7 @@ data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPri
   surface_spelling: ^go_surface_spelling_int,
   width: SignedPlatformInt,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: std_projection_additive_numeric,
+  std_projection: ^std_projection_additive_numeric,
 }
 
 data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
@@ -524,11 +517,11 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: facts_field_surface_spelling,
+          name: ^facts_field_surface_spelling,
           target: go_inhabitant_atom(id: surface_spelling)
         ),
         go_named_edge(
-          name: facts_field_width,
+          name: ^facts_field_width,
           target: go_signed_int_width_node(width: width)
         ),
         go_named_edge(
@@ -546,7 +539,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -583,7 +576,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1249,7 +1242,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1286,7 +1279,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1478,7 +1471,7 @@ fn go_int_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
     ],
     occurrence_id: SyntheticOccurrence
@@ -1490,18 +1483,18 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: facts_field_surface_spelling,
+              name: ^facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
             ),
             go_named_edge(
-              name: facts_field_width,
+              name: ^facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
             ),
             go_named_edge(
@@ -1519,7 +1512,7 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.encoding)
             ),
             go_named_edge(
-              name: facts_field_std_projection,
+              name: ^facts_field_std_projection,
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
             )
           ],
@@ -1537,18 +1530,18 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: facts_field_surface_spelling,
+              name: ^facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
             ),
             go_named_edge(
-              name: facts_field_width,
+              name: ^facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int64.width)
             ),
             go_named_edge(
@@ -1566,7 +1559,7 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int64.encoding)
             ),
             go_named_edge(
-              name: facts_field_std_projection,
+              name: ^facts_field_std_projection,
               target: go_inhabitant_atom(id: go_facts_int64.std_projection)
             )
           ],
@@ -1671,7 +1664,7 @@ fn go_mvp1_int64_selection_policy_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: go_integer_facts_node(facts: go_facts_int64)
@@ -1709,7 +1702,7 @@ fn go_mvp1_serialize_source_children() -> List<Edge> {
     ],
     right: [
       go_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: go_mvp1_concrete_tokens(),
           token_to_node: go_concrete_token_node
@@ -1806,10 +1799,10 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
-      go_named_edge(name: grammar_relation_field_emitted, target: row.production.emitted),
+      go_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      go_named_edge(name: ^grammar_relation_field_emitted, target: row.production.emitted),
       go_named_edge(
-        name: grammar_relation_field_tokens,
+        name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: go_concrete_token_node
@@ -1854,14 +1847,54 @@ fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
+// T-22 emit-host runtime row — gunbc#4750.
+
+fn go_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^go_host_transport_mvp1_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "main.go",
+        content: EmittedSource
+      }
+    ],
+    build: Empty,
+    run: ProcessInvocation {
+      tool: ^host_tool_go,
+      args: [
+        LiteralArg { text: "run" },
+        WorkspacePath { path: "main.go" }
+      ]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn go_mvp1_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: go_host_transport_mvp1_descriptor(),
+      runtime_primitive_type: go_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
 fn go_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
-      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
-      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
+      go_named_edge(name: ^target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1872,7 +1905,8 @@ fn go_mvp1_target_model_staging() -> TargetModel {
     bundle: go_mvp1_target_model_bundle_core(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 
@@ -1892,7 +1926,7 @@ data go_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealiz
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_string),
   value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
   constructor_form: optional_absent(),
-  display_name: symbol_kernel_type_atom
+  display_name: ^symbol_kernel_type_atom
 }
 
 data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
@@ -1901,7 +1935,7 @@ data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_bool),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
-  display_name: bool_node_symbol
+  display_name: ^bool_node_symbol
 }
 
 data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
@@ -1910,7 +1944,7 @@ data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealizat
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_rune),
   value_form: target_value_template_for_kind(kind: ValueCharUnicodeScalar),
   constructor_form: optional_absent(),
-  display_name: char_kernel_type_atom
+  display_name: ^char_kernel_type_atom
 }
 
 // 🟡 gated — feature:go-target-atom-realization-int — bind docs/planning/v2-go-target-atom-realization-worksheet-2026-06-01.md §4 Int row —
@@ -1927,12 +1961,12 @@ fn go_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
-      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
-      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
+      go_named_edge(name: ^target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
       go_named_edge(
-        name: target_model_edge_atom_realizations,
+        name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
           rows: go_target_atom_realization_catalog,
           host_bundle: go_mvp1_target_model_bundle_core()
@@ -1948,7 +1982,8 @@ fn go_mvp1_target_model() -> TargetModel {
     bundle: go_mvp1_target_model_node(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 
@@ -1956,12 +1991,12 @@ fn go_mvp1_target_model_node_with_selection_policy(selection: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: target_model_edge_selection_policy, target: selection),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
-      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
-      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
+      go_named_edge(name: ^target_model_edge_selection_policy, target: selection),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
       go_named_edge(
-        name: target_model_edge_atom_realizations,
+        name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
           rows: go_target_atom_realization_catalog,
           host_bundle: go_mvp1_target_model_bundle_core()
@@ -1979,7 +2014,8 @@ fn go_mvp1_target_model_int64_selection_policy() -> TargetModel {
     ),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
-    authority_source_text: go_mvp1_source_text
+    authority_source_text: go_mvp1_source_text,
+    runtime_row: go_mvp1_runtime_row()
   }
 }
 

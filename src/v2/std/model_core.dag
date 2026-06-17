@@ -16,7 +16,6 @@ import v2.std.diagnostic {
 }
 import v2.std.algebra {
   field_reciprocal_nonzero_precondition_node,
-  field_reciprocal_operation,
   field_reciprocal_operation_node,
   fold_list
 }
@@ -65,12 +64,11 @@ type PrimitiveFactBundle {
 }
 
 
-data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
 
 
 fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: primitive_fact_axis_unbound_reason,
+    reason: ^primitive_fact_axis_unbound_reason,
     at: Textual { file: axis, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -137,7 +135,7 @@ fn field_partiality_decl() -> PartialitySemanticsDecl {
       PartialOperationDecl {
         operation: field_reciprocal_operation_node(),
         precondition: field_reciprocal_nonzero_precondition_node(),
-        discharge: FailClosedAtBoundary { reason: field_reciprocal_operation }
+        discharge: FailClosedAtBoundary { reason: ^field_reciprocal_operation }
       }
     ]
   }
@@ -159,9 +157,6 @@ type ModelCoreWave1BoolLawKey
   | ModelCoreWave1BoolDistributivity
   | ModelCoreWave1BoolComplementInvolution
   | ModelCoreWave1BoolComplementBounds
-data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
-data model_core_wave1_law_field_algebra: Symbol = model_core_wave1_law_field_algebra
-data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
 
 
 fn model_core_wave1_atom(id: Symbol) -> Node {
@@ -228,15 +223,15 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: model_core_wave1_law_field_subject },
+        label: Named { name: ^model_core_wave1_law_field_subject },
         target: model_core_wave1_bool_inhabitance_witness()
       },
       Edge {
-        label: Named { name: model_core_wave1_law_field_algebra },
+        label: Named { name: ^model_core_wave1_law_field_algebra },
         target: model_core_wave1_bool_algebra_node()
       },
       Edge {
-        label: Named { name: model_core_wave1_law_field_kind },
+        label: Named { name: ^model_core_wave1_law_field_kind },
         target: model_core_wave1_atom(id: discriminant(v: key))
       },
     ],

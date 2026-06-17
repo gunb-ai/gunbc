@@ -55,6 +55,13 @@ data corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip: ClaimWitnessCor
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_emit_ingest_type_decl_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "emit ingest type-decl Conj node round trip (grammar-inverse)",
+  entry: "src/v2/compiler/manual/emit_ingest_type_decl_round_trip_test.dag",
+  function: "emit_ingest_type_decl_round_trip_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_emit_ingest_python_same_language_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest python same language selector bijectivity",
   entry: "src/v2/compiler/manual/emit_ingest_python_same_language_round_trip_test.dag",
@@ -465,7 +472,7 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
 // (Self-host rows removed — they were NOT live coverage: their `entry:` paths
 //  `src/v2/test/claim/self_host/...` do not exist, so nothing executed them. The real self-host
 //  coverage is now the live-executed `test fn` decls in src/v2/compiler/self_host/fixed_point_test.dag,
-//  discovered by the canonical ci_claim_gate source-root scan. The remaining rows here are out of
+//  discovered by the canonical claim_batch source-root scan. The remaining rows here are out of
 //  scope for that change and untouched.)
 
 data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
@@ -516,6 +523,7 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
 
 data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
+  corpus_ci_gate_row_emit_ingest_type_decl_round_trip,
   corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
   corpus_ci_gate_row_loop_demand_driven_eval_keystone,

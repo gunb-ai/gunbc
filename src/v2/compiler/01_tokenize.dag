@@ -57,13 +57,11 @@ type LexMatchThunk {
   apply: fn(String) -> LexMatchResult
 }
 
-data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
-data tokenize_lex_e1_unrecognized_char: Symbol = tokenize_lex_e1_unrecognized_char
 
 
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: tokenize_lex_e0_source_not_exhausted,
+    reason: ^tokenize_lex_e0_source_not_exhausted,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -72,7 +70,7 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
 
 fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: tokenize_lex_e1_unrecognized_char,
+    reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }

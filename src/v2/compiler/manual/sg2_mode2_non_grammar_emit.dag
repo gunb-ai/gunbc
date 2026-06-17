@@ -53,9 +53,6 @@ import v2.std.compilers.target_model {
   OwnershipAtFunctionReturn,
   TypeExprKindAuthority,
   TypeExprKindNotEmitted,
-  target_carrier_node,
-  target_carrier_outcome,
-  target_model_edge_translation_rules,
   target_type_expr_emitted_kind
 }
 import v2.std.witness { Holds, Violates }
@@ -133,7 +130,7 @@ data sg2_mode2_perturbed_inferred_tree: InferredTree = InferredTree {
 fn sg2_mode2_translation_rules_empty() -> Bool {
   match target_bundle_child(
     target: sg2_mode2_target(),
-    edge_name: target_model_edge_translation_rules
+    edge_name: ^target_model_edge_translation_rules
   ) {
     Accepted { value: rules, diagnostics: _ } =>
       match rules.kind {
@@ -147,7 +144,7 @@ fn sg2_mode2_translation_rules_empty() -> Bool {
 fn sg2_mode2_emitted_has_no_grammar_row(emitted: Node) -> Bool {
   match target_bundle_child(
     target: sg2_mode2_target(),
-    edge_name: target_model_edge_translation_rules
+    edge_name: ^target_model_edge_translation_rules
   ) {
     Accepted { value: rules, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
@@ -226,7 +223,7 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
+          kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -234,7 +231,7 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: target_carrier_node } },
+          kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }

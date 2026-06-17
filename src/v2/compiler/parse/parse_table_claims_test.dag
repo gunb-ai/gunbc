@@ -2,7 +2,7 @@
 // claim-run witness, routed through v2 (`dag run --claim-run`).
 // Carries the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append
 // receipt — the executable receipt is now the in-file claim witness below, run in-process by
-// the ci_claim_gate binary (formerly a host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) — as a
+// the claim_batch binary (formerly a host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) — as a
 // `fn -> Bool` witness that EXECUTES token_position_indices over a fixed token list and
 // DISCRIMINATES the produced 0..N index sequence: a duplicate final append (the regressed
 // shape) yields an extra index, turning the witness red. Mutating the fold turns it red.

@@ -61,7 +61,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
-  arrow_body_edge
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -432,7 +431,7 @@ fn lazy_arm_arrow_with_body(body: Node) -> Node {
       },
       Edge { label: Positional, target: lazy_arm_i64() },
       Edge { label: Positional, target: lazy_arm_i64() },
-      Edge { label: Named { name: arrow_body_edge }, target: body }
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ]
   }
 }

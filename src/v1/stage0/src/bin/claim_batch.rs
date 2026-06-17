@@ -39,9 +39,24 @@
 //!               --entry <e2.dag> --function g1 [--functions g2,...] \
 //!               ... [--claim-run]
 //!
+//! 3. **Discovery batch** (CI floor; absorbed from the retired
+//!    `ci_claim_gate` binary). Instead of a hand-typed `--entry`/`--function`
+//!    roster, reflect over the discovered `unified_claim_*` BoolWitness corpus
+//!    plus the single-representation `test fn`/`test data` decls under the scan
+//!    dirs, group the discovered rows by entry, and run them through the SAME
+//!    batch loop. No hand roster, no rows-fn. The perturb pass that
+//!    `ci_claim_gate` carried was flag-gated (`--perturb-check`) and never run
+//!    in CI, so it is intentionally dropped with that binary.
+//!
+//! Usage (discovery — the CI floor shape):
+//!   claim_batch --source-root <dir> [--source-root <dir> ...] \
+//!               --roster-from-discovery \
+//!               --scan-dir <dir> [--scan-dir <dir> ...] \
+//!               [--notice-title <title>] [--wet] [--hermetic]
+//!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
 //! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage
-//! error.
+//! error (including: discovery roster produced an empty corpus → fail closed).
 //!
 //! Set GUNBC_INTERP_STATS=1 to print the phase-0 memory measurement report
 //! (ctrl#1533) on stderr after the run.  In multi-entry mode only the
@@ -61,16 +76,18 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim, ClaimOutcome,
-    MultiEntryIndex,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context,
+    resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
 };
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
-use v1_compiler::v1_interpreter::InterpContext;
+use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
 
 /// What `resolve_entry_with_index` hands back: the resolved import-closure graph
@@ -182,9 +199,216 @@ struct EntryGroup {
     functions: Vec<String>,
 }
 
-fn parse_args(args: &[String]) -> Result<(Vec<String>, Vec<EntryGroup>), ExitCode> {
+/// One discovered witness row (discovery mode). `label` is for diagnostics; the
+/// `entry`/`function` pair is what gets grouped into `EntryGroup`s and run.
+struct GateRow {
+    #[allow(dead_code)]
+    label: String,
+    entry: String,
+    function: String,
+}
+
+// Mirror of discover_owned_data's default exclude set: the manifest/law files that
+// import the ephemeral discovery output would otherwise re-enter discovery acyclically.
+// Plus the manual lane: `src/v2/test/manual/` claims carry their own
+// ExpectPass|ExpectFail expected-outcome (some are pinned-red to tracking anchors,
+// e.g. witness_sg2_arrow ExpectFail{#4801}). A universal-green floor must NOT run them
+// as must-pass — excluded until expected-outcome is modeled at the claim level.
+const DISCOVERY_EXCLUDES: &[&str] = &[
+    "impossible_bug",
+    "test/manual/",
+    "glob_discovery.dag",
+    "glob_discovery_law.dag",
+    "host_discovered_owned_data_manifest.dag",
+    "unified_test_claim_substrate_equivalence.dag",
+];
+
+/// Reflection roster: every discovered `unified_claim_*` BoolWitness decl across
+/// the scan dirs becomes a gate row (label = decl name minus the `unified_claim_`
+/// prefix, entry/function = the modeled witness). No hand-typed roster, no rows-fn.
+/// Fail-closed: `.dag` basenames under `--source-root` must not contain `__`
+/// (legacy flat-dir encoding; use subdirectories instead). Preserved from the
+/// retired `ci_claim_gate` (#5051) when discovery moved into this binary.
+fn check_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
+    let mut violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(root), &mut dag_files);
+        for path in dag_files {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.contains("__"))
+            {
+                violations.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if violations.is_empty() {
+        return Ok(());
+    }
+    violations.sort();
+    Err(format!(
+        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
+         offending file(s): {}",
+        violations.join(", ")
+    ))
+}
+
+fn discover_roster(source_roots: &[String], scan_dirs: &[String]) -> Result<Vec<GateRow>, String> {
+    let excludes: Vec<String> = DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let mut rows: Vec<GateRow> = Vec::new();
+    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
+    for scan_dir in scan_dirs {
+        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        for rec in discovery.records {
+            if let OwnedDataDeclInitializer::BoolWitnessClaim {
+                witness_entry,
+                witness_function,
+            } = rec.initializer
+            {
+                if witness_entry.is_empty() || witness_function.is_empty() {
+                    return Err(format!(
+                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
+                        rec.decl_name
+                    ));
+                }
+                if seen.insert((witness_entry.clone(), witness_function.clone())) {
+                    let label = rec
+                        .decl_name
+                        .strip_prefix("unified_claim_")
+                        .unwrap_or(&rec.decl_name)
+                        .to_string();
+                    rows.push(GateRow {
+                        label,
+                        entry: witness_entry,
+                        function: witness_function,
+                    });
+                }
+            }
+        }
+    }
+
+    // Single-representation `test fn NAME()` / `test data NAME` tests. The v2
+    // parser drops the contextual `test` keyword, so the gate detects the marker
+    // in source text (same posture as the `data unified_claim_` scan) and runs
+    // NAME. Dual-mode with the loop above so claims migrate off `unified_claim_*`
+    // one at a time.
+    //
+    // Convention, enforced fail-closed: a `test` declaration may live ONLY in
+    // `*_test.dag` files. The whole source root is scanned (so manual/ and
+    // implementation files are covered), and a `test` decl found anywhere else is
+    // a hard error — tests do not live in implementation files.
+    let mut test_fn_violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content =
+                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let names = scan_test_decl_names(&content);
+            if names.is_empty() {
+                continue;
+            }
+            if !entry.ends_with("_test.dag") {
+                test_fn_violations.push(entry);
+                continue;
+            }
+            for name in names {
+                if seen.insert((entry.clone(), name.clone())) {
+                    rows.push(GateRow {
+                        label: name.clone(),
+                        entry: entry.clone(),
+                        function: name,
+                    });
+                }
+            }
+        }
+    }
+    if !test_fn_violations.is_empty() {
+        test_fn_violations.sort();
+        return Err(format!(
+            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
+            test_fn_violations.join(", ")
+        ));
+    }
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    Ok(rows)
+}
+
+/// Recursively collect `.dag` files under `dir` (the `test`-decl scan walks the
+/// whole source root). Mirrors the discovery `.dag` walk.
+fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
+/// declaration in source text.
+fn scan_test_decl_names(content: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let rest = trimmed
+            .strip_prefix("test fn ")
+            .or_else(|| trimmed.strip_prefix("test data "));
+        if let Some(rest) = rest {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+/// Parsed CLI config. Roster is sourced one of two ways: an explicit
+/// `--entry`/`--function` list (`entry_groups`), or `--roster-from-discovery`
+/// reflection over the scan dirs (`discovery`). The two are mutually exclusive.
+struct ParsedArgs {
+    source_roots: Vec<String>,
+    entry_groups: Vec<EntryGroup>,
+    discovery: Option<DiscoveryConfig>,
+    /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
+    /// `--hermetic` selects modeled `mock_response`; `--wet` is explicit Wet
+    /// (Phase 2 opt-in when default flips Hermetic).
+    execution_mode: ExecutionMode,
+}
+
+/// Discovery-mode config (set when `--roster-from-discovery` is given).
+struct DiscoveryConfig {
+    scan_dirs: Vec<String>,
+    notice_title: String,
+}
+
+fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut entry_groups: Vec<EntryGroup> = Vec::new();
+    let mut roster_from_discovery = false;
+    let mut scan_dirs: Vec<String> = Vec::new();
+    let mut notice_title = "v2 CI claim gate".to_string();
+    // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
+    // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
+    let mut execution_mode = ExecutionMode::Wet;
 
     let mut i = 1;
     while i < args.len() {
@@ -228,9 +452,20 @@ fn parse_args(args: &[String]) -> Result<(Vec<String>, Vec<EntryGroup>), ExitCod
                     }
                 }
             }
+            "--roster-from-discovery" => roster_from_discovery = true,
+            "--scan-dir" => {
+                i += 1;
+                scan_dirs.push(require_value(args, i, "--scan-dir")?);
+            }
+            "--notice-title" => {
+                i += 1;
+                notice_title = require_value(args, i, "--notice-title")?;
+            }
             // Accepted for call-site parity with `gunbc run`; this bin is always
             // claim-run (Bool witnesses).
             "--claim-run" => {}
+            "--wet" => execution_mode = ExecutionMode::Wet,
+            "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -239,7 +474,31 @@ fn parse_args(args: &[String]) -> Result<(Vec<String>, Vec<EntryGroup>), ExitCod
         i += 1;
     }
 
-    Ok((source_roots, entry_groups))
+    let discovery = if roster_from_discovery {
+        if !entry_groups.is_empty() {
+            eprintln!(
+                "claim_batch: --roster-from-discovery is exclusive with --entry/--function/--functions"
+            );
+            return Err(ExitCode::from(2));
+        }
+        if scan_dirs.is_empty() {
+            eprintln!("claim_batch: --roster-from-discovery requires at least one --scan-dir");
+            return Err(ExitCode::from(2));
+        }
+        Some(DiscoveryConfig {
+            scan_dirs,
+            notice_title,
+        })
+    } else {
+        None
+    };
+
+    Ok(ParsedArgs {
+        source_roots,
+        entry_groups,
+        discovery,
+        execution_mode,
+    })
 }
 
 /// Report one witness outcome on stdout (PASS/FAIL line consumed by callers),
@@ -365,25 +624,71 @@ fn print_eval_profile(function: &str) {
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
+    execution_mode: ExecutionMode,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
-    let ctx = make_eval_context(&graph, source_indices);
+    let ctx = make_eval_context(&graph, source_indices, execution_mode);
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
     }
     Ok(())
 }
 
+/// Group discovered rows into per-entry `EntryGroup`s, preserving the discovery
+/// sort order (rows are sorted by (entry, function) in `discover_roster`).
+fn group_discovered_rows(rows: Vec<GateRow>) -> Vec<EntryGroup> {
+    let mut groups: Vec<EntryGroup> = Vec::new();
+    for row in rows {
+        match groups.last_mut() {
+            Some(g) if g.entry == row.entry => g.functions.push(row.function),
+            _ => groups.push(EntryGroup {
+                entry: row.entry,
+                functions: vec![row.function],
+            }),
+        }
+    }
+    groups
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
-    let (source_roots, entry_groups) = parse_args(&args)?;
+    let parsed = parse_args(&args)?;
+    let source_roots = parsed.source_roots;
+    let execution_mode = parsed.execution_mode;
 
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+
+    // Discovery mode: reflect over the scan dirs for the roster, group by entry,
+    // and run through the SAME batch loop the explicit path uses.
+    let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
+        // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
+        // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
+        // preserved from the retired ci_claim_gate).
+        if let Err(e) = check_filename_hygiene(&source_roots) {
+            eprintln!("claim_batch: {e}");
+            return Err(ExitCode::from(2));
+        }
+        let rows = match discover_roster(&source_roots, &disc.scan_dirs) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("claim_batch: discovery roster failed: {e}");
+                return Err(ExitCode::from(2));
+            }
+        };
+        if rows.is_empty() {
+            eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
+            return Err(ExitCode::from(2));
+        }
+        (group_discovered_rows(rows), Some(disc.notice_title))
+    } else {
+        (parsed.entry_groups, None)
+    };
+
     if entry_groups.is_empty() {
         eprintln!("claim_batch: --entry <file.dag> is required");
         return Err(ExitCode::from(2));
@@ -423,7 +728,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        let ctx = make_eval_context(&graph, source_indices);
+        let ctx = make_eval_context(&graph, source_indices, execution_mode);
         for function in &group.functions {
             run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
         }
@@ -438,7 +743,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(&index, group, &mut any_failed, &mut timings)?;
+            run_witnesses(&index, group, execution_mode, &mut any_failed, &mut timings)?;
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);
@@ -453,10 +758,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     if any_failed {
-        Ok(ExitCode::from(1))
-    } else {
-        Ok(ExitCode::SUCCESS)
+        return Ok(ExitCode::from(1));
     }
+
+    // Discovery mode emits the CI floor notice (parity with the retired
+    // ci_claim_gate): `"{title}: {N} discriminating witness(es) passed"`.
+    if let Some(title) = discovery_notice {
+        println!("{title}: {total_witnesses} discriminating witness(es) passed");
+    }
+
+    Ok(ExitCode::SUCCESS)
 }
 
 fn main() -> ExitCode {

@@ -15,7 +15,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  loop_bound_edge,
   SyntheticOccurrence
 }
 import v2.std.verification {
@@ -52,7 +51,7 @@ data loop_linear_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_body },
-    Edge { label: Named { name: loop_bound_edge }, target: loop_linear_measure_leaf }
+    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }

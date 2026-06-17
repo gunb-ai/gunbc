@@ -10,8 +10,6 @@ import v2.std.collection { List }
 import v2.std.collection { Absent, Present }
 import v2.std.compilers.target_model {
   TargetModel,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy
 }
 import v2.std.diagnostic {
   Accepted,
@@ -27,12 +25,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.inhabitant_bridge {
-  facts_field_std_projection,
-  facts_field_surface_spelling,
-  facts_field_width,
-  inhabitant_field_atom
-}
 import v2.std.node {
   Edge,
   Node,
@@ -47,15 +39,10 @@ import v2.std.passing_candidate_fold {
   PassingCandidateFold
 }
 
-data inhabitant_neutralization_std_projection_missing: Symbol = inhabitant_neutralization_std_projection_missing
-data inhabitant_neutralization_type_atom_missing: Symbol = inhabitant_neutralization_type_atom_missing
-data inhabitant_neutralization_surface_spelling_missing: Symbol = inhabitant_neutralization_surface_spelling_missing
-data inhabitant_neutralization_no_target_inhabitant: Symbol = inhabitant_neutralization_no_target_inhabitant
-data inhabitant_neutralization_ambiguous_target_inhabitant: Symbol = inhabitant_neutralization_ambiguous_target_inhabitant
 
 fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: inhabitant_neutralization_std_projection_missing,
+    reason: ^inhabitant_neutralization_std_projection_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -63,7 +50,7 @@ fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Di
 
 fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: inhabitant_neutralization_type_atom_missing,
+    reason: ^inhabitant_neutralization_type_atom_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -71,7 +58,7 @@ fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> Diagnos
 
 fn inhabitant_neutralization_surface_spelling_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: inhabitant_neutralization_surface_spelling_missing,
+    reason: ^inhabitant_neutralization_surface_spelling_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -81,7 +68,7 @@ fn inhabitant_neutralization_no_target_diagnostic(
   std_projection: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: inhabitant_neutralization_no_target_inhabitant,
+    reason: ^inhabitant_neutralization_no_target_inhabitant,
     at: Textual { file: std_projection, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -91,7 +78,7 @@ fn inhabitant_neutralization_ambiguous_target_diagnostic(
   std_projection: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: inhabitant_neutralization_ambiguous_target_inhabitant,
+    reason: ^inhabitant_neutralization_ambiguous_target_inhabitant,
     at: Textual { file: std_projection, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -108,7 +95,7 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
-          match find_named_child(root: edge.target, name: facts_field_std_projection) {
+          match find_named_child(root: edge.target, name: ^facts_field_std_projection) {
             Accepted { value: _, diagnostics: _ } =>
               Accepted { value: edge.target, diagnostics: None }
             Rejected { diagnostics: _ } => acc
@@ -123,7 +110,7 @@ fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<Symbol> {
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
       bind_outcome(
-        o: find_named_child(root: facts, name: facts_field_std_projection),
+        o: find_named_child(root: facts, name: ^facts_field_std_projection),
         f: fn(atom_node) {
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
@@ -140,7 +127,7 @@ fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<Symbol> {
 }
 
 fn inhabitant_type_atom_symbol(inhabitant: Node) -> Outcome<Symbol> {
-  match find_named_child(root: inhabitant, name: inhabitant_field_atom) {
+  match find_named_child(root: inhabitant, name: ^inhabitant_field_atom) {
     Accepted { value: atom_node, diagnostics: _ } =>
       match node_atom_identity_optional(node: atom_node) {
         Present { value: sym } =>
@@ -161,7 +148,7 @@ fn inhabitant_surface_spelling_symbol(inhabitant: Node) -> Outcome<Symbol> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
-      match find_named_child(root: facts, name: facts_field_surface_spelling) {
+      match find_named_child(root: facts, name: ^facts_field_surface_spelling) {
         Accepted { value: atom_node, diagnostics: _ } =>
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
@@ -186,7 +173,7 @@ fn inhabitant_width_node(inhabitant: Node) -> Outcome<Node> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
-      find_named_child(root: facts, name: facts_field_width)
+      find_named_child(root: facts, name: ^facts_field_width)
     }
   )
 }
@@ -311,7 +298,7 @@ fn target_inhabitant_for_std_projection(
   target: TargetModel
 ) -> Outcome<Node> {
   bind_outcome(
-    o: find_named_child(root: target.bundle, name: target_model_edge_declared_inhabitants),
+    o: find_named_child(root: target.bundle, name: ^target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
       let fold_result = fold(
         inhabitants_root.children,
@@ -337,7 +324,7 @@ fn target_inhabitant_for_std_projection(
           bind_outcome(
             o: find_named_child(
               root: target.bundle,
-              name: target_model_edge_selection_policy
+              name: ^target_model_edge_selection_policy
             ),
             f: fn(selection_policy) {
               target_inhabitant_for_std_projection_with_selection_policy(

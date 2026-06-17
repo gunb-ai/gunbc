@@ -3475,6 +3475,7 @@ fn python_emit_snake_case_functions() {
 ///     template map (`len(...)`);
 ///   - the binary+ methods (`fold`/`map`/`concat`) route through the runtime
 ///     bridge, which forwards EVERY argument — NOT the flat one-arg template.
+///
 /// The `fold` case is the regression sentinel: a flat `functools.reduce({arg},
 /// {recv})` / `v2rt.Fold({recv},{arg})` template would drop fold's callback.
 fn method_template_emit_source() -> &'static str {
@@ -9147,11 +9148,15 @@ fn anthropic_messages_200_role_json_matches_messages_wire_tag() {
 #[test]
 fn openai_chat_completion_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
-    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/openai_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+    let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
         content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
@@ -9357,11 +9362,15 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
 #[test]
 fn openai_responses_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
-    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/openai_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+    let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
         content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
@@ -9641,11 +9650,15 @@ service test.Llm {
 #[test]
 fn anthropic_messages_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
-    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    let source_path = ws.join("dsl/extdeps/llm/anthropic_rest.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic_rest.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic_rest.dag",
+        &source,
+        RenderTarget::Rust,
+    );
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+    let content = find_file(&result, "src/extdeps_llm_anthropic_rest.rs");
 
     assert!(
         content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),

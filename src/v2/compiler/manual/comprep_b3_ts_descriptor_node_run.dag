@@ -1,7 +1,7 @@
 // Scope: B3 omni-emission — producer emit → HostTransportDescriptor → Node run (SignedI32Le).
 //   NOT a v2 `--claim-run` witness: substrate rows are fail-closed in `.dag` and v2 has no
-//   `emit_host_eval` hook. Decode execution: `emit_host_runner` SignedI32Le unit test +
-//   `emit_host_eval.rs` `b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five`.
+//   `emit_host_gate.dag` (gunbc run). Decode execution: `emit_host_gate_witness.dag` +
+//   `emit_host_gate.dag` TS row (SignedI32Le four-byte stdout).
 
 module v2.test.manual.comprep_b3_ts_descriptor_node_run
 
@@ -35,13 +35,12 @@ import v2.test.manual.connective_anchors { stub_empty_conj }
 import v2.compiler.target_carriers { TargetSource }
 
 
-data comprep_b3_claim_pin: Symbol = comprep_b3_claim_pin
 
 fn comprep_b3_emit_host_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
     claim_input_root: stub_empty_conj,
     expected_eval_root: stub_empty_conj,
-    claim_pin: comprep_b3_claim_pin
+    claim_pin: ^comprep_b3_claim_pin
   )
 }
 

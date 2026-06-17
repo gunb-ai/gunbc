@@ -1,12 +1,12 @@
 // src/v2/workflow/layering_imports_gate.dag
 //
 // Cross-layer import gate transport authority (layer-DAG dependency direction, DESIGN.md §3).
-// Host enumerates import facts via layering_imports_scan; v2.lens.layering_imports
+// Host enumerates import facts via tools.layering_imports_transport; v2.lens.layering_imports
 // owns violation semantics. Green pass runs clean_tree on the live scanned manifest.
-// Scanner-execution perturb receipts are driven by scripts/v2-layering-imports-gate.sh
-// (plant -> scan -> witness), not ci-claim-gate data-only perturb.
+// Scanner-execution perturb receipts are driven by tools.layering_imports_gate main
+// (plant -> scan -> witness), not claim_batch data-only perturb.
 //
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+// Status: load-bearing — zesty-signed witness receipts; gate wired in CI floor.
 
 module v2.workflow.layering_imports_gate
 
@@ -22,7 +22,7 @@ type LayeringImportsClaimRunRow {
 
 data layering_imports_claim_run_row_clean_tree: LayeringImportsClaimRunRow = LayeringImportsClaimRunRow {
   label: "layering_imports/clean_tree",
-  entry: "src/v2/compiler/layering_imports/clean_tree.dag",
+  entry: "src/v2/test/claim/layering_imports/clean_tree.dag",
   function: "clean_tree_no_wrong_direction_imports_holds"
 }
 

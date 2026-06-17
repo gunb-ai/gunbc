@@ -22,6 +22,8 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
+mod cron_tag_test;
+#[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -29,6 +31,8 @@ mod derive_bound_fail_closed_test;
 mod diagnostics;
 #[cfg(test)]
 mod effects;
+#[cfg(test)]
+mod extdeps_shape_transport_policy_lens_test;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]

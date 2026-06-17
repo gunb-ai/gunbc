@@ -22,9 +22,9 @@ import v2.std.compilers.target_model {
   TargetValueExpressionProjection,
   bodied_arrow_scaffold_from_grammar_relation_row,
   target_bodied_arrow_compose_statement_tokens,
-  target_model_edge_translation_rules,
   target_project_arrow_body_to_value_expression,
   target_project_transform_primitive_apply_in_arrow_scope,
+  target_project_transform_callable_apply_in_arrow_scope,
   target_transform_surface_op_atom,
   target_value_expr_arrow_has_value_expression_body,
   target_value_expression_projection_from_target,
@@ -75,7 +75,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  arrow_body_edge,
   fold_node,
   node_rebuild,
   well_formed,
@@ -101,24 +100,8 @@ import v2.std.compilers.target_model {
   TargetTypeExprInstantiation,
   TargetTypeExprRecord,
   TargetTypeExprSum,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  grammar_relation_field_bodied_scaffold,
-  grammar_relation_field_emitted,
-  grammar_relation_field_tokens,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_selection_policy,
-  target_model_edge_serialize_source,
-  target_model_edge_type_expression_projection,
-  target_model_edge_collection_realization,
   TargetCollectionRealization,
   TargetRepresentationChoice,
-  target_collection_choice_field_form,
-  target_collection_choice_field_constraints,
-  target_collection_row_field_source_carrier,
-  target_collection_row_field_primary,
-  target_collection_row_field_alternatives,
-  target_collection_row_field_fallback,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
@@ -160,18 +143,13 @@ import v2.std.compilers.target_model {
   TargetAtomRealization,
   source_atom_value_for_realization_row,
   target_atom_realization_lookup_in_catalog_node,
-  target_atom_realization_lookup_miss,
   target_atom_realization_lookup_miss_diagnostic,
   TargetFunctionSignatureRealization,
   FunctionBoundarySite,
   FunctionBoundaryParam,
   FunctionBoundaryReturn,
   target_function_signature_realization_lookup_in_catalog_node,
-  target_function_signature_realization_lookup_miss,
-  target_model_edge_signature_realizations,
   target_atom_value_expression,
-  target_model_edge_atom_realizations,
-  target_model_edge_value_expression,
   target_model_named_edge,
   target_value_expression_node,
   TargetOwnershipUseSite,
@@ -180,9 +158,6 @@ import v2.std.compilers.target_model {
   OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter,
   OwnershipAtStructField,
-  target_model_edge_use_site_ownership_realizations,
-  target_model_edge_reference_layer_tokens,
-  target_model_edge_value_semantics_carriers,
   target_value_semantics_carriers_from_node,
   CarrierOwnershipByValue,
   CarrierOwnershipByReference,
@@ -208,8 +183,6 @@ import v2.std.algebra {
   TailAbsent,
   TailFound,
   fold_list,
-  fold_list_node_head,
-  fold_list_node_tail,
   is_empty,
   length,
   list_append,
@@ -226,21 +199,6 @@ type TargetBundleChildLookup
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
-data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
-data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
-data translate_sg_rc_bundle_partial: Symbol = translate_sg_rc_bundle_partial
-data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
-data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
-data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
-data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
-data translate_lex_rule_literal_not_found: Symbol = translate_lex_rule_literal_not_found
-data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_not_found
-data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
-data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
-data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
-data translate_target_atom_realization_not_found: Symbol = translate_target_atom_realization_not_found
-data translate_type_expression_shape_missing: Symbol = translate_type_expression_shape_missing
-data translate_type_expr_kind_authority_invalid: Symbol = translate_type_expr_kind_authority_invalid
 // node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
@@ -253,7 +211,7 @@ fn node_subtree_count(n: Node) -> Int {
 }
 fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       Accepted {
         value: node_subtree_count(n: rules),
@@ -312,7 +270,7 @@ type TokenSequenceItemKind
   | TokenSequenceNonterminal
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
-    reason: translate_target_bundle_malformed,
+    reason: ^translate_target_bundle_malformed,
     at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -322,14 +280,14 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
   edge_name: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: translate_target_bundle_duplicate_edge,
+    reason: ^translate_target_bundle_duplicate_edge,
     at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_sg_rc_bundle_partial,
+    reason: ^translate_sg_rc_bundle_partial,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -381,7 +339,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
-              reason: translate_target_bundle_duplicate_edge,
+              reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -392,7 +350,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
     _ =>
       outcome_rejected(
         Diagnostic {
-          reason: translate_grammar_inverse_not_realized,
+          reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
@@ -416,7 +374,7 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
-              reason: translate_target_bundle_duplicate_edge,
+              reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -427,7 +385,7 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
     _ =>
       outcome_rejected(
         Diagnostic {
-          reason: translate_grammar_inverse_not_realized,
+          reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
@@ -436,58 +394,58 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
 }
 fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_grammar_inverse_not_realized,
+    reason: ^translate_grammar_inverse_not_realized,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_grammar_relation_row_not_found,
+    reason: ^translate_grammar_relation_row_not_found,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_conj_invalid_edge_diagnostic(parent: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_conj_invalid_edge,
+    reason: ^translate_conj_invalid_edge,
     at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_conj_named_child_missing_diagnostic(parent: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_conj_named_child_missing,
+    reason: ^translate_conj_named_child_missing,
     at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_concrete_token_class_missing_diagnostic(token: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_concrete_token_class_missing,
+    reason: ^translate_concrete_token_class_missing,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_concrete_token_kind_invalid,
+    reason: ^translate_concrete_token_kind_invalid,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_serialize_recursion_limit_exhausted_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_serialize_recursion_limit_exhausted,
+    reason: ^translate_serialize_recursion_limit_exhausted,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
-  conj_named_child(parent: row, edge_name: grammar_relation_field_emitted)
+  conj_named_child(parent: row, edge_name: ^grammar_relation_field_emitted)
 }
 fn grammar_relation_row_tokens_root(row: Node) -> Outcome<Node> {
-  conj_named_child(parent: row, edge_name: grammar_relation_field_tokens)
+  conj_named_child(parent: row, edge_name: ^grammar_relation_field_tokens)
 }
 fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node> {
   match rules.kind {
@@ -549,7 +507,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                 Named { name: _ } =>
                   match find_named_child(
                     root: e.target,
-                    name: grammar_relation_field_bodied_scaffold
+                    name: ^grammar_relation_field_bodied_scaffold
                   ) {
                     Accepted { value: _, diagnostics: _ } =>
                       outcome_rejected(
@@ -564,7 +522,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                 Named { name: _ } =>
                   match find_named_child(
                     root: e.target,
-                    name: grammar_relation_field_bodied_scaffold
+                    name: ^grammar_relation_field_bodied_scaffold
                   ) {
                     Accepted { value: _, diagnostics: d } =>
                       Accepted { value: e.target, diagnostics: d }
@@ -601,7 +559,7 @@ fn grammar_inverse_bodied_arrow_validated(
   emitted: Node
 ) -> Outcome<Node> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
         o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
@@ -671,7 +629,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
-              reason: translate_target_bundle_duplicate_edge,
+              reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -686,13 +644,13 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
 fn concrete_token_class_child(parent: Node) -> Outcome<Node?> {
   optional_named_child_ignoring_positional(
     parent: parent,
-    edge_name: concrete_syntax_token_field_class
+    edge_name: ^concrete_syntax_token_field_class
   )
 }
 fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
   optional_named_child_ignoring_positional(
     parent: parent,
-    edge_name: concrete_syntax_token_field_kind
+    edge_name: ^concrete_syntax_token_field_kind
   )
 }
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
@@ -749,7 +707,7 @@ fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> 
         Absent =>
           match e.label {
             Named { name: n } =>
-              if n == grammar_relation_field_tokens { optional_present(value: e.target) } else { acc }
+              if n == ^grammar_relation_field_tokens { optional_present(value: e.target) } else { acc }
             Positional => acc
           }
       }
@@ -768,10 +726,10 @@ fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<Lis
           Accepted { value: Empty, diagnostics: None }
         } else {
           bind_outcome(
-            o: conj_named_child(parent: node, edge_name: fold_list_node_head),
+            o: conj_named_child(parent: node, edge_name: ^fold_list_node_head),
             f: fn(head) {
               bind_outcome(
-                o: conj_named_child(parent: node, edge_name: fold_list_node_tail),
+                o: conj_named_child(parent: node, edge_name: ^fold_list_node_tail),
                 f: fn(tail) {
                   bind_outcome(
                     o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
@@ -808,7 +766,7 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
   bind_outcome(
     o: optional_named_child_ignoring_positional(
       parent: tokens_node,
-      edge_name: fold_list_node_head
+      edge_name: ^fold_list_node_head
     ),
     f: fn(maybe_head) {
       match maybe_head {
@@ -861,13 +819,13 @@ fn grammar_inverse_source_validated(
   emitted: Node
 ) -> Outcome<Node> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
         o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
         f: fn(row) {
           bind_outcome(
-            o: target_bundle_child(target: target, edge_name: target_model_edge_serialize_source),
+            o: target_bundle_child(target: target, edge_name: ^target_model_edge_serialize_source),
             f: fn(serialize_source) {
               grammar_serialize_source_matches_row(
                 serialize_source: serialize_source,
@@ -950,7 +908,18 @@ fn translate_project_transform_in_arrow_scope(
             canonical_op: canonical_op,
             target: target
           )
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        // Lane 2c — a Transform head that does NOT canonicalize to an operator is a callee
+        // reference: project the body as a value-level call `callee(arg, ...)`, recursing through
+        // this same projector for nested calls and inline-closure arguments.
+        Rejected { diagnostics: _ } =>
+          target_project_transform_callable_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            target: target,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
+          )
       }
     }
   )
@@ -961,7 +930,7 @@ fn target_serialize_bodied_arrow_from_model(
   emitted: Node
 ) -> Outcome<TargetSource> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
         o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
@@ -1017,7 +986,7 @@ fn target_serialize_relation_row_from_model_bounded(
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
-      o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+      o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
       f: fn(rules) {
         bind_outcome(
           o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
@@ -1096,7 +1065,7 @@ fn target_serialize_relation_row_from_model_bounded(
 }
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: translate_lex_rule_literal_not_found,
+    reason: ^translate_lex_rule_literal_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
@@ -1107,7 +1076,7 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagn
 }
 fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
   Diagnostic {
-    reason: translate_binding_spelling_not_found,
+    reason: ^translate_binding_spelling_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
@@ -1295,7 +1264,7 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
 }
 fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_selection_policy),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_selection_policy),
     f: fn(priority_node) {
       Accepted {
         value: priority_node,
@@ -1308,11 +1277,11 @@ fn coercion_candidates_from_target_model(
   target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
       coercion_candidate_set_from_declared_inhabitants(
         inhabitants_root: inhabitants_root,
-        closedness_property: target_model_edge_declared_inhabitants
+        closedness_property: ^target_model_edge_declared_inhabitants
       )
     }
   )
@@ -1347,14 +1316,14 @@ fn coerce_grounded_node(
 }
 fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_type_expression_shape_missing,
+    reason: ^translate_type_expression_shape_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_type_expr_kind_authority_invalid,
+    reason: ^translate_type_expr_kind_authority_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1383,13 +1352,13 @@ fn target_collection_fold_list_from_node<T>(
           outcome_accepted(Empty)
         } else {
           bind_outcome(
-            o: find_named_child(root: node, name: fold_list_node_head),
+            o: find_named_child(root: node, name: ^fold_list_node_head),
             f: fn(head_node) {
               bind_outcome(
                 o: decode_item(node: head_node),
                 f: fn(head_item) {
                   bind_outcome(
-                    o: find_named_child(root: node, name: fold_list_node_tail),
+                    o: find_named_child(root: node, name: ^fold_list_node_tail),
                     f: fn(tail_node) {
                       bind_outcome(
                         o: target_collection_fold_list_from_node(
@@ -1417,13 +1386,13 @@ fn target_collection_fold_list_from_node<T>(
 
 fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
   bind_outcome(
-    o: find_named_child(root: node, name: target_collection_choice_field_form),
+    o: find_named_child(root: node, name: ^target_collection_choice_field_form),
     f: fn(form_node) {
       bind_outcome(
         o: target_collection_repr_from_node(node: form_node),
         f: fn(form) {
           bind_outcome(
-            o: find_named_child(root: node, name: target_collection_choice_field_constraints),
+            o: find_named_child(root: node, name: ^target_collection_choice_field_constraints),
             f: fn(constraints_node) {
               bind_outcome(
                 o: target_collection_fold_list_from_node(
@@ -1452,16 +1421,16 @@ fn target_collection_realization_from_bundle(
   bundle: Node
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
-    o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_source_carrier),
+    o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_source_carrier),
     f: fn(source_carrier) {
       bind_outcome(
-        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_primary),
+        o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_primary),
         f: fn(primary_node) {
           bind_outcome(
             o: target_collection_choice_from_node(node: primary_node),
             f: fn(primary) {
               bind_outcome(
-                o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_alternatives),
+                o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_alternatives),
                 f: fn(alternatives_node) {
                   bind_outcome(
                     o: target_collection_fold_list_from_node(
@@ -1471,7 +1440,7 @@ fn target_collection_realization_from_bundle(
                     ),
                     f: fn(alternatives) {
                       bind_outcome(
-                        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_fallback),
+                        o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_fallback),
                         f: fn(fallback_node) {
                           bind_outcome(
                             o: target_collection_fallback_from_node(node: fallback_node),
@@ -1522,7 +1491,7 @@ fn collection_realization_from_target_carrier(
   expected_source_carrier: Node
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_collection_realization),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_collection_realization),
     f: fn(catalog_node) {
       bind_outcome(
         o: target_collection_fold_list_from_node(
@@ -2850,7 +2819,7 @@ fn serialize_type_expr_emitted_bounded(
 fn translate_outcome_is_catalog_lookup_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
-  diagnostics.head.reason == target_atom_realization_lookup_miss
+  diagnostics.head.reason == ^target_atom_realization_lookup_miss
 }
 
 fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
@@ -2872,13 +2841,13 @@ fn translate_sg_rc_bundle_apply_disposition(
   bind_outcome(
     o: translate_sg_rc_bundle_edge_present(
       target: target,
-      edge_name: target_model_edge_use_site_ownership_realizations
+      edge_name: ^target_model_edge_use_site_ownership_realizations
     ),
     f: fn(has_catalog) {
       bind_outcome(
         o: translate_sg_rc_bundle_edge_present(
           target: target,
-          edge_name: target_model_edge_reference_layer_tokens
+          edge_name: ^target_model_edge_reference_layer_tokens
         ),
         f: fn(has_tokens) {
           if has_catalog == false && has_tokens == false {
@@ -2900,7 +2869,7 @@ fn translate_reference_layer_tokens_from_target(
   target: TargetModel
 ) -> Outcome<TargetReferenceLayerTokens> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_reference_layer_tokens),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_reference_layer_tokens),
     f: fn(bundle) { target_reference_layer_tokens_from_node(node: bundle) }
   )
 }
@@ -2911,7 +2880,7 @@ fn translate_use_site_ownership_catalog_from_model(
 ) -> Outcome<Node> {
   match target_bundle_optional_child(
     target: target,
-    edge_name: target_model_edge_use_site_ownership_realizations
+    edge_name: ^target_model_edge_use_site_ownership_realizations
   ) {
     Accepted { value: optional_catalog, diagnostics: d } =>
       match optional_catalog {
@@ -2932,7 +2901,7 @@ fn translate_use_site_ownership_catalog_from_model(
 fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
   match target_bundle_optional_child(
     target: target,
-    edge_name: target_model_edge_value_semantics_carriers
+    edge_name: ^target_model_edge_value_semantics_carriers
   ) {
     Accepted { value: optional_node, diagnostics: d } =>
       match optional_node {
@@ -3130,7 +3099,7 @@ fn translate_apply_use_site_ownership_to_type_shell(
 fn translate_outcome_is_signature_realization_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
-  diagnostics.head.reason == target_function_signature_realization_lookup_miss
+  diagnostics.head.reason == ^target_function_signature_realization_lookup_miss
 }
 
 // Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
@@ -3165,7 +3134,7 @@ fn translate_target_function_signature_realization_for_boundary(
 ) -> Outcome<Optional<TargetFunctionSignatureRealization>> {
   match target_bundle_optional_child(
     target: target,
-    edge_name: target_model_edge_signature_realizations
+    edge_name: ^target_model_edge_signature_realizations
   ) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: optional_catalog, diagnostics: _ } =>
@@ -3386,7 +3355,7 @@ fn target_atom_realizations_catalog_from_model(
 ) -> Outcome<Node> {
   match target_bundle_optional_child(
     target: target,
-    edge_name: target_model_edge_atom_realizations
+    edge_name: ^target_model_edge_atom_realizations
   ) {
     Accepted { value: optional_catalog, diagnostics: d } =>
       match optional_catalog {
@@ -3427,7 +3396,7 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
         children: list_snoc_item(
           xs: shell.children,
           item: target_model_named_edge(
-            name: target_model_edge_value_expression,
+            name: ^target_model_edge_value_expression,
             target: value
           )
         )
@@ -3721,7 +3690,7 @@ fn translate_mvp1_fold_init(
 // pre-baked tokens); Rejected => no row, fall through to the projection / mode-2 path.
 fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
   bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
   )
 }
@@ -3918,7 +3887,7 @@ fn target_bundle_child_optional_type_expr_projection(
 ) -> Outcome<TypeExprProjectionPresence> {
   match target_bundle_optional_child(
     target: target,
-    edge_name: target_model_edge_type_expression_projection
+    edge_name: ^target_model_edge_type_expression_projection
   ) {
     Accepted { value: Present { value: _ }, diagnostics: d } =>
       Accepted { value: ProjectionPresent, diagnostics: d }

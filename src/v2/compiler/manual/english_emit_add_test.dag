@@ -6,7 +6,7 @@ module v2.test.manual.english_emit_add
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.parse { grammar_production_identity_node_projection, parse }
+import v2.compiler.parse { parse }
 import v2.compiler.target_carriers { TargetSource }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate {
@@ -221,7 +221,7 @@ fn english_emit_add_ingest_parse(source: TargetSource) -> Outcome<ParseTree> {
 fn english_emit_add_identity_edge_matches(e: Edge, expected: Node) -> Bool {
   match e.label {
     Named { name: n } =>
-      (n == grammar_production_identity_node_projection) && (e.target == expected)
+      (n == ^grammar_production_identity_node_projection) && (e.target == expected)
     Positional => false
   }
 }

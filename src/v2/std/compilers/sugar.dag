@@ -33,7 +33,6 @@ import v2.std.node {
   is_positional
 }
 
-data sugar_reason_malformed: Symbol = sugar_reason_malformed
 
 // 🟢 TERMINAL — sugar lowering kinds: rewrite to kernel connective + edge discipline, or unwrap single positional child (irreducible transformation arms for surface sugar dissolution).
 type SugarLowering
@@ -99,7 +98,7 @@ fn classify_sugar(n: Node) -> SugarRule? {
 
 fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: sugar_reason_malformed,
+    reason: ^sugar_reason_malformed,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }

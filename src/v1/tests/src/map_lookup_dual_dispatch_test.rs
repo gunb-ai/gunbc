@@ -119,3 +119,73 @@ fn probe() -> Int {
 // typechecker projects a raw `.lookup` result as Option (Some/None) unless it flows
 // through a `-> Witness` annotated wrapper, which the std `Map` contract provides but a
 // bare v2-harness fixture (no v2.std) cannot.
+
+/// Bare `map_get(m, k)` desugars to the structural `map_get` method (not eval_builtin).
+/// It must return `Optional` variants so empty-list hits are matchable (std.graph).
+#[test]
+fn map_get_function_returns_optional_for_empty_list_hit() {
+    let src = r#"module test.map_get_empty_list
+fn hit() -> Bool {
+  let m = empty_map() |> map_insert("a", [])
+  match map_get(m, "a") {
+    Present { value: ns } => ns == []
+    Absent => false
+  }
+}
+
+fn miss() -> Bool {
+  let m = empty_map() |> map_insert("a", [])
+  match map_get(m, "b") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    let si = resolved.source_indices.clone();
+
+    match v1_interpreter::run(graph, si.clone(), "hit") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected empty-list map_get hit, got {other:?}"),
+    }
+    match v1_interpreter::run(graph, si, "miss") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected map_get miss -> Absent, got {other:?}"),
+    }
+}
+
+/// std.graph adjacency builders call bare `map_get` over list-valued maps.
+#[test]
+fn std_graph_build_adjacency_views_runs_on_interpreter() {
+    let src = r#"module test.graph_adj
+import std.graph { CallGraph, GraphEdge, build_adjacency_views }
+
+fn smoke() -> Bool {
+  let names = ["a", "b"]
+  let graph = CallGraph { edges: [GraphEdge { caller: "a", callee: "b" }] }
+  let views = build_adjacency_views(names: names, graph: graph)
+  match map_get(views.forward, "a") {
+    Present { value: ns } => ns == ["b"]
+    Absent => false
+  }
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v1_interpreter::run(graph, resolved.source_indices.clone(), "smoke") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected std.graph adjacency smoke, got {other:?}"),
+    }
+}

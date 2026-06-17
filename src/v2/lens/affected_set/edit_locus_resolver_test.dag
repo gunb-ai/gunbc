@@ -47,7 +47,6 @@ import v2.std.verification {
 }
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v2/lens/affected_set.dag"
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
-data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_source_producer_fixture_compilation_unit
 data edit_locus_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
@@ -63,19 +62,19 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_mvp1_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_mvp1_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_malformed_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
@@ -183,7 +182,7 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
             && edit_locus_occurrence_textual_file_eq(
               span_index: provenance.span_index,
               id: id,
-              file: edit_locus_source_producer_fixture_compilation_unit
+              file: ^edit_locus_source_producer_fixture_compilation_unit
             )
         SyntheticOccurrence => false
       }
@@ -256,7 +255,7 @@ fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
     Accepted { value: provenance, diagnostics: _ } =>
       well_formed(n: provenance.node)
         && edit_locus_root_from_source_locus_holds(
-          compilation_unit: edit_locus_source_producer_fixture_compilation_unit,
+          compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit,
           span_index: provenance.span_index,
           root: provenance.node
         )

@@ -23,14 +23,6 @@ type PartitionBoundaryPolicy
   | AmbientContextAvailable
 
 // Fail-closed partition reason symbols (design §4.3). Consumers emit these in Diagnostic.reason.
-data partition_segment_unresolvable: Symbol = partition_segment_unresolvable
-data partition_segment_ambiguous: Symbol = partition_segment_ambiguous
-data partition_root_not_in_ambient: Symbol = partition_root_not_in_ambient
-data partition_empty_segment: Symbol = partition_empty_segment
-data partition_boundary_free_ref: Symbol = partition_boundary_free_ref
-data partition_facts_miss: Symbol = partition_facts_miss
-data partition_facts_not_closed: Symbol = partition_facts_not_closed
-data partition_section_adapter_unavailable: Symbol = partition_section_adapter_unavailable
 
 fn program_segment_whole_program() -> ProgramSegment {
   WholeProgram
