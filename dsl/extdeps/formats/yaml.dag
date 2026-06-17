@@ -66,25 +66,52 @@ fn is_expression(s: String) -> Bool {
   starts_with(s: s, prefix: "${{")
 }
 
-fn needs_double_quotes(s: String) -> Bool {
-  (s == "") ||
-    string_contains(s: s, pattern: ":") ||
-    string_contains(s: s, pattern: "#") ||
-    string_contains(s: s, pattern: "\"") ||
-    string_contains(s: s, pattern: "'") ||
-    starts_with(s: s, prefix: "- ") ||
-    (s == "true") ||
+// Plain scalar unless YAML parsing would mis-read the value. Embedded shell quotes,
+// single quotes in hashFiles(), and colons inside ${{ }} are valid plain scalars.
+fn is_reserved_yaml_scalar(s: String) -> Bool {
+  (s == "true") ||
     (s == "false") ||
     (s == "null") ||
     (s == "yes") ||
-    (s == "no")
+    (s == "no") ||
+    (s == "~")
+}
+
+fn starts_with_yaml_indicator(s: String) -> Bool {
+  starts_with(s: s, prefix: "- ") ||
+    starts_with(s: s, prefix: "?") ||
+    starts_with(s: s, prefix: ":") ||
+    starts_with(s: s, prefix: ",") ||
+    starts_with(s: s, prefix: "[") ||
+    starts_with(s: s, prefix: "]") ||
+    starts_with(s: s, prefix: "{") ||
+    starts_with(s: s, prefix: "}") ||
+    starts_with(s: s, prefix: "#") ||
+    starts_with(s: s, prefix: "&") ||
+    starts_with(s: s, prefix: "*") ||
+    starts_with(s: s, prefix: "!") ||
+    starts_with(s: s, prefix: "|") ||
+    starts_with(s: s, prefix: ">") ||
+    starts_with(s: s, prefix: "'") ||
+    starts_with(s: s, prefix: "\"") ||
+    starts_with(s: s, prefix: "%") ||
+    starts_with(s: s, prefix: "@") ||
+    starts_with(s: s, prefix: "`")
+}
+
+fn needs_double_quotes(s: String) -> Bool {
+  is_reserved_yaml_scalar(s: s) ||
+    starts_with_yaml_indicator(s: s) ||
+    string_contains(s: s, pattern: ": ") ||
+    string_contains(s: s, pattern: " #")
 }
 
 fn escape_double_quoted(s: String) -> String {
   replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
 }
 
-fn emit_scalar_string(s: String, depth: Int) -> String {
+fn emit_scalar_string(s: String, key_depth: Int) -> String {
+  let content_depth = key_depth + 1
   if s == "" {
     "''"
   } else if string_contains(s: s, pattern: "\n") {
@@ -95,7 +122,7 @@ fn emit_scalar_string(s: String, depth: Int) -> String {
         if line == "" {
           acc
         } else {
-          concat(concat(acc, indent(depth: depth + 1)), concat(line, "\n"))
+          concat(concat(acc, indent(depth: content_depth)), concat(line, "\n"))
         }
     ))
   } else if is_expression(s: s) {
@@ -113,7 +140,7 @@ fn emit_scalar(v: YamlValue, depth: Int) -> String {
     YamlBool { value: b } => if b { "true" } else { "false" }
     YamlInt { lexeme: l } => l
     YamlFloat { lexeme: l } => l
-    YamlString { value: s } => emit_scalar_string(s: s, depth: depth)
+    YamlString { value: s } => emit_scalar_string(s: s, key_depth: depth)
     YamlSequence { elements: _ } => ""
     YamlMapping { entries: _ } => ""
   }
@@ -141,7 +168,18 @@ fn emit_flow_sequence(elements: List<YamlValue>) -> String {
   )
 }
 
-fn prefix_block_sequence_mapping(body: String, depth: Int) -> String {
+fn strip_leading_indent(line: String, depth: Int) -> String {
+  let prefix = indent(depth: depth)
+  if starts_with(s: line, prefix: prefix) {
+    substring(s: line, start: prefix.length(), end: line.length())
+  } else {
+    line
+  }
+}
+
+// Block sequence of mappings: `- key: val` on the first entry; sibling keys share item indent.
+fn prefix_block_sequence_mapping(body: String, seq_depth: Int) -> String {
+  let item_depth = seq_depth + 1
   let lines = split(s: body, delimiter: "\n")
   fold(lines, init: { index: 0, out: "" }, f: (acc, line) => {
     if line == "" {
@@ -149,12 +187,21 @@ fn prefix_block_sequence_mapping(body: String, depth: Int) -> String {
     } else if acc.index == 0 {
       {
         index: acc.index + 1,
-        out: concat(acc.out, concat(concat(concat(indent(depth: depth), "- "), line), "\n"))
+        out: concat(
+          acc.out,
+          concat(
+            concat(
+              concat(indent(depth: seq_depth), "- "),
+              strip_leading_indent(line: line, depth: item_depth)
+            ),
+            "\n"
+          )
+        )
       }
     } else {
       {
         index: acc.index + 1,
-        out: concat(acc.out, concat(concat(indent(depth: depth + 1), line), "\n"))
+        out: concat(acc.out, concat(line, "\n"))
       }
     }
   }).out
@@ -165,8 +212,8 @@ fn emit_block_sequence(elements: List<YamlValue>, depth: Int) -> String {
     let line = match e {
       YamlMapping { entries: ents } =>
         prefix_block_sequence_mapping(
-          body: emit_mapping_body(entries: ents, depth: 0),
-          depth: depth
+          body: emit_mapping_body(entries: ents, depth: depth + 1),
+          seq_depth: depth
         )
       _ =>
         concat(concat(concat(indent(depth: depth), "- "), emit_scalar(v: e, depth: depth)), "\n")

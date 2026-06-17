@@ -86,11 +86,70 @@ test fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
   ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
 }
 
+test fn witness_cache_path_block_scalar() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(
+    s: yaml,
+    pattern: "          path: |\n            ${{ runner.temp }}/cargo/registry/index/"
+  ) &&
+    string_contains(
+      s: yaml,
+      pattern: concat(
+        concat(
+          "            ${{ runner.temp }}/cargo/registry/cache/\n",
+          "            ${{ runner.temp }}/cargo/git/db/\n"
+        ),
+        "            target/"
+      )
+    )
+}
+
+test fn witness_restore_keys_block_scalar_indent() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(
+    s: yaml,
+    pattern: "          restore-keys: |\n            cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n"
+  ) &&
+    !string_contains(s: yaml, pattern: "          restore-keys: |\n          cargo-ci-")
+}
+
+test fn witness_rustup_run_plain_not_quoted() -> Bool {
+  let yaml = expected_ci_yml()
+  let rustup_run = concat(
+    "        run: rustup default \"$(rustup show active-toolchain | awk '",
+    concat(concat("{", "print $1; exit"), concat("}", "')\""))
+  )
+  string_contains(s: yaml, pattern: rustup_run) &&
+    !string_contains(s: yaml, pattern: "run: \"rustup default")
+}
+
+test fn witness_cache_key_plain_not_quoted() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles") &&
+    !string_contains(s: yaml, pattern: "key: \"cargo-ci")
+}
+
+test fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
+  let broken = concat(
+    concat(
+      "          path: ${{ runner.temp }}/cargo/registry/index/\n",
+      "        ${{ runner.temp }}/cargo/registry/cache/\n"
+    ),
+    ""
+  )
+  !string_contains(s: expected_ci_yml(), pattern: broken)
+}
+
 test fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
     witness_steps_sequence_elements_are_yaml_values() &&
     witness_project_workflow_serializes() &&
     witness_ci_yaml_gate_red_on_perturbed_bytes() &&
-    witness_ci_yaml_gate_red_on_wrong_fetch_depth_type()
+    witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() &&
+    witness_cache_path_block_scalar() &&
+    witness_restore_keys_block_scalar_indent() &&
+    witness_rustup_run_plain_not_quoted() &&
+    witness_cache_key_plain_not_quoted() &&
+    witness_multiline_without_block_scalar_is_invalid()
 }

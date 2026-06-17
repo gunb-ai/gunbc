@@ -38,7 +38,7 @@ jobs:
         env:
           HOME: ${{ runner.temp }}
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\""
+        run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
       - name: Cache Cargo
         uses: actions/cache@v5
         with:
@@ -47,7 +47,7 @@ jobs:
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
             target/
-          key: "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}"
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: CI floor (.dag witness corpus + gates via gunbc)
