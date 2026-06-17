@@ -444,6 +444,35 @@ fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
 
+/// Build `Optional<T>::Present { value }` for structural `map_get` results.
+fn optional_present(value: Value, ctx: &InterpContext) -> Value {
+    let mut fields = HashMap::new();
+    fields.insert(ctx.sym("value"), value);
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Present"),
+        fields: Rc::new(fields),
+    }
+}
+
+/// Build `Optional<T>::Absent` for a native-map miss (`raw_map_lookup` -> Null).
+fn optional_absent(ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Absent"),
+        fields: Rc::new(HashMap::new()),
+    }
+}
+
+/// Wrap a `raw_map_lookup` probe as the typed `map_get` surface (`Optional<V>`).
+fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
+    if matches!(raw, Value::Null) {
+        optional_absent(ctx)
+    } else {
+        optional_present(raw, ctx)
+    }
+}
+
 impl Value {
     /// Public name of this value's kind (e.g. "List", "Record", "Variant"),
     /// for host diagnostics that walk interpreter values (see `claim_executor`).
@@ -2975,28 +3004,31 @@ fn eval_algebra_method(
         // same Str-representation rule as `index` / `slice` / `contains`).
         //
         // `map_get` is the structural-method name the typechecker desugars from bare
-        // `map_get(m, k)` calls (std.graph adjacency, complexity.dag, …). It shares the
-        // `get` implementation: raw_map_lookup + the Optional Present/Absent pattern bridge.
+        // `map_get(m, k)` calls (std.graph adjacency, complexity.dag, …). It returns an
+        // explicit `Optional` variant so empty-list hits (`Present { value: [] }`) do not
+        // fall into the List/Empty/Cons pattern arm before the Optional bridge.
         // NOT added to eval_builtin — B-LOOKUP-1 routes typed v2.std.collection `map_get`
         // (Outcome<Optional<V>>) through eval_call as a user function instead.
-        "get" | "map_get" => {
+        "map_get" => {
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "map_get requires a key argument".to_string(),
+            })?;
+            let raw = raw_map_lookup(&receiver, key, env, ctx)?;
+            Ok(map_lookup_as_optional(raw, ctx))
+        }
+
+        "get" => {
             if matches!(&receiver, Value::Str(_)) {
-                let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: format!("{} requires a key argument", method),
-                })?;
-                raw_map_lookup(&receiver, key, env, ctx)
-            } else if method == "get" {
-                if let Ok(items) = expect_list(&receiver, "get") {
-                    let idx = expect_int(args.first(), "get")?;
-                    return Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null));
-                }
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
                 raw_map_lookup(&receiver, key, env, ctx)
+            } else if let Ok(items) = expect_list(&receiver, "get") {
+                let idx = expect_int(args.first(), "get")?;
+                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             } else {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: "map_get requires a key argument".to_string(),
+                    msg: "get requires a key argument".to_string(),
                 })?;
                 raw_map_lookup(&receiver, key, env, ctx)
             }
