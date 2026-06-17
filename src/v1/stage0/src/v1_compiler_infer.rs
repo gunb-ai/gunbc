@@ -11037,6 +11037,7 @@ pub fn unify_generics(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
+    crate::generic_instantiation_instrument::record_unify_generics();
     loop {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
@@ -11270,6 +11271,7 @@ pub fn substitute_generics(
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
+    crate::generic_instantiation_instrument::record_substitute_generics(&n, subst.len());
     if v1_rt::map_is_empty(&subst) {
         n
     } else {

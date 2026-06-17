@@ -16,6 +16,7 @@ mod a4_opacity;
 #[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
+mod body_producer_infer_perf_witness_test;
 mod body_producer_infer_profile_test;
 #[cfg(test)]
 mod bootstrap;

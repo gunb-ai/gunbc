@@ -556,6 +556,7 @@ fn resolve_timed(
     timings: &mut ResolveTimings,
 ) -> Result<ResolvedEntry, ExitCode> {
     let started = Instant::now();
+    v1_compiler::generic_instantiation_instrument::reset();
     match resolve_entry_with_index(index, entry) {
         Ok((graph, source_indices)) => {
             let ms = started.elapsed().as_millis();
@@ -566,6 +567,7 @@ fn resolve_timed(
                 graph.modules.len(),
                 graph.item_registry.len(),
             );
+            v1_compiler::generic_instantiation_instrument::eprint_report(entry);
             timings.resolves += 1;
             timings.resolve_ms += ms;
             Ok((graph, source_indices))
