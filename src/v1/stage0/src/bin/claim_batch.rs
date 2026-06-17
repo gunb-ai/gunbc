@@ -229,7 +229,8 @@ const DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
     "host_source_root_ingest_manifest.dag",
-    "test/claim/program_assembly/real_ingest_test.dag",
+    // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
+    "program_assembly/real_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
