@@ -9,16 +9,35 @@ import v2.extdeps.languages.dag {
   dag_mvp1_source_text,
   dag_mvp1_target_model
 }
+import v2.compiler.translate { target_serialize_source_from_model }
 import v2.lens.application_serializer { serialize_dag_source }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 
-fn serialize_add_emitted_matches_authority() -> Bool {
+fn serialize_add_emitted_accepts() -> Bool {
   match serialize_dag_source(
     emitted: dag_mvp1_fixture_emitted_add_fn,
     target: dag_mvp1_target_model()
   ) {
-    Accepted { value: s, diagnostics: _ } => s == dag_mvp1_source_text
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn serialize_add_emitted_matches_authority() -> Bool {
+  match target_serialize_source_from_model(
+    target: dag_mvp1_target_model(),
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: direct, diagnostics: _ } =>
+      match serialize_dag_source(
+        emitted: dag_mvp1_fixture_emitted_add_fn,
+        target: dag_mvp1_target_model()
+      ) {
+        Accepted { value: wrapped, diagnostics: _ } =>
+          (direct == wrapped) && (direct == dag_mvp1_source_text)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
