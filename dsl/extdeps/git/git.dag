@@ -196,8 +196,10 @@ service git.Core {
   // above (`git diff --name-only origin/main...HEAD`, consumed by tools.rust_gates_ci)
   // is that business case currently living in-layer; it should dissolve into
   //   DiffNameOnlyMerge(base: "origin/main", head: "HEAD")
-  // composed in the tools layer. Dissolution trigger: when rust_gates_ci composes
-  // DiffNameOnlyMerge directly, delete `ChangedFiles` -- leaving git/extdeps
+  // composed in the tools layer. These carry the same `{paths, success}` contract as
+  // `ChangedFiles` (`success` from exit status -> the gate's fail-closed `git_success`),
+  // so the merge op is a faithful drop-in. Dissolution trigger: when rust_gates_ci
+  // composes DiffNameOnlyMerge directly, delete `ChangedFiles` -- leaving git/extdeps
   // modeling only what git provides.
   operation DiffNameOnly {
     input { base: GitRef, head: GitRef = "HEAD" }
