@@ -104,6 +104,7 @@ procedure run in different directions (the epistemic chain *is* the emission alg
 N×M adapters; every refusal a located, typed mismatch).
 
 - *e.g.* `dsl/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring (ops aren't listed per type); idempotency dissolved from an `idempotent: Bool` flag into the `EffectShape` variant; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed.
+- *e.g.* **one grammar, read in both directions** (§2 horizontal, not an adapter pair): ingest selects a production *forward* to fold surface syntax into a core `Node`; emit (`serialize_target ∘ translate`) selects from the *same* `target_model_edge_translation_rules` rows *backward* — the structural inverse, not a second emitter — so a new target language is rows authored in `extdeps/languages/`, never an edit to the fold (N rows, not N×M parser/emitter pairs). Coercion is that same move turned sideways: whether one model inhabits another is a homomorphism check (`coercion_fold` via `find_witness`), the same epistemic chain the emitter walks. One procedure asked in three directions, not three procedures.
 
 ## 5. Fail-closed (§1's safety axis — harm reduction)
 
