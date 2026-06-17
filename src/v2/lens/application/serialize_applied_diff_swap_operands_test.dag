@@ -1,7 +1,12 @@
-// Scope: by-execution witness — apply_diff + serialize_applied_diff re-emits patched .dag source.
+// Scope: by-execution witness — apply_diff + source_authority canonical emit → DagSourcePatch.
 
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
+import v2.compiler.source_authority {
+  canonical_dag_source_emission_law_from_emitted,
+  canonical_dag_source_from_emitted,
+  dag_source_patch_from_applied_diff
+}
 import v2.extdeps.languages.dag {
   dag_mvp1_fixture_emitted_loop_fn,
   dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
@@ -9,15 +14,11 @@ import v2.extdeps.languages.dag {
   dag_mvp1_loop_target_model
 }
 import v2.lens.application { apply_diff }
-import v2.lens.application_serializer {
-  serialize_applied_diff,
-  serialize_dag_source,
-  serialize_diff_as_source_patch
-}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Diff, Edit, Path }
+import v2.std.witness { Holds, Violates }
 import v2.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -40,14 +41,14 @@ data serialize_loop_body_diff: Diff = Diff {
 data serialize_loop_target: TargetModel = dag_mvp1_loop_target_model()
 
 fn serialize_loop_before_after_differ() -> Bool {
-  match serialize_dag_source(
+  match canonical_dag_source_from_emitted(
     emitted: dag_mvp1_fixture_emitted_loop_fn,
-    target: serialize_loop_target
+    canonical_source_target: serialize_loop_target
   ) {
     Accepted { value: before, diagnostics: _ } =>
-      match serialize_dag_source(
+      match canonical_dag_source_from_emitted(
         emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
-        target: serialize_loop_target
+        canonical_source_target: serialize_loop_target
       ) {
         Accepted { value: after, diagnostics: _ } => before != after
         Rejected { diagnostics: _ } => false
@@ -56,18 +57,43 @@ fn serialize_loop_before_after_differ() -> Bool {
   }
 }
 
-fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
-  match serialize_applied_diff(
-    root: dag_mvp1_fixture_emitted_loop_fn,
-    diff: serialize_loop_body_diff,
-    target: serialize_loop_target
+fn serialize_loop_serializer_law_holds() -> Bool {
+  match canonical_dag_source_emission_law_from_emitted(
+    emitted: dag_mvp1_fixture_emitted_loop_fn,
+    canonical_source_target: serialize_loop_target
   ) {
-    Accepted { value: patched, diagnostics: _ } =>
-      match serialize_dag_source(
-        emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
-        target: serialize_loop_target
+    Accepted { value: Holds { value: _ }, diagnostics: _ } => true
+    Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
+  match canonical_dag_source_from_emitted(
+    emitted: dag_mvp1_fixture_emitted_loop_fn,
+    canonical_source_target: serialize_loop_target
+  ) {
+    Accepted { value: _, diagnostics: _ } =>
+      match apply_diff(
+        root: dag_mvp1_fixture_emitted_loop_fn,
+        d: serialize_loop_body_diff
       ) {
-        Accepted { value: authority_after, diagnostics: _ } => patched == authority_after
+        Accepted { value: patched, diagnostics: _ } =>
+          match canonical_dag_source_from_emitted(
+            emitted: patched,
+            canonical_source_target: serialize_loop_target
+          ) {
+            Accepted { value: patched_source, diagnostics: _ } =>
+              match canonical_dag_source_from_emitted(
+                emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
+                canonical_source_target: serialize_loop_target
+              ) {
+                Accepted { value: authority_after, diagnostics: _ } =>
+                  patched_source == authority_after
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -86,10 +112,10 @@ fn serialize_loop_apply_diff_structurally_matches() -> Bool {
 }
 
 fn serialize_loop_patch_carrier_holds() -> Bool {
-  match serialize_diff_as_source_patch(
+  match dag_source_patch_from_applied_diff(
     root: dag_mvp1_fixture_emitted_loop_fn,
     diff: serialize_loop_body_diff,
-    target: serialize_loop_target
+    canonical_source_target: serialize_loop_target
   ) {
     Accepted { value: patch, diagnostics: _ } =>
       if patch.after == patch.before {
@@ -103,6 +129,7 @@ fn serialize_loop_patch_carrier_holds() -> Bool {
 
 fn serialize_applied_diff_loop_body_claim_holds() -> Bool {
   serialize_loop_apply_diff_structurally_matches()
+    && serialize_loop_serializer_law_holds()
     && serialize_loop_before_after_differ()
     && serialize_loop_applied_diff_matches_authority_after()
     && serialize_loop_patch_carrier_holds()
@@ -113,7 +140,7 @@ fn serialize_applied_diff_loop_body_claim_rhs() -> Bool {
 }
 
 data claim_serialize_applied_diff_loop_body: TestClaim = EqualsClaim {
-  label: "lens_application_serializer/serialize_applied_diff_loop_body: body edit re-emits distinct canonical source",
+  label: "source_authority/dag_source_patch_from_applied_diff: loop body edit re-emits distinct canonical source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: true,
   rhs: serialize_applied_diff_loop_body_claim_rhs(),

@@ -41,8 +41,9 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
+import v2.lens.application { apply_diff }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.node { Diff, Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
 import v2.compiler.target_carriers { TargetSource }
@@ -125,6 +126,12 @@ type SourceAuthorityRoundTripLaw {
   source_law: SourceAstEqual
   semantic_law: SemanticIrEqual
   canonical_source_law: CanonicalDagSourceEmissionLaw
+}
+
+// Patch-in-error carrier: canonical .dag source before/after a structural Diff (read/edit §4 re-emit).
+type DagSourcePatch {
+  before: DagSource
+  after: DagSource
 }
 
 
@@ -706,5 +713,88 @@ fn source_authority_round_trip(
     source: source,
     canonical_source_target: canonical_source_target,
     lm: dag_language_model_wave1_modeled()
+  )
+}
+
+// Canonical .dag emission for an already-resolved IR node via the row's grammar-inverse serializer.
+// `canonical_source_target` must be the .dag TargetModel row — not an arbitrary target relabel.
+fn canonical_dag_source_from_emitted(
+  emitted: Node,
+  canonical_source_target: TargetModel
+) -> Outcome<DagSource> {
+  bind_outcome(
+    o: target_serialize_source_from_model(target: canonical_source_target, emitted: emitted),
+    f: fn(canonical_source) {
+      outcome_accepted(value: canonical_source)
+    }
+  )
+}
+
+// Serializer determinism + parse/print for emission from an IR node (routes through existing law).
+fn canonical_dag_source_emission_law_from_emitted(
+  emitted: Node,
+  canonical_source_target: TargetModel
+) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
+  bind_outcome(
+    o: canonical_dag_source_from_emitted(
+      emitted: emitted,
+      canonical_source_target: canonical_source_target
+    ),
+    f: fn(canonical_source_first) {
+      bind_outcome(
+        o: canonical_dag_source_from_emitted(
+          emitted: emitted,
+          canonical_source_target: canonical_source_target
+        ),
+        f: fn(canonical_source_second) {
+          bind_outcome(
+            o: parse_dag_source_ast(source: canonical_source_first),
+            f: fn(original_ast) {
+              bind_outcome(
+                o: parse_dag_source_ast(source: canonical_source_first),
+                f: fn(reparsed_ast) {
+                  canonical_dag_source_emission_law_from_parts(
+                    original_ast: original_ast,
+                    canonical_source_first: canonical_source_first,
+                    canonical_source_second: canonical_source_second,
+                    reparsed_ast: reparsed_ast
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// apply_diff ∘ canonical emit — before/after DagSource patch carrier for patch-in-error.
+fn dag_source_patch_from_applied_diff(
+  root: Node,
+  diff: Diff,
+  canonical_source_target: TargetModel
+) -> Outcome<DagSourcePatch> {
+  bind_outcome(
+    o: canonical_dag_source_from_emitted(
+      emitted: root,
+      canonical_source_target: canonical_source_target
+    ),
+    f: fn(before) {
+      bind_outcome(
+        o: apply_diff(root: root, d: diff),
+        f: fn(patched) {
+          bind_outcome(
+            o: canonical_dag_source_from_emitted(
+              emitted: patched,
+              canonical_source_target: canonical_source_target
+            ),
+            f: fn(after) {
+              outcome_accepted(value: DagSourcePatch { before: before, after: after })
+            }
+          )
+        }
+      )
+    }
   )
 }
