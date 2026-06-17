@@ -1,8 +1,8 @@
 // src/v2/test/fixture/spice_rc_tran_deck.dag
 // Scope: complete RC transient circuit — V source + R + C + .tran — the minimal ngspice-
 //        runnable composed circuit. Anchor: spice.dag wave-1 emit; ngspice-44 batch mode.
-// Oracle: spice_rc_tran_deck_ngspice_golden is the single-authority netlist (P2); shell
-//         oracle and claims both read it. Verified by scripts/v2-spice-ngspice-rc-oracle.sh.
+// Oracle: spice_rc_tran_deck_ngspice_golden is the single-authority netlist (P2) the emit
+//         claims read. (The former shell ngspice oracle was retired with scripts/.)
 
 module v2.test.fixture.spice_rc_tran_deck
 
