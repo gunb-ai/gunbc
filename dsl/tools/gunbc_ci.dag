@@ -1,4 +1,4 @@
-// tools/gunbc_ci.dag — collapsed CI floor consumer (Stop B).
+// tools/gunbc_ci.dag — collapsed CI consumer (`gunbc ci` subcommand).
 //
 // Run: cargo run -p v1-compiler --release --bin gunbc -- ci
 // (seed CLI subcommand delegates here — logic stays .dag authority).
@@ -7,10 +7,10 @@ module tools.gunbc_ci
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import gunbc.ci_floor_spec { gunbc_ci_floor_spec, gunbc_ci_run_script }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_run_script }
 
 func main() -> ProcessExit {
-  let script = gunbc_ci_run_script(spec: gunbc_ci_floor_spec)
+  let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
   let result = shell.Exec.Run(script: script)
   return if result.success {
     ExitSuccess

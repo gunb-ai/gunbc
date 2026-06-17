@@ -50,7 +50,7 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      - name: CI floor (.dag witness corpus + gates via gunbc)
+      - name: gunbc ci (.dag witnesses + gates)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
           cargo run -p v1-compiler --release --bin gunbc -- ci

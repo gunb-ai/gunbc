@@ -787,7 +787,7 @@ pub fn run_value(
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
-/// Entry point for `gunbc ci`. Delegates to dsl/tools/gunbc_ci.dag (CiFloorSpec consumer).
+/// Entry point for `gunbc ci`. Delegates to dsl/tools/gunbc_ci.dag (CiSpec consumer).
 pub fn handle_ci() {
     handle_run_with_options(
         vec!["dsl".to_string(), "src/v2".to_string()],

@@ -16,7 +16,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git
 import extdeps.cargo_build
 import tools.rust_stage0_gates { should_run_gates }
-import gunbc.ci_floor_spec { gunbc_ci_floor_spec, DiffMergeBase, DiffTwoDot }
+import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot }
 
 // Run cargo fmt AND clippy (both evaluated — no short-circuit, so both failures surface),
 // pass iff both succeed.
@@ -32,7 +32,7 @@ func run_gates() -> ProcessExit {
 
 // Entry: consult the diff, fire the gates only when the Rust monolith is touched.
 func run_rust_monolith_gate() -> ProcessExit {
-  let policy = gunbc_ci_floor_spec.diff_policy
+  let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {
     DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
     DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)

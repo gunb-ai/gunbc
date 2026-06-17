@@ -44,7 +44,7 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
-    /// Run the CI floor from CiFloorSpec (delegates to dsl/tools/gunbc_ci.dag)
+    /// Run repo CI from CiSpec (delegates to dsl/tools/gunbc_ci.dag)
     Ci,
     /// Execute a .dag program directly (interpreter)
     Run {
