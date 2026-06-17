@@ -3217,16 +3217,72 @@ fn eval_algebra_method(
 // Service dispatch (I-2)
 // ---------------------------------------------------------------------------
 
-/// Infra clock for RecordedFixture `recorded_at` / freshness — always wet shell
-/// transport (`date +%s`), matching extdeps/clock/clock.dag. Never SystemTime.
-/// Clock.Now returns ISO Timestamp for DAG consumers; freshness uses epoch seconds only.
+/// Infra clock for RecordedFixture `recorded_at` / freshness.
+/// Routes through `Clock.UnixSecs` when the op is in the compiled closure; otherwise
+/// uses the same transport realization (bootstrap — fixture stamping cannot recurse
+/// through the fixture seam). Never `SystemTime`. `Clock.Now` (ISO) is for DAG consumers only.
 pub fn fixture_now_secs(
-    _ctx: &InterpContext,
+    ctx: &InterpContext,
 ) -> Result<u64, crate::recorded_fixture::FixtureError> {
-    wet_clock_unix_secs_via_shell()
+    if ctx.service_ops.contains_key("Clock.UnixSecs") {
+        let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty()).map_err(|_| {
+            crate::recorded_fixture::FixtureError::ClockUnavailable
+        })?;
+        unix_secs_from_clock_value(&val, ctx)
+    } else {
+        realize_clock_unix_secs_transport()
+    }
 }
 
-fn wet_clock_unix_secs_via_shell() -> Result<u64, crate::recorded_fixture::FixtureError> {
+/// Wet dispatch only — no hermetic fixture lookup (bootstrap / infra paths).
+fn wet_service_call(
+    ctx: &InterpContext,
+    service_name: &str,
+    op_name: &str,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let key = format!("{}.{}", service_name, op_name);
+    let (service_node, op_node) =
+        ctx.service_ops
+            .get(&key)
+            .ok_or_else(|| InterpError::Unimplemented {
+                what: format!("unknown service operation: {}", key),
+            })?;
+    let transport = op_node
+        .transport
+        .as_ref()
+        .or(service_node.transport.as_ref())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("no transport for service {}", key),
+        })?;
+    let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)
+}
+
+fn unix_secs_from_clock_value(
+    val: &Value,
+    ctx: &InterpContext,
+) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    match val {
+        Value::Record { fields, .. } => {
+            let raw = ctx
+                .field(&fields, "unix_secs")
+                .map(|v| format!("{v}"))
+                .ok_or(crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+            raw.parse::<u64>()
+                .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
+        }
+        Value::Str(s) => s
+            .parse::<u64>()
+            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable),
+        Value::Int(n) if *n >= 0 => Ok(*n as u64),
+        _ => Err(crate::recorded_fixture::FixtureError::ClockUnavailable),
+    }
+}
+
+/// Transport realization for `Clock.UnixSecs` when the op is absent from the closure.
+fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::FixtureError> {
     let output = std::process::Command::new("date")
         .args(["+%s"])
         .output()

@@ -8,9 +8,10 @@
 //   claim_batch ... --hermetic --fixture-store /tmp/clock-fixtures
 //
 // Discriminators:
-//   * wet Clock.Now returns a non-empty ISO Timestamp;
-//   * hermetic replay returns the recorded value (not live clock drift);
-//   * backdated recorded_at on a Clock fixture fails closed on freshness.
+//   * wet: Clock.Now returns a non-empty ISO Timestamp (witness below).
+// Hermetic replay + backdated recorded_at fail-closed: proven by execution in
+// v1-compiler-tests `interp_recorded_fixture_test` (clock_now_record_then_hermetic_replay_holds,
+// hermetic_clock_fixture_staleness_fails_closed) — bootstrap freshness uses Clock.UnixSecs.
 
 module test.claim.clock_freshness_witness
 

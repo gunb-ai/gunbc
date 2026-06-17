@@ -8,9 +8,10 @@
 //   claim_batch ... --hermetic --fixture-store /tmp/env-fixtures
 //
 // Discriminators:
-//   * wet shell.Env.Get returns PATH (always set on POSIX hosts);
-//   * hermetic replay returns the recorded value (not live env drift);
-//   * backdated recorded_at on an Env fixture fails closed on freshness.
+//   * wet: shell.Env.Get returns PATH (witness below).
+// Hermetic replay + backdated recorded_at fail-closed: proven by execution in
+// v1-compiler-tests `interp_recorded_fixture_test` (env_get_record_then_hermetic_replay_holds,
+// hermetic_env_fixture_staleness_fails_closed, env_hermetic_without_fixture_store_fails_closed).
 
 module test.claim.env_freshness_witness
 
