@@ -19,7 +19,6 @@ import v2.compiler.source_authority {
   DagSource,
   DagSourceReadWitness,
   SourceRootIngest,
-  source_authority_read_artifact_not_source_file
 }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -222,6 +221,6 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
-      d.head.reason == source_authority_read_artifact_not_source_file
+      d.head.reason == ^source_authority_read_artifact_not_source_file
   }
 }

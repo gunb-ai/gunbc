@@ -58,13 +58,6 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_unbound_diagnostic
 }
-import v2.std.inhabitant_bridge {
-  facts_field_std_projection,
-  facts_field_surface_spelling,
-  facts_field_width,
-  inhabitant_field_atom,
-  std_projection_additive_numeric
-}
 import v2.std.grounding {
   empty_per_language_fact_bundle_registry,
   insert_per_language_fact_bundle_entry,
@@ -100,7 +93,7 @@ import v2.std.host_transport {
   WorkspaceFile,
   WorkspacePath,
   host_tool_go}
-import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v2.std.witness { Holds, Violates }
 import v2.std.algebra {
@@ -315,7 +308,7 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int64,
   width: SignedBits64,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: std_projection_additive_numeric,
+  std_projection: ^std_projection_additive_numeric,
 }
 
 data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
@@ -330,7 +323,7 @@ data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPri
   surface_spelling: ^go_surface_spelling_int,
   width: SignedPlatformInt,
   encoding: ^go_repr_twos_complement_integer,
-  std_projection: std_projection_additive_numeric,
+  std_projection: ^std_projection_additive_numeric,
 }
 
 data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
@@ -524,11 +517,11 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: facts_field_surface_spelling,
+          name: ^facts_field_surface_spelling,
           target: go_inhabitant_atom(id: surface_spelling)
         ),
         go_named_edge(
-          name: facts_field_width,
+          name: ^facts_field_width,
           target: go_signed_int_width_node(width: width)
         ),
         go_named_edge(
@@ -546,7 +539,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -583,7 +576,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1249,7 +1242,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1286,7 +1279,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
-          name: facts_field_std_projection,
+          name: ^facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
@@ -1478,7 +1471,7 @@ fn go_int_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
     ],
     occurrence_id: SyntheticOccurrence
@@ -1490,18 +1483,18 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: facts_field_surface_spelling,
+              name: ^facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
             ),
             go_named_edge(
-              name: facts_field_width,
+              name: ^facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
             ),
             go_named_edge(
@@ -1519,7 +1512,7 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.encoding)
             ),
             go_named_edge(
-              name: facts_field_std_projection,
+              name: ^facts_field_std_projection,
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
             )
           ],
@@ -1537,18 +1530,18 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
-              name: facts_field_surface_spelling,
+              name: ^facts_field_surface_spelling,
               target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
             ),
             go_named_edge(
-              name: facts_field_width,
+              name: ^facts_field_width,
               target: go_signed_int_width_node(width: go_facts_int64.width)
             ),
             go_named_edge(
@@ -1566,7 +1559,7 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int64.encoding)
             ),
             go_named_edge(
-              name: facts_field_std_projection,
+              name: ^facts_field_std_projection,
               target: go_inhabitant_atom(id: go_facts_int64.std_projection)
             )
           ],
@@ -1671,7 +1664,7 @@ fn go_mvp1_int64_selection_policy_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: go_integer_facts_node(facts: go_facts_int64)
@@ -1942,7 +1935,7 @@ data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_bool),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
-  display_name: bool_node_symbol
+  display_name: ^bool_node_symbol
 }
 
 data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {

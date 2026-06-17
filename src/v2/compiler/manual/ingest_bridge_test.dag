@@ -15,7 +15,6 @@ import v2.compiler.ingest {
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
-  parse_stage_locus_port
 }
 import v2.std.grammar {
   GrammarProduction,
@@ -94,7 +93,7 @@ fn ingest_fixture_root() -> GrammarRoot {
 
 // Parse one `ingest_fixture_tok` token through the local grammar, returning the parse tree.
 fn ingest_parse() -> Outcome<Node> {
-  let at = port_locus(port: parse_stage_locus_port)
+  let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>

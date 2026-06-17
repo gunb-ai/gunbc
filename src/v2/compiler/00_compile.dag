@@ -446,7 +446,7 @@ fn compile_source_root_ingest_with_admission(
             EvalResult { value: _ } =>
               outcome_rejected(
                 compile_eval_not_realized_diagnostic(
-                  at: port_locus(port: compile_stage_locus_port)
+                  at: port_locus(port: ^compile_stage_locus_port)
                 )
               )
           }
