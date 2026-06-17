@@ -1,0 +1,13 @@
+// Scope: corpus witness — live census green control: Lattice is unified across trees.
+// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
+
+module v2.test.fact_cardinality.corpus.unified_lattice_green
+
+import v2.lens.fact_cardinality { fact_cardinality_live_cross_tree_is_fork }
+import v2.std.logic { Bool }
+
+data lattice_key: String = "algebra.dag:Lattice"
+
+test fn corpus_unified_lattice_green_holds() -> Bool {
+  !fact_cardinality_live_cross_tree_is_fork(rel_path_decl_key: lattice_key)
+}

@@ -4673,6 +4673,22 @@ fn eval_builtin(
             }))
         }
 
+        "fact_cardinality_cross_tree_fork_count" => {
+            Ok(Some(Value::Int(
+                crate::fact_cardinality_census::cross_tree_fork_count(),
+            )))
+        }
+
+        "fact_cardinality_cross_tree_is_fork" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_fork",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_fork(key),
+            )))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

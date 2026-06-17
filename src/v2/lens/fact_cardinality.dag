@@ -1,0 +1,52 @@
+// src/v2/lens/fact_cardinality.dag
+// Scope: fact-cardinality lens — cross-tree named-declaration fork census + ratchet.
+// DESIGN.md §3 single-authority enforcement: flags `{rel_path}:{decl_name}` keys that
+// appear in BOTH `dsl/` and `src/v2/` with distinct normalized body content-hashes.
+// Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
+// Consumer: claim_batch discovery over src/v2/compiler/fact_cardinality.
+// Dissolve-on: Node-tree decl projection replaces text-scan body hash (substrate content_hash).
+
+module v2.lens.fact_cardinality
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type FactCardinalityDeclFact {
+  rel_path_decl_key: String
+  tree: String
+  content_hash: String
+}
+
+// Ratchet baseline — current cross-tree fork debt counted by execution (2026-06-17).
+// Only moves DOWN as forks unify; gate RED if live count exceeds this.
+data fact_cardinality_cross_tree_fork_baseline: Int = 34
+
+fn fact_cardinality_cross_tree_variant_mismatch(
+  left: FactCardinalityDeclFact,
+  right: FactCardinalityDeclFact
+) -> Bool {
+  left.rel_path_decl_key == right.rel_path_decl_key
+    && left.tree != right.tree
+    && left.content_hash != right.content_hash
+}
+
+fn fact_cardinality_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+// Host census bridge (reads live dsl/ + src/v2/ trees; no cross-resolve).
+fn fact_cardinality_live_cross_tree_fork_count() -> Int {
+  fact_cardinality_cross_tree_fork_count()
+}
+
+fn fact_cardinality_live_cross_tree_is_fork(rel_path_decl_key: String) -> Bool {
+  fact_cardinality_cross_tree_is_fork(key: rel_path_decl_key)
+}
+
+fn fact_cardinality_live_ratchet_holds() -> Bool {
+  fact_cardinality_ratchet_holds(
+    live_count: fact_cardinality_live_cross_tree_fork_count(),
+    baseline: fact_cardinality_cross_tree_fork_baseline
+  )
+}
