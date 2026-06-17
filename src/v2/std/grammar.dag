@@ -752,7 +752,7 @@ fn grammar_relation_rules_formal_productions_step(
 }
 
 
-fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
+fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<List<FormalProduction>> {
   match rules.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -760,8 +760,12 @@ fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<Formal
         init: outcome_accepted(value: Empty),
         f: fn(acc, edge) {
           match edge.label {
-            Named { name: _ } =>
-              grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
+            Named { name: n } =>
+              if n == ^grammar_relation_rules_formal_productions {
+                acc
+              } else {
+                grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
+              }
             Positional => acc
           }
         }
@@ -774,6 +778,76 @@ fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<Formal
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )
+  }
+}
+
+
+fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: Positional,
+            target: formal_production_to_node(production: production)
+          }
+        )
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+
+fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduction>> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        node.children,
+        init: outcome_accepted(value: Empty),
+        f: fn(acc, edge) {
+          bind_outcome(
+            o: acc,
+            f: fn(productions) {
+              match edge.label {
+                Positional =>
+                  match formal_production_from_node(node: edge.target) {
+                    Holds { value: production } =>
+                      outcome_accepted(
+                        value: list_snoc_item(xs: productions, item: production)
+                      )
+                    Violates { diagnostic: d } => outcome_rejected(d)
+                  }
+                Named { name: _ } => outcome_accepted(value: productions)
+              }
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+
+fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
+  match find_named_child(root: rules, name: ^grammar_relation_rules_formal_productions) {
+    Accepted { value: catalog, diagnostics: _ } =>
+      formal_productions_from_catalog_node(node: catalog)
+    Rejected { diagnostics: _ } =>
+      grammar_relation_rules_formal_productions_from_rows(rules: rules)
   }
 }
 
@@ -1847,13 +1921,17 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
             init: BackwardRowNone,
             f: fn(acc, edge) {
               match edge.label {
-                Named { name: _ } =>
-                  backward_row_select_step(
-                    acc: acc,
-                    productions: productions,
-                    emitted: emitted,
-                    row: edge.target
-                  )
+                Named { name: n } =>
+                  if n == ^grammar_relation_rules_formal_productions {
+                    acc
+                  } else {
+                    backward_row_select_step(
+                      acc: acc,
+                      productions: productions,
+                      emitted: emitted,
+                      row: edge.target
+                    )
+                  }
                 Positional => acc
               }
             }
