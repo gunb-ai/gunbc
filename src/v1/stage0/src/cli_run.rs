@@ -1986,7 +1986,10 @@ pub fn discover_floor_corpus_rows(
     source_roots: &[String],
     scan_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
     for scan_dir in scan_dirs {
@@ -2026,8 +2029,8 @@ pub fn discover_floor_corpus_rows(
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
-            let content =
-                std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
             if names.is_empty() {
                 continue;
@@ -2054,7 +2057,11 @@ pub fn discover_floor_corpus_rows(
             test_fn_violations.join(", ")
         ));
     }
-    rows.sort_by(|a, b| a.entry.cmp(&b.entry).then_with(|| a.function.cmp(&b.function)));
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
     Ok(rows)
 }
 
@@ -2094,15 +2101,18 @@ pub fn run_discovery_corpus(
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         match run_claim(ctx_ref, &row.function) {
             ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => summary
-                .failures
-                .push(format!("{} ({}) returned Bool(false)", row.function, row.entry)),
-            ClaimOutcome::NotBool { got } => summary
-                .failures
-                .push(format!("{} ({}) returned `{}`, not Bool", row.function, row.entry, got)),
-            ClaimOutcome::RuntimeError { message } => summary
-                .failures
-                .push(format!("{} ({}) runtime error: {}", row.function, row.entry, message)),
+            ClaimOutcome::Fail => summary.failures.push(format!(
+                "{} ({}) returned Bool(false)",
+                row.function, row.entry
+            )),
+            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
+                "{} ({}) returned `{}`, not Bool",
+                row.function, row.entry, got
+            )),
+            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+                "{} ({}) runtime error: {}",
+                row.function, row.entry, message
+            )),
         }
     }
     Ok(summary)

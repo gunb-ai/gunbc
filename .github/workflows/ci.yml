@@ -89,3 +89,24 @@ jobs:
           cargo run -p v1-compiler --release --bin gunbc -- run \
             --source-root dsl --source-root src/v2 \
             --entry dsl/tools/ci_floor_gates.dag --function main
+      # Scheduler dogfood (SHADOW — non-destructive, runs ALONGSIDE the flat floor
+      # above). The same floor gates are re-modeled as a dependency-ordered .dag
+      # plan (src/v2/workflow/floor_plan.dag): compile_clean is the fail-fast root,
+      # every other gate sits in a later readiness layer behind it, and the
+      # independent gates parallelize. `claim_executor` is the runner that already
+      # does dependency-ordered batches + barrier + parallel-within-batch +
+      # fail-closed halt — this re-adds the driving gate deleted in #5013.
+      #   --perturb-check: plant the batch-1 gating witness (dsl compile-clean) ->
+      #   false and re-walk; the run MUST fail closed AND halt before batch 2 (the
+      #   load-bearing §5 receipt). The plan's order/parallelism are pinned by the
+      #   `floor_*` MODEL witnesses in floor_plan_test.dag, which the flat floor's
+      #   discovery corpus already runs. Full green scheduler parity (== flat-floor
+      #   verdict) is demonstrated locally; PR-2 cuts the flat steps over to this.
+      # SCAFFOLD — feature:floor-discovery-batch-node — owner:merry-owl (the
+      # "actually correct" floor model dissolves the DiscoveryBatch interim).
+      - name: CI floor scheduler dogfood (shadow — claim_executor walks the .dag plan)
+        run: |
+          cargo run -p v1-compiler --release --bin claim_executor -- \
+            --source-root dsl --source-root src/v2 \
+            --plan-entry src/v2/workflow/floor_plan.dag --plan-function floor_claim_batches \
+            --perturb-check

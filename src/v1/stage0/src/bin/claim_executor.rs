@@ -1,12 +1,14 @@
 //! Batch claim executor: the host transport for the v2.workflow.executor .dag.
 //!
 //! The `.dag` is the batching AUTHORITY. A plan function (default
-//! `bre_claim_batches` in `src/v2/workflow/batch_runner.dag`) folds
-//! the dependency frontier through `v2.workflow.executor` and returns
-//! `List<List<ClaimRef>>` — the outer list is batches in execution order, the
-//! inner list is the claims runnable in parallel within that batch. This binary
+//! `bre_claim_batches` in `src/v2/workflow/batch_runner.dag`; the CI floor uses
+//! `floor_claim_batches` in `src/v2/workflow/floor_plan.dag`) folds the
+//! dependency frontier through `v2.workflow.executor` and returns
+//! `List<List<Runnable>>` — the outer list is batches in execution order, the
+//! inner list is the runnables (a `SingleClaim` witness/gate, or the whole
+//! `DiscoveryBatch` corpus) runnable in parallel within that batch. This binary
 //! evaluates that plan, walks the returned value, and RUNS it: batch by batch
-//! (respecting the executor's ordering), claims within a batch concurrently.
+//! (respecting the executor's ordering), nodes within a batch concurrently.
 //!
 //! It does NOT decide grouping or ordering — add a node or a dependency in the
 //! `.dag` and the batches change with zero edit here. That is the dogfood: the
@@ -55,8 +57,14 @@ use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 /// run dependency-ordered through one host. See merry-owl's lane.
 #[derive(Clone)]
 enum Runnable {
-    SingleClaim { entry: String, function: String },
-    DiscoveryBatch { source_roots: Vec<String>, scan_dirs: Vec<String> },
+    SingleClaim {
+        entry: String,
+        function: String,
+    },
+    DiscoveryBatch {
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+    },
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -175,7 +183,9 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
         } if ctx.sym_eq(*variant_name, "RunnableDiscoveryBatch") => {
             let source_roots = match ctx.field(fields, "source_roots") {
                 Some(v) => str_list_from_value(v, ctx)?,
-                None => return Err("RunnableDiscoveryBatch missing field `source_roots`".to_string()),
+                None => {
+                    return Err("RunnableDiscoveryBatch missing field `source_roots`".to_string())
+                }
             };
             let scan_dirs = match ctx.field(fields, "scan_dirs") {
                 Some(v) => str_list_from_value(v, ctx)?,
@@ -217,7 +227,9 @@ struct ClaimResult {
 
 fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResult {
     match runnable {
-        Runnable::SingleClaim { entry, function } => run_single_claim(&source_roots, entry, function),
+        Runnable::SingleClaim { entry, function } => {
+            run_single_claim(&source_roots, entry, function)
+        }
         Runnable::DiscoveryBatch {
             source_roots: roots,
             scan_dirs,
@@ -345,11 +357,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
-        eprintln!(
-            "claim_executor: batch {} — {} node(s)",
-            bi + 1,
-            batch.len()
-        );
+        eprintln!("claim_executor: batch {} — {} node(s)", bi + 1, batch.len());
         let handles: Vec<_> = batch
             .iter()
             .map(|runnable| {

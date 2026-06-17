@@ -1,0 +1,106 @@
+// src/v2/workflow/floor_plan_test.dag — MODEL witnesses for the CI floor plan.
+//
+// The `.dag` IS the batching authority (DESIGN §4): `parallel_executor_plan_from_dependencies`
+// decides grouping/ordering and `claim_executor` merely walks the result. So the three
+// MANDATORY discriminating properties of the floor plan are MODEL facts, provable as pure
+// `.dag` witnesses with no host re-resolve:
+//   - dependency-order  — compile_clean is the sole batch-1 gate; every dependent sits in a
+//                          later layer (running one before compile_clean would change the plan).
+//   - parallelism       — the independent gates all land in ONE readiness layer (batch 2).
+//   - deps drive batching — empty deps collapse the floor to one batch; the real deps yield two.
+// The host-side fail-closed/halt half is the `claim_executor --perturb-check` receipt.
+//
+// These are discoverable `test fn` rows, so the floor's own discovery corpus runs them.
+
+module v2.test.workflow.floor_plan
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunRunnable,
+  executor_batch_contains_node,
+  parallel_executor_plan_from_dependencies
+}
+import v2.workflow.floor_plan {
+  floor_compile_clean_node,
+  floor_corpus_node,
+  floor_dependencies,
+  floor_nodes
+}
+
+// The executor-decided batches for the real floor (deps applied).
+fn floor_complete_batches() -> List<ExecutorBatch> {
+  match parallel_executor_plan_from_dependencies(
+    nodes: floor_nodes,
+    dependencies: floor_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } => batches
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => []
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => []
+  }
+}
+
+// Pick the batch at `target` (0-based) by folding with an index counter — the
+// dialect has no list-nth; empty `ExecutorBatch` if out of range.
+type FloorBatchPick { idx: Int, found: ExecutorBatch }
+
+fn floor_batch_at(batches: List<ExecutorBatch>, target: Int) -> ExecutorBatch {
+  fold(batches, init: FloorBatchPick { idx: 0, found: ExecutorBatch { jobs: [] } }, f: fn(acc, b) {
+    FloorBatchPick {
+      idx: acc.idx + 1,
+      found: if acc.idx == target { b } else { acc.found }
+    }
+  }).found
+}
+
+fn floor_batch_job_count(batches: List<ExecutorBatch>, target: Int) -> Int {
+  length(xs: floor_batch_at(batches: batches, target: target).jobs)
+}
+
+// ── deps drive batching ──────────────────────────────────────────────────────
+test fn floor_empty_deps_yields_one_batch() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: floor_nodes,
+    dependencies: [],
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } => length(xs: batches) == 1
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+test fn floor_full_deps_yields_two_batches() -> Bool {
+  length(xs: floor_complete_batches()) == 2
+}
+
+// ── dependency-order: compile_clean is the SOLE batch-1 gate ─────────────────
+// Nothing runs before it; the corpus (and every other gate) is in a LATER layer.
+test fn floor_first_batch_is_compile_clean_only() -> Bool {
+  let batches = floor_complete_batches()
+  let batch0 = floor_batch_at(batches: batches, target: 0)
+  length(xs: batch0.jobs) == 1
+    && executor_batch_contains_node(batch: batch0, node: floor_compile_clean_node)
+}
+
+test fn floor_corpus_runs_after_compile_clean() -> Bool {
+  let batches = floor_complete_batches()
+  let batch0 = floor_batch_at(batches: batches, target: 0)
+  let batch1 = floor_batch_at(batches: batches, target: 1)
+  // Corpus is NOT runnable in batch 1 (it depends on compile_clean) and IS in batch 2.
+  (executor_batch_contains_node(batch: batch0, node: floor_corpus_node) == false)
+    && executor_batch_contains_node(batch: batch1, node: floor_corpus_node)
+}
+
+// ── parallelism: the independent gates share ONE readiness layer (batch 2) ───
+// Eleven floor nodes; one gates the rest, so batch 2 holds the other ten — they
+// parallelize. (A serial floor would spread these across ten batches.)
+test fn floor_independent_gates_share_second_layer() -> Bool {
+  floor_batch_job_count(batches: floor_complete_batches(), target: 1) == 10
+}
