@@ -10,7 +10,7 @@ import extdeps.formats.yaml {
   empty_yaml_values
 }
 import gunbc.workflow_yaml_project { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
-import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
 import gunbc.ci_floor_workflow { ci_floor_workflow }
 
 test fn witness_fetch_depth_is_int_not_string() -> Bool {
@@ -75,9 +75,22 @@ test fn witness_project_workflow_serializes() -> Bool {
   serialize_yaml(v: project_workflow_to_yaml(workflow: ci_floor_workflow)) != ""
 }
 
+test fn witness_ci_yaml_gate_red_on_perturbed_bytes() -> Bool {
+  let expected = expected_ci_yml()
+  ci_yml_drifted(committed: concat(expected, "\n# perturb")) &&
+    !ci_yml_drifted(committed: expected)
+}
+
+test fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
+  let expected = expected_ci_yml()
+  ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
+}
+
 test fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
     witness_steps_sequence_elements_are_yaml_values() &&
-    witness_project_workflow_serializes()
+    witness_project_workflow_serializes() &&
+    witness_ci_yaml_gate_red_on_perturbed_bytes() &&
+    witness_ci_yaml_gate_red_on_wrong_fetch_depth_type()
 }

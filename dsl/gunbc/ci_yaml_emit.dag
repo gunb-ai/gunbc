@@ -9,3 +9,8 @@ import gunbc.ci_floor_workflow { ci_floor_workflow }
 fn expected_ci_yml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: ci_floor_workflow))
 }
+
+// Drift check shared by the gate and discriminating witnesses (committed == projection).
+fn ci_yml_drifted(committed: String) -> Bool {
+  !(committed == expected_ci_yml())
+}

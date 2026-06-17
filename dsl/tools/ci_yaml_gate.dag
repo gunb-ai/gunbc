@@ -12,14 +12,13 @@ module tools.ci_yaml_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
 
 data ci_yml_path: String = ".github/workflows/ci.yml"
 
 func run_gate() -> ProcessExit {
   let committed = Filesystem.Read(path: ci_yml_path)
-  let expected = expected_ci_yml()
-  return if committed.success && (committed.content == expected) {
+  return if committed.success && !ci_yml_drifted(committed: committed.content) {
     ExitSuccess
   } else {
     exit_failure(reason: "ci.yml drift: regenerate via main_wet on dsl/tools/ci_yaml_gate.dag")
