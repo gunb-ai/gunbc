@@ -2,7 +2,8 @@
 //!
 //! The `.dag` is the batching AUTHORITY. A plan function (default
 //! `bre_claim_batches` in `src/v2/workflow/batch_runner.dag`; the CI floor uses
-//! `floor_claim_batches` in `src/v2/workflow/floor_plan.dag`) folds the
+//! `gunbc_ci_floor_batches` in `src/v2/workflow/ci_floor_plan.dag`, spec-derived
+//! from `gunbc.ci_spec`) folds the
 //! dependency frontier through `v2.workflow.executor` and returns
 //! `List<List<Runnable>>` — the outer list is batches in execution order, the
 //! inner list is the runnables (a `SingleClaim` witness/gate, or the whole
@@ -327,7 +328,12 @@ fn run_discovery_batch_node(
         source_roots.len(),
         explicit_entries.len()
     );
-    match run_discovery_corpus(&source_roots, &scan_dirs, &explicit_entries, ExecutionMode::Wet) {
+    match run_discovery_corpus(
+        &source_roots,
+        &scan_dirs,
+        &explicit_entries,
+        ExecutionMode::Wet,
+    ) {
         Ok(summary) if summary.failures.is_empty() => ClaimResult {
             function: format!("{label} ({} witnesses)", summary.total),
             ok: true,
@@ -483,9 +489,7 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     let start = match (text.find(&needle_func), text.find(&needle_fn)) {
         (Some(f), _) => f,
         (None, Some(f)) => f,
-        (None, None) => {
-            return Err(format!("{}: missing function {function}", path.display()))
-        }
+        (None, None) => return Err(format!("{}: missing function {function}", path.display())),
     };
     let brace = start
         + text[start..]

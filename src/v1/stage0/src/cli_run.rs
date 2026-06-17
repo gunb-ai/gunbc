@@ -2107,7 +2107,11 @@ pub fn run_discovery_corpus(
             });
         }
     }
-    rows.sort_by(|a, b| a.entry.cmp(&b.entry).then_with(|| a.function.cmp(&b.function)));
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
