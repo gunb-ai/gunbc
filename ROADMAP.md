@@ -46,17 +46,17 @@ the marks on the substrate (§3 single-authority). Keep entries terse; link the 
 - **Resolver resolve-time blowup** — `budget_roster_completeness_test.dag` resolves in ~290s
   (machine-independent) vs its near-twin at 0.5s for the same item count (~500×). Being characterized for
   complexity class; if algorithmic it is a **Lane-4 self-host blocker**, not just CI cleanup. (merry-crab)
-- **Cost lens does not catch the compiler's OWN algorithmic cost** — *root cause confirmed.*
-  `cost_lens` / `complexity_lens` take the **subject program's `Node` body** and project the
-  complexity of *what that program costs to run*; the gate rates `LensSubjectComplexityBudgetRow`s
-  (the compiled subjects). There is **no gate measuring what compiling costs to do** — the resolve
-  pass's super-linear cost over its input lives in a domain no lens covers. #5111 strengthened the
-  first domain (loop zero-absorption); the resolve blowup is in the second. This is a **self-hosting
-  gap (§7)**, not a lens bug: the compiler's own passes can only become cost-lens subjects once they
-  are modeled `.dag`. Fix paths: (principled) self-host resolve so the cost lens folds over its
-  stage-tree — machine-independent, which fits (the blowup reproduces off-runner); (interim scaffold,
-  dissolves into the above) a structural resolve-**step-count** ratchet over a representative corpus,
-  NOT wall-time. Couple to the Lane-4 / merry-crab resolve work.
+- **Resolve blowup is an UN-ENROLLED complexity violation — not a new issue, not a new lens.**
+  `complexity_lens(n: Node)` (`lens/complexity.dag:314`) already folds an arbitrary body and rates this
+  exact class (nested fold → polynomial degree → dominance RED). The budget roster is already *designed*
+  to enroll the compiler's own stage bodies — its header reserves `02_parse` / compiler-stage subjects
+  for "COMPREP waves 2+ / self-host breadth" — but today enrolls only wave-1 (source-bridged add). So
+  the ~500× resolve blowup is a complexity violation the existing gate would catch once resolve is a
+  subject; the gap is **enrollment / self-host breadth, not a missing lens**. Fix = enroll the resolve
+  stage as a complexity-budget subject-producer (the planned wave-2+ work); **no scaffold, no new lens.**
+  Caveat: this catches it iff the super-linearity is in the *modeled* resolve (`03_resolve.dag`); if it
+  lives only in the Rust seed's execution, that is a model↔realization fidelity gap (§7), still not a
+  new lens. Folds into Lane-4 self-host; merry-crab's characterization decides which.
 
 ## Recently landed (context)
 
