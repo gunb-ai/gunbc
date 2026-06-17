@@ -58,15 +58,21 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      # The whole CI floor is one binary. ci-claim-gate (1) evaluates the always-on
-      # in-interpreter witness corpus, then (2) with --rust-gates runs the conditional
-      # clippy/fmt dependents — WHICH fire is decided by the v2.workflow.rust_stage0_gates
-      # `.dag` selector (path_is_rust_monolith), consulted per changed path; the `.dag` is
-      # the authority, this binary the realizer. A `.dag`-only diff selects neither gate.
-      # The git fetch makes `origin/main...HEAD` resolvable; ci-claim-gate fail-closes
-      # (runs the gates) if the base is unavailable. SCAFFOLD — the Rust-gate half
-      # dissolves when the Rust seed reaches zero (DESIGN §7).
-      - name: CI floor (.dag claim gate + Rust gates)
+      # CI floor — one step, three `.dag` evaluations:
+      #   (1) ci-claim-gate: the always-on src/v2 witness corpus. Discovery is a build-time
+      #       lens over parsed source (NOT runtime reflection), so it is a Rust host today;
+      #       this is the last bespoke Rust gate binary and dissolves when witness discovery
+      #       moves to gunbc.
+      #   (2) gunbc: the rust-monolith SELECTOR witnesses (tools.rust_stage0_gates) — keeps the
+      #       selector's edge cases (suffix-not-substring, dag-only, fail-closed) gated.
+      #   (3) gunbc: the rust-monolith GATE (tools.rust_gates_ci) — git diff -> selector ->
+      #       cargo fmt + clippy, returning ProcessExit (fail-closed). The gate logic is `.dag`
+      #       authority; the only Rust is the gunbc interpreter seed (DESIGN §7). A `.dag`-only
+      #       diff fires neither cargo gate; an undeterminable diff fail-closes (runs them).
+      # The git fetch makes `origin/main...HEAD` resolvable.
+      - name: CI floor (.dag witness corpus + Rust gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus" --rust-gates --base origin/main
+          cargo run -p ci_claim_gate --release -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses --claim-run
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
