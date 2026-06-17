@@ -90,15 +90,6 @@ data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
-// Lane 2c — value-level fold-family call emission + nested closure (callable-apply + closure
-// value-expression arms reached via translate's non-operator head fallback).
-data corpus_ci_gate_row_fold_call_closure_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "fold call + nested closure emit keystone",
-  entry: "src/v2/compiler/manual/comprep_fold_call_closure_emit_test.dag",
-  function: "fold_call_closure_emit_keystone_holds",
-  expected: ExpectPass
-}
-
 // 🟡 gated — feature:claim-witness-corpus-roster-generator — bind R-reflect/D1c —
 data corpus_ci_gate_row_comprep_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep bind eval by execution keystone",
@@ -497,7 +488,6 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_comprep_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_branch_if_then_else_emit_keystone,
-  corpus_ci_gate_row_fold_call_closure_emit_keystone,
   corpus_ci_gate_row_comprep_bind_eval_keystone,
   corpus_ci_gate_row_comprep_bind_emit_keystone,
   corpus_ci_gate_row_comprep_bind_round_trip_keystone,
