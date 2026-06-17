@@ -1,13 +1,19 @@
 // src/v2/compiler/self_host.dag
-// Scope: self-host fixed-point validation runner shape; whole-compiler runner stays fail-closed
-//   until execution substrate and candidate generation land (stage C).
-// Status: Stage A realized (design-self-host-fixed-point.md §5) — stage_emission_equality is a
-//   real executed structural-equality body over find_witness; bootstrap_roundtrip / fixed_point
-//   sub-checks and self_host_fixed_point_validate remain scaffolded fail-closed (stages B/C).
+// Scope: SINGLE AUTHORITY for the self-host fixed point (DESIGN.md §7). Owns (a) the fixed-point
+//   relation — bit-identical merkle-digest equality between consecutive emitted compiler stages
+//   (self_host_fixed_point_digests_match over v2.std.node.content_hash); (b) the Stage-A structural
+//   pre-check (stage_emission_equality over find_witness); (c) the whole-compiler runner shape,
+//   which stays fail-closed until execution substrate + candidate generation land (stage C).
+//   No self-host facts live elsewhere — bin/main.dag carries only the trampoline one-liner.
+// Status: Stage A realized — stage_emission_equality is a real executed structural-equality body.
+//   self_host_fixed_point_digests_match is the realized fixed-point predicate (de-risked on fixture
+//   stages in self_host__fixed_point_test.dag). self_host_fixed_point_validate stays fail-closed
+//   (stage C) and will consume digests_match once the v2 pipeline emits real stages over its source.
 
 module v2.compiler.self_host
 
 import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -26,7 +32,7 @@ import v2.std.find_witness {
   find_witness,
   preservation_rule_exact_structural_equality_zip_fold
 }
-import v2.std.node { Node, Symbol }
+import v2.std.node { content_hash, Node, Symbol }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -149,7 +155,21 @@ fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWi
 }
 
 
-// Stage A (design-self-host-fixed-point.md §5): the structural-equality body is realized.
+// 🟢 The self-host fixed-point relation (DESIGN.md §7): two consecutive emitted compiler stages
+// are a fixed point exactly when their canonical merkle digests are bit-identical. content_hash
+// (v2.std.node, 🟢 B1 merkle fold over the canonical Node form) IS the digest — no nicknamed
+// "rust digest"; the operand is the emitted stage Node, the digest is its content_hash. This is
+// the single authority for "iteration N matches iteration N+1"; self_host_fixed_point_validate
+// (fail-closed until stage C) consumes it once candidate generation emits real stage1/stage2.
+fn self_host_fixed_point_digests_match(
+  emitted_stage1: CoreNode,
+  emitted_stage2: CoreNode
+) -> Bool {
+  content_hash(n: emitted_stage1) == content_hash(n: emitted_stage2)
+}
+
+
+// Stage A: the structural-equality body is realized.
 // The emitted candidate is searched against the reference stage through the landed exact
 // structural-equality zip-fold preservation rule. A match yields Holds carrying the
 // StructurallyEqual witness; a divergent candidate yields Violates with the located
