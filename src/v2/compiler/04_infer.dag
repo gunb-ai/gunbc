@@ -611,6 +611,11 @@ fn infer_branch_bool_if_else(
   }
 }
 
+type InferMatchArmExhaustiveness {
+  has_true: Bool
+  has_false: Bool
+}
+
 type InferMatchArmRow {
   has_true: Bool
   has_false: Bool
@@ -635,25 +640,13 @@ fn infer_branch_is_bool_false_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn infer_match_arm_contributes_exhaustiveness(pattern: Node) -> InferMatchArmRow {
+fn infer_match_arm_contributes_exhaustiveness(pattern: Node) -> InferMatchArmExhaustiveness {
   if infer_branch_is_bool_true_literal_atom(node: pattern) {
-    InferMatchArmRow {
-      has_true: true,
-      has_false: false,
-      body_type: bool_node()
-    }
+    InferMatchArmExhaustiveness { has_true: true, has_false: false }
   } else if infer_branch_is_bool_false_literal_atom(node: pattern) {
-    InferMatchArmRow {
-      has_true: false,
-      has_false: true,
-      body_type: bool_node()
-    }
+    InferMatchArmExhaustiveness { has_true: false, has_false: true }
   } else {
-    InferMatchArmRow {
-      has_true: false,
-      has_false: false,
-      body_type: bool_node()
-    }
+    InferMatchArmExhaustiveness { has_true: false, has_false: false }
   }
 }
 
