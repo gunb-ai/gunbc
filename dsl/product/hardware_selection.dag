@@ -108,13 +108,10 @@ type Platform {
 }
 
 // DRAM data bus is 64 bits = 8 bytes per channel (ECC adds check bits, not data width).
-// 🟡 flat Int with unit-carrying name (DESIGN unit-modeling rule) — a scaling factor, not a
-// grounded magnitude yet.
-//   feature: bus-width-bytesize-carrier
-//   dissolve-on: the std.measure ByteSize migration that re-carries memory sizes (capacity /
-//     bandwidth bus width) as Measure inhabitants — this factor adopts that same carrier then,
-//     rolled under the existing measure-carrier dissolve-on (see max_data_rate_mts below).
-data dram_channel_bus_bytes: Int = 8
+// Grounded as a ByteSize (the std.measure carrier already consumed for capacity) — it is a real
+// size in bytes, not a bare scaling factor; peeled with byte_size_count where the bandwidth
+// arithmetic needs the magnitude.
+data dram_channel_bus_bytes: ByteSize = byte_size(count: 8)
 
 // 🟡 CALIBRATE(board-downclock-thresholds) — the signal-integrity downclock model, one of
 // the two points to confirm against a live measurement. At 1 DIMM-per-channel the bus runs

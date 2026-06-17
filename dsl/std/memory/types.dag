@@ -81,31 +81,32 @@ fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
 
 // REALIZABILITY (the inverse of the DERIVE-TRIGGER(P-CF-DIMM-CAPACITY) relationship above,
 // capacity = die_density × dram_data_chips_per_rank × rank_count). A stored capacity_bytes only
-// describes a part that can PHYSICALLY exist: the per-die density it implies must not exceed
-// the technology's monolithic ceiling. e.g. a 32GB 1Rx8 DDR4 RDIMM would need 32Gbit dies
-// (256Gbit ÷ 8 devices) but DDR4 tops out at 16Gbit monolithic — there is no such part, so a
-// candidate matrix carrying it is silently scoring a non-existent SKU. This is the §5
-// fail-closed guard: reject the impossible rather than emit a plausible-but-fake winner.
-// DDR4 monolithic max die density = 16 Gibit (16 × 2^30 bits). Anchor: JEDEC DDR4 (JESD79-4)
-// device densities 2/4/8/16 Gbit; 32Gbit is DDR5-era. 🟡 raise for DDR5 (up to 64Gbit) when a
-// generation axis lands — for now the std.memory catalog is DDR4.
-// 🟡 flat Int with a unit-carrying name (DESIGN unit-modeling rule) — a density ceiling, not a
-// grounded magnitude yet. (Distinct from the value-note above: that is the DDR4→DDR5 VALUE
-// trigger; this is the Int→carrier REPRESENTATION trigger.)
-//   feature: die-density-bitwidth-carrier
-//   dissolve-on: die density re-carried as a std.measure inhabitant (a BitWidth/bit-magnitude
-//     scale) — this ceiling and dram_module_required_die_density_bits adopt that carrier together.
-data max_dram_die_density_bits: Int = 17179869184
+// describes a part that can PHYSICALLY exist: the per-die capacity it implies must not exceed
+// the technology's monolithic ceiling. e.g. a 32GB 1Rx8 DDR4 RDIMM would need 4 GiB (32 Gibit)
+// dies but DDR4 tops out at 2 GiB (16 Gibit) monolithic — there is no such part, so a candidate
+// matrix carrying it is silently scoring a non-existent SKU. This is the §5 fail-closed guard:
+// reject the impossible rather than emit a plausible-but-fake winner.
+//
+// Per-die capacity is carried in BYTES — the module taxonomy's native unit and the ready
+// std.measure ByteSize carrier — NOT bits. Datasheets quote die DENSITY in bits (a "16 Gibit
+// die"), but capacity_bytes is already bytes, so the per-die figure in bytes needs NO byte↔bit
+// conversion: per-die bytes = capacity_bytes / (data chips × rank), directly — the inline ×8 a
+// bit-denominated density would carry is gone. The DDR4 monolithic ceiling 16 Gibit = 2 GiB =
+// 2_147_483_648 bytes. Anchor: JEDEC DDR4 (JESD79-4) device densities 2/4/8/16 Gbit; 32Gbit is
+// DDR5-era. 🟡 raise for DDR5 (up to 64Gbit = 8 GiB) when a generation axis lands — DDR4 today.
+data max_dram_die_density: ByteSize = byte_size(count: 2147483648)
 
-fn dram_module_required_die_density_bits(module: DramModuleCatalogRow) -> Int {
-  byte_size_count(b: module.capacity_bytes) * 8 / (dram_data_chips_per_rank(module: module) * module.rank_count)
+// Per-die data capacity implied by the marketed capacity: total data bytes spread across the
+// part's data dies (data chips per rank × ranks). In bytes — both sides already bytes, no ×8.
+fn dram_module_required_die_density(module: DramModuleCatalogRow) -> ByteSize {
+  byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 
-// A module is realizable iff its implied per-die density fits the monolithic ceiling. Used by
+// A module is realizable iff its implied per-die capacity fits the monolithic ceiling. Used by
 // selection-time candidate filtering (product.hardware_selection) so a Pareto front can never
 // contain a physically non-existent part.
 fn dram_module_is_realizable(module: DramModuleCatalogRow) -> Bool {
-  dram_module_required_die_density_bits(module: module) <= max_dram_die_density_bits
+  byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: max_dram_die_density)
 }
 
 type MemoryPopulationRow {
