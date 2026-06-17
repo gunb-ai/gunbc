@@ -25,6 +25,7 @@ use v1_compiler::cli_run::{
     self, build_multi_entry_index, make_eval_context, resolve_entry_graph,
     resolve_entry_with_index, run_claim, ClaimOutcome,
 };
+use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn outcome_tag(o: &ClaimOutcome) -> String {
     match o {
@@ -38,14 +39,14 @@ fn outcome_tag(o: &ClaimOutcome) -> String {
 /// Cold oracle: resolve `entry` ALONE (no typed cache) and classify `function`.
 fn cold_oracle(roots: &[String], entry: &str, function: &str) -> String {
     let (graph, si) = resolve_entry_graph(roots, entry).expect("cold resolve");
-    let ctx = make_eval_context(&graph, si);
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
 }
 
 /// Cached: resolve `entry` through the shared index and classify `function`.
 fn cached(index: &cli_run::MultiEntryIndex, entry: &str, function: &str) -> String {
     let (graph, si) = resolve_entry_with_index(index, entry).expect("cached resolve");
-    let ctx = make_eval_context(&graph, si);
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
 }
 

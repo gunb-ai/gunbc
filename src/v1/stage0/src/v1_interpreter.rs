@@ -1029,6 +1029,20 @@ fn account_value(
     }
 }
 
+/// How service operations are executed: hermetic witnesses use modeled
+/// `mock_response` data; wet mode dispatches live transports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionMode {
+    Hermetic,
+    Wet,
+}
+
+impl ExecutionMode {
+    pub fn is_hermetic(self) -> bool {
+        matches!(self, ExecutionMode::Hermetic)
+    }
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -1040,8 +1054,8 @@ pub struct InterpContext {
     fn_nodes: HashMap<String, Rc<Node>>,
     /// Service registry: "service.Operation" → (service_node, op_node).
     service_ops: HashMap<String, ServiceOp>,
-    /// Dry-run mode: use mock responses instead of executing services.
-    pub dry_run: bool,
+    /// Service execution mode: hermetic uses mock responses; wet dispatches live.
+    pub execution_mode: ExecutionMode,
     /// Cache for evaluated `data` items (immutable global constants), keyed by
     /// the data item's node identity. Preserves structural sharing across
     /// references so a `data` referenced N times yields ONE Value, not N
@@ -1136,7 +1150,7 @@ impl InterpContext {
     pub fn new(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-        dry_run: bool,
+        execution_mode: ExecutionMode,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1178,7 +1192,7 @@ impl InterpContext {
             source_indices,
             fn_nodes,
             service_ops,
-            dry_run,
+            execution_mode,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -1208,17 +1222,17 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    run_with_options(graph, source_indices, entry_fn, false, true)
+    run_with_options(graph, source_indices, entry_fn, ExecutionMode::Wet, true)
 }
 
 pub fn run_with_options(
     graph: &ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
-    dry_run: bool,
+    execution_mode: ExecutionMode,
     eager_data_env: bool,
 ) -> InterpResult<Value> {
-    let ctx = InterpContext::new(graph, source_indices, dry_run);
+    let ctx = InterpContext::new(graph, source_indices, execution_mode);
     run_in_context(&ctx, entry_fn, eager_data_env)
 }
 
@@ -3204,9 +3218,9 @@ fn eval_service_call(
     // Bind input params to arg values
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
 
-    // Dry-run: return mock response
-    if ctx.dry_run {
-        eprintln!("[dry-run] {}.{}", service_name, op_name);
+    // Hermetic: return modeled mock response instead of live dispatch.
+    if ctx.execution_mode.is_hermetic() {
+        eprintln!("[hermetic] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
 
@@ -4091,7 +4105,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
-/// Evaluate mock_response from an operation's properties for dry-run mode.
+/// Evaluate mock_response from an operation's properties for hermetic execution.
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
     for prop in op_node.properties.iter() {
