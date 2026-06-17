@@ -59,13 +59,11 @@ data string_escape_chars: List<String> = ["\\", "\""]
 
 // `MethodTranslation` + `collection_method_translations` retired in
 // T-Ground-LanguageSpec scope E Phase 2 (#1196 follow-up): zero v2
-// consumers, zero stage0 references, fully dead. Method-template
-// authority is the registry-backed `MethodTemplateContract` rows
-// (type at `dsl/std/emit_model.dag`). v2's emit pipeline still reads
-// the `rust_method_templates()` derived map below — Phase 2 retirement of
-// THAT path is gated on v2's lack of bootstrap-Dag consumer
-// infrastructure and folds into Pure-Bootstrap-Zero / v2 retirement
-// scope (manager dispatch #1133 inbox 4344956791).
+// consumers, zero stage0 references, fully dead. The per-target flat
+// method-template authority is `rust_simple_method_specs` in `emit.dag`
+// (read by the emitter via `rust_method_templates()`); migrating it onto
+// the registry-backed `MethodTemplateContract` rows
+// (`dsl/std/emit_model.dag`) is the open #1133 follow-on.
 
 // "How does Rust iterate?"
 // Ref: std::iter::IntoIterator trait

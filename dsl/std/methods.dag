@@ -9,8 +9,7 @@
 // `DeclarationRef` per #1175 substrate gap) has a real authority
 // target.
 //
-// Scope (Director-locked option A on parent inbox #1130; target-only
-// classification opened on the same inbox per #1549 Gap 1 / R3 dispatch):
+// Scope:
 //   - Full union of unique method names across the seven
 //     `dsl/std/algebra.dag` per-profile template lists
 //     (`ordered_ring_templates`, `approximate_field_templates`,
@@ -20,27 +19,20 @@
 //     IS the closed-system namespace authority for every
 //     algebra-template method name; not a demand-shaped subset for the
 //     first Grounding consumer.
-//   - Legacy v2 emit-map aliases. v2's emit pipeline keys
-//     `dsl/extdeps/languages/{python,go}/emit.dag` by bare method-name
-//     string. When two algebra profiles inhabit the same name with
-//     different render shapes, v2 disambiguates by minting a separate
-//     legacy key (e.g. `string_contains` vs `contains`). The algebra
-//     authority itself does NOT split: `dsl/std/algebra.dag` declares
-//     `contains` once on `free_monoid_scalar_templates` (String
+//   - Emit-disambiguation aliases. The per-target flat emit tables
+//     (`*_simple_method_specs` in `dsl/extdeps/languages/*/emit.dag`) key
+//     by bare method-name. Where one algebra method renders differently per
+//     profile, the emit table splits the name (e.g. `string_contains`,
+//     rendered `{arg} in {recv}` / `strings.Contains({recv}, {arg})`, vs
+//     `contains`). The algebra authority does NOT split: `dsl/std/algebra.dag`
+//     declares `contains` once on `free_monoid_scalar_templates` (String
 //     substring test) and once on `*_collection_templates` /
-//     `boolean_algebra_*` (element/key membership) under the same
-//     method name; the algebra-profile coordinate carries the
-//     disambiguation. To give the legacy aliases a `MethodRef` row key
-//     until v2 retires its bare-string lookup, those aliases live
-//     here as additional `MethodDeclaration` bindings. `string_contains`
-//     (rendered as `{arg} in {recv}` / `strings.Contains({recv}, {arg})`)
-//     is the first such entry. Dissolution trigger: when v2 emit
-//     migrates to algebra-profile-keyed method dispatch (PB projection
-//     scope, #1549 audit Recommendations §3-§4 / R3 Method-template
-//     consumer migration debt row), legacy alias bindings collapse
-//     back into algebra-typed `contains` dispatch and these entries
-//     can be deleted alongside the per-target legacy emit maps.
-//   - Flat name-only namespace (Director-locked option A on Q2):
+//     `boolean_algebra_*` (membership), the algebra-profile coordinate
+//     carrying the disambiguation. Those emit aliases get a `MethodRef` row
+//     key here as additional `MethodDeclaration` bindings; they collapse
+//     back into algebra-profile-keyed dispatch when the emit tables migrate
+//     onto the registry-backed rows (#1133 / #1549 R3).
+//   - Flat name-only namespace:
 //     `join` / `length` / `contains` / `map` / `fold` / etc. each
 //     appear once, regardless of how many algebra profiles inhabit
 //     them. Algebra/profile-specific semantics stay in the existing

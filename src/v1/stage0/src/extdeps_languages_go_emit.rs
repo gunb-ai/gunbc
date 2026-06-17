@@ -208,22 +208,6 @@ pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
     )
 }
 
-pub fn go_method_templates() -> Rc<HashMap<String, String>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_map_insert(
-            v1_rt::rc_map_insert(
-                go_method_templates_flat(),
-                "concat".to_string(),
-                "append({recv}, {arg}...)".to_string(),
-            ),
-            "map".to_string(),
-            "v2rt.Map({recv}, {arg})".to_string(),
-        ),
-        "fold".to_string(),
-        "v2rt.Fold({recv}, {arg})".to_string(),
-    )
-}
-
 pub fn go_lambda_template() -> String {
     thread_local! {
         static CACHED: String = {
