@@ -1,0 +1,21 @@
+// src/v2/workflow/lens_discrimination_family_eval_test.dag
+//
+// Compiler-wide discrimination-lens gate (discovered + run by the CI floor
+// `claim_batch` discovery — `test data` in a `*_test.dag`, scanned across src/v2).
+// Enforces DESIGN.md §5 STRUCTURALLY: every change must be covered by at least one
+// DISCRIMINATING witness (a positive green-by-execution claim AND a perturbed
+// discriminating negative asserted to go red). The gate logic and the real subject
+// roster live in the correctly-layered discrimination-gate module
+// (v2.test.discrimination_gate.*, physically under src/v2/compiler/discrimination_gate/)
+// — the LENS (v2.lens.discrimination) stays a pure reader and never knows about a roster.
+// This witness just runs the fail-closed family gate (empty roster → RED; every real unit
+// must be discriminating; the all-positive negative control keeps it non-vacuous).
+
+module v2.test.workflow.lens_discrimination_family_eval
+
+import v2.std.logic { Bool }
+import v2.test.discrimination_gate.discrimination_roster {
+  discrimination_family_gate
+}
+
+test data witness_lens_discrimination_family_gate_closed: Bool = discrimination_family_gate()

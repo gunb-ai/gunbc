@@ -1,0 +1,89 @@
+// src/v2/compiler/discrimination_gate/discrimination_roster.dag
+// Scope: discrimination-gate — fail-closed family gate over a roster of real witness
+//        units (each a List<TestClaim> covering one change). Every row's unit must be
+//        DISCRIMINATING per v2.lens.discrimination (a positive AND a perturbed negative);
+//        empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent);
+//        an all-positive negative control must be REJECTED by the lens (semantic-red,
+//        so the gate cannot pass vacuously). The rows REUSE already-landed impossible-bug
+//        perturbation pairs — a CompilesClaim over a base input paired with a DiagnosticClaim
+//        over its perturbed falsification — rather than fork synthetic fixtures.
+//        Module is v2.test.discrimination_gate.* (test layer) though the file sits under
+//        compiler/ — a fact's home is its layer, not its directory (DESIGN.md §3). The
+//        dependency edge runs gate → lens ONLY; the lens never imports this roster.
+// Status: filled.
+
+module v2.test.discrimination_gate.discrimination_roster
+
+import v2.lens.discrimination { unit_is_discriminating }
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.verification { TestClaim }
+import v2.test.impossible_bug.suboptimal_complexity {
+  claim_within_structural_bound_passes,
+  claim_overcost_against_structural_bound_violates
+}
+import v2.test.impossible_bug.nested_optional_flatten {
+  claim_optional_chaining_no_double_unwrap,
+  claim_optional_double_unwrap_rejected
+}
+import v2.test.impossible_bug.transport_type_drift {
+  claim_shared_declaration_compiles_both_sides,
+  claim_target_contract_drift_impossible
+}
+
+// Each unit is a real change covered by a discriminating witness: a positive
+// (CompilesClaim over a base input, green by execution) paired with a discriminating
+// negative (DiagnosticClaim over the *perturbed* falsification input, asserted red).
+data unit_suboptimal_complexity: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  claim_overcost_against_structural_bound_violates
+]
+
+data unit_nested_optional_flatten: List<TestClaim> = [
+  claim_optional_chaining_no_double_unwrap,
+  claim_optional_double_unwrap_rejected
+]
+
+data unit_transport_type_drift: List<TestClaim> = [
+  claim_shared_declaration_compiles_both_sides,
+  claim_target_contract_drift_impossible
+]
+
+fn discrimination_subject_rows() -> List<List<TestClaim>> {
+  [
+    unit_suboptimal_complexity,
+    unit_nested_optional_flatten,
+    unit_transport_type_drift
+  ]
+}
+
+// Semantic-red negative control: an all-positive unit (only a green assertion, no
+// discriminating negative) is exactly the §5 spec-without-execution trap. The lens
+// MUST reject it; the gate asserts that rejection so it cannot pass vacuously.
+data all_positive_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes
+]
+
+fn negative_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: all_positive_control_unit)
+}
+
+fn all_rows_discriminating(rows: List<List<TestClaim>>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, unit) {
+      acc && unit_is_discriminating(unit: unit)
+    }
+  )
+}
+
+fn discrimination_family_gate() -> Bool {
+  let rows = discrimination_subject_rows()
+  if is_empty(xs: rows) {
+    false
+  } else {
+    all_rows_discriminating(rows: rows) && negative_control_correctly_rejected()
+  }
+}

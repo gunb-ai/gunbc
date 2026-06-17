@@ -1,0 +1,146 @@
+// src/v2/lens/discrimination.dag
+// Scope: discrimination meta-lens — DESIGN.md §5 made structural. A witness UNIT
+//        (the List<TestClaim> covering one change) is DISCRIMINATING iff it asserts
+//        BOTH a positive (green-by-execution) AND a discriminating negative (a
+//        *perturbed* input asserted to go RED). A unit that only asserts green is the
+//        §5 specification-without-execution trap — vacuously green, no discriminator —
+//        and is Violated here. Pure Node/data reader: imports only v2.std.* (no roster,
+//        no corpus knowledge; how the compiler enforces this is the gate's job).
+// Status: filled.
+
+module v2.lens.discrimination
+
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  StructuralEqualsClaim,
+  TestClaim,
+  test_claim_input
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile
+}
+import v2.std.node { Node, Symbol }
+import v2.std.collection { List }
+import v2.std.algebra { any, filter }
+import v2.std.logic { Bool }
+
+// The two §5 polarities a witness can assert. A claim asserting a behavior HOLDS
+// (green by execution) vs a claim asserting a perturbed/known-bad input is REJECTED
+// (goes red). The discriminator is the assertion shape, not a tag.
+type WitnessPolarity
+  = AssertsGreen
+  | AssertsRed
+
+// Holds-evidence: the unit that was proven discriminating.
+type DiscriminatingWitness {
+  unit: List<TestClaim>
+}
+
+// Structural polarity over the closed TestClaim coproduct. Compiles/Equals/
+// StructuralEquals/RoundTrip assert the input is ACCEPTED (green); DiagnosticClaim
+// carries an expected_rejection — it asserts the input is REJECTED (red).
+fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      AssertsGreen
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      AssertsGreen
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      AssertsGreen
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      AssertsGreen
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      AssertsRed
+  }
+}
+
+fn claim_asserts_green(c: TestClaim) -> Bool {
+  match test_claim_polarity(c: c) {
+    AssertsGreen => true
+    AssertsRed => false
+  }
+}
+
+fn claim_asserts_red(c: TestClaim) -> Bool {
+  match test_claim_polarity(c: c) {
+    AssertsRed => true
+    AssertsGreen => false
+  }
+}
+
+fn unit_greens(unit: List<TestClaim>) -> List<TestClaim> {
+  filter(xs: unit, predicate: claim_asserts_green)
+}
+
+fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
+  filter(xs: unit, predicate: claim_asserts_red)
+}
+
+fn unit_has_green(unit: List<TestClaim>) -> Bool {
+  any(xs: unit, predicate: claim_asserts_green)
+}
+
+fn unit_has_red(unit: List<TestClaim>) -> Bool {
+  any(xs: unit, predicate: claim_asserts_red)
+}
+
+// A genuine §5 discriminator perturbs the input: a red claim over the IDENTICAL
+// input the positive accepts proves nothing. True iff some red input differs
+// (structurally) from some green input — a real perturbation exists in the unit.
+fn unit_has_perturbation(unit: List<TestClaim>) -> Bool {
+  any(
+    xs: unit_reds(unit: unit),
+    predicate: fn(r) {
+      any(
+        xs: unit_greens(unit: unit),
+        predicate: fn(g) {
+          !(test_claim_input(c: r) == test_claim_input(c: g))
+        }
+      )
+    }
+  )
+}
+
+fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: ^discrimination_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// The lens. Fail-closed: a unit lacking a positive, lacking a discriminating
+// negative, or whose negative is not a perturbation is Violated with a located,
+// typed reason. Empty unit → no green → Violates (anti-vacuity).
+fn discrimination_lens(unit: List<TestClaim>) -> Witness<DiscriminatingWitness> {
+  if !unit_has_green(unit: unit) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_positive)
+    }
+  } else if !unit_has_red(unit: unit) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_discriminating_negative)
+    }
+  } else if !unit_has_perturbation(unit: unit) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_negative_not_perturbed)
+    }
+  } else {
+    Holds { value: DiscriminatingWitness { unit: unit } }
+  }
+}
+
+fn unit_is_discriminating(unit: List<TestClaim>) -> Bool {
+  match discrimination_lens(unit: unit) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
