@@ -37,10 +37,6 @@ type SynthesisSubjectRow {
   declared_technique: LowerBoundTechnique
 }
 
-fn synthesis_declared_technique_for_row(row: SynthesisSubjectRow) -> LowerBoundTechnique {
-  row.declared_technique
-}
-
 data synthesis_subject_row_add: SynthesisSubjectRow = SynthesisSubjectRow {
   subject_producer: comprep_source_bridged_add_arrow_with_body,
   declared_technique: DecisionTree
