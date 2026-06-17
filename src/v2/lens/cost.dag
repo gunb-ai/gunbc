@@ -267,12 +267,12 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: Zero } => b
+    ConstantCost { value: Zero } => zero_cost()
     ConstantCost { value: Succ { prev: Zero } } => b
     UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
-        ConstantCost { value: Zero } => a
+        ConstantCost { value: Zero } => zero_cost()
         ConstantCost { value: Succ { prev: Zero } } => a
         UnknownCost { diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
@@ -392,7 +392,14 @@ fn compose_child_cost(
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
     AlternativeCost => symbolic_max(a: acc, b: child)
-    IterativeCost => symbolic_product(a: acc, b: child)
+    // Per-iteration cost = body + one irreducible loop-control step (increment/
+    // compare/branch), run `acc`-many times. The additive `unit_cost()` floor is
+    // why an empty/zero-cost body still costs O(n): symbolic_sequential(0, 1) = 1,
+    // and symbolic_product(linear, 1) = linear. This keeps the iteration count from
+    // being annihilated by `symbolic_product`'s (correct) absorbing zero, WITHOUT
+    // weakening that zero — the floor is additive here, not a change to the product.
+    IterativeCost =>
+      symbolic_product(a: acc, b: symbolic_sequential(a: child, b: unit_cost()))
   }
 }
 
