@@ -410,6 +410,92 @@ fn type_decl_point_pixel_emit_distinct_holds() -> Bool {
   }
 }
 
+fn type_decl_emit_row_tokens(emitted: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          concrete_syntax_token_list_from_node(list_node: tokens_root)
+        }
+      )
+    }
+  )
+}
+
+fn type_decl_forward_from_emit_row_tokens_holds(emitted: Node) -> Bool {
+  match type_decl_emit_row_tokens(emitted: emitted) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match grammar_relation_row_forward_token_selection(
+        tokens: tokens,
+        rules: type_decl_rules(),
+        start_lhs: ^dag_production_type_decl
+      ) {
+        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_emit_then_reparse_step_reparse_accepts(emitted: Node) -> Bool {
+  match type_decl_emit_source_text(emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } =>
+      match type_decl_reparse_emitted_from_source(source: source) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_emit_then_reparse_step_tokenize_accepts(emitted: Node) -> Bool {
+  match type_decl_emit_source_text(emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } =>
+      match type_decl_tokenize_source_text(source: source) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_forward_from_lexed_source_holds(emitted: Node) -> Bool {
+  match type_decl_emit_source_text(emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } =>
+      match type_decl_tokenize_source_text(source: source) {
+        Accepted { value: tokens, diagnostics: _ } =>
+          match grammar_relation_row_forward_token_selection(
+            tokens: type_decl_lexer_tokens_to_concrete_syntax(tokens: tokens),
+            rules: type_decl_rules(),
+            start_lhs: ^dag_production_type_decl
+          ) {
+            Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn type_decl_emit_lexed_forward_point_holds() -> Bool {
+  type_decl_forward_from_lexed_source_holds(emitted: type_decl_point_emitted())
+}
+
+test fn type_decl_emit_row_forward_point_holds() -> Bool {
+  type_decl_forward_from_emit_row_tokens_holds(emitted: type_decl_point_emitted())
+}
+
+test fn type_decl_emit_tokenize_accepts_point_holds() -> Bool {
+  type_decl_emit_then_reparse_step_tokenize_accepts(emitted: type_decl_point_emitted())
+}
+
+test fn type_decl_emit_reparse_accepts_point_holds() -> Bool {
+  type_decl_emit_then_reparse_step_reparse_accepts(emitted: type_decl_point_emitted())
+}
+
 test fn type_decl_emit_then_reparse_point_holds() -> Bool {
   type_decl_emit_then_reparse_identity_holds(emitted: type_decl_point_emitted())
 }
