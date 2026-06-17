@@ -1,14 +1,18 @@
-//! Node-tree argv projection for `v2.lens.extdeps_shape_transport_policy`.
-//! Parses an extdeps `.dag` module and counts dead input params per operation.
+//! Node-tree projection for `v2.lens.extdeps_shape_transport_policy`.
+//! Parses extdeps `.dag` modules: dead input params per operation + embedded policy literals in data rows.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::v1_compiler_emit::effective_operation_transport;
+use crate::v1_compiler_emit_core_support::is_data_def_item;
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
-use crate::v1_std_core::{build_newline_index, param_node_name_at, ExprData, LiteralValue, Node};
+use crate::v1_std_core::{
+    build_newline_index, field_init_node_name_at, field_init_node_value, param_node_name_at,
+    ExprData, LiteralValue, Node,
+};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -27,7 +31,7 @@ fn resolve_extdeps_path(path: &str) -> PathBuf {
     if rooted.is_file() {
         return rooted;
     }
-    panic!("extdeps argv projection: file not found: {path}");
+    panic!("extdeps shape/transport/policy projection: file not found: {path}");
 }
 
 fn argv_expr_token(
@@ -64,8 +68,6 @@ fn argv_token_references_param(token: &str, param_name: &str) -> bool {
 }
 
 // dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_input_param_is_transport_bound
-// (single authority for transport-bound param names; delete this mirror when the parse
-// bridge reads the .dag predicate instead of hardcoding).
 fn input_param_is_transport_bound(param_name: &str) -> bool {
     param_name == "env"
 }
@@ -107,8 +109,9 @@ fn parse_module_items(
 ) {
     let resolved = resolve_extdeps_path(path);
     let path_str = resolved.to_string_lossy();
-    let content = std::fs::read_to_string(&resolved)
-        .unwrap_or_else(|e| panic!("extdeps argv projection: failed to read {path_str}: {e}"));
+    let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("extdeps shape/transport/policy projection: failed to read {path_str}: {e}")
+    });
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -121,14 +124,14 @@ fn parse_module_items(
     let result = parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
-            "extdeps argv projection: parse error in {path}: {}",
+            "extdeps shape/transport/policy projection: parse error in {path}: {}",
             crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
         );
     }
     let module = result
         .module
         .as_ref()
-        .expect("extdeps argv projection: missing module");
+        .expect("extdeps shape/transport/policy projection: missing module");
     (module.children.clone(), source_indices)
 }
 
@@ -172,6 +175,71 @@ pub fn dead_param_count_for_path(path: String) -> i64 {
                 continue;
             }
             total += dead_param_count_for_operation_node(op, &fallback_transport, &source_indices);
+        }
+    }
+    total
+}
+
+fn literal_string_value(node: &Rc<Node>) -> Option<String> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Some(value.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_data_literal_is_embedded_policy_literal
+fn data_literal_is_embedded_policy_literal(value: &str) -> bool {
+    if value.contains(' ') {
+        return true;
+    }
+    if value.contains('{') && value.contains('}') {
+        return false;
+    }
+    if value == "diff" || value == "--name-only" || value == "git" {
+        return false;
+    }
+    value == "--all-targets"
+        || value == "--workspace"
+        || value == "--no-deps"
+        || value == "-D"
+        || value == "warnings"
+        || value.contains("origin/")
+        || value.contains("...")
+}
+
+fn embedded_policy_literal_count_for_data_node(
+    data_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> i64 {
+    let Some(body) = data_node.body.as_ref() else {
+        return 0;
+    };
+    if !matches!(body.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        return 0;
+    }
+    let mut count = 0i64;
+    for field_init in body.children.iter() {
+        let _field_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        let value_node = field_init_node_value(field_init.clone());
+        if let Some(literal) = literal_string_value(&value_node) {
+            if data_literal_is_embedded_policy_literal(&literal) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Count embedded transport/policy literals across all `data` rows in an extdeps file.
+pub fn embedded_policy_literal_count_for_path(path: String) -> i64 {
+    let (items, source_indices) = parse_module_items(&path);
+    let mut total = 0i64;
+    for item in items.iter() {
+        if is_data_def_item(item.clone()) && !item.name.is_empty() {
+            total += embedded_policy_literal_count_for_data_node(item, &source_indices);
         }
     }
     total

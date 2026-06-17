@@ -4883,6 +4883,18 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "extdeps_embedded_policy_literal_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_embedded_policy_literal_count_for_path",
+            )?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_path(
+                    path,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }
