@@ -15,19 +15,6 @@ import v2.std.logic { Bool }
 
 data gcp_core_path: String = "dsl/extdeps/cloud/gcp/gcp.dag"
 
-<<<<<<< HEAD:src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag
-test fn corpus_gcp_oauth_fusion_fork_is_red_holds() -> Bool {
-  extdeps_live_file_shows_transport_fusion_fork(path: gcp_core_path)
-}
-=======
-fn corpus_gcp_oauth_defused_holds() -> Bool {
+test fn corpus_gcp_oauth_defused_holds() -> Bool {
   !extdeps_live_file_shows_transport_fusion_fork(path: gcp_core_path)
 }
-
-data unified_claim_corpus_gcp_oauth_defused: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
-    function: corpus_gcp_oauth_defused_holds
-  }
-}
->>>>>>> origin/main:src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag
