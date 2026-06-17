@@ -8,6 +8,7 @@
 
 module test.claim.emit_host_gate_witness
 
+import std.measure { byte_size_count }
 import tools.emit_host_fixtures {
   rust_mvp2_stdout_fixture_source,
   python_mvp2_stdout_fixture_source,
@@ -38,11 +39,11 @@ fn w_ts_fixture_nonempty() -> Bool {
 }
 
 fn w_mvp2_byte_count_is_five() -> Bool {
-  mvp2_stdout_byte_count == 5
+  byte_size_count(mvp2_stdout_byte_count) == 5
 }
 
 fn w_ts_byte_count_is_four() -> Bool {
-  ts_signed_i32_le_byte_count == 4
+  byte_size_count(ts_signed_i32_le_byte_count) == 4
 }
 
 // Conjunction keystone — CI runs with --claim-run (false → exit 1).

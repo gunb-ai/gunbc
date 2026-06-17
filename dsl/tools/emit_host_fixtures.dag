@@ -10,6 +10,8 @@
 
 module tools.emit_host_fixtures
 
+import std.measure { ByteSize, byte_size }
+
 // Five stdout bytes — MVP-2 runtime value alignment (rust/python/go row).
 data rust_mvp2_stdout_fixture_source: String = "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }"
 
@@ -29,6 +31,9 @@ process.stdout.write(__gunbc_b);
 
 data ts_mvp1_host_fixture_source: String = "{ts_mvp1_host_fixture_prefix}{ts_mvp1_host_fixture_harness_suffix}"
 
-// Expected stdout byte counts per row (gate discriminant).
-data mvp2_stdout_byte_count: Int = 5
-data ts_signed_i32_le_byte_count: Int = 4
+// Expected stdout byte counts per row (gate discriminant), modeled as the
+// std.measure ByteSize value-Measure — not a bare Int domain-unit scalar. The raw
+// Nat magnitude is projected only at the shell boundary (emit_host_transport.dag)
+// via byte_size_count.
+data mvp2_stdout_byte_count: ByteSize = byte_size(5)
+data ts_signed_i32_le_byte_count: ByteSize = byte_size(4)
