@@ -46,7 +46,7 @@ import std.types { FilePath, MimeType }
 type EntryKind
   = RegularFile                    // a data container (every fs)
   | Directory                      // a namespace container (every fs)
-  | Symlink                        // path indirection (posix S_IFLNK / ntfs symlink reparse; ABSENT in FAT)
+  | Symlink                        // path indirection (posix S_IFLNK / ntfs symlink reparse)
   | Missing                        // probe absence (ENOENT-class; orthogonal to storage layout)
   | Other                          // exists but none of the above — fs-specific special
 
