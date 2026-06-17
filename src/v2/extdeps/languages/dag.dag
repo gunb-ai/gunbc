@@ -53,7 +53,8 @@ import v2.std.grammar {
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
   derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact
+  formal_production_for_lhs_exact,
+  node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing {
@@ -3157,13 +3158,8 @@ fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
 
 // Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
 // the declared QualifiedName by walking ^dag_surface_module_header_qualified_name to the fold_list_node
-// sub-node, then delegating to qualified_name_from_node in std/.
-// std/qualified_name.dag cannot import ^dag_surface_module_header_qualified_name (extdeps/ → std/ only),
-// so this wrapper lives in extdeps/. compiler/00_compile.dag admission calls this function on each
-// batch entry (post-normalize module Node).
-// 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
-// segment extracted from a real parse tree carries ^dag_token_ident (identifier identity unavailable);
-// this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName.
+// sub-node (emit-shaped roots), or the ^dag_surface_qualified_name parse capture (operational parse
+// roots), then delegating segment materialization to qualified_name_from_node / StampLexeme atoms.
 // 🟡 traverse-dissolution interim — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
 // --- dag_mvp1_target_model (RTADD / ctrl#1489; mirror rust_mvp1_target_model) ---
 
@@ -5857,7 +5853,202 @@ fn dag_round_trip_wave1_authorities_ready() -> Bool {
   dag_round_trip_normalization_declared()
 }
 
-fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
+    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn parse_production_captured_child_optional(node: Node) -> Optional<Node> {
+  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
+    Accepted { value: captured, diagnostics: _ } => Present { value: captured }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+type ParseSubtreeFind
+  = ParseSubtreeAbsent
+  | ParseSubtreeFound { captured: Node }
+
+fn parse_subtree_find_production_captured_under_children(
+  root: Node,
+  emitted: Symbol
+) -> ParseSubtreeFind {
+  fold(
+    root.children,
+    init: ParseSubtreeAbsent,
+    f: fn(acc, edge) {
+      match acc {
+        ParseSubtreeFound { captured: _ } => acc
+        ParseSubtreeAbsent =>
+          parse_subtree_find_production_captured(root: edge.target, emitted: emitted)
+      }
+    }
+  )
+}
+
+fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: root) {
+          Present { value: captured } => ParseSubtreeFound { captured: captured }
+          Absent =>
+            parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
+        }
+      } else {
+        parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
+      }
+    Absent =>
+      parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
+  }
+}
+
+fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
+  match node_atom_identity_optional(node: sym_node) {
+    Present { value: id } =>
+      if id == ^dag_token_ident {
+        outcome_rejected(Diagnostic {
+          reason: ^qualified_name_projection_gated,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else if id == ^dag_token_dot {
+        outcome_rejected(Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        outcome_accepted(value: id)
+      }
+    Absent =>
+      outcome_rejected(Diagnostic {
+        reason: ^qualified_name_structure_invalid,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<Symbol> {
+  match find_named_child(
+    root: sequence_capture,
+    name: ^grammar_sequence_right_node_projection
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: ident_node, diagnostics: _ } =>
+      parse_qn_lexeme_segment(sym_node: ident_node, root: root)
+  }
+}
+
+fn parse_qn_repeat_suffixes_fold_step(
+  acc: Outcome<List<Symbol>>,
+  edge: Edge,
+  root: Node
+) -> Outcome<List<Symbol>> {
+  match acc {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prior, diagnostics: acc_diag } =>
+      match edge.label {
+        Named { name: n } =>
+          if n == ^grammar_repeat_element_node_projection {
+            match parse_qn_repeat_suffix_ident(sequence_capture: edge.target, root: root) {
+              Rejected { diagnostics: d } => Rejected { diagnostics: d }
+              Accepted { value: sym, diagnostics: step_diag } =>
+                outcome_accepted(
+                  value: list_append(
+                    left: prior,
+                    right: Cons { head: sym, tail: Empty }
+                  ),
+                  diagnostics: step_diag
+                )
+            }
+          } else {
+            Accepted { value: prior, diagnostics: acc_diag }
+          }
+        Positional => Accepted { value: prior, diagnostics: acc_diag }
+      }
+  }
+}
+
+fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  fold(
+    repeat_capture.children,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, edge) {
+      parse_qn_repeat_suffixes_fold_step(acc: acc, edge: edge, root: root)
+    }
+  )
+}
+
+fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  match find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: head_node, diagnostics: _ } =>
+      match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: head_sym, diagnostics: head_diag } =>
+          match find_named_child(
+            root: qn_capture,
+            name: ^grammar_sequence_right_node_projection
+          ) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: repeat_node, diagnostics: _ } =>
+              match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
+                Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                Accepted { value: suffixes, diagnostics: tail_diag } =>
+                  outcome_accepted(
+                    value: list_append(
+                      left: Cons { head: head_sym, tail: Empty },
+                      right: suffixes
+                    ),
+                    diagnostics: tail_diag
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn qualified_name_append_segment(qn: QualifiedName, sym: Symbol) -> QualifiedName {
+  match qn {
+    QnEmpty => QnCons { head: sym, tail: QnEmpty }
+    QnCons { head: h, tail: t } =>
+      QnCons { head: h, tail: qualified_name_append_segment(qn: t, sym: sym) }
+  }
+}
+
+fn qualified_name_from_segment_list(segments: List<Symbol>, root: Node) -> Outcome<QualifiedName> {
+  let qn = fold_list(
+    xs: segments,
+    empty: QnEmpty,
+    cons: fn(acc, sym) {
+      qualified_name_append_segment(qn: acc, sym: sym)
+    }
+  )
+  match qn {
+    QnEmpty =>
+      outcome_rejected(Diagnostic {
+        reason: ^qualified_name_structure_invalid,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    QnCons { head: _, tail: _ } =>
+      if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
+        outcome_accepted(value: qn)
+      } else {
+        outcome_rejected(Diagnostic {
+          reason: ^qualified_name_projection_gated,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      }
+  }
+}
+
+fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedName> {
   match find_named_child(root: root, name: ^dag_surface_module_header) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: _, diagnostics: _ } =>
@@ -5868,11 +6059,12 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
             Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
             Accepted { value: qn, diagnostics: _ } =>
               match qn {
-                QnEmpty => outcome_rejected(Diagnostic {
-                  reason: ^qualified_name_structure_invalid,
-                  at: node_locus(node: root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                })
+                QnEmpty =>
+                  outcome_rejected(Diagnostic {
+                    reason: ^qualified_name_structure_invalid,
+                    at: node_locus(node: root),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  })
                 QnCons { head: _, tail: _ } =>
                   if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
                     outcome_accepted(value: qn)
@@ -5886,5 +6078,35 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
               }
           }
       }
+  }
+}
+
+fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> {
+  match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
+    ParseSubtreeAbsent =>
+      outcome_rejected(Diagnostic {
+        reason: ^named_child_missing,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    ParseSubtreeFound { captured: qn_capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: root) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: segments, diagnostics: _ } =>
+          qualified_name_from_segment_list(segments: segments, root: root)
+      }
+  }
+}
+
+fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == ^dag_surface_module {
+        qualified_name_from_parsed_module_root(root: root)
+      } else {
+        qualified_name_from_emit_shaped_module_root(root: root)
+      }
+    Absent =>
+      qualified_name_from_emit_shaped_module_root(root: root)
   }
 }
