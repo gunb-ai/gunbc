@@ -1,7 +1,7 @@
 // Scope: Stage C Lane 3 — by-execution receipts for whole SourceRootIngest program assembly.
 // Anchor: DESIGN.md §5 — multi-file ingest fold greens + discriminating duplicate-module RED.
 
-module v2.test.compiler.program_assembly
+module v2.test.manual.program_assembly_multi_file
 
 import v2.compiler.compile {
   compile_source_root_ingest_with_admission
