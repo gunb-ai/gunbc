@@ -1,0 +1,11 @@
+// gunbc/ci_yaml_emit.dag — composed CI workflow YAML projection.
+
+module gunbc.ci_yaml_emit
+
+import extdeps.formats.yaml { serialize_yaml }
+import gunbc.workflow_yaml_project { project_workflow_to_yaml }
+import gunbc.ci_floor_workflow { ci_floor_workflow }
+
+fn expected_ci_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: ci_floor_workflow))
+}
