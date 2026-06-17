@@ -1,0 +1,87 @@
+// src/v2/std/content_unit.dag
+// Scope: a content-addressed *external content unit* — a bundle of host inputs (e.g. a
+//   Rust crate's .rs/Cargo files) identified by a content fingerprint — projected into the
+//   substrate as an ordinary `Node` so the existing content-addressed machinery applies to
+//   it for free (DESIGN §2 horizontal: one content-address concept, every scale — a `.dag`
+//   node and a crate are the same kind of thing once both carry a fingerprint).
+// Status: model-before-implement seed for the Rust fmt/clippy gate's content-addressed
+//   selection. General by construction: nothing here mentions Rust — the unit is "some
+//   host content addressed by a fingerprint" (DESIGN §7 payoff: the Rust seed is just the
+//   first inhabitant; any external content unit de-fuses the same way).
+//
+// Grounding (DESIGN §3, single authority): the unit's identity IS its content. We do NOT
+// mint a parallel "content hash" concept — the unit's structural identity is carried by the
+// substrate's own `content_hash` (v2.std.node) over this projection. A distinct fingerprint
+// yields a structurally-distinct `Node` (the fingerprint is an `Atom` identity, which
+// `canonical_hash_of_connective` folds into `content_hash`), so two units compare equal
+// under `content_hash` iff their fingerprints are equal — exactly the predicate
+// `v2.lens.affected_set` already decides over every other node.
+
+module v2.std.content_unit
+
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+
+// A content unit: a named bundle of host inputs addressed by a content fingerprint.
+//   - `identity`    — which unit this is (stable across content changes), e.g. a crate name.
+//   - `fingerprint` — the content fingerprint of the unit's inputs, computed by the host
+//     (the boundary that can read files / run git) and handed in as an opaque `Symbol`.
+//     Two units with equal `fingerprint` have byte-identical content; a changed input
+//     changes the fingerprint. This is the §3 (b) transport seam: *how* the fingerprint is
+//     computed (git tree hash, digest of concatenated files, …) is a host realization, not
+//     a fact about the unit — the unit owns only the agnostic "content is addressed by this
+//     symbol" shape.
+type ContentUnit {
+  identity: Symbol
+  fingerprint: Symbol
+}
+
+// Edge labels for the two structural coordinates of a unit's projection. Named (not
+// Positional) so `content_hash` order-independence over a Conj is irrelevant and the
+// projection reads structurally.
+data content_unit_identity_edge: Symbol = ^content_unit_identity
+data content_unit_fingerprint_edge: Symbol = ^content_unit_fingerprint
+
+fn content_unit_identity_atom(unit: ContentUnit) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: unit.identity } }, children: [])
+}
+
+fn content_unit_fingerprint_atom(unit: ContentUnit) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: unit.fingerprint } }, children: [])
+}
+
+// Project a content unit to a substrate Node. The fingerprint sits at an `Atom` identity, so
+// `content_hash(content_unit_node(a)) == content_hash(content_unit_node(b))` iff `a` and `b`
+// carry the same identity AND the same fingerprint — i.e. the unit is unchanged. This is the
+// sole bridge from "external content" to "a node the affected-set lens can diff". It is a
+// *pure* projection (no host effect): the host computes the fingerprint; the substrate
+// computes everything downstream.
+fn content_unit_node(unit: ContentUnit) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: content_unit_identity_edge }, target: content_unit_identity_atom(unit: unit) },
+      Edge { label: Named { name: content_unit_fingerprint_edge }, target: content_unit_fingerprint_atom(unit: unit) }
+    ]
+  )
+}
+
+// The path locating a unit inside a units-dag: keyed by the unit's stable identity (NOT its
+// fingerprint), so the same unit at two fingerprints resolves to one path — the baseline and
+// the current state of the same crate. This is what lets the affected-set lens compare
+// `subterm_at(dag, path)` (baseline) against the diff's replacement (current). The units-dag
+// itself and the boundary-prune wiring live in `v2.lens.content_unit_affected` (the
+// affected-set bridge), not here — std owns the agnostic projection; consuming it through a
+// specific lens's prune-receipt convention is realization, and stays out of std (§3).
+fn content_unit_path(unit: ContentUnit) -> Path {
+  Path { steps: [unit.identity] }
+}

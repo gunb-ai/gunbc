@@ -1,0 +1,93 @@
+// src/v2/lens/content_unit_affected.dag
+// Scope: bridge a list of content units (v2.std.content_unit) into the canonical
+//   affected-set lens (v2.lens.affected_set) by producing the `(dag, Diff)` it already
+//   consumes — so a content unit prunes / enters the re-execution frontier by exactly the
+//   same content-addressed decision procedure as every other substrate node. No new
+//   change-detection logic: this module only *feeds* `affected_set` (DESIGN §3 — the
+//   affected-set authority is single; we do not fork a second diff axis the way the
+//   path-suffix `tools.rust_stage0_gates` selector did).
+//
+// Why the receipt lives here, not in std: the boundary-prune of an *unchanged* unit relies
+// on `affected_set`'s `^affected_set_boundary_pure_receipt_edge` convention — a fact about
+// the lens's prune protocol, not about content units in general. std owns the agnostic
+// projection (`content_unit_node`); consuming it through one lens's prune receipt is
+// realization and stays out of std (§3 a/b).
+
+module v2.lens.content_unit_affected
+
+import v2.std.collection { List }
+import v2.std.content_unit { ContentUnit, content_unit_node, content_unit_path }
+import v2.std.node {
+  Conj,
+  Diff,
+  Edge,
+  Edit,
+  Named,
+  Node,
+  TypeNode,
+  node_rebuild,
+  node_synthetic
+}
+import v2.std.witness { Witness }
+import v2.lens.affected_set {
+  ReExecFrontier,
+  affected_set,
+  affected_set_boundary_pure_receipt_node
+}
+
+// A content unit's projection augmented with `affected_set`'s pure-boundary prune receipt, so
+// an UNCHANGED unit (baseline fingerprint == current fingerprint) prunes via
+// `UnchangedPureBoundary{content_hash}` instead of failing closed. Both the baseline dag node
+// and the diff replacement node are built through THIS constructor, so an unchanged unit's two
+// projections are byte-identical (receipt included) — `content_hash` equality holds and the
+// prune fires; a changed fingerprint breaks `content_hash` equality and the unit expands into
+// the frontier, receipt notwithstanding.
+fn content_unit_prunable_node(unit: ContentUnit) -> Node {
+  let base = content_unit_node(unit: unit)
+  node_rebuild(
+    n: base,
+    children: concat(
+      base.children,
+      [Edge {
+        label: Named { name: ^affected_set_boundary_pure_receipt_edge },
+        target: affected_set_boundary_pure_receipt_node()
+      }]
+    )
+  )
+}
+
+// Baseline units-dag: a Conj root whose Named children are each unit's prunable projection,
+// keyed by identity so `content_unit_path(unit)` resolves to it.
+fn content_units_dag(baseline: List<ContentUnit>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(baseline, init: [], f: fn(acc, unit) {
+      concat(acc, [Edge { label: Named { name: unit.identity }, target: content_unit_prunable_node(unit: unit) }])
+    })
+  )
+}
+
+// The diff: one Edit per current unit, replacing its baseline-path projection with its
+// current-fingerprint projection. An Edit whose replacement is content-identical to the
+// baseline prunes; one whose fingerprint changed enters the frontier.
+fn content_unit_diff(current: List<ContentUnit>) -> Diff {
+  Diff {
+    edits: fold(current, init: [], f: fn(acc, unit) {
+      concat(acc, [Edit { at: content_unit_path(unit: unit), replacement: content_unit_prunable_node(unit: unit) }])
+    })
+  }
+}
+
+// THE BRIDGE. Run the canonical affected-set lens over the baseline units-dag and the
+// current-units diff. The result frontier carries: a boundary exclusion per unchanged unit
+// (pruned), a rerun decision per drifted unit. The CI gate consumes this — a unit in the
+// frontier must re-run its gates; a pruned unit need not. Crucially, the decision is a pure
+// function of (baseline fingerprints, current fingerprints) — it never consults a git-diff
+// path list, so a unit whose recorded fingerprint drifted enters the frontier whether or not
+// this change-set "touched" its files. That is the soundness the path-suffix selector lacked.
+fn content_unit_frontier(baseline: List<ContentUnit>, current: List<ContentUnit>) -> Witness<ReExecFrontier> {
+  affected_set(
+    dag: content_units_dag(baseline: baseline),
+    diff: content_unit_diff(current: current)
+  )
+}
