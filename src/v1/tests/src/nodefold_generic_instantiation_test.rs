@@ -81,7 +81,6 @@ fn v2_chained_generic_field_access_compiles() {
 }
 
 #[test]
-#[ignore = "interpreter: chained field access inside generic fn body (runtime follow-up)"]
 fn v2_chained_generic_field_access_runs() {
     let resolved = compile_to_resolved(Rc::new(cert_sources(CHAINED_CERT)));
     assert_resolved_ok(&resolved, CHAINED_CERT);

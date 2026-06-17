@@ -1,0 +1,56 @@
+// Scope: Stage C Lane 3a — by-execution receipts for host-enumerated real multi-file
+//   SourceRootIngest. Proves module_roots_from_source_root_ingest on disk-backed reads;
+//   assemble_program_from_ingest end-to-end awaits validate_module_roots on wave1-parsed
+//   module QN projection (follow-on to hand-built-root lane 3b tests).
+// Anchor: DESIGN.md §5 — host manifest overlay required at runtime (see
+//   tools.source_root_ingest_transport).
+
+module v2.test.program_assembly.real_ingest
+
+import v2.compiler.name_resolve { validate_module_roots }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { string_is_empty }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_content_hash,
+  host_source_root_ingest_coverage_receipt
+}
+
+test fn program_assembly_real_ingest_module_roots_parse_holds() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 2
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> Bool {
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count == 2)
+    && (length(xs: host_source_root_ingest) == 2)
+    && (string_is_empty(s: host_source_root_ingest_content_hash) == false)
+}
+
+// Discriminating RED control (current-state marker — flips green when lane 3a.2 lands).
+// dissolve-on: lane-3a.2 — wave1-parsed module QN segments materialize bound Symbol
+//   identities (not ^dag_token_ident class placeholders) so validate_module_roots
+//   accepts parsed roots; today asserts Rejected, becomes false-positive after fix.
+test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      match validate_module_roots(roots: roots) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
