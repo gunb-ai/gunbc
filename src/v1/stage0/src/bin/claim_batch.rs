@@ -667,3 +667,22 @@ fn main() -> ExitCode {
         Err(code) => code,
     }
 }
+
+#[cfg(test)]
+mod discovery_exclude_tests {
+    use super::discovery_path_excluded;
+
+    #[test]
+    fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
+        let paths = [
+            "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest_test.dag",
+        ];
+        for path in paths {
+            assert!(
+                discovery_path_excluded(path),
+                "expected gate-only overlay witness excluded: {path}"
+            );
+        }
+    }
+}
