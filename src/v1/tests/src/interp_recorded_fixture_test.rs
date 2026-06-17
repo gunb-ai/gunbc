@@ -149,7 +149,7 @@ fn hermetic_fixture_staleness_fails_closed() {
             serde_json::from_slice(&bytes).expect("parse fixture");
         if let Some(obj) = fixture.as_object_mut() {
             obj.insert(
-                "inputs_hash".to_string(),
+                "input_hash".to_string(),
                 serde_json::Value::String("deadbeefdeadbeef".to_string()),
             );
         }
@@ -180,9 +180,62 @@ fn hermetic_fixture_staleness_fails_closed() {
         String::from_utf8_lossy(&hermetic.stderr)
     );
     assert!(
-        combined.contains("stale recorded fixture"),
+        combined.contains("stale recorded fixture") || combined.contains("input_hash="),
         "expected staleness diagnostic, got:\n{combined}"
     );
+}
+
+#[test]
+fn record_response_drift_for_same_input_hash_fails_closed() {
+    let src = r#"module test.fixture_roundtrip
+
+fn witness() -> Bool {
+  let r = { success: true, bytes_written: 42, path: "/tmp/x", error: "" }
+  r.success
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    let val_a = v1_interpreter::run_in_context(&ctx, "witness", false).expect("witness runs");
+    let store_dir = fixture_store_dir("response-drift");
+    let store = RecordedFixtureStore::open(&store_dir);
+    store
+        .record("Filesystem.Write", "0123456789abcdef", &val_a, &ctx)
+        .expect("first record");
+
+    let val_b_src = r#"module test.fixture_roundtrip
+
+fn witness() -> Bool {
+  let r = { success: false, bytes_written: 0, path: "/tmp/y", error: "changed" }
+  r.success
+}
+"#;
+    let sources_b = resolve_imports_transitively("test.dag", val_b_src);
+    let resolved_b = compile_to_resolved(Rc::new(sources_b));
+    assert_resolved_no_hard_errors(&resolved_b);
+    let graph_b = resolved_b.graph.as_ref().expect("graph");
+    let ctx_b = v1_interpreter::InterpContext::new(
+        graph_b,
+        resolved_b.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    let val_b = v1_interpreter::run_in_context(&ctx_b, "witness", false).expect("witness b");
+
+    let err = store
+        .record("Filesystem.Write", "0123456789abcdef", &val_b, &ctx_b)
+        .expect_err("same input_hash with different response must fail closed");
+    assert!(
+        err.to_string().contains("response drift"),
+        "expected response drift diagnostic, got: {err}"
+    );
+    let _ = fs::remove_dir_all(&store_dir);
 }
 
 #[test]

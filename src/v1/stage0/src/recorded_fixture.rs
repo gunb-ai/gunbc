@@ -2,14 +2,20 @@
 //
 // Phase 2 hermetic rollout: fixtures are keyed by (operation, content_hash(inputs)).
 // `--record` captures wet dispatch results; `--hermetic --fixture-store` replays them.
-// Staleness is fail-closed: a fixture whose stored inputs_hash does not match the
-// current call's recomputed hash is rejected with a loud diagnostic — never a stale value.
+// Staleness is fail-closed: expired fixtures or input_hash mismatch return a loud
+// diagnostic — never a stale value. Re-record with the same input_hash but a
+// different response is also fail-closed (cache-purity oracle shape).
+//
+// 🟡 gated — feature:fixture-input-hash-v2-content-hash — bind Phase-2-hermetic —
+// dissolve-on-arrival: v2.std.node content_hash over reified operation-input Nodes;
+// interim uses structural value_hash + hash_combine at the v1 interpreter boundary.
 
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,21 +23,36 @@ use crate::v1_interpreter::{InterpContext, Value};
 use crate::v1_rt;
 use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 
-/// On-disk fixture row: one wet-captured service response keyed by inputs hash.
+/// Default freshness window for replay: fixtures older than this are stale (fail-closed).
+pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
+
+/// On-disk fixture row: one wet-captured service response keyed by input_hash.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordedFixture {
     pub operation: String,
-    pub inputs_hash: String,
+    pub input_hash: String,
     pub response: serde_json::Value,
+    pub recorded_at: u64,
 }
 
 #[derive(Debug)]
 pub enum FixtureError {
-    Missing { operation: String, inputs_hash: String },
+    Missing { operation: String, input_hash: String },
     Stale {
         operation: String,
         stored_hash: String,
         current_hash: String,
+    },
+    Expired {
+        operation: String,
+        input_hash: String,
+        recorded_at: u64,
+        age_secs: u64,
+        max_age_secs: u64,
+    },
+    ResponseDrift {
+        operation: String,
+        input_hash: String,
     },
     Io { path: PathBuf, source: std::io::Error },
     Json { path: PathBuf, source: serde_json::Error },
@@ -43,11 +64,11 @@ impl fmt::Display for FixtureError {
         match self {
             FixtureError::Missing {
                 operation,
-                inputs_hash,
+                input_hash,
             } => write!(
                 f,
-                "missing recorded fixture for {} (inputs_hash={})",
-                operation, inputs_hash
+                "missing recorded fixture for {} (input_hash={})",
+                operation, input_hash
             ),
             FixtureError::Stale {
                 operation,
@@ -55,8 +76,27 @@ impl fmt::Display for FixtureError {
                 current_hash,
             } => write!(
                 f,
-                "stale recorded fixture for {}: stored inputs_hash={} but current inputs_hash={} — refusing to replay stale value",
+                "stale recorded fixture for {}: stored input_hash={} but current input_hash={} — refusing to replay stale value",
                 operation, stored_hash, current_hash
+            ),
+            FixtureError::Expired {
+                operation,
+                input_hash,
+                recorded_at,
+                age_secs,
+                max_age_secs,
+            } => write!(
+                f,
+                "expired recorded fixture for {} (input_hash={}): recorded_at={} age={}s > max={}s — refusing to replay stale value",
+                operation, input_hash, recorded_at, age_secs, max_age_secs
+            ),
+            FixtureError::ResponseDrift {
+                operation,
+                input_hash,
+            } => write!(
+                f,
+                "recorded fixture response drift for {} (input_hash={}): wet capture returned a different response for the same input_hash — refusing to overwrite (cache-purity oracle)",
+                operation, input_hash
             ),
             FixtureError::Io { path, source } => {
                 write!(f, "fixture I/O error at {}: {}", path.display(), source)
@@ -65,7 +105,7 @@ impl fmt::Display for FixtureError {
                 write!(f, "fixture JSON error at {}: {}", path.display(), source)
             }
             FixtureError::InvalidDigest { digest } => {
-                write!(f, "fixture inputs_hash must be 16-char hex, got {:?}", digest)
+                write!(f, "fixture input_hash must be 16-char hex, got {:?}", digest)
             }
         }
     }
@@ -88,65 +128,95 @@ impl RecordedFixtureStore {
         &self.root
     }
 
-    fn fixture_path(&self, operation: &str, inputs_hash: &str) -> PathBuf {
+    fn fixture_path(&self, operation: &str, input_hash: &str) -> PathBuf {
         self.root
             .join(operation_slug(operation))
-            .join(format!("{}.json", inputs_hash))
+            .join(format!("{}.json", input_hash))
+    }
+
+    fn read_fixture_file(&self, path: &Path) -> Result<RecordedFixture, FixtureError> {
+        let bytes = fs::read(path).map_err(|e| FixtureError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+        serde_json::from_slice(&bytes).map_err(|e| FixtureError::Json {
+            path: path.to_path_buf(),
+            source: e,
+        })
+    }
+
+    fn assert_fresh(fixture: &RecordedFixture, operation: &str, input_hash: &str) -> Result<(), FixtureError> {
+        let now = unix_now_secs();
+        let age = now.saturating_sub(fixture.recorded_at);
+        if age > FIXTURE_FRESHNESS_SECS {
+            return Err(FixtureError::Expired {
+                operation: operation.to_string(),
+                input_hash: input_hash.to_string(),
+                recorded_at: fixture.recorded_at,
+                age_secs: age,
+                max_age_secs: FIXTURE_FRESHNESS_SECS,
+            });
+        }
+        Ok(())
     }
 
     pub fn lookup(
         &self,
         operation: &str,
-        inputs_hash: &str,
+        input_hash: &str,
     ) -> Result<RecordedFixture, FixtureError> {
-        expect_hash_digest(inputs_hash)?;
-        let path = self.fixture_path(operation, inputs_hash);
+        expect_hash_digest(input_hash)?;
+        let path = self.fixture_path(operation, input_hash);
         if !path.is_file() {
             return Err(FixtureError::Missing {
                 operation: operation.to_string(),
-                inputs_hash: inputs_hash.to_string(),
+                input_hash: input_hash.to_string(),
             });
         }
-        let bytes = fs::read(&path).map_err(|e| FixtureError::Io {
-            path: path.clone(),
-            source: e,
-        })?;
-        let fixture: RecordedFixture =
-            serde_json::from_slice(&bytes).map_err(|e| FixtureError::Json {
-                path: path.clone(),
-                source: e,
-            })?;
+        let fixture = self.read_fixture_file(&path)?;
         if fixture.operation != operation {
             return Err(FixtureError::Stale {
                 operation: operation.to_string(),
-                stored_hash: fixture.inputs_hash.clone(),
-                current_hash: inputs_hash.to_string(),
+                stored_hash: fixture.input_hash.clone(),
+                current_hash: input_hash.to_string(),
             });
         }
-        if fixture.inputs_hash != inputs_hash {
+        if fixture.input_hash != input_hash {
             return Err(FixtureError::Stale {
                 operation: operation.to_string(),
-                stored_hash: fixture.inputs_hash,
-                current_hash: inputs_hash.to_string(),
+                stored_hash: fixture.input_hash,
+                current_hash: input_hash.to_string(),
             });
         }
+        Self::assert_fresh(&fixture, operation, input_hash)?;
         Ok(fixture)
     }
 
     pub fn record(
         &self,
         operation: &str,
-        inputs_hash: &str,
+        input_hash: &str,
         response: &Value,
         ctx: &InterpContext,
     ) -> Result<(), FixtureError> {
-        expect_hash_digest(inputs_hash)?;
+        expect_hash_digest(input_hash)?;
+        let response_json = value_to_fixture_json(response, ctx);
+        let path = self.fixture_path(operation, input_hash);
+        if path.is_file() {
+            let existing = self.read_fixture_file(&path)?;
+            if existing.response != response_json {
+                return Err(FixtureError::ResponseDrift {
+                    operation: operation.to_string(),
+                    input_hash: input_hash.to_string(),
+                });
+            }
+        }
         let fixture = RecordedFixture {
             operation: operation.to_string(),
-            inputs_hash: inputs_hash.to_string(),
-            response: value_to_fixture_json(response, ctx),
+            input_hash: input_hash.to_string(),
+            response: response_json,
+            recorded_at: unix_now_secs(),
         };
-        let path = self.fixture_path(operation, inputs_hash);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| FixtureError::Io {
                 path: parent.to_path_buf(),
@@ -164,7 +234,16 @@ impl RecordedFixtureStore {
     }
 }
 
-/// Structural content_hash of a service operation's bound inputs (param order).
+fn unix_now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Structural input_hash of a service operation's bound inputs (param order).
+/// Interim v1-boundary hash (value_hash limbs + hash_combine); dissolve-on-arrival:
+/// v2.std.node content_hash over reified operation-input Nodes.
 pub fn content_hash_service_inputs(
     op_node: &Rc<Node>,
     param_env: &crate::v1_interpreter::Env,
