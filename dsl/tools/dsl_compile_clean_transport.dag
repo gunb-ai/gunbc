@@ -8,7 +8,7 @@ module tools.dsl_compile_clean_transport
 import extdeps.shell
 
 fn run_clean_tree_compile() -> Bool {
-  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nOUT=\"${RUNNER_TEMP:-/tmp}/dsl-compile-clean\"\nrm -rf \"$OUT\"\n\"$GUNBC\" compile --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust"
+  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nOUT=$(mktemp -d)\n\"$GUNBC\" compile --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust\nrm -rf \"$OUT\""
   let result = shell.Exec.Run(script: script)
   result.success
 }
