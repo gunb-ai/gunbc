@@ -5,12 +5,22 @@
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }
+import v2.std.collection { Absent, Present, map_get }
+import v2.std.diagnostic { Accepted, bind_outcome, outcome_accepted }
 import v2.std.generic_instantiation {
+  empty_generic_substitution,
   generic_substitution_bind_once,
-  is_algebra_type_variable_name,
   param_is_self_named_generic_decl
 }
 import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  content_hash
+}
 
 type Rec { v: Int }
 
@@ -46,6 +56,42 @@ fn use_chained() -> Int {
   chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
+data gi_bind_once_int_sym: Symbol = gi_bind_once_int_sym
+data gi_bind_once_bool_sym: Symbol = gi_bind_once_bool_sym
+
+fn gi_type_atom_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn generic_substitution_bind_once_first_wins_holds() -> Bool {
+  let n_int = gi_type_atom_node(sym: ^gi_bind_once_int_sym)
+  let n_bool = gi_type_atom_node(sym: ^gi_bind_once_bool_sym)
+  let subst1 = generic_substitution_bind_once(
+    subst: empty_generic_substitution(),
+    name: "T",
+    concrete: n_int
+  )
+  let subst2 = generic_substitution_bind_once(
+    subst: subst1,
+    name: "T",
+    concrete: n_bool
+  )
+  bind_outcome(
+    o: map_get(subst2, "T"),
+    f: fn(entry) {
+      match entry {
+        Present { value: bound } =>
+          outcome_accepted(value: content_hash(node: bound) == content_hash(node: n_int))
+        Absent => outcome_accepted(value: false)
+      }
+    }
+  )
+}
+
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
   fold_list_generic_instantiation_holds()
 }
@@ -66,8 +112,6 @@ test fn generic_instantiation_substrate_self_named_generic_decl() -> Bool {
   )
 }
 
-test fn generic_instantiation_substrate_algebra_type_variable_names() -> Bool {
-  is_algebra_type_variable_name(name: "T")
-    && is_algebra_type_variable_name(name: "MappedElement")
-    && !is_algebra_type_variable_name(name: "Rec")
+test fn generic_instantiation_substrate_bind_once_first_wins_holds() -> Bool {
+  generic_substitution_bind_once_first_wins_holds()
 }
