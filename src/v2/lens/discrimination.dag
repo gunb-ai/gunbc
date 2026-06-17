@@ -91,21 +91,29 @@ fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
   filter(xs: unit, predicate: claim_asserts_red)
 }
 
-// A genuine §5 discriminator perturbs the input: a red claim over the IDENTICAL
-// input the positive accepts proves nothing. True iff some red input differs
-// (structurally) from some green input — a real perturbation exists in the unit.
-fn unit_has_perturbation(unit: List<TestClaim>) -> Bool {
+// A genuine §5 discriminator perturbs the input: EVERY discriminating negative must assert
+// rejection of an input that differs from EVERY positive's accepted input. A red over an
+// input some positive accepts proves nothing. The weaker "∃ red, ∃ green with different
+// inputs" reading is WRONG — a unit like [Compiles(A), Compiles(B), Diagnostic(A)] would
+// satisfy it via the unrelated B while Diagnostic(A) still sits on accepted input A. So the
+// structural guarantee is: NO red input may equal ANY green input (every red is a real
+// perturbation, not merely some unrelated input delta somewhere in the unit).
+fn red_coincides_with_a_green(unit: List<TestClaim>) -> Bool {
   any(
     xs: unit_reds(unit: unit),
     predicate: fn(r) {
       any(
         xs: unit_greens(unit: unit),
         predicate: fn(g) {
-          !(test_claim_input(c: r) == test_claim_input(c: g))
+          test_claim_input(c: r) == test_claim_input(c: g)
         }
       )
     }
   )
+}
+
+fn unit_has_perturbation(unit: List<TestClaim>) -> Bool {
+  !red_coincides_with_a_green(unit: unit)
 }
 
 fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {

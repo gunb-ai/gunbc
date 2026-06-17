@@ -123,6 +123,23 @@ fn non_perturbed_control_correctly_rejected() -> Bool {
   !unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
+// Axis 2 (strong) — the perturbation requirement must hold PER red, not "∃ some input delta
+// in the unit". This 3-claim unit pairs a SECOND green over a different input
+// (flattened_optional_input) with a red that still sits on the FIRST green's accepted input
+// (within_bound_input). The weak `∃ red, ∃ green: input(r) != input(g)` reading would mark it
+// discriminating via the unrelated second green; the correct rule (no red input equals any
+// green input) rejects it. The lens MUST reject it — this control guards against that exact
+// weakening of unit_has_perturbation.
+data mixed_input_non_perturbed_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  claim_optional_chaining_no_double_unwrap,
+  non_perturbed_red_over_green_input
+]
+
+fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
+}
+
 fn all_rows_discriminating(rows: List<List<TestClaim>>) -> Bool {
   fold_list(
     xs: rows,
@@ -141,5 +158,6 @@ fn discrimination_family_gate() -> Bool {
     all_rows_discriminating(rows: rows)
       && negative_control_correctly_rejected()
       && non_perturbed_control_correctly_rejected()
+      && mixed_input_non_perturbed_control_correctly_rejected()
   }
 }
