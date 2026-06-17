@@ -6,7 +6,8 @@
 //!
 //! Host-reads `dsl/` and `src/v2/` without cross-resolve: each `.dag` file is scanned
 //! for column-0 `type` / `data` / `fn` items, normalized body text is hashed, and
-//! `{rel_path}:{decl_name}` keys present in BOTH trees with >1 distinct hash are forks.
+//! `{rel_path_within_tree}:{decl_name}` keys present in BOTH trees with >1 distinct hash
+//! are forks (e.g. `std/algebra.dag:FreeMonoid`).
 //!
 //! 🟡 bridge-boundary — `tree: String` here is host transport only (`"dsl"` / `"v2"`);
 //! modeled facts use `FactCardinalityTree = Dsl | V2` in the lens.
@@ -108,28 +109,51 @@ fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
     out
 }
 
-fn walk_tree(root: &Path, tree: &str, records: &mut Vec<FactCardinalityDeclRecord>) {
-    if !root.is_dir() {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(root) else {
-        return;
-    };
+fn read_dag_source(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_census: failed to read {}: {e}",
+            path.display()
+        )
+    })
+}
+
+fn rel_path_within_tree(top_root: &Path, path: &Path) -> String {
+    path.strip_prefix(top_root)
+        .unwrap_or_else(|_| {
+            panic!(
+                "fact_cardinality_census: path {} is not under tree root {}",
+                path.display(),
+                top_root.display()
+            )
+        })
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn walk_tree_dir(
+    top_root: &Path,
+    dir: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclRecord>,
+) {
+    let entries = fs::read_dir(dir).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_census: failed to read dir {}: {e}",
+            dir.display()
+        )
+    });
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk_tree(&path, tree, records);
+            walk_tree_dir(top_root, &path, tree, records);
             continue;
         }
         if path.extension().and_then(|e| e.to_str()) != Some("dag") {
             continue;
         }
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let content = fs::read_to_string(&path).unwrap_or_default();
+        let rel = rel_path_within_tree(top_root, &path);
+        let content = read_dag_source(&path);
         for (name, hash) in extract_top_level_decls(&content) {
             records.push(FactCardinalityDeclRecord {
                 rel_path_decl_key: format!("{rel}:{name}"),
@@ -138,6 +162,16 @@ fn walk_tree(root: &Path, tree: &str, records: &mut Vec<FactCardinalityDeclRecor
             });
         }
     }
+}
+
+fn walk_tree(top_root: &Path, tree: &str, records: &mut Vec<FactCardinalityDeclRecord>) {
+    if !top_root.is_dir() {
+        panic!(
+            "fact_cardinality_census: tree root {} does not exist",
+            top_root.display()
+        );
+    }
+    walk_tree_dir(top_root, top_root, tree, records);
 }
 
 pub fn cross_tree_decl_records() -> Vec<FactCardinalityDeclRecord> {
@@ -192,12 +226,12 @@ mod tests {
 
     #[test]
     fn free_monoid_is_cross_tree_fork() {
-        assert!(cross_tree_is_fork("algebra.dag:FreeMonoid".to_string()));
+        assert!(cross_tree_is_fork("std/algebra.dag:FreeMonoid".to_string()));
     }
 
     #[test]
     fn lattice_is_not_cross_tree_fork() {
-        assert!(!cross_tree_is_fork("algebra.dag:Lattice".to_string()));
+        assert!(!cross_tree_is_fork("std/algebra.dag:Lattice".to_string()));
     }
 
     #[test]
