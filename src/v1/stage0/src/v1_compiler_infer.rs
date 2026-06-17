@@ -11270,67 +11270,88 @@ pub fn substitute_generics(
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
+    if v1_rt::map_is_empty(&subst) {
+        n
+    } else {
+        substitute_generics_apply(n, subst.clone(), source_indices)
+    }
+}
+
+pub fn substitute_generics_apply(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if ((Rc::new(v1_rt::map_keys(&subst)).len() as i64) == 0) {
-            n.clone()
-        } else {
-            match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                    match v1_rt::map_get(&subst, tv_id.clone()) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                match v1_rt::map_get(&subst, tv_id.clone()) {
+                    Some(c) => c.clone(),
+                    None => n.clone(),
+                }
+            }
+            _ => {
+                let nm = type_node_label(n.clone(), source_indices.clone());
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
+                if is_bare {
+                    match v1_rt::map_get(&subst, nm) {
                         Some(c) => c.clone(),
                         None => n.clone(),
                     }
-                }
-                _ => {
-                    let nm = type_node_label(n.clone(), source_indices.clone());
-                    let is_bare = ((((n.children.clone().len() as i64) == 0)
-                        && (n.connective.clone() == Connective::NoConnective))
-                        && ((n.params.clone().len() as i64) == 0));
-                    if is_bare {
-                        match v1_rt::map_get(&subst, nm) {
-                            Some(c) => c.clone(),
-                            None => n.clone(),
+                } else {
+                    let new_children: Rc<Vec<Rc<Node>>> = Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result.push(substitute_generics_apply(
+                                c.clone(),
+                                subst.clone(),
+                                source_indices.clone(),
+                            ));
                         }
+                        __result
+                    });
+                    let new_params: Rc<Vec<Rc<Node>>> = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in n.params.clone().iter().cloned() {
+                            __result.push(substitute_generics_apply(
+                                p.clone(),
+                                subst.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            let new_rt = substitute_generics_apply(
+                                rt.clone(),
+                                subst.clone(),
+                                source_indices.clone(),
+                            );
+                            if Rc::ptr_eq(&new_rt, &rt) {
+                                n.inferred.clone()
+                            } else {
+                                Some(Rc::new(InferredNode::Resolved { node: new_rt }))
+                            }
+                        }
+                        _ => n.inferred.clone(),
+                    };
+                    if v1_rt::rc_vec_ptr_eq(&new_children, &n.children)
+                        && v1_rt::rc_vec_ptr_eq(&new_params, &n.params)
+                        && new_inferred == n.inferred
+                    {
+                        n.clone()
                     } else {
                         Rc::new(Node {
                             name: n.name.clone(),
                             span: n.span.clone(),
                             ident_span: n.ident_span.clone(),
-                            children: Rc::new({
-                                let mut __result = Vec::new();
-                                for c in n.children.clone().iter().cloned() {
-                                    __result.push(substitute_generics(
-                                        c.clone(),
-                                        subst.clone(),
-                                        source_indices.clone(),
-                                    ));
-                                }
-                                __result
-                            }),
+                            children: new_children,
                             connective: n.connective.clone(),
-                            params: Rc::new({
-                                let mut __result = Vec::new();
-                                for p in n.params.clone().iter().cloned() {
-                                    __result.push(substitute_generics(
-                                        p.clone(),
-                                        subst.clone(),
-                                        source_indices.clone(),
-                                    ));
-                                }
-                                __result
-                            }),
-                            inferred: match n.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => {
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: substitute_generics(
-                                            rt.clone(),
-                                            subst.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    }))
-                                }
-                                _ => n.inferred.clone(),
-                            },
+                            params: new_params,
+                            inferred: new_inferred,
                             return_cardinality: n.return_cardinality.clone(),
                             uses: n.uses.clone(),
                             body: n.body.clone(),

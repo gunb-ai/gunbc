@@ -5475,8 +5475,13 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   // which would duplicate a type's canonical declaration in the nodes table and
   // change identity for downstream consumers. Returning n unchanged keeps every
   // non-generic call (and any generic call that bound nothing) a true no-op.
-  if (map_keys(subst) |> count) == 0 { n }
-  else {
+  // Empty check stays at this entry only — subst is unchanged through recursion,
+  // so map_keys must not run per tree node (was super-linear on body_producer infer).
+  if map_is_empty(subst) { n }
+  else { substitute_generics_apply(n: n, subst: subst, source_indices: source_indices) }
+}
+
+fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
@@ -5494,11 +5499,11 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   } else {
     Node {
       name: n.name, span: n.span, ident_span: n.ident_span,
-      children: n.children |> map(c => substitute_generics(n: c, subst: subst, source_indices: source_indices)),
+      children: n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices)),
       connective: n.connective,
-      params: n.params |> map(p => substitute_generics(n: p, subst: subst, source_indices: source_indices)),
+      params: n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices)),
       inferred: match n.inferred {
-        Present { value: Resolved { node: rt } } => Present { value: Resolved { node: substitute_generics(n: rt, subst: subst, source_indices: source_indices) } }
+        Present { value: Resolved { node: rt } } => Present { value: Resolved { node: substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices) } }
         _ => n.inferred
       },
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
@@ -5506,7 +5511,6 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
       is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
       match_pattern: n.match_pattern, expr_data: n.expr_data
     }
-  }
   }
   }
 }
