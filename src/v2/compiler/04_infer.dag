@@ -810,9 +810,11 @@ fn infer_match_bool(
                                             )
                                         }
                                       }
-                                    InferBoolLiteralMissingTrue
-                                    | InferBoolLiteralMissingFalse
-                                    | InferBoolLiteralMissingBoth =>
+                                    InferBoolLiteralMissingTrue =>
+                                      outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+                                    InferBoolLiteralMissingFalse =>
+                                      outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+                                    InferBoolLiteralMissingBoth =>
                                       outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
                                   }
                               }
