@@ -8,8 +8,9 @@
 // This is NOT a new unparser. Emission and ingestion are the two directions of ONE authority:
 // a grammar-relation row carries both grammar_relation_field_emitted (the core node) and
 // grammar_relation_field_tokens (its concrete token spine). emit(n) = the backward selector
-// v2.compiler.translate.grammar_relation_row_for_emitted (key on emitted == n, read the row's
-// tokens). parse(spine) = the forward selector v2.compiler.ingest.grammar_relation_row_forward_selection
+// v2.compiler.translate.grammar_relation_row_for_emitted (structural reverse-parse fold over
+// grammar_relation_field_production — NOT exact fixture lookup on grammar_relation_field_emitted;
+// read the row's tokens). parse(spine) = the forward selector v2.compiler.ingest.grammar_relation_row_forward_selection
 // (key the row's token-spine CLASSES against the frontier, return the row's emitted). The
 // round trip emit ∘ parse is therefore the bijectivity of the two selectors over the SAME row,
 // not a second structural walker.
@@ -81,7 +82,8 @@ fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   )
 }
 
-// emit(n): backward-select the row whose emitted == n, then read its token-spine frontier.
+// emit(n): backward-select the row whose production structurally matches n (reverse parse fold),
+// then read its token-spine frontier.
 fn type_decl_emit_frontier(rules: Node, emitted: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
