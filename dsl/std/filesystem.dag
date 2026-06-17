@@ -3,7 +3,7 @@
 // "What is a file?" -- answered compositionally from primitives.
 //
 // Layering:
-//   Layer 0: Primitives (EntryKind, SymlinkTarget)
+//   Layer 0: Taxonomy (EntryKind, SymlinkTarget -- POSIX st_mode, defined here)
 //   Layer 1: Categories (FileEntry -- the composed invariant)
 //   Layer 2: Pure functions (is_text_readable, partition_entries)
 //   Layer 3: Patterns (classify_files, read_text_files -- in patterns.dag)
@@ -12,10 +12,46 @@
 module std.filesystem
 
 import std.encoding { Encoding }
-import std.types { FilePath, MimeType, EntryKind, SymlinkTarget }
+import std.types { FilePath, MimeType }
 
-// EntryKind and SymlinkTarget are defined in std.types (the lower module)
-// and imported here to avoid circular dependencies.
+// -- Layer 0: Filesystem entry taxonomy (POSIX-anchored) --------------------
+//
+// "What can a path point to?" / "What does a symlink resolve to?" —
+// grounded in the POSIX `st_mode` file-type taxonomy.
+//
+//   Upstream: IEEE Std 1003.1-2017 (POSIX.1-2017), <sys/stat.h>, st_mode
+//   https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html
+//   (S_IFREG regular, S_IFDIR directory, S_IFLNK symlink, S_IFCHR/S_IFBLK/
+//    S_IFSOCK/S_IFIFO → Other). `Missing` is the no-such-path case (ENOENT),
+//    not an st_mode bit — it is the absence the probe must still name.
+//
+// These are grounded taxonomy TYPES with zero cited data rows; per the os
+// precedent (std/os/types.dag holds KernelFamily / FileSystemSemantics
+// SHAPES, while extdeps/os/{ubuntu,...} hold the cited per-OS DATA ROWS and
+// the dispatcher), the taxonomy stays in std and only data + dispatch would
+// move down-layer.
+//
+// DISSOLUTION TRIGGER (named, per §6 "every scaffold lands with a named
+// dissolution trigger"): when a SECOND entry-kind realization exists (a
+// non-POSIX OS with a distinct file-type taxonomy) OR a consumer of this
+// taxonomy lives in the extdeps layer, the cited part splits to
+// extdeps/filesystem/<os>.dag — mirroring extdeps/os/{ubuntu,windows,macos}.
+// Until then there is one realization (POSIX), so a second OS-agnostic kind
+// would be speculative and is deliberately NOT introduced.
+
+// "What can a path point to?" -- exhaustive over POSIX entry types.
+type EntryKind
+  = RegularFile                    // S_IFREG
+  | Directory                      // S_IFDIR
+  | Symlink                        // S_IFLNK
+  | Missing                        // ENOENT — no such path
+  | Other                          // device, socket, pipe, fifo (S_IFCHR/BLK/SOCK/IFO)
+
+// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
+type SymlinkTarget
+  = TargetFile
+  | TargetDir
+  | Broken                         // dangling symlink
 
 // -- Layer 0.5–1: File referent (single record) -----------------------------
 //

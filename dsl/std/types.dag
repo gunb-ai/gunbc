@@ -419,22 +419,11 @@ type RuntimePlatform {
 // Simple enums are finite sets. Pattern matching must be exhaustive
 // (cover the full |).
 
-// --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
-// "What can a path point to?" -- exhaustive over POSIX entry types.
-// Canonical definition. Re-used by std/filesystem.dag's FileEntry.
-
-type EntryKind
-  = RegularFile
-  | Directory
-  | Symlink
-  | Missing
-  | Other                        // device, socket, pipe, fifo
-
-// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
-type SymlinkTarget
-  = TargetFile
-  | TargetDir
-  | Broken                       // dangling symlink
+// --- Filesystem entry taxonomy: see std/filesystem.dag ------------------
+// EntryKind / SymlinkTarget were rehomed out of this catch-all into their
+// dedicated module std.filesystem (the single authority for the filesystem
+// taxonomy + its FileEntry carrier), POSIX-anchored on st_mode. Mirrors the
+// os precedent (taxonomy SHAPES live in the std module, not the catch-all).
 
 // --- Content encoding: see std/encoding.dag (single authority) --------
 
