@@ -11,11 +11,13 @@ import v2.std.text { String }
 data violation_kind_policy_leak: String = "policy leak in argv"
 data violation_kind_transport_fusion: String = "transport fusion fork"
 data violation_kind_dead_param: String = "dead param in argv"
+data violation_kind_embedded_policy: String = "embedded policy literal in data"
 
 data violation_kinds: List<String> = [
   violation_kind_policy_leak,
   violation_kind_transport_fusion,
-  violation_kind_dead_param
+  violation_kind_dead_param,
+  violation_kind_embedded_policy
 ]
 
 type ExtdepsShapeTransportPolicyReceiptRow {
@@ -102,6 +104,20 @@ data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow 
   function: "corpus_gcp_login_dead_param_defused_holds"
 }
 
+data receipt_embedded_policy_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit runtime/local embedded policy literal",
+  violation_kind: violation_kind_embedded_policy,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
+  function: "embedded_policy_literal_local_is_red_holds"
+}
+
+data receipt_embedded_policy_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus runtime/local embedded policy de-fused (regression guard)",
+  violation_kind: violation_kind_embedded_policy,
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
+  function: "corpus_runtime_local_embedded_policy_defused_holds"
+}
+
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
   receipt_policy_leak_lens_unit,
   receipt_clean_git_diff,
@@ -113,7 +129,9 @@ data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPoli
   receipt_dead_param_gcp_login_lens_unit,
   receipt_dead_param_cargo_clippy_lens_unit,
   receipt_dead_param_cargo_clippy_corpus,
-  receipt_dead_param_gcp_login_corpus
+  receipt_dead_param_gcp_login_corpus,
+  receipt_embedded_policy_lens_unit,
+  receipt_embedded_policy_corpus
 ]
 
 fn rows_cover_kind(kind: String) -> Bool {
@@ -127,6 +145,7 @@ fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_kind(kind: violation_kind_policy_leak)
     && rows_cover_kind(kind: violation_kind_transport_fusion)
     && rows_cover_kind(kind: violation_kind_dead_param)
-    && length(xs: violation_kinds) == 3
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 11
+    && rows_cover_kind(kind: violation_kind_embedded_policy)
+    && length(xs: violation_kinds) == 4
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 13
 }
