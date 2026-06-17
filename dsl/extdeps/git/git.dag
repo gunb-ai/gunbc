@@ -192,11 +192,13 @@ service git.Core {
 
   // Name-only diff projection -- git's two faithful diff modes. Both are git
   // primitives; the *policy* of which mode and which base (e.g. "origin/main")
-  // belongs to the workflow consumer, NOT to this model. PR #5048's `ChangedFiles`
-  // op (`git diff --name-only origin/main...HEAD`) is exactly the business case
-  // that must NOT live here -- it is faithfully composed in the tools layer as
+  // belongs to the workflow consumer, NOT to this model. The `ChangedFiles` op
+  // above (`git diff --name-only origin/main...HEAD`, consumed by tools.rust_gates_ci)
+  // is that business case currently living in-layer; it should dissolve into
   //   DiffNameOnlyMerge(base: "origin/main", head: "HEAD")
-  // leaving git/extdeps modeling only what git provides.
+  // composed in the tools layer. Dissolution trigger: when rust_gates_ci composes
+  // DiffNameOnlyMerge directly, delete `ChangedFiles` -- leaving git/extdeps
+  // modeling only what git provides.
   operation DiffNameOnly {
     input { base: GitRef, head: GitRef = "HEAD" }
     output { paths: List<FilePath> from "stdout_lines" }
