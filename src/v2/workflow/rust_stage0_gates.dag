@@ -47,10 +47,25 @@ fn ends_with(s: String, suffix: String) -> Bool {
 }
 
 
-// The suffixes that identify a Rust-monolith path. Manifests are matched by suffix (not
-// exact equality) so nested ones — e.g. `src/v1/stage0/Cargo.toml` — are caught too.
+// The path-tail markers that identify a Rust-monolith path, matched as suffixes (not exact
+// equality) so nested ones — e.g. `src/v1/stage0/Cargo.toml`, `crate/.cargo/config.toml` —
+// are caught too.
+//
+// COMPLETENESS CLAIM (this is the guarantee): every change that can alter a Rust gate's
+// verdict carries one of these tails.
+//   - `.rs`               — all Rust source, including `build.rs`.
+//   - Cargo.toml/.lock    — deps + the resolved graph (clippy/fmt see new code).
+//   - rust-toolchain.toml — the toolchain clippy/fmt run under.
+//   - clippy.toml / rustfmt.toml / .cargo/config.toml — change what clippy / fmt / build
+//     *do*, so they must re-run the gates even with no `.rs` in the diff.
+// FAIL-CLOSED BIAS (§5): under-firing ships broken Rust silently; over-firing only costs CI
+// time. So when unsure whether a tail belongs here, include it. `rustfmt.toml` is listed
+// defensively (no such file today) because fmt is one of our gates and a future one must fire.
+// The `*_covers_*` witnesses prove this list catches a representative of every Rust-relevant
+// file type actually present in the tree.
 fn rust_monolith_suffixes() -> List<String> {
-  [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
+  [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+   "clippy.toml", "rustfmt.toml", ".cargo/config.toml"]
 }
 
 

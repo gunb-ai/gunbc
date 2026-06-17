@@ -77,3 +77,28 @@ test fn rust_gates_near_miss_rs_substring_selects_none_holds() -> Bool {
 test fn rust_gates_empty_change_selects_none_holds() -> Bool {
   length(xs: rust_stage0_affected_gates(changed_paths: [])) == 0
 }
+
+
+// COMPLETENESS — the no-under-fire guarantee. Each marker type that actually exists in the
+// tree (clippy.toml, .cargo/config.toml, Cargo.lock) must select all three gates, so a real
+// Rust config/dep change never slips past clippy/fmt with no .rs in the diff (§5 fail-closed).
+test fn rust_gates_covers_clippy_config_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: ["clippy.toml"]))
+}
+
+
+test fn rust_gates_covers_cargo_config_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: [".cargo/config.toml"]))
+}
+
+
+test fn rust_gates_covers_cargo_lock_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: ["Cargo.lock"]))
+}
+
+
+// RED CONTRACT — a generic `config.toml` that is NOT a cargo config selects NONE. Proves the
+// marker is the specific tail `.cargo/config.toml`, not an over-broad `config.toml` substring.
+test fn rust_gates_generic_config_toml_selects_none_holds() -> Bool {
+  length(xs: rust_stage0_affected_gates(changed_paths: ["docs/config.toml"])) == 0
+}
