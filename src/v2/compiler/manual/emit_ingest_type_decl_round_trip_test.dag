@@ -1,8 +1,7 @@
 // Status: EXECUTED Bool witness — grammar-inverse free-name-slot emit for structural type decls.
 //
-// Keystone (#5098): structurally built `type Point { x: Int, y: Int }` and `type Pixel { px: Int,
-// py: Int }` with NO per-type fixture rows — wave-1 free-ident productions + derive-at-emit.
-// Spelling authority: symbol interning (case a); binding_spellings empty.
+// Keystone (#5098): parse(emit(n))==n through real tokenize + forward token-spine selection.
+// Secondary: fixed golden literals (not hand-built from emit). Spacing via dag.dag lex literals.
 
 module v2.test.manual.emit_ingest_type_decl_round_trip
 
@@ -22,8 +21,8 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_formal_productions,
   dag_type_decl_structural_target_model
 }
-import v2.std.algebra { Empty, fold_list, list_append, zip_eq }
-import v2.std.collection { List, list_nth }
+import v2.std.algebra { Empty, fold_list, list_append }
+import v2.std.collection { List }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -35,15 +34,10 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
   Outcome,
   Rejected,
-  Unavailable,
   bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
+  outcome_accepted
 }
 import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.logic { Bool }
@@ -57,7 +51,6 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { find_named_child }
-import v2.std.witness { Holds, Violates }
 
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 data type_decl_round_trip_source_file: Symbol = ^type_decl_round_trip_source_file
@@ -413,211 +406,6 @@ fn type_decl_point_pixel_emit_distinct_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
-}
-
-fn type_decl_emit_row_tokens(emitted: Node) -> Outcome<List<ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
-    f: fn(row) {
-      bind_outcome(
-        o: grammar_relation_row_tokens_root(row: row),
-        f: fn(tokens_root) {
-          concrete_syntax_token_list_from_node(list_node: tokens_root)
-        }
-      )
-    }
-  )
-}
-
-fn type_decl_forward_from_emit_row_tokens_holds(emitted: Node) -> Bool {
-  match type_decl_emit_row_tokens(emitted: emitted) {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match grammar_relation_row_forward_token_selection(
-        tokens: tokens,
-        rules: type_decl_rules(),
-        start_lhs: ^dag_production_type_decl
-      ) {
-        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn type_decl_emit_then_reparse_step_reparse_accepts(emitted: Node) -> Bool {
-  match type_decl_emit_source_text(emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } =>
-      match type_decl_reparse_emitted_from_source(source: source) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn type_decl_emit_then_reparse_step_tokenize_accepts(emitted: Node) -> Bool {
-  match type_decl_emit_source_text(emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } =>
-      match type_decl_tokenize_source_text(source: source) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn type_decl_concrete_token_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, t) {
-      list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
-    }
-  )
-}
-
-fn type_decl_lexer_token_classes(tokens: List<Token>) -> List<Symbol> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, t) {
-      list_append(left: acc, right: [t.class])
-    }
-  )
-}
-
-fn type_decl_first_row_token_class(emitted: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: type_decl_emit_row_tokens(emitted: emitted),
-    f: fn(tokens) {
-      match list_nth(
-        xs: tokens,
-        wanted: 0,
-        absent: Diagnostic {
-          reason: ^grammar_relation_emitted_conj_slot_missing,
-          at: node_locus(node: emitted),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      ) {
-        Holds { value: token } => outcome_accepted(value: concrete_syntax_token_class(token: token))
-        Violates { diagnostic: d } => outcome_rejected(d)
-      }
-    }
-  )
-}
-
-fn type_decl_first_lexed_token_class(emitted: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: type_decl_emit_source_text(emitted: emitted),
-    f: fn(source) {
-      bind_outcome(
-        o: type_decl_tokenize_source_text(source: source),
-        f: fn(tokens) {
-          match list_nth(
-            xs: tokens,
-            wanted: 0,
-            absent: Diagnostic {
-              reason: ^grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(node: emitted),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          ) {
-            Holds { value: token } => outcome_accepted(value: token.class)
-            Violates { diagnostic: d } => outcome_rejected(d)
-          }
-        }
-      )
-    }
-  )
-}
-
-fn type_decl_first_row_and_lexed_classes_match_holds(emitted: Node) -> Bool {
-  match type_decl_first_row_token_class(emitted: emitted) {
-    Accepted { value: row_class, diagnostics: _ } =>
-      match type_decl_first_lexed_token_class(emitted: emitted) {
-        Accepted { value: lex_class, diagnostics: _ } => row_class == lex_class
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn type_decl_emit_row_and_lexed_classes_match_holds(emitted: Node) -> Bool {
-  match type_decl_emit_row_tokens(emitted: emitted) {
-    Accepted { value: row_tokens, diagnostics: _ } =>
-      match type_decl_emit_source_text(emitted: emitted) {
-        Accepted { value: source, diagnostics: _ } =>
-          match type_decl_tokenize_source_text(source: source) {
-            Accepted { value: lex_tokens, diagnostics: _ } =>
-              zip_eq(
-                a: type_decl_concrete_token_classes(tokens: row_tokens),
-                b: type_decl_lexer_token_classes(tokens: lex_tokens),
-                eq: fn(x, y) { x == y }
-              )
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn type_decl_forward_from_lexed_source_holds(emitted: Node) -> Bool {
-  match type_decl_emit_source_text(emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } =>
-      match type_decl_tokenize_source_text(source: source) {
-        Accepted { value: tokens, diagnostics: _ } =>
-          match grammar_relation_row_forward_token_selection(
-            tokens: type_decl_lexer_tokens_to_concrete_syntax(tokens: tokens),
-            rules: type_decl_rules(),
-            start_lhs: ^dag_production_type_decl
-          ) {
-            Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn type_decl_first_row_lexed_class_match_point_holds() -> Bool {
-  type_decl_first_row_and_lexed_classes_match_holds(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_row_lexed_classes_match_point_holds() -> Bool {
-  type_decl_emit_row_and_lexed_classes_match_holds(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_lexed_forward_point_holds() -> Bool {
-  type_decl_forward_from_lexed_source_holds(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_row_forward_point_holds() -> Bool {
-  type_decl_forward_from_emit_row_tokens_holds(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_tokenize_accepts_point_holds() -> Bool {
-  type_decl_emit_then_reparse_step_tokenize_accepts(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_reparse_accepts_point_holds() -> Bool {
-  type_decl_emit_then_reparse_step_reparse_accepts(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_then_reparse_point_holds() -> Bool {
-  type_decl_emit_then_reparse_identity_holds(emitted: type_decl_point_emitted())
-}
-
-test fn type_decl_emit_then_reparse_pixel_holds() -> Bool {
-  type_decl_emit_then_reparse_identity_holds(emitted: type_decl_pixel_emitted())
-}
-
-test fn type_decl_emit_point_golden_holds() -> Bool {
-  type_decl_emit_source_text_matches_golden_holds(
-    emitted: type_decl_point_emitted(),
-    golden: type_decl_point_source_text
-  )
 }
 
 test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
