@@ -5477,7 +5477,7 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   // non-generic call (and any generic call that bound nothing) a true no-op.
   // Empty check stays at this entry only — subst is unchanged through recursion,
   // so map_keys must not run per tree node (was super-linear on body_producer infer).
-  if (map_keys(subst) |> count) == 0 { n }
+  if map_is_empty(subst) { n }
   else { substitute_generics_apply(n: n, subst: subst, source_indices: source_indices) }
 }
 

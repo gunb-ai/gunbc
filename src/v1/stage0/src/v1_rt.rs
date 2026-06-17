@@ -212,6 +212,14 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
+pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
+    m.is_empty()
+}
+
+pub fn rc_vec_ptr_eq<T>(a: &Rc<Vec<Rc<T>>>, b: &Rc<Vec<Rc<T>>>) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Rc::ptr_eq(x, y))
+}
+
 pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
