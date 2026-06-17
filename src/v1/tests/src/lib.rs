@@ -32,6 +32,8 @@ mod diagnostics;
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
+mod extdeps_shape_transport_policy_lens_test;
+#[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;

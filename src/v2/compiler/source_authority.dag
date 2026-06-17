@@ -76,6 +76,8 @@ type DagSourceReadWitness {
 
 // Whole source-root ingest closure — the same set `--source-root src/v2` walks.
 // M9 home: sibling to discovery_enumeration.dag (one enumeration authority).
+// Stage C Lane 3: program_assembly.dag folds this monoid into validated module roots +
+//   resolve_with_admission (many files, not a single Source string).
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
 // OOM-guard scalar receipt — mirrors OwnedDataDiscoveryReceipt shape.
