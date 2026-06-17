@@ -4437,7 +4437,7 @@ fn eval_builtin(
 fn apply_closure(
     closure: &Value,
     args: &[Value],
-    _env: &Rc<Env>,
+    env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match closure {
@@ -4456,6 +4456,18 @@ fn apply_closure(
                 Err(InterpError::EarlyReturn { value }) => Ok(value),
                 other => other,
             }
+        }
+        // A top-level named function (`Value::Fn`) is a first-class `fn(...) -> ...` value: the
+        // typechecker admits it wherever a closure type is expected, so a higher-order argument
+        // bound to a bare named function must be applied here too — positionally, mirroring the
+        // Record/Variant field-fn dispatch in `eval_method_call`. Without this arm the program
+        // typechecks but the evaluator rejects it at apply time ("expected closure, got Fn"),
+        // a fail-open spec-without-execution gap (DESIGN.md §5).
+        Value::Fn { node } => {
+            let node = node.clone();
+            let named: Vec<(Option<String>, Value)> =
+                args.iter().map(|v| (None, v.clone())).collect();
+            call_function(ctx, &node, &named, env)
         }
         _ => Err(InterpError::TypeError {
             msg: format!("expected closure, got {}", closure.type_label()),
