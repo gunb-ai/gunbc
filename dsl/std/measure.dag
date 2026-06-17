@@ -225,6 +225,16 @@ type Measure<Q, S, M> {
   count: M
 }
 
+// Generic magnitude projection: read any `Measure` alias's `count` at its declared
+// magnitude `<M>`. The per-alias `*_count` fns below (byte_size_count, watt_count, …) are
+// the named ergonomic surface, but a CONSUMER outside std.measure cannot peel a cross-module
+// alias's `.count` itself (the peel resolves where `Measure` is local — here). This is the
+// one generic reader those consumers call (e.g. a product-layer Bandwidth reader), so the
+// projection is single-authority, not re-coined per alias (DESIGN §2).
+fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
+  m.count
+}
+
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 

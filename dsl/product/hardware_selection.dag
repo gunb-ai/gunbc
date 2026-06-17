@@ -32,6 +32,8 @@ module product.hardware_selection
 
 import std.types { Int, NonEmptyStr, Bool, List }
 import std.measure {
+  Measure,
+  measure_count,
   ByteSize,
   byte_size,
   byte_size_count,
@@ -276,10 +278,11 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
 
 // === Dominance: the ONE kernel, applied =================================
 
-// Bandwidth magnitude accessor (mirrors std.measure byte_size_count for the reused
-// compute_fabric carrier). Nat ⊂ Int, so it widens to Int for the axis comparison.
+// Bandwidth magnitude accessor for the reused compute_fabric carrier — via the generic
+// std.measure.measure_count (a cross-module alias's `.count` only peels where Measure is
+// local). Nat ⊂ Int, so it widens to Int for the axis comparison.
 fn bandwidth_count(bw: Bandwidth) -> Int {
-  bw.count
+  measure_count(m: bw)
 }
 
 // Project the two axis-vectors to per-axis preferences and fold via std.pareto. This is the
