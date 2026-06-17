@@ -6,7 +6,7 @@
 //        generation has since been removed; this witness now covers the v2 layering domain only.
 //        (dsl/std is enforced by the lens root-independently but is not enumerated here — its
 //        former scanner row was v3/manifest-coupled and was retired with v3.)
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+// Status: load-bearing — coverage roster pins wired in CI floor.
 
 module v2.test.layering_imports.coverage_domain_equivalence
 
