@@ -2,7 +2,7 @@
 // Scope: cross-layer import-direction lens — std/ and extdeps/ must not import
 //        v3.compiler.* or v2.compiler.* (layer DAG dependency-direction, DESIGN.md §3).
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts, not this session.
-// Consumer: layering_imports_gate.dag → ci-claim-gate host transport.
+// Consumer: layering_imports_gate.dag → claim_batch host transport.
 
 module v2.lens.layering_imports
 

@@ -175,6 +175,7 @@ import v2.std.compilers.target_model {
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
+  TargetClosureShape,
   TargetEffectCalleeRow,
   TargetConditionalShape,
   TargetOperatorRealization,
@@ -608,6 +609,28 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lparen,
       separator: ^ts_token_comma,
       close: ^ts_token_rparen
+    },
+    // 🟡 gated — feature:ts-closure-fat-arrow-projection — bind: node://adhoc-02906b5e-1f6 (Lane 2c) —
+    // dissolve-on-arrival: a TypeScript closure emit path that models `(p, ...) => expr` (fat-arrow,
+    // expression body — needs a `=>` token + no `fn`/brace framing the single-token TargetClosureShape
+    // cannot yet express); replace the sentinels below with the real fat-arrow spelling then.
+    // forbidden: spelling these fields with real TS tokens (`kw_function`/braces) before that lands —
+    // that would let a closure routed through the TS target SILENTLY emit invalid `function(){}` (§5).
+    //
+    // Fail-closed posture: every field is the same non-lexable sentinel `^ts_closure_emit_unsupported`.
+    // The projection bundle still decodes (the field is structurally a Symbol), so all OTHER TS
+    // value-expression emission is unaffected; but if a closure is ever routed through the TS target,
+    // the emitted ConcreteSyntaxTokens carry the sentinel token-class, which has no `ts_wave1_lex_rules`
+    // spelling and so fails LOUDLY at serialize — never a plausible-but-wrong TS source string. No TS
+    // closure call path exists today, so this is unreachable; it exists only so the bundle decodes.
+    closure_form: TargetClosureShape {
+      fn_token: ^ts_closure_emit_unsupported,
+      open: ^ts_closure_emit_unsupported,
+      separator: ^ts_closure_emit_unsupported,
+      close: ^ts_closure_emit_unsupported,
+      body_open: ^ts_closure_emit_unsupported,
+      body_close: ^ts_closure_emit_unsupported,
+      param_ident_token: ^ts_closure_emit_unsupported
     },
     // Applied-effect projection: the `callees` catalog binds each v2.std.runtime EffectRequestKind
     // discriminant (`^ReadResource` / `^WriteResource`, by identity — no runtime import) to its host
