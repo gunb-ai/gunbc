@@ -1,5 +1,12 @@
 // extdeps/formats/yaml.dag — YAML 1.2 structural value model + byte-faithful serializer.
 //
+// SCAFFOLD — §3 fork of `src/v2/extdeps/formats/yaml.dag` `YamlValue`: this module is the
+// v1-interpreter / projection substrate (ordered `List<YamlKeyValue>`, `serialize_yaml`,
+// witnessable under `gunbc run`). The v2 copy is ingest/grammar-only (Map-based entries).
+// Dissolution trigger: v2 `YamlMapping.entries` migrates to ordered pairs AND v2 emit/ingest
+// imports this module (or a shared `std/formats/yaml.dag` home) — one YamlValue authority,
+// zero parallel type definitions.
+//
 // v2-clean module (no std.unicode / std.render imports) so witnesses execute under
 // the v1 interpreter. Ordered mapping entries preserve YAML key order (DESIGN §2:
 // std Map is an unordered HAMT — unsuitable for deterministic emit).

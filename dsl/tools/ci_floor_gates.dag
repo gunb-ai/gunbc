@@ -1,21 +1,14 @@
 // tools/ci_floor_gates.dag — composed effectful CI floor gates (one resolve, one process).
 //
-// Sequences the ProcessExit gates previously invoked as separate `gunbc run`
-// lines in `.github/workflows/ci.yml`: rust-monolith fmt/clippy, emit-host MVP smokes,
-// layering-imports host scan + perturb receipts, and the whole-tree dsl compile-clean
-// gate. Bool witnesses stay in `claim_batch --roster-from-discovery` (same process,
-// shared module index).
-//
-// Run in CI:
-//   cargo run -p v1-compiler --release --bin gunbc -- run \
-//     --source-root dsl --source-root src/v2 \
-//     --entry dsl/tools/ci_floor_gates.dag --function main
-//
-// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7).
+// Gate list authority: `gunbc_ci_floor_spec.gates` (not a parallel hardcoded sequence).
 
 module tools.ci_floor_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.ci_floor_spec {
+  gunbc_ci_floor_spec, CiFloorSpec, Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate
+}
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
@@ -26,18 +19,30 @@ fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-// Run all five gates (no short-circuit — surface every transport failure in one pass).
-func main() -> ProcessExit {
-  rust = run_rust_monolith_gate()
-  emit_host = run_emit_host_ci_gate()
-  layering = run_layering_imports_ci_gate()
-  compile_clean = run_dsl_compile_clean_gate()
-  ci_yaml = run_ci_yaml_gate()
-  return if exit_ok(rust) && exit_ok(emit_host) && exit_ok(layering) && exit_ok(compile_clean) && exit_ok(ci_yaml) {
+fn run_spec_gate(g: Gate) -> ProcessExit {
+  match g {
+    RustMonolithGate => run_rust_monolith_gate()
+    EmitHostGate => run_emit_host_ci_gate()
+    LayeringImportsGate => run_layering_imports_ci_gate()
+    DslCompileCleanGate => run_dsl_compile_clean_gate()
+    CiYamlGate => run_ci_yaml_gate()
+  }
+}
+
+func run_ci_floor_gates(spec: CiFloorSpec) -> ProcessExit {
+  let all_ok = fold(spec.gates, init: true, f: (acc, g) => {
+    let result = run_spec_gate(g: g)
+    acc && exit_ok(result)
+  })
+  return if all_ok {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "ci floor gates failed: rust_monolith and/or emit_host and/or layering_imports and/or dsl_compile_clean and/or ci_yaml"
+      reason: "ci floor gates failed: one or more gates in gunbc_ci_floor_spec.gates"
     )
   }
+}
+
+func main() -> ProcessExit {
+  run_ci_floor_gates(spec: gunbc_ci_floor_spec)
 }

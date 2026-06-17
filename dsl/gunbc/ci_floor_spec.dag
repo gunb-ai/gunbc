@@ -1,7 +1,6 @@
 // gunbc/ci_floor_spec.dag — CI floor intent as data (Stop B).
 //
-// The workflow YAML is derived from this spec; `gunbc ci` is the collapsed consumer.
-// Diff base is parameterized here — not hardwired in extdeps/git transport argv.
+// Every env script and gate composition are derived from this spec — no parallel literals.
 
 module gunbc.ci_floor_spec
 
@@ -66,40 +65,81 @@ data gunbc_ci_floor_spec: CiFloorSpec = {
   notice_title: "v2 claim corpus"
 }
 
-fn witness_entry_flags(row: WitnessEntry) -> String {
+fn join_slash(parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+}
+
+fn git_fetch_script(policy: DiffPolicy) -> String {
+  let parts = split(s: policy.base, delimiter: "/")
+  let remote = parts.first()
+  let ref_name = join_slash(parts: parts.skip(n: 1))
   concat(
-    concat(concat(" --entry ", row.entry), concat(" --function ", row.function)),
-    ""
+    concat(concat("git fetch --no-tags ", remote), " "),
+    concat(ref_name, " 2>/dev/null || true")
   )
+}
+
+fn witness_root_source_flag(wr: WitnessRoot) -> String {
+  concat(" --source-root ", wr.root)
+}
+
+fn witness_root_scan_flags(wr: WitnessRoot) -> String {
+  fold(wr.scan_subtrees, init: "", f: (acc, sub) => {
+    let dir = if starts_with(s: sub, prefix: wr.root) {
+      sub
+    } else {
+      concat(concat(wr.root, "/"), sub)
+    }
+    concat(acc, concat(" --scan-dir ", dir))
+  })
+}
+
+fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
+  fold(roots, init: "", f: (acc, wr) =>
+    concat(concat(acc, witness_root_source_flag(wr: wr)), witness_root_scan_flags(wr: wr))
+  )
+}
+
+fn witness_entry_flags(row: WitnessEntry) -> String {
+  concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
 }
 
 fn claim_batch_script(spec: CiFloorSpec) -> String {
   concat(
     concat(
-      "cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --source-root dsl --roster-from-discovery",
+      concat(
+        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
+        " --roster-from-discovery"
+      ),
       fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")
   )
 }
 
-fn gunbc_ci_run_script(spec: CiFloorSpec) -> String {
+fn ci_floor_gates_invoke(spec: CiFloorSpec) -> String {
   concat(
     concat(
-      "git fetch --no-tags origin main 2>/dev/null || true\n",
-      concat(claim_batch_script(spec: spec), "\n")
+      concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+      " --entry dsl/tools/ci_floor_gates.dag --function main"
     ),
-    "cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --source-root src/v2 --entry dsl/tools/ci_floor_gates.dag --function main"
+    ""
   )
 }
 
-// Collapsed one-liner for the workflow run step (invokes the `gunbc ci` seed subcommand).
-fn gunbc_ci_workflow_run(spec: CiFloorSpec) -> String {
+fn gunbc_ci_run_script(spec: CiFloorSpec) -> String {
   concat(
     concat(
-      "git fetch --no-tags origin main 2>/dev/null || true\n",
-      "cargo run -p v1-compiler --release --bin gunbc -- ci"
+      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(claim_batch_script(spec: spec), "\n")
     ),
-    ""
+    ci_floor_gates_invoke(spec: spec)
+  )
+}
+
+fn gunbc_ci_workflow_run(spec: CiFloorSpec) -> String {
+  concat(
+    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    "cargo run -p v1-compiler --release --bin gunbc -- ci"
   )
 }
